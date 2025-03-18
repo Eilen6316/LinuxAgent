@@ -652,10 +652,55 @@ class Agent:
                 
                 if return_code == 0:
                     self.ui.console.print("[bold green]命令执行成功！正在分析结果...[/bold green]")
-                    analysis = self.api.analyze_output(command, stdout, stderr)
-                    self.ui.show_result(analysis, command)
+                    
+                    # 检查是否可以使用流式输出分析
+                    always_stream = getattr(self.config.ui, 'always_stream', True)
+                    if always_stream and hasattr(self.api, 'stream_response') and callable(getattr(self.api, 'stream_response')):
+                        # 构建分析请求
+                        system_info = self.executor.get_system_info()
+                        system_prompt = f"你是一名Linux命令输出分析专家。你需要分析以下Linux命令的执行结果，提供简洁明了的解释和任何相关建议。\n\n系统信息：{json.dumps(system_info, ensure_ascii=False)}"
+                        analysis_prompt = f"命令: {command}\n\n标准输出:\n{stdout}\n\n错误输出:\n{stderr}"
+                        
+                        analysis_messages = [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": analysis_prompt}
+                        ]
+                        
+                        self.ui.console.print("[bold cyan]正在流式生成分析结果...[/bold cyan]")
+                        
+                        # 收集流式响应内容
+                        full_analysis = ""
+                        
+                        def collect_analysis_response():
+                            nonlocal full_analysis
+                            for chunk in self.api.stream_response(analysis_messages):
+                                full_analysis += chunk
+                                yield chunk
+                        
+                        # 使用流式输出显示分析结果
+                        self.ui.stream_output(collect_analysis_response())
+                        
+                        # 从流式输出提取推荐内容
+                        recommendations = []
+                        recommendation_pattern = r"(?:建议|推荐)(?:\s*\d+\s*[:,：]|\s*[:,：]\s*|\s+)(.*?)(?=$|(?:建议|推荐)\s*\d+\s*[:,：]|\n\n)"
+                        for match in re.finditer(recommendation_pattern, full_analysis, re.DOTALL | re.MULTILINE):
+                            recommendation = match.group(1).strip()
+                            if recommendation:
+                                recommendations.append(recommendation)
+                        
+                        # 准备分析结果对象
+                        analysis = {
+                            "explanation": full_analysis,
+                            "recommendations": recommendations
+                        }
+                    else:
+                        # 使用非流式方式的原始代码
+                        analysis = self.api.analyze_output(command, stdout, stderr)
+                        self.ui.show_result(analysis, command)
+                    
                     self.stats["successful_commands"] += 1
                     
+                    # 添加到对话历史
                     success_response = f"命令执行成功:\n命令: {command}\n分析: {analysis.get('explanation', '')}"
                     if 'recommendations' in analysis and analysis['recommendations']:
                         success_response += "\n\n建议: " + "\n- ".join([""] + analysis['recommendations'])
@@ -668,8 +713,51 @@ class Agent:
                     # 询问用户是否需要分析错误
                     if self.ui.confirm("\n[bold]命令执行失败。需要分析错误原因吗?[/bold]"):
                         self.logger.info("用户请求分析命令执行错误")
-                        analysis = self.api.analyze_output(command, stdout, stderr)
-                        self.ui.show_result(analysis, command)
+                        
+                        # 使用与其他地方相同的流式输出分析方法
+                        always_stream = getattr(self.config.ui, 'always_stream', True)
+                        if always_stream and hasattr(self.api, 'stream_response') and callable(getattr(self.api, 'stream_response')):
+                            # 构建分析请求
+                            system_info = self.executor.get_system_info()
+                            system_prompt = f"你是一名Linux命令错误分析专家。你需要分析以下Linux命令执行失败的原因，提供明确的错误解释和修复建议。\n\n系统信息：{json.dumps(system_info, ensure_ascii=False)}"
+                            analysis_prompt = f"命令: {command}\n\n标准输出:\n{stdout}\n\n错误输出:\n{stderr}"
+                            
+                            analysis_messages = [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": analysis_prompt}
+                            ]
+                            
+                            self.ui.console.print("[bold cyan]正在流式生成错误分析...[/bold cyan]")
+                            
+                            # 收集流式响应内容
+                            full_analysis = ""
+                            
+                            def collect_analysis_response():
+                                nonlocal full_analysis
+                                for chunk in self.api.stream_response(analysis_messages):
+                                    full_analysis += chunk
+                                    yield chunk
+                            
+                            # 使用流式输出显示分析结果
+                            self.ui.stream_output(collect_analysis_response())
+                            
+                            # 从流式输出提取推荐内容（如果有）
+                            recommendations = []
+                            recommendation_pattern = r"(?:建议|推荐)(?:\s*\d+\s*[:,：]|\s*[:,：]\s*|\s+)(.*?)(?=$|(?:建议|推荐)\s*\d+\s*[:,：]|\n\n)"
+                            for match in re.finditer(recommendation_pattern, full_analysis, re.DOTALL | re.MULTILINE):
+                                recommendation = match.group(1).strip()
+                                if recommendation:
+                                    recommendations.append(recommendation)
+                            
+                            # 准备分析结果对象
+                            analysis = {
+                                "explanation": full_analysis,
+                                "recommendations": recommendations
+                            }
+                        else:
+                            # 使用非流式方式的原始代码
+                            analysis = self.api.analyze_output(command, stdout, stderr)
+                            self.ui.show_result(analysis, command)
                         
                         # 将分析添加到对话历史
                         failure_response = f"命令执行失败:\n命令: {command}\n错误分析: {analysis.get('explanation', '')}"
@@ -997,8 +1085,51 @@ class Agent:
                 # 询问用户是否需要分析错误
                 if self.ui.confirm("\n[bold]命令执行失败。需要分析错误原因吗?[/bold]"):
                     self.logger.info("用户请求分析命令执行错误")
-                    analysis = self.api.analyze_output(command, stdout, stderr)
-                    self.ui.show_result(analysis, command)
+                    
+                    # 使用与其他地方相同的流式输出分析方法
+                    always_stream = getattr(self.config.ui, 'always_stream', True)
+                    if always_stream and hasattr(self.api, 'stream_response') and callable(getattr(self.api, 'stream_response')):
+                        # 构建分析请求
+                        system_info = self.executor.get_system_info()
+                        system_prompt = f"你是一名Linux命令错误分析专家。你需要分析以下Linux命令执行失败的原因，提供明确的错误解释和修复建议。\n\n系统信息：{json.dumps(system_info, ensure_ascii=False)}"
+                        analysis_prompt = f"命令: {command}\n\n标准输出:\n{stdout}\n\n错误输出:\n{stderr}"
+                        
+                        analysis_messages = [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": analysis_prompt}
+                        ]
+                        
+                        self.ui.console.print("[bold cyan]正在流式生成错误分析...[/bold cyan]")
+                        
+                        # 收集流式响应内容
+                        full_analysis = ""
+                        
+                        def collect_analysis_response():
+                            nonlocal full_analysis
+                            for chunk in self.api.stream_response(analysis_messages):
+                                full_analysis += chunk
+                                yield chunk
+                        
+                        # 使用流式输出显示分析结果
+                        self.ui.stream_output(collect_analysis_response())
+                        
+                        # 从流式输出提取推荐内容（如果有）
+                        recommendations = []
+                        recommendation_pattern = r"(?:建议|推荐)(?:\s*\d+\s*[:,：]|\s*[:,：]\s*|\s+)(.*?)(?=$|(?:建议|推荐)\s*\d+\s*[:,：]|\n\n)"
+                        for match in re.finditer(recommendation_pattern, full_analysis, re.DOTALL | re.MULTILINE):
+                            recommendation = match.group(1).strip()
+                            if recommendation:
+                                recommendations.append(recommendation)
+                        
+                        # 准备分析结果对象
+                        analysis = {
+                            "explanation": full_analysis,
+                            "recommendations": recommendations
+                        }
+                    else:
+                        # 使用非流式方式的原始代码
+                        analysis = self.api.analyze_output(command, stdout, stderr)
+                        self.ui.show_result(analysis, command)
                     
                     # 将分析添加到对话历史
                     failure_response = f"命令执行失败:\n命令: {command}\n错误分析: {analysis.get('explanation', '')}"
