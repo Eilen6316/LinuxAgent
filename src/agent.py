@@ -178,40 +178,55 @@ class Agent:
             return True
             
         elif user_input.lower() == "analytics" or user_input.lower() == "dashboard":
-            # 新增命令：显示使用分析仪表板
             self.logger.info("显示使用分析仪表板")
             self.show_analytics_dashboard()
             return True
         
         elif user_input.lower() == "chat history":
-            # 新增命令：显示当前对话历史
             self.logger.info("显示对话历史")
             self._show_chat_history()
             return True
             
         elif user_input.lower() == "clear chat":
-            # 新增命令：清除对话历史
             self.logger.info("清除对话历史")
             self.chat_history = []
-            self._save_chat_history()  # 保存空的对话历史
+            self._save_chat_history()
             self.ui.console.print("[bold green]对话历史已清除[/bold green]")
             return True
             
         elif user_input.lower() == "save chat":
-            # 新增命令：手动保存对话历史
             self.logger.info("保存对话历史")
             self._save_chat_history()
             self.ui.console.print("[bold green]对话历史已保存[/bold green]")
             return True
             
         elif user_input.lower() == "settings" or user_input.lower() == "set":
-            # 新增命令：调整设置
             self.logger.info("调整设置")
             self._adjust_settings()
             return True
             
+        elif user_input.lower().startswith("set api_key "):
+            self.logger.info("设置API密钥")
+            parts = user_input.split(" ", 2)
+            if len(parts) == 3:
+                api_key = parts[2].strip()
+                if api_key:
+                    # 设置内存中的API密钥
+                    self.config.api.api_key = api_key
+                    
+                    # 保存到配置文件
+                    self._save_config_to_file(quiet=True)
+                    
+                    # 屏蔽显示部分密钥
+                    masked_key = api_key[:4] + '*' * (len(api_key) - 8) + api_key[-4:] if len(api_key) > 8 else "****"
+                    self.ui.console.print(f"[bold green]API密钥已设置为 {masked_key} 并保存到配置文件[/bold green]")
+                else:
+                    self.ui.console.print("[bold red]API密钥不能为空[/bold red]")
+            else:
+                self.ui.console.print("[bold yellow]用法: set api_key YOUR_API_KEY[/bold yellow]")
+            return True
+            
         elif user_input.lower() == "theme":
-            # 新增命令：自定义主题
             self.logger.info("自定义主题")
             self.ui.show_theme_settings()
             return True
@@ -1944,7 +1959,7 @@ class Agent:
             except ValueError:
                 self.ui.console.print("[bold red]请输入数字或q退出[/bold red]")
                 
-    def _save_config_to_file(self):
+    def _save_config_to_file(self, quiet=False):
         """将配置保存到文件"""
         import yaml
         import os
@@ -1970,12 +1985,12 @@ class Agent:
                 "language": getattr(self.config.ui, 'language', 'zh'),
                 "buffer_size": getattr(self.config.ui, 'buffer_size', 100),
                 "refresh_rate": getattr(self.ui, 'refresh_rate', 10),
-                "initial_panel_height": getattr(self.ui, 'initial_panel_height', 25),  # 改为25避开30行问题
-                "segment_threshold": getattr(self.config.ui, 'segment_threshold', 5000),  # 长文本分段阈值
-                "segment_size": getattr(self.config.ui, 'segment_size', 2000),  # 每段大小
-                "line_width": getattr(self.config.ui, 'line_width', 80),  # 每行最大字符数
-                "max_lines": getattr(self.config.ui, 'max_lines', 40),  # 最大显示行数
-                "auto_scroll": getattr(self.config.ui, 'auto_scroll', True)  # 自动滚动
+                "initial_panel_height": getattr(self.ui, 'initial_panel_height', 25),
+                "segment_threshold": getattr(self.config.ui, 'segment_threshold', 5000),
+                "segment_size": getattr(self.config.ui, 'segment_size', 2000),
+                "line_width": getattr(self.config.ui, 'line_width', 80),
+                "max_lines": getattr(self.config.ui, 'max_lines', 40),
+                "auto_scroll": getattr(self.config.ui, 'auto_scroll', True)
             },
             "logging": {
                 "level": self.config.logging.level,
@@ -1983,7 +1998,6 @@ class Agent:
                 "max_size_mb": self.config.logging.max_size_mb,
                 "backup_count": self.config.logging.backup_count
             },
-            # 新增的数据分析和推荐设置
             "analytics": {
                 "enable_recommendations": getattr(self.config, 'enable_recommendations', True),
                 "collect_analytics": getattr(self.config, 'collect_analytics', True),
@@ -1995,27 +2009,33 @@ class Agent:
         # 获取默认配置文件路径
         default_config_file = os.path.abspath(self.config.config_file)
         
-        # 询问用户是否要自定义保存路径
-        self.ui.console.print(f"[bold]默认配置文件路径:[/bold] [blue]{default_config_file}[/blue]")
-        if self.ui.confirm("是否要自定义配置文件保存路径?"):
-            custom_path = self.ui.get_input("请输入配置文件保存路径(含文件名): ")
-            if custom_path:
-                config_file = os.path.abspath(custom_path)
+        # 在安静模式下直接使用默认路径，否则询问用户
+        if quiet:
+            config_file = default_config_file
+        else:
+            # 询问用户是否要自定义保存路径
+            self.ui.console.print(f"[bold]默认配置文件路径:[/bold] [blue]{default_config_file}[/blue]")
+            if self.ui.confirm("是否要自定义配置文件保存路径?"):
+                custom_path = self.ui.get_input("请输入配置文件保存路径(含文件名): ")
+                if custom_path:
+                    config_file = os.path.abspath(custom_path)
+                else:
+                    config_file = default_config_file
             else:
                 config_file = default_config_file
-        else:
-            config_file = default_config_file
         
         # 确保目录存在
         config_dir = os.path.dirname(config_file)
         if config_dir and not os.path.exists(config_dir):
             try:
                 os.makedirs(config_dir, exist_ok=True)
-                self.ui.console.print(f"[bold green]已创建目录:[/bold green] [blue]{config_dir}[/blue]")
+                if not quiet:
+                    self.ui.console.print(f"[bold green]已创建目录:[/bold green] [blue]{config_dir}[/blue]")
             except Exception as e:
                 self.logger.error(f"创建目录失败: {e}")
-                self.ui.show_error(f"创建目录失败: {e}")
-                self.ui.console.print("[bold red]将使用默认配置文件路径[/bold red]")
+                if not quiet:
+                    self.ui.show_error(f"创建目录失败: {e}")
+                    self.ui.console.print("[bold red]将使用默认配置文件路径[/bold red]")
                 config_file = default_config_file
         
         try:
@@ -2024,21 +2044,23 @@ class Agent:
                 import shutil
                 backup_file = f"{config_file}.bak"
                 shutil.copy2(config_file, backup_file)
-                self.ui.console.print(f"[bold]已备份原配置文件到: [/bold][blue]{backup_file}[/blue]")
+                if not quiet:
+                    self.ui.console.print(f"[bold]已备份原配置文件到: [/bold][blue]{backup_file}[/blue]")
             
             # 写入新的配置文件
             with open(config_file, 'w', encoding='utf-8') as f:
                 yaml.dump(config_dict, f, default_flow_style=False, allow_unicode=True)
                 
-            self.ui.console.print(f"[bold green]配置已保存到文件: [/bold green][blue]{config_file}[/blue]")
-            
-            # 提示修改生效相关
-            self.ui.console.print("[bold yellow]部分设置更改可能需要重启LinuxAgent才能完全生效[/bold yellow]")
+            if not quiet:
+                self.ui.console.print(f"[bold green]配置已保存到文件: [/bold green][blue]{config_file}[/blue]")
+                # 提示修改生效相关
+                self.ui.console.print("[bold yellow]部分设置更改可能需要重启LinuxAgent才能完全生效[/bold yellow]")
             
         except Exception as e:
             self.logger.error(f"保存配置文件失败: {e}", exc_info=True)
-            self.ui.show_error(f"保存配置文件失败: {e}")
-            self.ui.console.print("[bold red]配置保存失败，请检查文件权限或手动修改配置文件[/bold red]")
+            if not quiet:
+                self.ui.show_error(f"保存配置文件失败: {e}")
+                self.ui.console.print("[bold red]配置保存失败，请检查文件权限或手动修改配置文件[/bold red]")
     
     def run(self):
         """运行代理主循环"""
