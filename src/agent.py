@@ -23,6 +23,7 @@ from .providers.deepseek import DeepSeekProvider
 from .providers.openai import OpenAIProvider
 from .executors.linux_command import LinuxCommandExecutor
 from .ui.console import ConsoleUI
+from rich.panel import Panel
 
 
 class Agent:
