@@ -3,7 +3,7 @@ api:
   # LLM提供者: "deepseek"或"openai"
   provider: "deepseek"
   # DeepSeek API密钥
-  api_key: "sk-4deda1f0569f4e8486e6d19d1aea5412"
+  api_key: "your_deepseek_api"
   # API基础URL
   base_url: "https://api.deepseek.com/v1"
   # 使用的模型
