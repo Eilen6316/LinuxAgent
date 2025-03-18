@@ -682,6 +682,7 @@ class Agent:
                         
                         # 从流式输出提取推荐内容
                         recommendations = []
+                        import re  
                         recommendation_pattern = r"(?:建议|推荐)(?:\s*\d+\s*[:,：]|\s*[:,：]\s*|\s+)(.*?)(?=$|(?:建议|推荐)\s*\d+\s*[:,：]|\n\n)"
                         for match in re.finditer(recommendation_pattern, full_analysis, re.DOTALL | re.MULTILINE):
                             recommendation = match.group(1).strip()
@@ -743,6 +744,7 @@ class Agent:
                             
                             # 从流式输出提取推荐内容（如果有）
                             recommendations = []
+                            import re  # 确保在本地作用域中导入re模块
                             recommendation_pattern = r"(?:建议|推荐)(?:\s*\d+\s*[:,：]|\s*[:,：]\s*|\s+)(.*?)(?=$|(?:建议|推荐)\s*\d+\s*[:,：]|\n\n)"
                             for match in re.finditer(recommendation_pattern, full_analysis, re.DOTALL | re.MULTILINE):
                                 recommendation = match.group(1).strip()
@@ -1115,6 +1117,7 @@ class Agent:
                         
                         # 从流式输出提取推荐内容（如果有）
                         recommendations = []
+                        import re  # 确保在本地作用域中导入re模块
                         recommendation_pattern = r"(?:建议|推荐)(?:\s*\d+\s*[:,：]|\s*[:,：]\s*|\s+)(.*?)(?=$|(?:建议|推荐)\s*\d+\s*[:,：]|\n\n)"
                         for match in re.finditer(recommendation_pattern, full_analysis, re.DOTALL | re.MULTILINE):
                             recommendation = match.group(1).strip()
