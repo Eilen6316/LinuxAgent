@@ -3589,3 +3589,204 @@ class Agent:
                     break
         
         return recommendations
+
+    def _adjust_language_theme_settings(self):
+        """调整语言和主题设置"""
+        from rich.table import Table
+        
+        # 显示当前语言和主题设置
+        table = Table(title="语言和主题设置")
+        table.add_column("设置项", style="cyan")
+        table.add_column("当前值", style="green")
+        table.add_column("说明", style="white")
+        
+        # 语言设置
+        current_language = getattr(self.config, 'language', 'zh_CN')
+        table.add_row(
+            "1. 界面语言",
+            f"{current_language}",
+            "界面显示语言 (zh_CN, en_US, ja_JP, ko_KR)"
+        )
+        
+        # 主题设置
+        current_theme = getattr(self.config.ui, 'theme', 'default')
+        table.add_row(
+            "2. 界面主题",
+            f"{current_theme}",
+            "界面显示主题 (default, dark, light, retro, ocean)"
+        )
+        
+        self.ui.console.print(table)
+        self.ui.console.print("\n[bold]输入要修改的设置编号，或输入q返回:[/bold]")
+        
+        config_changed = False
+        
+        while True:
+            choice = self.ui.get_input("语言和主题设置 > ")
+            
+            if choice.lower() in ['q', 'quit', 'exit', 'back']:
+                break
+                
+            try:
+                setting_num = int(choice)
+                if setting_num == 1:
+                    # 修改语言设置
+                    self.ui.console.print("\n当前界面语言：" + current_language)
+                    self.ui.console.print("可用语言: zh_CN (中文简体), en_US (英文), ja_JP (日文), ko_KR (韩文)")
+                    new_language = self.ui.get_input("请输入新的语言代码 > ")
+                    
+                    valid_languages = ['zh_CN', 'en_US', 'ja_JP', 'ko_KR']
+                    if new_language in valid_languages:
+                        setattr(self.config, 'language', new_language)
+                        config_changed = True
+                        self.ui.console.print(f"[bold green]界面语言已更新为 {new_language}[/bold green]")
+                        self.ui.console.print("[bold yellow]注意: 需要重启程序才能完全应用语言更改[/bold yellow]")
+                    else:
+                        self.ui.console.print("[bold red]无效的语言代码[/bold red]")
+                        
+                elif setting_num == 2:
+                    # 修改主题设置
+                    self.ui.console.print("\n当前界面主题：" + current_theme)
+                    self.ui.console.print("可用主题: default (默认), dark (暗色), light (亮色), retro (复古), ocean (海洋)")
+                    new_theme = self.ui.get_input("请输入新的主题名称 > ")
+                    
+                    valid_themes = ['default', 'dark', 'light', 'retro', 'ocean']
+                    if new_theme in valid_themes:
+                        setattr(self.config.ui, 'theme', new_theme)
+                        config_changed = True
+                        self.ui.console.print(f"[bold green]界面主题已更新为 {new_theme}[/bold green]")
+                        self.ui.apply_theme(new_theme)
+                    else:
+                        self.ui.console.print("[bold red]无效的主题名称[/bold red]")
+                    
+                else:
+                    self.ui.console.print("[bold red]无效的设置编号[/bold red]")
+            except ValueError:
+                self.ui.console.print("[bold red]请输入数字或q退出[/bold red]")
+                
+        # 如果配置有更改，询问是否保存到配置文件
+        if config_changed:
+            if self.ui.confirm("是否将语言和主题设置保存到配置文件?"):
+                self._save_config_to_file()
+    
+    def _adjust_data_analysis_settings(self):
+        """调整数据分析设置"""
+        from rich.table import Table
+        
+        # 显示当前数据分析设置
+        table = Table(title="数据分析设置")
+        table.add_column("设置项", style="cyan")
+        table.add_column("当前值", style="green")
+        table.add_column("说明", style="white")
+        
+        # 数据分析设置
+        table.add_row(
+            "1. 启用推荐系统",
+            f"{'开启' if self.enable_recommendations else '关闭'}",
+            "是否启用命令推荐系统"
+        )
+        
+        table.add_row(
+            "2. 启用数据分析",
+            f"{'开启' if self.collect_analytics else '关闭'}",
+            "是否启用数据分析功能"
+        )
+        
+        table.add_row(
+            "3. 详细统计",
+            f"{'开启' if self.detailed_stats else '关闭'}",
+            "是否启用详细统计功能"
+        )
+        
+        table.add_row(
+            "4. 启用基准测试",
+            f"{'开启' if self.enable_benchmarking else '关闭'}",
+            "是否启用性能基准测试"
+        )
+        
+        self.ui.console.print(table)
+        self.ui.console.print("\n[bold]输入要修改的设置编号，或输入q返回:[/bold]")
+        
+        config_changed = False
+        
+        while True:
+            choice = self.ui.get_input("数据分析设置 > ")
+            
+            if choice.lower() in ['q', 'quit', 'exit', 'back']:
+                break
+                
+            try:
+                setting_num = int(choice)
+                if setting_num == 1:
+                    # 修改推荐系统设置
+                    current = "开启" if self.enable_recommendations else "关闭"
+                    self.ui.console.print(f"\n当前推荐系统设置：{current}")
+                    self.ui.console.print("开启后，系统会根据历史命令推荐相关命令")
+                    
+                    new_setting = self.ui.get_input("请选择(1:开启, 0:关闭) > ")
+                    if new_setting in ['1', '0']:
+                        # 更新设置
+                        self.enable_recommendations = new_setting == '1'
+                        config_changed = True
+                        new_status = "开启" if new_setting == '1' else "关闭"
+                        self.ui.console.print(f"[bold green]推荐系统已{new_status}[/bold green]")
+                    else:
+                        self.ui.console.print("[bold red]无效的选择[/bold red]")
+                        
+                elif setting_num == 2:
+                    # 修改数据分析设置
+                    current = "开启" if self.collect_analytics else "关闭"
+                    self.ui.console.print(f"\n当前数据分析设置：{current}")
+                    self.ui.console.print("开启后，系统会收集和分析用户输入的命令")
+                    
+                    new_setting = self.ui.get_input("请选择(1:开启, 0:关闭) > ")
+                    if new_setting in ['1', '0']:
+                        # 更新设置
+                        self.collect_analytics = new_setting == '1'
+                        config_changed = True
+                        new_status = "开启" if new_setting == '1' else "关闭"
+                        self.ui.console.print(f"[bold green]数据分析已{new_status}[/bold green]")
+                    else:
+                        self.ui.console.print("[bold red]无效的选择[/bold red]")
+                        
+                elif setting_num == 3:
+                    # 修改详细统计设置
+                    current = "开启" if self.detailed_stats else "关闭"
+                    self.ui.console.print(f"\n当前详细统计设置：{current}")
+                    self.ui.console.print("开启后，系统会提供详细的命令执行统计信息")
+                    
+                    new_setting = self.ui.get_input("请选择(1:开启, 0:关闭) > ")
+                    if new_setting in ['1', '0']:
+                        # 更新设置
+                        self.detailed_stats = new_setting == '1'
+                        config_changed = True
+                        new_status = "开启" if new_setting == '1' else "关闭"
+                        self.ui.console.print(f"[bold green]详细统计已{new_status}[/bold green]")
+                    else:
+                        self.ui.console.print("[bold red]无效的选择[/bold red]")
+                        
+                elif setting_num == 4:
+                    # 修改基准测试设置
+                    current = "开启" if self.enable_benchmarking else "关闭"
+                    self.ui.console.print(f"\n当前基准测试设置：{current}")
+                    self.ui.console.print("开启后，系统会记录命令执行时间和API响应时间")
+                    
+                    new_setting = self.ui.get_input("请选择(1:开启, 0:关闭) > ")
+                    if new_setting in ['1', '0']:
+                        # 更新设置
+                        self.enable_benchmarking = new_setting == '1'
+                        config_changed = True
+                        new_status = "开启" if new_setting == '1' else "关闭"
+                        self.ui.console.print(f"[bold green]基准测试已{new_status}[/bold green]")
+                    else:
+                        self.ui.console.print("[bold red]无效的选择[/bold red]")
+                        
+                else:
+                    self.ui.console.print("[bold red]无效的设置编号[/bold red]")
+            except ValueError:
+                self.ui.console.print("[bold red]请输入数字或q退出[/bold red]")
+                
+        # 如果配置有更改，询问是否保存到配置文件
+        if config_changed:
+            if self.ui.confirm("是否将数据分析设置保存到配置文件?"):
+                self._save_config_to_file()
