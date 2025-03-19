@@ -1,6 +1,5 @@
-# LinuxAgent - 基于LLM大模型的Linux运维助手
-
 <div align="center">
+  <h1>LinuxAgent - 基于LLM大模型的Linux运维助手</h1>
   <img src="logo.jpg" alt="LinuxAgent Logo" width="400" />
 
   <p>
@@ -18,7 +17,6 @@
     <a href="#introduction-ja">🇯🇵 日本語</a> | 
     <a href="#introduction-ko">🇰🇷 한국어</a>
   </p>
-
 </div>
 
 
@@ -55,19 +53,19 @@ LinuxAgent是一个智能运维助手，通过接入DeepSeek API实现对Linux�
 
 ### 版本特性对比
 
-| 特性              | v1.4.1 | v2.0.3 | v2.0.4 | v2.0.5 (最新) |
-| ----------------- | ------ | ------ | ------ | ------------- |
-| 自然语言理解      | ✓      | ✓      | ✓      | ✓             |
-| 智能命令执行      | ✗      | ✓      | ✓      | ✓             |
-| 安全控制机制      | ✓      | ✓      | ✓      | ✓             |
-| 多轮对话支持      | ✗      | ✓      | ✓+     | ✓+            |
-| 自动/手动模式切换 | ✗      | ✓      | ✓      | ✓             |
-| 流式输出回答      | ✗      | ✗      | ✓      | ✓             |
-| 自定义主题        | ✗      | ✗      | ✓      | ✓             |
-| 交互式教程        | ✗      | ✗      | ✓      | ✓             |
-| Linux专属优化     | ✗      | ✗      | ✗      | ✓             |
-| 输入阻塞问题修复  | ✗      | ✗      | ✗      | ✓             |
-| 终端状态恢复      | ✗      | ✗      | ✗      | ✓             |
+| 特性 | v1.4.1 | v2.0.3 | v2.0.4 | v2.0.5 (最新) |
+|------|--------|--------|--------|--------------|
+| 自然语言理解 | ✓ | ✓ | ✓ | ✓ |
+| 智能命令执行 | ✗ | ✓ | ✓ | ✓ |
+| 安全控制机制 | ✓ | ✓ | ✓ | ✓ |
+| 多轮对话支持 | ✗ | ✓ | ✓+ | ✓+ |
+| 自动/手动模式切换 | ✗ | ✓ | ✓ | ✓ |
+| 流式输出回答 | ✗ | ✗ | ✓ | ✓ |
+| 自定义主题 | ✗ | ✗ | ✓ | ✓ |
+| 交互式教程 | ✗ | ✗ | ✓ | ✓ |
+| Linux专属优化 | ✗ | ✗ | ✗ | ✓ |
+| 输入阻塞问题修复 | ✗ | ✗ | ✗ | ✓ |
+| 终端状态恢复 | ✗ | ✗ | ✗ | ✓ |
 
 ### 功能特点
 
@@ -218,54 +216,42 @@ python linuxagent.py -c /path/to/your/config.yaml
 5. **设置功能**：
 
    - 主题设置：
-
      ```
      [LinuxAgent] > theme
      ```
-
      可选择不同的界面主题，包括默认、暗色、亮色、复古和海洋等主题风格。
 
    - 语言设置：
-
      ```
      [LinuxAgent] > language
      ```
-
      支持切换中文、英文等多种语言界面。
 
    - 模式切换：
-
      ```
      [LinuxAgent] > mode
      [LinuxAgent] > chat mode
      [LinuxAgent] > agent mode
      [LinuxAgent] > auto mode
      ```
-
      在聊天模式、命令执行模式和自动模式之间切换。
 
    - API密钥设置：
-
      ```
      [LinuxAgent] > set api_key YOUR_API_KEY
      ```
-
      在不修改配置文件的情况下，直接在程序内设置DeepSeek API密钥。
 
    - 教程启动：
-
      ```
      [LinuxAgent] > tutorial
      ```
-
      启动交互式教程，学习如何使用LinuxAgent。
-
+     
    - 会话导出：
-
      ```
      [LinuxAgent] > export chat
      ```
-
      将当前会话内容导出为文档或脚本。
 
 ### 安全注意事项
@@ -426,19 +412,19 @@ LinuxAgent is an intelligent operations assistant that enables natural language 
 
 ### Feature Comparison
 
-| Feature                        | v1.4.1 | v2.0.3 | v2.0.4 | v2.0.5 (Latest) |
-| ------------------------------ | ------ | ------ | ------ | --------------- |
-| Natural Language Understanding | ✓      | ✓      | ✓      | ✓               |
-| Intelligent Command Execution  | ✗      | ✓      | ✓      | ✓               |
-| Security Control Mechanism     | ✓      | ✓      | ✓      | ✓               |
-| Multi-turn Conversation        | ✗      | ✓      | ✓+     | ✓+              |
-| Auto/Manual Mode Switching     | ✗      | ✓      | ✓      | ✓               |
-| Streaming Output               | ✗      | ✗      | ✓      | ✓               |
-| Custom Themes                  | ✗      | ✗      | ✓      | ✓               |
-| Interactive Tutorial           | ✗      | ✗      | ✓      | ✓               |
-| Linux-specific Optimization    | ✗      | ✗      | ✗      | ✓               |
-| Input Blocking Issue Fixed     | ✗      | ✗      | ✗      | ✓               |
-| Terminal State Recovery        | ✗      | ✗      | ✗      | ✓               |
+| Feature | v1.4.1 | v2.0.3 | v2.0.4 | v2.0.5 (Latest) |
+|---------|--------|--------|--------|-----------------|
+| Natural Language Understanding | ✓ | ✓ | ✓ | ✓ |
+| Intelligent Command Execution | ✗ | ✓ | ✓ | ✓ |
+| Security Control Mechanism | ✓ | ✓ | ✓ | ✓ |
+| Multi-turn Conversation | ✗ | ✓ | ✓+ | ✓+ |
+| Auto/Manual Mode Switching | ✗ | ✓ | ✓ | ✓ |
+| Streaming Output | ✗ | ✗ | ✓ | ✓ |
+| Custom Themes | ✗ | ✗ | ✓ | ✓ |
+| Interactive Tutorial | ✗ | ✗ | ✓ | ✓ |
+| Linux-specific Optimization | ✗ | ✗ | ✗ | ✓ |
+| Input Blocking Issue Fixed | ✗ | ✗ | ✗ | ✓ |
+| Terminal State Recovery | ✗ | ✗ | ✗ | ✓ |
 
 ### Features
 
@@ -589,54 +575,42 @@ python linuxagent.py -c /path/to/your/config.yaml
 5. **Setting Features**:
 
    - Theme Setting:
-
      ```
      [LinuxAgent] > theme
      ```
-
      Select different interface themes, including default, dark, light, retro, and ocean themes.
 
    - Language Setting:
-
      ```
      [LinuxAgent] > language
      ```
-
      Support switching between Chinese, English, and other language interfaces.
 
    - Mode Switching:
-
      ```
      [LinuxAgent] > mode
      [LinuxAgent] > chat mode
      [LinuxAgent] > agent mode
      [LinuxAgent] > auto mode
      ```
-
      Switch between chat mode, command execution mode, and auto mode.
 
    - API Key Setting:
-
      ```
      [LinuxAgent] > set api_key YOUR_API_KEY
      ```
-
      Configure DeepSeek API key directly within the program without modifying the configuration file.
 
    - Tutorial Launch:
-
      ```
      [LinuxAgent] > tutorial
      ```
-
      Launch interactive tutorial to learn how to use LinuxAgent.
-
+     
    - Session Export:
-
      ```
      [LinuxAgent] > export chat
      ```
-
      Export current session content as document or script.
 
 ### Security Considerations
@@ -797,19 +771,19 @@ LinuxAgentは、DeepSeek APIを通じてLinuxターミナルの自然言語制�
 
 ### 機能 比較
 
-| 機能                           | v1.4.1 | v2.0.3 | v2.0.4 | v2.0.5 (最新) |
-| ------------------------------ | ------ | ------ | ------ | ------------- |
-| 自然言語理解                   | ✓      | ✓      | ✓      | ✓             |
-| インテリジェントなコマンド実行 | ✗      | ✓      | ✓      | ✓             |
-| セキュリティ制御メカニズム     | ✓      | ✓      | ✓      | ✓             |
-| 複数回の会話                   | ✗      | ✓      | ✓+     | ✓+            |
-| 自動/手動モード切替            | ✗      | ✓      | ✓      | ✓             |
-| ストリーミング出力             | ✗      | ✗      | ✓      | ✓             |
-| カスタムテーマ                 | ✗      | ✗      | ✓      | ✓             |
-| 対話型チュートリアル           | ✗      | ✗      | ✓      | ✓             |
-| Linux専用最適化                | ✗      | ✗      | ✗      | ✓             |
-| 入力ブロック問題の修正         | ✗      | ✗      | ✗      | ✓             |
-| ターミナル状態の復元           | ✗      | ✗      | ✗      | ✓             |
+| 機能 | v1.4.1 | v2.0.3 | v2.0.4 | v2.0.5 (最新) |
+|------|--------|--------|--------|--------------|
+| 自然言語理解 | ✓ | ✓ | ✓ | ✓ |
+| インテリジェントなコマンド実行 | ✗ | ✓ | ✓ | ✓ |
+| セキュリティ制御メカニズム | ✓ | ✓ | ✓ | ✓ |
+| 複数回の会話 | ✗ | ✓ | ✓+ | ✓+ |
+| 自動/手動モード切替 | ✗ | ✓ | ✓ | ✓ |
+| ストリーミング出力 | ✗ | ✗ | ✓ | ✓ |
+| カスタムテーマ | ✗ | ✗ | ✓ | ✓ |
+| 対話型チュートリアル | ✗ | ✗ | ✓ | ✓ |
+| Linux専用最適化 | ✗ | ✗ | ✗ | ✓ |
+| 入力ブロック問題の修正 | ✗ | ✗ | ✗ | ✓ |
+| ターミナル状態の復元 | ✗ | ✗ | ✗ | ✓ |
 
 ### 特徴
 
@@ -958,54 +932,42 @@ python linuxagent.py -c /path/to/your/config.yaml
 5. **設定機能**：
 
    - テーマ設定：
-
      ```
      [LinuxAgent] > theme
      ```
-
      異なるインターフェーステーマを選択可能。
 
    - 言語設定：
-
      ```
      [LinuxAgent] > language
      ```
-
      中国語、英語などの言語インターフェースに切り替え可能。
 
    - モード切り替え：
-
      ```
      [LinuxAgent] > mode
      [LinuxAgent] > chat mode
      [LinuxAgent] > agent mode
      [LinuxAgent] > auto mode
      ```
-
      コマンド実行モード、自動モード間の切り替えが可能です。
 
    - APIキー設定：
-
      ```
      [LinuxAgent] > set api_key YOUR_API_KEY
      ```
-
      設定ファイルを修正せずにプログラム内で直接DeepSeek APIキーを設定します。
 
    - チュートリアル実行：
-
      ```
      [LinuxAgent] > tutorial
      ```
-
      対話型チュートリアルを開始してLinuxAgentの使用方法を学習します。
-
+     
    - 会話エクスポート：
-
      ```
      [LinuxAgent] > export chat
      ```
-
      現在の会話内容をドキュメントやスクリプトとしてエクスポートします。
 
 ### セキュリティに関する考慮事項
@@ -1085,19 +1047,19 @@ LinuxAgent는 DeepSeek API를 통해 Linux 터미널의 자연어 제어를 실�
 
 ### 기능 비교
 
-| 기능                | v1.4.1 | v2.0.3 | v2.0.4 | v2.0.5 (최신) |
-| ------------------- | ------ | ------ | ------ | ------------- |
-| 자연어 이해         | ✓      | ✓      | ✓      | ✓             |
-| 지능형 명령 실행    | ✗      | ✓      | ✓      | ✓             |
-| 보안 제어 메커니즘  | ✓      | ✓      | ✓      | ✓             |
-| 다중 대화 지원      | ✗      | ✓      | ✓+     | ✓+            |
-| 자동/수동 모드 전환 | ✗      | ✓      | ✓      | ✓             |
-| 스트리밍 출력       | ✗      | ✗      | ✓      | ✓             |
-| 사용자 정의 테마    | ✗      | ✗      | ✓      | ✓             |
-| 대화형 튜토리얼     | ✗      | ✗      | ✓      | ✓             |
-| Linux 전용 최적화   | ✗      | ✗      | ✗      | ✓             |
-| 입력 차단 문제 수정 | ✗      | ✗      | ✗      | ✓             |
-| 터미널 상태 복구    | ✗      | ✗      | ✗      | ✓             |
+| 기능 | v1.4.1 | v2.0.3 | v2.0.4 | v2.0.5 (최신) |
+|------|--------|--------|--------|--------------|
+| 자연어 이해 | ✓ | ✓ | ✓ | ✓ |
+| 지능형 명령 실행 | ✗ | ✓ | ✓ | ✓ |
+| 보안 제어 메커니즘 | ✓ | ✓ | ✓ | ✓ |
+| 다중 대화 지원 | ✗ | ✓ | ✓+ | ✓+ |
+| 자동/수동 모드 전환 | ✗ | ✓ | ✓ | ✓ |
+| 스트리밍 출력 | ✗ | ✗ | ✓ | ✓ |
+| 사용자 정의 테마 | ✗ | ✗ | ✓ | ✓ |
+| 대화형 튜토리얼 | ✗ | ✗ | ✓ | ✓ |
+| Linux 전용 최적화 | ✗ | ✗ | ✗ | ✓ |
+| 입력 차단 문제 수정 | ✗ | ✗ | ✗ | ✓ |
+| 터미널 상태 복구 | ✗ | ✗ | ✗ | ✓ |
 
 ### 기능 특징
 
@@ -1246,54 +1208,42 @@ python linuxagent.py -c /path/to/your/config.yaml
 5. **설정 기능**:
 
    - 테마 설정:
-
      ```
      [LinuxAgent] > theme
      ```
-
      다양한 인터페이스 테마를 선택할 수 있습니다.
 
    - 언어 설정:
-
      ```
      [LinuxAgent] > language
      ```
-
      중국어, 영어 등의 언어 인터페이스로 전환할 수 있습니다.
 
    - 모드 전환:
-
      ```
      [LinuxAgent] > mode
      [LinuxAgent] > chat mode
      [LinuxAgent] > agent mode
      [LinuxAgent] > auto mode
      ```
-
      채팅 모드, 명령 실행 모드, 자동 모드 간 전환이 가능합니다.
 
    - API 키 설정:
-
      ```
      [LinuxAgent] > set api_key YOUR_API_KEY
      ```
-
      설정 파일을 수정하지 않고 프로그램 내에서 직접 DeepSeek API 키를 설정합니다.
 
    - 튜토리얼 실행:
-
      ```
      [LinuxAgent] > tutorial
      ```
-
      대화형 튜토리얼을 시작하여 LinuxAgent 사용법을 학습합니다.
-
+     
    - 대화 내보내기:
-
      ```
      [LinuxAgent] > export chat
      ```
-
      현재 대화 내용을 문서나 스크립트로 내보냅니다.
 
 ### 보안에 대한 고려 사항
