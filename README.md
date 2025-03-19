@@ -1,6 +1,7 @@
 # LinuxAgent - 基于DeepSeek API的Linux运维助手
 
 <div align="center">
+  <img src="logo.jpg" alt="LinuxAgent Logo" width="400" />
   <p>
     <a href="#introduction-cn">🇨🇳 简体中文</a> | 
     <a href="#introduction-en">🇺🇸 English</a> | 
