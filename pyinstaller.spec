@@ -1,8 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
 PyInstaller规格文件 - 用于将LinuxAgent打包成独立可执行文件
-版本：2.0.4
+版本：2.0.5
+
+使用方法:
+    1. 安装PyInstaller: pip install pyinstaller
+    2. 清理构建并打包: pyinstaller --clean pyinstaller.spec
+    3. 获取打包文件: 生成的文件在dist/linuxagent目录下
+    4. 复制配置文件到dist目录cp config.yaml dist/
+    5. 运行程序: cd dist/linuxagent && ./linuxagent
+
+注意事项:
+    - 确保config.yaml文件存在于项目根目录
+    - 打包会创建文件夹模式的可执行程序，配置文件会自动包含
+    - 分发时只需将dist/linuxagent目录整体复制或打包
 """
+
 
 block_cipher = None
 
@@ -12,7 +25,7 @@ a = Analysis(
     pathex=[],                    # 额外的导入路径
     binaries=[],                  # 额外的二进制文件
     datas=[
-        ('config.yaml.example', '.'),  # 配置文件模板
+        ('config.yaml', '.'),  # 配置文件模板
         ('README.md', '.'),           # 说明文档
         ('requirements.txt', '.'),     # 依赖列表
     ],
@@ -59,5 +72,4 @@ exe = EXE(
     target_arch=None,             # 目标架构
     codesign_identity=None,       # 代码签名身份
     entitlements_file=None,       # 权限文件
-    icon='icon.ico'               # 应用图标
 ) 
