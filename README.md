@@ -26,7 +26,7 @@
 
 ## 📌 简体中文
 
-LinuxAgent是一个智能运维助手，通过接入DeepSeek API实现对Linux终端的自然语言控制，帮助用户更高效地进行系统运维工作。
+LinuxAgent是一个智能运维助手。通过接入DeepSeek API实现对Linux终端的自然语言控制，帮助用户更高效地进行系统运维工作。
 
 ### 更新日志
 
