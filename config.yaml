@@ -1,0 +1,219 @@
+# DeepSeek API配置
+api:
+  # LLM提供者: "deepseek"或"openai"
+  provider: "deepseek"
+  # DeepSeek API密钥
+  api_key: ""
+  # API基础URL
+  base_url: "https://api.deepseek.com/v1"  # 可替换成国内LLM能力厂商提供的URL
+  # 使用的模型
+  model: "deepseek-chat"
+  # 请求超时时间(秒)
+  timeout: 120
+
+# 监控系统配置
+monitoring:
+  # 启用系统监控
+  enabled: true
+  # 监控数据收集间隔(秒)
+  collection_interval: 5
+  # 历史数据保留期(小时)
+  data_retention_hours: 24
+  # 启用告警系统
+  alert_enabled: true
+  # 告警检查间隔(秒)
+  alert_check_interval: 10
+  # 默认告警规则
+  default_alerts:
+    # CPU使用率告警阈值(%)
+    cpu_threshold: 80
+    # 内存使用率告警阈值(%)
+    memory_threshold: 85
+    # 磁盘使用率告警阈值(%)
+    disk_threshold: 90
+    # 网络错误率告警阈值(%)
+    network_error_threshold: 5
+    # 持续时间要求(秒)
+    duration_threshold: 30
+
+# 日志分析配置
+log_analysis:
+  # 启用日志分析
+  enabled: true
+  # 默认日志文件路径
+  default_log_paths:
+    - "/var/log/syslog"
+    - "/var/log/auth.log"
+    - "/var/log/messages"
+  # 异常检测配置
+  anomaly_detection:
+    # 启用异常检测
+    enabled: true
+    # 错误关键词
+    error_keywords:
+      - "error"
+      - "failed"
+      - "exception"
+      - "timeout"
+      - "refused"
+    # 警告关键词
+    warning_keywords:
+      - "warning"
+      - "deprecated"
+      - "slow"
+    # 时间聚集检测窗口(分钟)
+    time_window: 10
+    # 频率异常阈值
+    frequency_threshold: 10
+
+# 集群管理配置
+cluster:
+  # 启用集群管理
+  enabled: true
+  # SSH连接配置
+  ssh:
+    # 默认用户名
+    default_username: "root"
+    # 连接超时时间(秒)
+    connect_timeout: 30
+    # 命令执行超时时间(秒)
+    command_timeout: 300
+    # 最大并发连接数
+    max_connections: 10
+  # 服务器分组
+  groups:
+    web_servers: []
+    db_servers: []
+    app_servers: []
+
+# 安全设置
+security:
+  # 危险命令需要确认
+  confirm_dangerous_commands: true
+  # 完全禁止的命令列表
+  blocked_commands:
+    - "rm -rf / --no-preserve-root"
+    - "mkfs"
+    - "> /dev/sda"
+    - ":(){:|:&};:"
+  # 需要确认的命令模式
+  confirm_patterns:
+    - "rm\\s+-rf\\s+"
+    - "dd\\s+if=.+\\s+of=/dev/"
+    - "mkfs\\..+"
+    - ";\\s*rm\\s"
+    - ">\\s*/etc/"
+    - ">\\s*/boot/"
+
+# 用户界面设置
+ui:
+  # 是否启用彩色输出
+  color_output: true
+  # 历史记录文件
+  history_file: "~/.linuxagent_history"
+  # 最大历史记录条数
+  max_history: 1000
+  # 总是使用流式输出回答问题
+  always_stream: true
+  # 界面主题
+  theme: "default"
+  # 界面语言
+  language: "zh"
+  # 教程完成状态文件
+  tutorial_state_file: "~/.linuxagent_tutorial_completed"
+
+# 日志设置
+logging:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"
+  # 日志文件路径
+  file: "~/.linuxagent.log"
+  # 日志轮换大小(MB)
+  max_size_mb: 10
+  # 保留的日志文件数量
+  backup_count: 5
+
+# 数据分析和推荐设置
+analytics:
+  # 启用命令推荐功能
+  enable_recommendations: true
+  # 收集使用数据进行分析
+  collect_analytics: true
+  # 显示详细统计信息
+  detailed_stats: true
+  # 启用性能基准测试
+  enable_benchmarking: false
+
+# 智能化功能配置
+intelligence:
+  # 启用智能化功能总开关
+  enabled: true
+  
+  # 命令学习器配置
+  learning:
+    # 学习数据存储文件
+    data_file: "~/.linuxagent_learning.json"
+    # 最大历史记录数
+    max_history: 10000
+    # 最小模式频率
+    min_pattern_frequency: 3
+    # 自动保存间隔(秒)
+    auto_save_interval: 300
+  
+  # 知识库配置
+  knowledge:
+    # 知识库数据目录
+    data_dir: "~/.linuxagent_knowledge"
+    # 自动更新知识库
+    auto_update: true
+    # 包含内置知识
+    include_builtin: true
+  
+  # 推荐引擎配置
+  recommendation:
+    # 启用智能推荐
+    enabled: true
+    # 上下文权重配置
+    context_weights:
+      directory_match: 0.3
+      recent_commands: 0.25
+      system_status: 0.2
+      user_pattern: 0.15
+      intent_match: 0.1
+    # 最大推荐数量
+    max_recommendations: 10
+  
+  # 自然语言处理配置
+  nlp:
+    # 启用自然语言增强
+    enabled: true
+    # 自动翻译自然语言
+    auto_translate: true
+    # 最小置信度阈值
+    min_confidence: 0.6
+    # 显示替代命令
+    show_alternatives: true
+  
+  # 模式分析配置
+  pattern_analysis:
+    # 启用模式分析
+    enabled: true
+    # 模式数据存储文件
+    data_file: "~/.linuxagent_patterns.json"
+    # 分析时间窗口(天)
+    analysis_window_days: 7
+    # 最小模式强度
+    min_pattern_strength: 0.3
+  
+  # 上下文管理配置
+  context:
+    # 启用上下文管理
+    enabled: true
+    # 上下文数据目录
+    data_dir: "~/.linuxagent_context"
+    # 最大上下文年龄(秒)
+    max_context_age: 3600
+    # 自动保存间隔(秒)
+    auto_save_interval: 300
+    # 最大对话历史记录数
+    max_conversation_history: 100 
