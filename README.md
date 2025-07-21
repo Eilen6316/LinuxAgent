@@ -7,7 +7,9 @@
     <a href="https://github.com/Eilen6316/LinuxAgent.git"><img src="https://img.shields.io/badge/GitHub-项目仓库-black?style=flat-square&logo=github" alt="GitHub"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-项目仓库-red?style=flat-square&logo=gitee" alt="Gitee"></a>
     <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=o2ByKsl_gBN-fODJxH4Ps4Xboa_hCSI3&authKey=nVfsLJBin1CnZBd9pPNkxFk%2FGFqCe1FLsRMQmmxv%2FQnM78bC%2FjcWyMSeQcJDZC1U&noverify=0&group_code=281392454"><img src="https://img.shields.io/badge/QQ群-281392454-brightgreen?style=flat-square&logo=tencent-qq" alt="QQ Group"></a>
-    <a href="#license"><img src="https://img.shields.io/badge/许可证-MIT-green?style=flat-square" alt="License"></a>
+    <a href="https://blog.csdn.net/qq_69174109/article/details/146365413">
+  <img src="https://img.shields.io/badge/CSDN-项目介绍-blue?style=flat-square&logo=csdn" alt="CSDN博客">
+</a>
   </p>
 
 
