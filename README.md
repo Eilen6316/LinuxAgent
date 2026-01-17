@@ -790,7 +790,7 @@ MIT License
 
 ### 交互式命令
 
-LinuxAgent supports direct use of interactive commands or natural language description:
+LinuxAgent supports direct use of interactive commands or natural language descriptions:
 
 ```
 # 直接使用命令
