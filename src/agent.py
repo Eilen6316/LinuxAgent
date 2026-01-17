@@ -179,7 +179,8 @@ class Agent:
                 # 初始化推荐引擎
                 self.recommendation_engine = RecommendationEngine(
                     command_learner=self.command_learner,
-                    knowledge_base=self.knowledge_base
+                    knowledge_base=self.knowledge_base,
+                    context_weights=getattr(intelligence_config, 'context_weights', None)
                 )
                 
                 # 初始化自然语言增强器
@@ -187,7 +188,7 @@ class Agent:
                 
                 # 初始化模式分析器
                 self.pattern_analyzer = PatternAnalyzer(
-                    data_file=getattr(intelligence_config, 'pattern_data_file', "~/.linuxagent_pattern.json")
+                    data_file=getattr(intelligence_config, 'pattern_data_file', "~/.linuxagent_patterns.json")
                 )
                 
                 # 初始化上下文管理器

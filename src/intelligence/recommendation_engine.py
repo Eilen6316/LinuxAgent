@@ -70,7 +70,12 @@ class Recommendation:
 class RecommendationEngine:
     """智能推荐引擎"""
     
-    def __init__(self, command_learner: CommandLearner = None, knowledge_base: KnowledgeBase = None):
+    def __init__(
+        self,
+        command_learner: CommandLearner = None,
+        knowledge_base: KnowledgeBase = None,
+        context_weights: Optional[Dict[str, float]] = None
+    ):
         """
         初始化推荐引擎
         
@@ -86,18 +91,35 @@ class RecommendationEngine:
         self.intent_patterns = self._build_intent_patterns()
         
         # 上下文权重
-        self.context_weights = {
-            "directory_match": 0.3,
-            "recent_command_sequence": 0.25,
-            "system_status": 0.2,
-            "user_pattern": 0.15,
-            "intent_match": 0.1
-        }
+        self.context_weights = self._normalize_context_weights(context_weights)
         
         # 命令分类
         self.command_categories = self._build_command_categories()
         
         self.logger.info("智能推荐引擎初始化完成")
+
+    def _normalize_context_weights(self, context_weights: Optional[Dict[str, float]]) -> Dict[str, float]:
+        """规范化上下文权重配置"""
+        default_weights = {
+            "directory_match": 0.3,
+            "recent_commands": 0.25,
+            "system_status": 0.2,
+            "user_pattern": 0.15,
+            "intent_match": 0.1
+        }
+
+        if not context_weights:
+            return default_weights
+
+        normalized = default_weights.copy()
+
+        for key, value in context_weights.items():
+            if key in normalized and isinstance(value, (int, float)):
+                normalized[key] = float(value)
+            elif key == "recent_command_sequence" and isinstance(value, (int, float)):
+                normalized["recent_commands"] = float(value)
+
+        return normalized
     
     def _build_intent_patterns(self) -> Dict[str, List[str]]:
         """构建意图识别模式"""

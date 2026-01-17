@@ -143,7 +143,9 @@ class ConsoleUI(UserInterface):
         self.refresh_rate = 15  # 默认刷新率
         self.initial_panel_height = 12  # 默认初始面板高度
         
-        self.tutorial_state_file = os.path.expanduser("~/.linuxagent_tutorial_completed")
+        self.tutorial_state_file = os.path.expanduser(
+            getattr(config, 'tutorial_state_file', "~/.linuxagent_tutorial_completed")
+        )
         self.tutorial_completed = self._load_tutorial_completed()
         
         self.languages = {
