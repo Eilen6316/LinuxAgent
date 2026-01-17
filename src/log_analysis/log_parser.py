@@ -4,6 +4,10 @@
 """
 日志解析器模块
 负责解析各种格式的日志文件
+
+Date: 2025-09-06
+Author: LinuxAgent Team
+Description: 提供多格式日志解析、时间解析与级别提取能力。
 """
 
 import re
@@ -127,9 +131,10 @@ class LogParser:
         
         timestamp_str, hostname, process, message = match.groups()
         
-        # 解析时间戳（假设当前年份）
+        # 解析时间戳（使用当前年份）
         try:
-            timestamp = datetime.strptime(f"2024 {timestamp_str}", "%Y %b %d %H:%M:%S")
+            current_year = datetime.now().year
+            timestamp = datetime.strptime(f"{current_year} {timestamp_str}", "%Y %b %d %H:%M:%S")
         except ValueError:
             timestamp = datetime.now()
         
@@ -314,7 +319,9 @@ class LogParser:
         message_upper = message.upper()
         
         # 按优先级检查
-        if any(keyword in message_upper for keyword in ['FATAL', 'CRITICAL']):
+        if 'FATAL' in message_upper:
+            return LogLevel.FATAL
+        elif 'CRITICAL' in message_upper:
             return LogLevel.CRITICAL
         elif any(keyword in message_upper for keyword in ['ERROR', 'FAIL', 'EXCEPTION']):
             return LogLevel.ERROR
@@ -333,7 +340,7 @@ class LogParser:
         Args:
             file_path: 日志文件路径
             format_type: 指定日志格式，None为自动检测
-            max_lines: 最大解析行数，None为解析全部
+            max_lines: 最大解析条目数，None为解析全部
         
         Returns:
             日志条目迭代器
@@ -392,16 +399,40 @@ if __name__ == "__main__":
     parser = LogParser()
     
     # 测试不同格式的日志行
-    test_lines = [
-        "Jan 15 14:30:45 server1 sshd: Failed password for root from 192.168.1.100 port 22 ssh2",
-        "192.168.1.100 - - [15/Jan/2024:14:30:45 +0000] \"GET /index.html HTTP/1.1\" 200 1234",
-        "2024-01-15 14:30:45 [ERROR] Database connection failed",
-        '{"timestamp": "2024-01-15T14:30:45Z", "level": "ERROR", "message": "Connection timeout", "service": "api"}'
+    test_cases = [
+        (
+            "Jan 15 14:30:45 server1 sshd: Failed password for root from 192.168.1.100 port 22 ssh2",
+            None,
+            LogLevel.ERROR
+        ),
+        (
+            "192.168.1.100 - - [15/Jan/2024:14:30:45 +0000] \"GET /index.html HTTP/1.1\" 200 1234",
+            None,
+            LogLevel.INFO
+        ),
+        (
+            "2024-01-15 14:30:45 [ERROR] Database connection failed",
+            None,
+            LogLevel.ERROR
+        ),
+        (
+            '{"timestamp": "2024-01-15T14:30:45Z", "level": "ERROR", "message": "Connection timeout", "service": "api"}',
+            LogFormat.JSON,
+            LogLevel.ERROR
+        ),
+        (
+            "2024-01-15 14:30:45 [FATAL] Kernel panic",
+            None,
+            LogLevel.FATAL
+        )
     ]
-    
-    for i, line in enumerate(test_lines, 1):
-        entry = parser.parse_line(line, i)
-        if entry:
-            print(f"解析结果: {entry.level.value} | {entry.message}")
-        else:
-            print(f"解析失败: {line}")
+
+    entries = []
+    for i, (line, format_type, expected_level) in enumerate(test_cases, 1):
+        entry = parser.parse_line(line, i, format_type)
+        assert entry is not None, f"解析失败: {line}"
+        assert entry.level == expected_level, (
+            f"日志级别不匹配: 期望 {expected_level.value}, 实际 {entry.level.value}"
+        )
+        entries.append(entry)
+        print(f"解析结果: {entry.level.value} | {entry.message}")
