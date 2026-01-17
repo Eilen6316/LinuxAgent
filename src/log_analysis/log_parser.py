@@ -6,7 +6,7 @@
 负责解析各种格式的日志文件
 
 Date: 2025-09-06
-Author: LinuxAgent Team
+Author: LeeShin
 Description: 提供多格式日志解析、时间解析与级别提取能力。
 """
 
