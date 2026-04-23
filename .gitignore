@@ -1,6 +1,8 @@
 # IDE / 本地 agent 缓存（不入库）
-# 注意：CLAUDE.md / AGENTS.md / .work/ 是协作真源，必须入库，不在此忽略
 .claude/
+.work/
+AGENTS.md
+CLAUDE.md
 
 # Python
 __pycache__/
