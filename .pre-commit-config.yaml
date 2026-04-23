@@ -1,0 +1,59 @@
+# LinuxAgent v4 pre-commit hooks.
+# Run locally: pre-commit install && pre-commit run --all-files
+
+exclude: ^(legacy/|\.work/|configs/example\.yaml$)
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: detect-private-key
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        files: ^src/linuxagent/
+        additional_dependencies:
+          - pydantic>=2.7
+          - types-PyYAML
+          - types-requests
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        args: [-ll, -r]
+        files: ^src/linuxagent/
+
+  - repo: local
+    hooks:
+      - id: redline-shell-true
+        name: R-SEC-01 ban shell=True
+        entry: bash -c '! grep -rn "shell=True" src/linuxagent/'
+        language: system
+        pass_filenames: false
+      - id: redline-autoadd
+        name: R-SEC-03 ban AutoAddPolicy
+        entry: bash -c '! grep -rn "AutoAddPolicy" src/linuxagent/'
+        language: system
+        pass_filenames: false
+      - id: redline-bare-except
+        name: R-QUAL-01 ban bare except
+        entry: bash -c '! grep -rnE "^[[:space:]]*except:[[:space:]]*$" src/linuxagent/'
+        language: system
+        pass_filenames: false

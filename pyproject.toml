@@ -1,0 +1,137 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "linuxagent"
+version = "4.0.0.dev0"
+description = "LLM-driven Linux operations assistant CLI with Human-in-the-Loop safety."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "LinuxAgent contributors" }]
+keywords = ["linux", "ops", "llm", "agent", "langgraph", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "License :: OSI Approved :: MIT License",
+]
+
+dependencies = [
+    "pydantic>=2.7,<3.0",
+    "pyyaml>=6.0,<7.0",
+    "prompt_toolkit>=3.0,<4.0",
+    "rich>=13.0,<15.0",
+    "psutil>=6.0,<7.0",
+    "paramiko>=3.4,<4.0",
+    "requests>=2.32,<3.0",
+    "langchain-core>=0.3,<0.4",
+    "langchain-openai>=0.2,<0.3",
+    "langgraph>=0.2,<0.3",
+    "tenacity>=8.0,<10.0",
+]
+
+[project.optional-dependencies]
+anthropic = ["langchain-anthropic>=0.3,<0.4"]
+dev = [
+    "pytest>=8.0,<9.0",
+    "pytest-cov>=5.0,<7.0",
+    "pytest-asyncio>=0.23,<1.0",
+    "mypy>=1.10,<2.0",
+    "ruff>=0.5,<1.0",
+    "bandit>=1.7,<2.0",
+    "pre-commit>=3.7,<5.0",
+    "pip-tools>=7.4,<8.0",
+    "types-PyYAML",
+    "types-requests",
+]
+pyinstaller = ["pyinstaller>=6.0,<7.0"]
+
+[project.scripts]
+linuxagent = "linuxagent.cli:main"
+
+[project.urls]
+Repository = "https://github.com/Eilen6316/LinuxAgent"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/linuxagent"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/linuxagent",
+    "configs",
+    "prompts",
+    "pyproject.toml",
+    "README.md",
+    "CHANGELOG.md",
+]
+exclude = ["legacy/", ".work/", ".claude/"]
+
+# ---- ruff ---------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["legacy", ".work"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",      # pycodestyle
+    "F",           # pyflakes
+    "I",           # isort
+    "B",           # bugbear
+    "N",           # pep8-naming
+    "UP",          # pyupgrade
+    "S",           # bandit-lite
+    "ASYNC",
+    "C4",
+    "SIM",
+    "PT",          # pytest style
+]
+ignore = [
+    "E501",        # handled by formatter
+    "S101",        # asserts in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S603", "S607", "PLR2004"]
+
+# ---- mypy ---------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+exclude = ["legacy/", "build/", "dist/"]
+
+[[tool.mypy.overrides]]
+module = ["paramiko.*", "psutil.*", "yaml"]
+ignore_missing_imports = true
+
+# ---- pytest -------------------------------------------------------------
+[tool.pytest.ini_options]
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests/unit"]
+asyncio_mode = "auto"
+markers = [
+    "integration: test requires external resources (run with --integration)",
+]
+
+# ---- coverage -----------------------------------------------------------
+[tool.coverage.run]
+source = ["linuxagent"]
+branch = true
+omit = ["legacy/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]

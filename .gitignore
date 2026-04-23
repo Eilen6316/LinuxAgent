@@ -1,0 +1,67 @@
+# IDE / 本地 agent 缓存（不入库）
+# 注意：CLAUDE.md / AGENTS.md / .work/ 是协作真源，必须入库，不在此忽略
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtualenv
+venv/
+env/
+.venv/
+ENV/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# PyInstaller
+*.manifest
+*.spec.bak
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# Type checkers / linters
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime data
+*.log
+~/.linuxagent_*.json
+
+# 用户本地配置（含密钥）。configs/default.yaml 和 configs/example.yaml 是模板，入库
+/config.yaml
+
+# .env 本项目不使用（见 .work/change/2026-04-23-config-yaml-only.md），全量忽略防止误创
+.env
+.env.*
+
+# 本地缓存（embedding / 模型等，如果落在项目目录）
+.cache/
