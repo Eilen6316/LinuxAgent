@@ -46,13 +46,17 @@ def load_config(
     cli_path: Path | None = None,
     env: Mapping[str, str] | None = None,
 ) -> AppConfig:
-    """Resolve sources, merge YAML layers, and validate against :class:`AppConfig`."""
+    """Resolve sources, merge YAML layers, and validate against :class:`AppConfig`.
+
+    ``cli_path`` and ``LINUXAGENT_CONFIG`` are *explicit* sources: if given,
+    the path must exist (``ConfigError`` otherwise). Auto-discovered sources
+    (``./config.yaml``, XDG, packaged default) are silently skipped when
+    absent.
+    """
     effective_env = os.environ if env is None else env
     merged: dict[str, Any] = {}
 
     for source_path, requires_secure in _resolve_sources(cli_path=cli_path, env=effective_env):
-        if not source_path.is_file():
-            continue
         if requires_secure:
             _verify_secure(source_path)
         data = _load_yaml(source_path)
@@ -71,34 +75,55 @@ def _resolve_sources(
     cli_path: Path | None,
     env: Mapping[str, str],
 ) -> list[tuple[Path, bool]]:
-    """Return (path, requires_secure_check) pairs in merge order (low → high)."""
+    """Return (path, requires_secure_check) pairs in merge order (low → high).
+
+    Only paths that exist are returned; explicit paths that do not exist
+    raise ``ConfigError`` rather than being silently skipped.
+    """
     sources: list[tuple[Path, bool]] = []
 
     packaged_default = _find_packaged_default()
     if packaged_default is not None:
         sources.append((packaged_default, False))
 
-    sources.append((_XDG_PATH, True))
-    sources.append((Path.cwd() / "config.yaml", True))
+    if _XDG_PATH.is_file():
+        sources.append((_XDG_PATH, True))
+
+    cwd_config = Path.cwd() / "config.yaml"
+    if cwd_config.is_file():
+        sources.append((cwd_config, True))
 
     env_path = env.get(_ENV_CONFIG_VAR)
     if env_path:
-        sources.append((Path(env_path).expanduser(), True))
+        env_file = Path(env_path).expanduser()
+        if not env_file.is_file():
+            raise ConfigError(f"LINUXAGENT_CONFIG={env_path!r} does not exist or is not a file")
+        sources.append((env_file, True))
 
     if cli_path is not None:
-        sources.append((cli_path.expanduser(), True))
+        cli_file = cli_path.expanduser()
+        if not cli_file.is_file():
+            raise ConfigError(f"--config path {cli_file} does not exist or is not a file")
+        sources.append((cli_file, True))
 
     return sources
 
 
 def _find_packaged_default() -> Path | None:
-    """Locate ``configs/default.yaml`` relative to the installed package.
+    """Locate ``configs/default.yaml`` for both editable and wheel installs.
 
-    Works for editable installs (``pip install -e .``) by walking up from
-    this file. Returns ``None`` for isolated wheel installs; in that case
-    Pydantic model defaults supply the baseline.
+    - Wheel install: ``<site-packages>/linuxagent/_data/default.yaml`` (shipped
+      via ``[tool.hatch.build.targets.wheel.force-include]``)
+    - Editable install / running from repo checkout: walks up from this file
+      to find a repo-root ``configs/default.yaml``
+
+    Returns ``None`` only if neither location has the file; in that edge case
+    Pydantic model defaults still supply a valid baseline.
     """
     here = Path(__file__).resolve()
+    wheel_data = here.parent.parent / "_data" / "default.yaml"
+    if wheel_data.is_file():
+        return wheel_data
     for parent in here.parents:
         candidate = parent / "configs" / "default.yaml"
         if candidate.is_file():

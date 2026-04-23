@@ -63,6 +63,9 @@ Repository = "https://github.com/Eilen6316/LinuxAgent"
 [tool.hatch.build.targets.wheel]
 packages = ["src/linuxagent"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"configs/default.yaml" = "linuxagent/_data/default.yaml"
+
 [tool.hatch.build.targets.sdist]
 include = [
     "src/linuxagent",

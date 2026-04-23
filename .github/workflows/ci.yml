@@ -32,7 +32,7 @@ jobs:
       - name: Type check (mypy)
         run: mypy src/linuxagent/
       - name: Unit tests
-        run: pytest tests/unit/
+        run: pytest tests/unit/ --cov=linuxagent --cov-report=term-missing --cov-fail-under=80
 
   security-redlines:
     runs-on: ubuntu-latest

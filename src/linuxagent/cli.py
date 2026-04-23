@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .config.loader import ConfigError, load_config
+from .logger import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +64,6 @@ def _verbose_to_level(verbose: int) -> int:
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
-    from .config.loader import ConfigError, load_config
-    from .logger import configure_logging
-
     configure_logging(level=_verbose_to_level(args.verbose))
     try:
         cfg = load_config(cli_path=args.config)

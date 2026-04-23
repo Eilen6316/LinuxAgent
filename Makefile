@@ -17,7 +17,7 @@ install:
 	pip install -e ".[dev]"
 
 test:
-	pytest tests/unit/
+	pytest tests/unit/ --cov=linuxagent --cov-report=term-missing --cov-fail-under=80
 
 lint:
 	ruff check src/linuxagent/ tests/

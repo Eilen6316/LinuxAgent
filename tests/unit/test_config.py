@@ -144,8 +144,20 @@ def test_loader_rejects_foreign_owner(tmp_path: Path, monkeypatch) -> None:
         load_config(cli_path=path, env={})
 
 
-def test_nonexistent_cli_path_falls_back_to_defaults(tmp_path: Path) -> None:
+def test_nonexistent_cli_path_errors(tmp_path: Path) -> None:
     missing = tmp_path / "nope.yaml"
-    cfg = load_config(cli_path=missing, env={})
-    # With no user-supplied file, Pydantic defaults apply.
+    with pytest.raises(ConfigError, match="does not exist"):
+        load_config(cli_path=missing, env={})
+
+
+def test_nonexistent_env_path_errors(tmp_path: Path) -> None:
+    missing = tmp_path / "nope.yaml"
+    with pytest.raises(ConfigError, match="does not exist"):
+        load_config(env={"LINUXAGENT_CONFIG": str(missing)})
+
+
+def test_no_user_config_falls_back_to_pydantic_defaults() -> None:
+    """With every source absent, model defaults still yield a valid AppConfig."""
+    cfg = load_config(env={})
     assert cfg.api.provider == LLMProviderName.DEEPSEEK
+    assert cfg.cluster.batch_confirm_threshold == 2

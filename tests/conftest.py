@@ -19,3 +19,16 @@ def _isolate_root_logger() -> Iterator[None]:
     finally:
         root.handlers[:] = saved_handlers
         root.setLevel(saved_level)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_cwd(tmp_path, monkeypatch):
+    """Run every test in a fresh empty directory.
+
+    Without this, tests that exercise ``load_config`` pick up whatever
+    ``./config.yaml`` happens to sit in the project root (often v3-era data
+    from local dev), breaking deterministic behavior.
+    """
+    cwd = tmp_path / "_cwd"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)

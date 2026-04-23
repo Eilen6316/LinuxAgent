@@ -16,6 +16,8 @@ import sys
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from rich.logging import RichHandler
+
 LogFormat = Literal["json", "console"]
 
 _HANDLER_MARKER = "_linuxagent_handler"
@@ -100,20 +102,9 @@ def configure_logging(
 
 def _build_handler(fmt: LogFormat, level: int) -> logging.Handler:
     if fmt == "json":
-        h: logging.Handler = logging.StreamHandler(sys.stderr)
-        h.setFormatter(JSONFormatter())
-        return h
-    try:
-        from rich.logging import RichHandler
-    except ImportError:
-        h = logging.StreamHandler(sys.stderr)
-        h.setFormatter(
-            logging.Formatter(
-                fmt="%(asctime)s %(levelname)s %(name)s: %(message)s",
-                datefmt="%H:%M:%S",
-            )
-        )
-        return h
+        stream: logging.Handler = logging.StreamHandler(sys.stderr)
+        stream.setFormatter(JSONFormatter())
+        return stream
     return RichHandler(
         level=level,
         show_path=False,
