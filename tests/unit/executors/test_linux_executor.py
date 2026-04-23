@@ -1,0 +1,133 @@
+"""LinuxCommandExecutor tests.
+
+Uses real ``/bin/*`` commands where possible — no subprocess mocking
+(R-TEST-02 spirit: don't mock the thing you're trying to verify).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from linuxagent.config.models import SecurityConfig
+from linuxagent.executors import (
+    CommandBlockedError,
+    CommandTimeoutError,
+    LinuxCommandExecutor,
+    SessionWhitelist,
+)
+from linuxagent.interfaces import CommandSource, SafetyLevel
+
+
+def _make(
+    *, timeout: float = 5.0, whitelist: SessionWhitelist | None = None
+) -> LinuxCommandExecutor:
+    cfg = SecurityConfig(command_timeout=timeout)
+    return LinuxCommandExecutor(cfg, whitelist=whitelist)
+
+
+# ---------------------------------------------------------------------------
+# is_safe delegation + whitelist downgrade
+# ---------------------------------------------------------------------------
+
+
+def test_is_safe_delegates_to_module_level_classifier() -> None:
+    ex = _make()
+    result = ex.is_safe("rm -rf /tmp/x")
+    assert result.level is SafetyLevel.CONFIRM
+    assert result.matched_rule == "DESTRUCTIVE"
+
+
+def test_whitelisted_llm_command_downgraded_to_safe() -> None:
+    wl = SessionWhitelist()
+    wl.add("ls -la")
+    ex = _make(whitelist=wl)
+    result = ex.is_safe("ls -la", source=CommandSource.LLM)
+    assert result.level is SafetyLevel.SAFE
+    assert result.matched_rule == "SESSION_WHITELIST"
+    assert result.command_source is CommandSource.WHITELIST
+
+
+def test_whitelist_disabled_keeps_confirm() -> None:
+    wl = SessionWhitelist()
+    wl.add("ls -la")
+    cfg = SecurityConfig(session_whitelist_enabled=False)
+    ex = LinuxCommandExecutor(cfg, whitelist=wl)
+    result = ex.is_safe("ls -la", source=CommandSource.LLM)
+    assert result.level is SafetyLevel.CONFIRM
+    assert result.matched_rule == "LLM_FIRST_RUN"
+
+
+def test_destructive_never_whitelisted_even_if_approved_via_plain_add() -> None:
+    """R-HITL-03: destructive commands reject whitelist admission outright."""
+    wl = SessionWhitelist()
+    assert wl.add("rm -rf /tmp/x") is False
+    ex = _make(whitelist=wl)
+    # The safety rule fires before any whitelist check, so this stays CONFIRM.
+    result = ex.is_safe("rm -rf /tmp/x", source=CommandSource.LLM)
+    assert result.level is SafetyLevel.CONFIRM
+
+
+# ---------------------------------------------------------------------------
+# execute() happy path + block + timeout
+# ---------------------------------------------------------------------------
+
+
+async def test_execute_happy_path() -> None:
+    ex = _make()
+    result = await ex.execute("/bin/echo hello")
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "hello"
+    assert result.stderr == ""
+    assert result.duration >= 0
+
+
+async def test_execute_nonzero_exit_code() -> None:
+    ex = _make()
+    result = await ex.execute("/bin/false")
+    assert result.exit_code != 0
+
+
+async def test_execute_blocked_command_raises() -> None:
+    ex = _make()
+    with pytest.raises(CommandBlockedError) as info:
+        await ex.execute("rm -rf /")
+    assert info.value.safety.level is SafetyLevel.BLOCK
+
+
+async def test_execute_rejects_embedded_danger() -> None:
+    ex = _make()
+    with pytest.raises(CommandBlockedError):
+        await ex.execute('echo "hello; rm -rf /"')
+
+
+async def test_execute_timeout_kills_process() -> None:
+    ex = _make(timeout=0.3)
+    with pytest.raises(CommandTimeoutError):
+        await ex.execute("/bin/sleep 5")
+
+
+async def test_execute_rejects_unparseable() -> None:
+    ex = _make()
+    with pytest.raises(CommandBlockedError):
+        await ex.execute("echo 'unterminated")
+
+
+# ---------------------------------------------------------------------------
+# Defence in depth: executor never invokes a shell
+# ---------------------------------------------------------------------------
+
+
+async def test_shell_metachars_are_literal_args_not_evaluated(tmp_path: Path) -> None:
+    """Proof that we spawn with argv list, not a shell.
+
+    If the executor used a shell, ``echo foo > sentinel`` would redirect. We
+    don't use a shell, so ``>`` and ``sentinel`` are just echo arguments.
+    """
+    ex = _make()
+    sentinel = tmp_path / "shouldnotexist_linuxagent"
+    result = await ex.execute(f"/bin/echo foo > {sentinel}")
+    assert result.exit_code == 0
+    assert f"> {sentinel}" in result.stdout
+    assert not sentinel.exists()
