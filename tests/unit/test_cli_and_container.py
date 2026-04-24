@@ -54,7 +54,9 @@ def test_check_command_success(
         if isinstance(level, int):
             called.append(level)
 
-    def fake_load_config(*, cli_path: Path | None = None, env: dict[str, str] | None = None) -> SimpleNamespace:
+    def fake_load_config(
+        *, cli_path: Path | None = None, env: dict[str, str] | None = None
+    ) -> SimpleNamespace:
         del cli_path, env
         return cfg
 
@@ -72,7 +74,9 @@ def test_check_command_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def fake_load_config(*, cli_path: Path | None = None, env: dict[str, str] | None = None) -> SimpleNamespace:
+    def fake_load_config(
+        *, cli_path: Path | None = None, env: dict[str, str] | None = None
+    ) -> SimpleNamespace:
         del cli_path, env
         raise ConfigError("boom")
 

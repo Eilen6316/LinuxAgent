@@ -1,0 +1,47 @@
+"""Resolve packaged prompt templates into :class:`ChatPromptTemplate` instances.
+
+Same dual-path discovery as :func:`config.loader._find_packaged_default`:
+wheel installs find templates under ``<pkg>/_data/prompts/``, editable
+installs walk up from this file to the repo-root ``prompts/`` directory.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+
+class PromptNotFoundError(FileNotFoundError):
+    """Raised when a required prompt template cannot be located."""
+
+
+def find_prompts_dir() -> Path:
+    here = Path(__file__).resolve()
+    wheel_dir = here.parent / "_data" / "prompts"
+    if wheel_dir.is_dir():
+        return wheel_dir
+    for parent in here.parents:
+        candidate = parent / "prompts"
+        if candidate.is_dir() and (candidate / "system.md").is_file():
+            return candidate
+    raise PromptNotFoundError("no 'prompts/' directory found in package data or repo checkout")
+
+
+def load_system_prompt() -> str:
+    """Return the raw system-prompt markdown."""
+    path = find_prompts_dir() / "system.md"
+    if not path.is_file():
+        raise PromptNotFoundError(f"system prompt missing at {path}")
+    return path.read_text(encoding="utf-8")
+
+
+def build_chat_prompt() -> ChatPromptTemplate:
+    """Build a :class:`ChatPromptTemplate` with placeholders for history + user input."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", load_system_prompt()),
+            MessagesPlaceholder("chat_history", optional=True),
+            ("human", "{user_input}"),
+        ]
+    )
