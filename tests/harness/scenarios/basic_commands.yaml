@@ -1,0 +1,18 @@
+scenario: "basic echo command"
+provider_responses:
+  - "/bin/echo files"
+  - "文件列表获取成功"
+inputs:
+  - role: human
+    content: "列出当前目录的文件"
+expected_interrupts:
+  - type: confirm_command
+    matched_rule: LLM_FIRST_RUN
+resume:
+  decision: yes
+  latency_ms: 100
+expected:
+  command_executed: true
+  exit_code: 0
+  response_contains:
+    - "文件"

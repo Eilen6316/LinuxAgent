@@ -6,6 +6,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Plan 6 foundation
+
+- `src/linuxagent/ui/console.py`: `prompt_toolkit`-driven async prompt session with theme-aware Rich rendering
+- `tests/harness/`: YAML scenario harness runner plus HITL and cluster scenarios
+- `.github/workflows/release.yml`: tag-driven build + GitHub Release flow
+- `Makefile build`: wheel + sdist build target
+
 ### Added — Plan 1 skeleton
 
 - `src/linuxagent/` v4 package under PyPA src-layout

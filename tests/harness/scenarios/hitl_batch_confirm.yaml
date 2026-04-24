@@ -1,0 +1,20 @@
+scenario: "batch threshold enforces confirm"
+provider_responses:
+  - "uptime"
+  - "批量执行完成"
+setup:
+  cluster_hosts:
+    - name: host-a
+    - name: host-b
+inputs:
+  - role: human
+    content: "run uptime across the cluster"
+expected_interrupts:
+  - type: confirm_command
+    matched_rule: BATCH_CONFIRM
+resume:
+  decision: yes
+  latency_ms: 300
+expected:
+  command_executed: true
+  exit_code: 0

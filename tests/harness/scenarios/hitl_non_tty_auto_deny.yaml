@@ -1,0 +1,16 @@
+scenario: "non tty decision denied"
+provider_responses:
+  - "/bin/echo hello"
+inputs:
+  - role: human
+    content: "ls /"
+expected_interrupts:
+  - type: confirm_command
+resume:
+  decision: non_tty_auto_deny
+  latency_ms: 0
+expected:
+  command_executed: false
+  audit_log_contains:
+    - event: confirm_decision
+      decision: non_tty_auto_deny

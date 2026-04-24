@@ -1,0 +1,25 @@
+scenario: "LLM-generated command must confirm"
+provider_responses:
+  - "/bin/echo /var/log"
+  - "日志目录检查完成"
+inputs:
+  - role: human
+    content: "看下 /var/log 下有哪些日志"
+expected_interrupts:
+  - type: confirm_command
+    safety_level: CONFIRM
+    command_source: llm
+    matched_rule: LLM_FIRST_RUN
+resume:
+  decision: yes
+  latency_ms: 1200
+expected:
+  command_executed: true
+  exit_code: 0
+  audit_log_contains:
+    - event: confirm_begin
+      command_source: llm
+    - event: confirm_decision
+      decision: yes
+    - event: command_executed
+      exit_code: 0

@@ -1,0 +1,15 @@
+scenario: "interrupt resume flow"
+provider_responses:
+  - "/bin/echo resumable"
+  - "恢复成功"
+inputs:
+  - role: human
+    content: "say something resumable"
+expected_interrupts:
+  - type: confirm_command
+resume:
+  decision: yes
+  latency_ms: 50
+expected:
+  command_executed: true
+  exit_code: 0

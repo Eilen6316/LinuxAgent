@@ -182,7 +182,14 @@ class Container:
         )
 
     def ui(self) -> ConsoleUI:
-        return self._cached("ui", ConsoleUI)
+        return self._cached(
+            "ui",
+            lambda: ConsoleUI(
+                theme=self._config.ui.theme,
+                prompt_symbol=self._config.ui.prompt_symbol,
+                history_path=self._config.ui.history_path.with_name("prompt_history"),
+            ),
+        )
 
     def embeddings(self) -> OpenAIEmbeddings:
         return self._cached(

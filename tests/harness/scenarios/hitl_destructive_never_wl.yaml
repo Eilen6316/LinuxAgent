@@ -1,0 +1,18 @@
+scenario: "destructive command still confirms even if preloaded"
+provider_responses:
+  - "rm -rf /tmp/foo"
+  - "执行完成"
+setup:
+  session_whitelist:
+    - "rm -rf /tmp/foo"
+inputs:
+  - role: human
+    content: "删除 /tmp/foo"
+expected_interrupts:
+  - type: confirm_command
+    is_destructive: true
+resume:
+  decision: yes
+  latency_ms: 200
+expected:
+  command_executed: true

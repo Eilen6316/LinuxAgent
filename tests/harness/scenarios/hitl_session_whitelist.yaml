@@ -1,0 +1,13 @@
+scenario: "session whitelist skips second confirm"
+provider_responses:
+  - "/bin/echo whitelisted"
+  - "完成"
+setup:
+  session_whitelist:
+    - "/bin/echo whitelisted"
+inputs:
+  - role: human
+    content: "say something safe"
+expected:
+  command_executed: true
+  exit_code: 0

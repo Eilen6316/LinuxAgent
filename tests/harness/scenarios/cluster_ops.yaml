@@ -1,0 +1,22 @@
+scenario: "cluster uptime command"
+provider_responses:
+  - "uptime"
+  - "集群运行正常"
+setup:
+  cluster_hosts:
+    - name: host-a
+    - name: host-b
+inputs:
+  - role: human
+    content: "run uptime on all hosts"
+expected_interrupts:
+  - type: confirm_command
+    matched_rule: BATCH_CONFIRM
+resume:
+  decision: yes
+  latency_ms: 90
+expected:
+  command_executed: true
+  exit_code: 0
+  response_contains:
+    - "集群"

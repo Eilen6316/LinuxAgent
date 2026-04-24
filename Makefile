@@ -1,7 +1,7 @@
 # LinuxAgent v4 developer commands.
 # Red-lines enforced by `make security` mirror the CI security job.
 
-.PHONY: help install test lint type security harness clean
+.PHONY: help install test lint type security harness build clean
 
 help:
 	@echo "Targets:"
@@ -11,6 +11,7 @@ help:
 	@echo "  type       mypy"
 	@echo "  security   grep red-lines + bandit"
 	@echo "  harness    scenario-driven HITL harness"
+	@echo "  build      build wheel + sdist"
 	@echo "  clean      remove build / cache artifacts"
 
 install:
@@ -39,6 +40,9 @@ security:
 
 harness:
 	python -m tests.harness.runner --scenarios tests/harness/scenarios/
+
+build:
+	python -m build --no-isolation
 
 clean:
 	rm -rf build/ dist/ *.egg-info src/*.egg-info \
