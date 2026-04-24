@@ -39,17 +39,15 @@ class LinuxAgent:
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
         self.context_manager.replace(await self._history(config))
         history = self.context_manager.snapshot()
-        history_size = len(history)
         state: Any = initial_state(user_input, source=CommandSource.USER, history=history)
         while True:
             result = await self.graph.ainvoke(state, config=config)
             interrupts = await self._interrupts(result, config)
             if not interrupts:
                 if isinstance(result, dict) and result.get("messages"):
-                    new_messages = list(result["messages"])[history_size:]
-                    if not new_messages:
-                        new_messages = [HumanMessage(content=user_input)]
-                    self.context_manager.add(new_messages)
+                    self.context_manager.replace(await self._history(config))
+                    if not self.context_manager.snapshot():
+                        self.context_manager.add([HumanMessage(content=user_input)])
                     self.chat_service.replace(self.context_manager.snapshot())
                     await self.ui.print(str(result["messages"][-1].content))
                 return result if isinstance(result, dict) else {}

@@ -77,7 +77,10 @@ class _FakeGraph:
     async def ainvoke(self, state: Any, config: Any) -> Any:
         del config
         self.calls.append(state)
-        return self._results.pop(0)
+        result = self._results.pop(0)
+        if isinstance(result, dict) and result.get("messages"):
+            self._snapshot_values["messages"] = list(result["messages"])
+        return result
 
     async def aget_state(self, config: Any) -> Any:
         del config
@@ -123,6 +126,12 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
     assert ui.printed == ["done"]
     first_call = graph.calls[0]
     assert first_call["command_source"] is CommandSource.USER
+    assert [message.content for message in chat_service.snapshot()] == [
+        "prev user",
+        "prev ai",
+        "now",
+        "done",
+    ]
 
 
 async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
@@ -195,3 +204,31 @@ async def test_run_turn_prefers_checkpoint_history(tmp_path) -> None:
         "checkpoint history",
         "current",
     ]
+
+
+async def test_run_turn_persists_compressed_checkpoint_history(tmp_path) -> None:
+    history_path = tmp_path / "history.json"
+    checkpoint_messages = [
+        HumanMessage(content="older one"),
+        AIMessage(content="older two"),
+        HumanMessage(content="older three"),
+        AIMessage(content="done"),
+    ]
+    graph = _FakeGraph(
+        [{"messages": checkpoint_messages}],
+        snapshot_values={"messages": checkpoint_messages},
+    )
+    chat_service = ChatService(history_path, max_messages=10)
+    agent = LinuxAgent(
+        graph=graph,  # type: ignore[arg-type]
+        ui=_FakeUI(),
+        chat_service=chat_service,
+        context_manager=ContextManager(3),
+        monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
+    )
+
+    await agent.run_turn("current", thread_id="t4")
+
+    stored = chat_service.snapshot()
+    assert len(stored) == 3
+    assert str(stored[0].content).startswith("[summary]")
