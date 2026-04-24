@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from linuxagent.config.models import SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.tools import (
     build_system_tools,
     make_execute_command_tool,
     make_get_system_info_tool,
+    make_search_logs_tool,
 )
 
 
@@ -62,4 +65,26 @@ def test_get_system_info_returns_snapshot() -> None:
 def test_build_system_tools_returns_both() -> None:
     tools = build_system_tools(_executor())
     names = {t.name for t in tools}
-    assert names == {"execute_command", "get_system_info"}
+    assert names == {"execute_command", "get_system_info", "search_logs"}
+
+
+def test_search_logs_returns_numbered_matches(tmp_path) -> None:
+    log_file = tmp_path / "app.log"
+    log_file.write_text("ok\nERROR failed\nwarning\nERROR again\n", encoding="utf-8")
+    tool = make_search_logs_tool()
+    out = tool.invoke(
+        {
+            "pattern": "ERROR",
+            "log_file": str(log_file),
+            "max_matches": 1,
+        }
+    )
+    assert out == ["2:ERROR failed"]
+
+
+def test_search_logs_rejects_invalid_limit(tmp_path) -> None:
+    log_file = tmp_path / "app.log"
+    log_file.write_text("ERROR\n", encoding="utf-8")
+    tool = make_search_logs_tool()
+    with pytest.raises(ValueError, match="max_matches"):
+        tool.invoke({"pattern": "ERROR", "log_file": str(log_file), "max_matches": 0})

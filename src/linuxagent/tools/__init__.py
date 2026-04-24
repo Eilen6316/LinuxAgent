@@ -6,10 +6,12 @@ from .system_tools import (
     build_system_tools,
     make_execute_command_tool,
     make_get_system_info_tool,
+    make_search_logs_tool,
 )
 
 __all__ = [
     "build_system_tools",
     "make_execute_command_tool",
     "make_get_system_info_tool",
+    "make_search_logs_tool",
 ]

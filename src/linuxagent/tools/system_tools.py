@@ -9,7 +9,9 @@ state) and avoids the common trap of module-global dependencies.
 from __future__ import annotations
 
 import platform
+import re
 import sys
+from pathlib import Path
 
 import psutil
 from langchain_core.tools import BaseTool, tool
@@ -81,9 +83,43 @@ def make_get_system_info_tool() -> BaseTool:
     return get_system_info
 
 
+def make_search_logs_tool() -> BaseTool:
+    """Expose bounded regex search over a local text log file."""
+
+    @tool
+    def search_logs(pattern: str, log_file: str, max_matches: int = 50) -> list[str]:
+        """Search a text log file for a regular-expression pattern.
+
+        Args:
+            pattern: Python regular expression to search for.
+            log_file: Path to the log file to read.
+            max_matches: Maximum number of matching lines to return.
+
+        Returns:
+            Matching lines prefixed with their 1-based line number.
+        """
+        if max_matches < 1:
+            raise ValueError("max_matches must be >= 1")
+
+        compiled = re.compile(pattern)
+        path = Path(log_file).expanduser()
+        matches: list[str] = []
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                text = line.rstrip("\n")
+                if compiled.search(text):
+                    matches.append(f"{line_number}:{text}")
+                    if len(matches) >= max_matches:
+                        break
+        return matches
+
+    return search_logs
+
+
 def build_system_tools(executor: CommandExecutor) -> list[BaseTool]:
     """Assemble the default tool set the agent is granted."""
     return [
         make_execute_command_tool(executor),
         make_get_system_info_tool(),
+        make_search_logs_tool(),
     ]
