@@ -206,18 +206,6 @@ def route_by_safety(state: AgentState) -> str:
     return "SAFE"
 
 
-def route_after_execute(state: AgentState) -> str:
-    attempts = state.get("attempts", 0) + 1
-    result = state.get("execution_result")
-    if result is not None and result.exit_code != 0 and attempts < 3:
-        return "retry"
-    return "analyze"
-
-
-async def increment_attempt_node(state: AgentState) -> AgentState:
-    return {"attempts": state.get("attempts", 0) + 1}
-
-
 def _batch_hosts(state: AgentState, cluster_service: ClusterService | None) -> tuple[str, ...]:
     if cluster_service is None:
         return ()

@@ -56,17 +56,12 @@ class SessionWhitelist:
         now = datetime.now(tz=UTC)
         with self._lock:
             existing = self._entries.get(key)
-            if existing is None:
-                self._entries[key] = WhitelistEntry(
-                    command=command,
-                    first_approved_at=now,
-                )
-            else:
-                self._entries[key] = WhitelistEntry(
-                    command=existing.command,
-                    first_approved_at=existing.first_approved_at,
-                    hit_count=existing.hit_count,
-                )
+            if existing is not None:
+                return True
+            self._entries[key] = WhitelistEntry(
+                command=command,
+                first_approved_at=now,
+            )
         return True
 
     def contains(self, command: str) -> bool:

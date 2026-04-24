@@ -41,9 +41,6 @@ class AgentState(TypedDict, total=False):
     # Audit correlation ID — one per HITL round-trip.
     audit_id: str | None
 
-    # Retry accounting so the loop edge can cap iterations.
-    attempts: int
-
 
 def initial_state(
     user_input: str,
@@ -65,5 +62,4 @@ def initial_state(
         user_confirmed=False,
         execution_result=None,
         audit_id=None,
-        attempts=0,
     )

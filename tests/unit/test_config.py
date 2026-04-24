@@ -13,7 +13,7 @@ from linuxagent.config.loader import (
     ConfigPermissionError,
     load_config,
 )
-from linuxagent.config.models import AppConfig, LLMProviderName
+from linuxagent.config.models import AppConfig, AuditConfig, ClusterConfig, LLMProviderName
 
 
 def _write_secure(directory: Path, body: str) -> Path:
@@ -167,3 +167,28 @@ def test_no_user_config_falls_back_to_pydantic_defaults() -> None:
     cfg = load_config(env={})
     assert cfg.api.provider == LLMProviderName.DEEPSEEK
     assert cfg.cluster.batch_confirm_threshold == 2
+
+
+def test_audit_path_expands_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg = AuditConfig.model_validate({"path": "~/.linuxagent/audit.log"})
+    assert cfg.path == tmp_path / ".linuxagent" / "audit.log"
+
+
+def test_cluster_paths_expand_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg = ClusterConfig.model_validate(
+        {
+            "known_hosts_path": "~/.ssh/known_hosts",
+            "hosts": [
+                {
+                    "name": "web",
+                    "hostname": "web.invalid",
+                    "username": "ops",
+                    "key_filename": "~/.ssh/id_ed25519",
+                }
+            ],
+        }
+    )
+    assert cfg.known_hosts_path == tmp_path / ".ssh" / "known_hosts"
+    assert cfg.hosts[0].key_filename == tmp_path / ".ssh" / "id_ed25519"

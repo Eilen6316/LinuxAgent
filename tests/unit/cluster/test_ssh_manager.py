@@ -146,6 +146,19 @@ async def test_close_empties_pool() -> None:
     assert mgr._pool == {}
 
 
+def test_dead_pool_entry_is_closed_before_reconnect(monkeypatch: pytest.MonkeyPatch) -> None:
+    mgr = SSHManager(ClusterConfig())
+    client = paramiko.SSHClient()
+    closed = {"value": False}
+    monkeypatch.setattr(client, "close", lambda: closed.__setitem__("value", True))
+    mgr._pool[("nonexistent.invalid", 22, "ops")] = client
+    monkeypatch.setattr("linuxagent.cluster.ssh_manager._is_alive", lambda _client: False)
+    _install_client(monkeypatch, mgr, OSError("network down"))
+    with pytest.raises(SSHConnectionError):
+        mgr._execute_sync(_host(), "uname")
+    assert closed["value"] is True
+
+
 # ---------------------------------------------------------------------------
 # execute_many: failure isolation
 # ---------------------------------------------------------------------------

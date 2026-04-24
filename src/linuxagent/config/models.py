@@ -9,11 +9,28 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
+
+
+def _expand_path(path: Path) -> Path:
+    return path.expanduser()
+
+
+def _expand_optional_path(path: Path | None) -> Path | None:
+    return None if path is None else path.expanduser()
+
+
+def _expand_path_tuple(paths: tuple[Path, ...]) -> tuple[Path, ...]:
+    return tuple(path.expanduser() for path in paths)
+
+
+UserPath = Annotated[Path, AfterValidator(_expand_path)]
+OptionalUserPath = Annotated[Path | None, AfterValidator(_expand_optional_path)]
+UserPathTuple = Annotated[tuple[Path, ...], AfterValidator(_expand_path_tuple)]
 
 
 class LLMProviderName(StrEnum):
@@ -58,7 +75,7 @@ class ClusterHost(BaseModel):
     hostname: str
     port: int = Field(default=22, ge=1, le=65535)
     username: str
-    key_filename: Path | None = None
+    key_filename: OptionalUserPath = None
 
 
 class ClusterConfig(BaseModel):
@@ -66,7 +83,7 @@ class ClusterConfig(BaseModel):
 
     batch_confirm_threshold: int = Field(default=2, ge=1)
     timeout: float = Field(default=60.0, gt=0, le=3600)
-    known_hosts_path: Path = Field(default_factory=lambda: Path.home() / ".ssh" / "known_hosts")
+    known_hosts_path: UserPath = Field(default_factory=lambda: Path.home() / ".ssh" / "known_hosts")
     hosts: tuple[ClusterHost, ...] = ()
 
 
@@ -79,7 +96,7 @@ class AuditConfig(BaseModel):
 
     model_config = _FROZEN
 
-    path: Path = Field(default_factory=lambda: Path.home() / ".linuxagent" / "audit.log")
+    path: UserPath = Field(default_factory=lambda: Path.home() / ".linuxagent" / "audit.log")
 
 
 class UIConfig(BaseModel):
@@ -87,7 +104,7 @@ class UIConfig(BaseModel):
 
     theme: Literal["auto", "light", "dark"] = "auto"
     max_chat_history: int = Field(default=20, ge=1, le=1000)
-    history_path: Path = Field(default_factory=lambda: Path.home() / ".linuxagent" / "history.json")
+    history_path: UserPath = Field(default_factory=lambda: Path.home() / ".linuxagent" / "history.json")
     prompt_symbol: str = "❯"
 
 
@@ -112,14 +129,14 @@ class AnalyticsConfig(BaseModel):
     model_config = _FROZEN
 
     enabled: bool = False
-    data_path: Path = Field(default_factory=lambda: Path.home() / ".linuxagent" / "analytics.json")
+    data_path: UserPath = Field(default_factory=lambda: Path.home() / ".linuxagent" / "analytics.json")
 
 
 class LogAnalysisConfig(BaseModel):
     model_config = _FROZEN
 
     enabled: bool = True
-    default_log_paths: tuple[Path, ...] = (
+    default_log_paths: UserPathTuple = (
         Path("/var/log/syslog"),
         Path("/var/log/messages"),
     )
@@ -132,8 +149,15 @@ class IntelligenceConfig(BaseModel):
     enabled: bool = True
     context_window: int = Field(default=50, ge=1, le=1000)
     embedding_model: str = "text-embedding-3-small"
-    embedding_cache_dir: Path = Field(
+    embedding_cache_dir: UserPath = Field(
         default_factory=lambda: Path.home() / ".cache" / "linuxagent" / "embeddings"
+    )
+    default_command_candidates: tuple[str, ...] = (
+        "ls -la",
+        "df -h",
+        "du -sh /var/log",
+        "systemctl status ssh",
+        "journalctl -u ssh --no-pager -n 100",
     )
 
 

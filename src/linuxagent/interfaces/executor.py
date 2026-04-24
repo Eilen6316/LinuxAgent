@@ -50,9 +50,9 @@ class CommandExecutor(ABC):
     async def execute(self, command: str) -> ExecutionResult:
         """Run a non-interactive command and return its result."""
 
-    @abstractmethod
     async def execute_interactive(self, command: str) -> ExecutionResult:
         """Run an interactive command attached to the current terminal."""
+        raise NotImplementedError
 
     @abstractmethod
     def is_safe(

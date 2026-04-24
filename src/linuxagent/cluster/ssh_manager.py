@@ -2,9 +2,9 @@
 
 Key properties:
 
-- ``the auto-add policy`` is banned at grep level; this module uses ``RejectPolicy``
-  and relies on the caller having populated ``known_hosts`` (or explicitly
-  opted into ``WarningPolicy`` via the ``allow_unknown_hosts`` flag).
+- Silent auto-add of unknown host keys is banned; this module uses
+  ``RejectPolicy`` and relies on the caller having populated ``known_hosts``
+  (or explicitly opted into ``WarningPolicy`` via the ``allow_unknown_hosts`` flag).
 - Connections are pooled per ``(hostname, port, username)`` so repeated
   commands to the same host reuse one TCP/SSH session.
 - Paramiko is blocking; public methods are async and dispatch work to a
@@ -133,8 +133,14 @@ class SSHManager:
         key = (host.hostname, host.port, host.username)
         with self._lock:
             client = self._pool.get(key)
-            if client is not None and _is_alive(client):
-                return client
+            if client is not None:
+                if _is_alive(client):
+                    return client
+                try:
+                    client.close()
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("ignoring close error on dead pool entry: %s", exc)
+                del self._pool[key]
 
             new_client = self._build_client()
             try:
@@ -173,7 +179,7 @@ class SSHManager:
 
     def _build_client(self) -> paramiko.SSHClient:
         client = paramiko.SSHClient()
-        known_hosts = Path(self._config.known_hosts_path).expanduser()
+        known_hosts = Path(self._config.known_hosts_path)
         if known_hosts.is_file():
             client.load_host_keys(str(known_hosts))
         client.load_system_host_keys()

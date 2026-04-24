@@ -8,7 +8,6 @@ from langgraph.graph.state import CompiledStateGraph
 
 from .nodes import (
     GraphDependencies,
-    increment_attempt_node,
     make_analyze_result_node,
     make_confirm_node,
     make_execute_node,
@@ -17,7 +16,6 @@ from .nodes import (
     respond_block_node,
     respond_node,
     respond_refused_node,
-    route_after_execute,
     route_by_safety,
 )
 from .state import AgentState
@@ -39,7 +37,6 @@ def build_agent_graph(deps: GraphDependencies) -> CompiledStateGraph:
     )
     graph.add_node("confirm", make_confirm_node(deps.audit, deps.command_service))
     graph.add_node("execute", make_execute_node(deps.command_service, deps.audit, deps.cluster_service))
-    graph.add_node("retry", increment_attempt_node)
     graph.add_node("analyze", make_analyze_result_node(deps.provider))
     graph.add_node("respond", respond_node)
     graph.add_node("respond_block", respond_block_node)
@@ -52,12 +49,7 @@ def build_agent_graph(deps: GraphDependencies) -> CompiledStateGraph:
         route_by_safety,
         {"BLOCK": "respond_block", "CONFIRM": "confirm", "SAFE": "execute"},
     )
-    graph.add_conditional_edges(
-        "execute",
-        route_after_execute,
-        {"retry": "retry", "analyze": "analyze"},
-    )
-    graph.add_edge("retry", "execute")
+    graph.add_edge("execute", "analyze")
     graph.add_edge("analyze", "respond")
     graph.add_edge("respond", END)
     graph.add_edge("respond_block", END)

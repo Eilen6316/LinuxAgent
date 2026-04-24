@@ -38,14 +38,6 @@ from .ui import ConsoleUI
 
 if TYPE_CHECKING:
     from .config.models import AppConfig
-
-_DEFAULT_COMMAND_CANDIDATES = [
-    "ls -la",
-    "df -h",
-    "du -sh /var/log",
-    "systemctl status ssh",
-    "journalctl -u ssh --no-pager -n 100",
-]
 _T = TypeVar("_T")
 
 
@@ -164,7 +156,7 @@ class Container:
                 return []
             command_candidates = [command for command, _ in self.learner().top_commands(limit=50)]
             if not command_candidates:
-                command_candidates = list(_DEFAULT_COMMAND_CANDIDATES)
+                command_candidates = list(self._config.intelligence.default_command_candidates)
             return build_intelligence_tools(
                 recommendation_engine=self.recommendation_engine(),
                 knowledge_base=self.knowledge_base(),

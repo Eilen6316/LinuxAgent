@@ -5,12 +5,20 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
 from langchain_core.messages import HumanMessage
 
 from linuxagent.config.models import ClusterConfig, ClusterHost, MonitoringConfig
 from linuxagent.intelligence import CommandLearner
-from linuxagent.interfaces import ExecutionResult
-from linuxagent.services import ChatService, ClusterService, CommandService, MonitoringService
+from linuxagent.interfaces import ExecutionResult, SafetyLevel, SafetyResult
+from linuxagent.services import (
+    ChatService,
+    ClusterService,
+    CommandBlockedByPolicyError,
+    CommandConfirmationRequiredError,
+    CommandService,
+    MonitoringService,
+)
 
 
 async def test_monitoring_service_start_stop() -> None:
@@ -86,6 +94,9 @@ async def test_cluster_service_runs_selected_hosts_only() -> None:
 
 
 class _FakeExecutor:
+    def __init__(self, safety: SafetyResult | None = None) -> None:
+        self._safety = safety
+
     async def execute(self, command: str) -> ExecutionResult:
         return ExecutionResult(command, 0, "ok", "", 0.2)
 
@@ -94,7 +105,9 @@ class _FakeExecutor:
 
     def is_safe(self, command: str, *, source="user"):
         del command, source
-        raise AssertionError("not used in this test")
+        if self._safety is None:
+            raise AssertionError("not used in this test")
+        return self._safety
 
 
 async def test_command_service_records_learner_state(tmp_path) -> None:
@@ -109,3 +122,31 @@ async def test_command_service_records_learner_state(tmp_path) -> None:
     assert stats is not None
     assert stats.count == 1
     assert json.loads(learner_path.read_text(encoding="utf-8"))
+
+
+async def test_run_checked_blocks_blocked_commands() -> None:
+    service = CommandService(
+        _FakeExecutor(
+            safety=SafetyResult(
+                level=SafetyLevel.BLOCK,
+                reason="blocked",
+                matched_rule="TEST",
+            )
+        )
+    )
+    with pytest.raises(CommandBlockedByPolicyError):
+        await service.run_checked("rm -rf /")
+
+
+async def test_run_checked_requires_confirmation() -> None:
+    service = CommandService(
+        _FakeExecutor(
+            safety=SafetyResult(
+                level=SafetyLevel.CONFIRM,
+                reason="confirm",
+                matched_rule="TEST",
+            )
+        )
+    )
+    with pytest.raises(CommandConfirmationRequiredError):
+        await service.run_checked("python script.py")

@@ -5,13 +5,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..intelligence import CommandLearner
-from ..interfaces import CommandExecutor, CommandSource, ExecutionResult, SafetyResult
+from ..interfaces import CommandExecutor, CommandSource, ExecutionResult, SafetyLevel, SafetyResult
 
 
 @dataclass(frozen=True)
 class CommandRunResult:
     safety: SafetyResult
     execution: ExecutionResult
+
+
+class CommandSafetyError(RuntimeError):
+    def __init__(self, safety: SafetyResult) -> None:
+        super().__init__(safety.reason or safety.level.value)
+        self.safety = safety
+
+
+class CommandBlockedByPolicyError(CommandSafetyError):
+    """Command was classified BLOCK and must not execute."""
+
+
+class CommandConfirmationRequiredError(CommandSafetyError):
+    """Command requires HITL confirmation before execution."""
 
 
 class CommandService:
@@ -48,6 +62,10 @@ class CommandService:
         source: CommandSource = CommandSource.USER,
     ) -> CommandRunResult:
         safety = self.classify(command, source=source)
+        if safety.level is SafetyLevel.BLOCK:
+            raise CommandBlockedByPolicyError(safety)
+        if safety.level is SafetyLevel.CONFIRM:
+            raise CommandConfirmationRequiredError(safety)
         execution = await self.run(command)
         return CommandRunResult(safety=safety, execution=execution)
 

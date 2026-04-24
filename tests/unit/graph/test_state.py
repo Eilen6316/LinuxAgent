@@ -16,7 +16,7 @@ def test_initial_state_seeds_human_message() -> None:
     assert isinstance(msgs[0], HumanMessage)
     assert msgs[0].content == "list files"
     assert state["command_source"] is CommandSource.USER
-    assert state["attempts"] == 0
+    assert state["selected_hosts"] == ()
 
 
 def test_initial_state_respects_source() -> None:
@@ -40,6 +40,5 @@ def test_add_messages_reducer_appends() -> None:
 def test_agent_state_is_mutable_dict() -> None:
     state: AgentState = initial_state("hi")
     state["pending_command"] = "ls"
-    state["attempts"] = state.get("attempts", 0) + 1
     assert state["pending_command"] == "ls"
-    assert state["attempts"] == 1
+    assert state["command_source"] is CommandSource.USER
