@@ -20,6 +20,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `README.md` rewritten for the v4 codebase and current release workflow
 - CI build job now verifies wheel installation after artifact build
+- frozen `v3` source removed from the repository; `v4` is now the only active code path
 
 ### Added — Plan 1 skeleton
 

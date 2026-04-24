@@ -37,6 +37,6 @@ These are enforced both locally and in CI:
 - no bare `except:`
 - no `input()` calls inside `src/linuxagent/graph/`
 
-## Legacy Code
+## Repository Note
 
-Do not modify `legacy/` as part of v4 work.
+The old `v3` source has been removed. All active work belongs in `src/linuxagent/`.

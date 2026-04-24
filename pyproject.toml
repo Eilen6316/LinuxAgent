@@ -78,13 +78,13 @@ include = [
     "README.md",
     "CHANGELOG.md",
 ]
-exclude = ["legacy/", ".work/", ".claude/"]
+exclude = [".work/", ".claude/"]
 
 # ---- ruff ---------------------------------------------------------------
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["legacy", ".work"]
+extend-exclude = [".work"]
 
 [tool.ruff.lint]
 select = [
@@ -113,7 +113,7 @@ ignore = [
 python_version = "3.11"
 strict = true
 warn_unused_configs = true
-exclude = ["legacy/", "build/", "dist/"]
+exclude = ["build/", "dist/"]
 
 [[tool.mypy.overrides]]
 module = ["paramiko.*", "psutil.*", "yaml"]
@@ -132,7 +132,7 @@ markers = [
 [tool.coverage.run]
 source = ["linuxagent"]
 branch = true
-omit = ["legacy/*"]
+omit = []
 
 [tool.coverage.report]
 exclude_lines = [
