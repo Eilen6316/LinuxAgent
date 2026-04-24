@@ -9,34 +9,106 @@
     <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=o2ByKsl_gBN-fODJxH4Ps4Xboa_hCSI3&authKey=nVfsLJBin1CnZBd9pPNkxFk%2FGFqCe1FLsRMQmmxv%2FQnM78bC%2FjcWyMSeQcJDZC1U&noverify=0&group_code=281392454"><img src="https://img.shields.io/badge/QQ_Group-281392454-brightgreen?style=flat-square&logo=tencent-qq" alt="QQ Group"></a>
     <a href="https://blog.csdn.net/qq_69174109/article/details/146365413"><img src="https://img.shields.io/badge/CSDN-Project_Intro-blue?style=flat-square&logo=csdn" alt="CSDN"></a>
   </p>
+
+  <p><em>LLM-driven Linux operations assistant CLI with mandatory Human-in-the-Loop safety.</em></p>
 </div>
 
-LLM-driven Linux operations assistant CLI with Human-in-the-Loop safety.
+---
+
+**LinuxAgent** translates plain-language ops requests into Linux commands your team actually wants to run. Every model-generated command is classified at the token level, every side-effecting action needs a human approval, and every decision lands in an append-only audit log.
+
+Built on **LangGraph** + **LangChain** + **Pydantic v2**. No local deep-learning stack required.
 
 ## Language
 
-- [English](README_EN.md)
-- [简体中文](README_CN.md)
+- [简体中文（完整文档）](README_CN.md)
+- [English (full documentation)](README_EN.md)
 
-## Current State
+## At a glance
 
-- `v4` is the active codebase under `src/linuxagent/`
-- old `v3` source has been removed from the repository
-- safety, graph orchestration, intelligence, UI, harness, CI, and release scaffolding are in place
+```
+you: find services listening on port 8080
 
-## Quick Links
+  parse_intent  → LLM proposes: ss -tlnp sport = :8080
+  safety_check  → CONFIRM (LLM_FIRST_RUN)
+  confirm       → [ y ] Allow this operation?
+  execute       → asyncio subprocess (no shell)
+  analyze       → "nginx (PID 4312) owns 8080"
+  audit.log     → JSONL record of request / decision / execution
+```
+
+## Highlights
+
+- **Three-tier safety classification** — `SAFE` / `CONFIRM` / `BLOCK` using `shlex`-based token analysis, not substring matching
+- **LangGraph state machine** — explicit nodes, conditional edges, `interrupt()`-based Human-in-the-Loop
+- **No `shell=True`, no `AutoAddPolicy`** — enforced by CI red-line grep, not just convention
+- **Append-only audit log** at `~/.linuxagent/audit.log`, `0o600`, cannot be disabled
+- **Cluster-aware batch confirmation** — ≥2 hosts triggers an explicit approval prompt
+- **179 unit tests + 10 HITL scenarios**, 85%+ coverage, `mypy --strict`, `bandit` clean
+
+## Quick start
+
+```bash
+git clone https://github.com/Eilen6316/LinuxAgent.git
+cd LinuxAgent
+./scripts/bootstrap.sh          # creates .venv, seeds config.yaml (0600)
+source .venv/bin/activate
+
+# set your API key in ./config.yaml then:
+linuxagent check                # validate config
+linuxagent chat                 # start the interactive session
+```
+
+Full installation, configuration, and usage walkthroughs live in the localized READMEs:
+
+- [Full README (中文)](README_CN.md) — **recommended**
+- [Full README (English)](README_EN.md)
+
+## Why v4 over the earlier prototype
+
+Short version — the older single-file agent had a 4710-line God Object, substring-based command filtering, `AutoAddPolicy` SSH, and zero tests. The current release rewrites all four dimensions:
+
+| Area | Earlier | Current `v4` |
+|---|---|---|
+| Orchestration | 4710-line agent class, recursive control flow | LangGraph state machine, 72-line coordinator |
+| Command classifier | `pattern in command` substring match | `shlex` token analysis + raw-string scan + source upgrades |
+| SSH host trust | `AutoAddPolicy` (MITM-friendly) | `RejectPolicy` + explicit `known_hosts` |
+| HITL | implicit, bypassable | `interrupt()` + checkpointing + audit log |
+| Semantic search | hand-rolled TF-IDF, ~500MB local stack | LLM embedding API + disk cache, no local models |
+| Tests | 0 | 179 unit + 10 HITL scenarios + integration suite |
+
+See the [full comparison](README_CN.md#与旧版本的全面对比) ([English](README_EN.md#full-comparison-with-the-original-prototype)) for algorithm-level diffs.
+
+## Repository layout
+
+```
+src/linuxagent/     active package (src-layout)
+tests/unit/         unit tests
+tests/integration/  optional integration tests
+tests/harness/      YAML scenario harness
+configs/            default + example config
+prompts/            runtime prompts
+docs/               user and release docs
+scripts/            bootstrap + verification scripts
+```
+
+## Core make targets
+
+```bash
+make test       # pytest with 85% coverage gate
+make lint       # ruff
+make type       # mypy --strict
+make security   # grep red-lines + bandit
+make harness    # YAML scenario harness
+make build      # wheel + sdist
+```
+
+## Docs
 
 - [Quick Start](docs/quickstart.md)
 - [Development Guide](docs/development.md)
 - [Release Guide](docs/release.md)
 
-## Core Commands
+## License
 
-```bash
-make test
-make lint
-make type
-make security
-make harness
-make build
-```
+MIT
