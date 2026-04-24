@@ -11,6 +11,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
 from ..graph import initial_state
+from ..intelligence import ContextManager
 from ..interfaces import CommandSource, UserInterface
 from ..services import ChatService, ClusterService, MonitoringService
 
@@ -20,6 +21,7 @@ class LinuxAgent:
     graph: CompiledStateGraph
     ui: UserInterface
     chat_service: ChatService
+    context_manager: ContextManager
     monitoring_service: MonitoringService
     cluster_service: ClusterService | None = None
 
@@ -35,7 +37,8 @@ class LinuxAgent:
 
     async def run_turn(self, user_input: str, *, thread_id: str) -> dict[str, Any]:
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-        history = self.chat_service.snapshot()
+        self.context_manager.replace(self.chat_service.snapshot())
+        history = self.context_manager.snapshot()
         history_size = len(history)
         state: Any = initial_state(user_input, source=CommandSource.USER, history=history)
         while True:
@@ -46,6 +49,7 @@ class LinuxAgent:
                     new_messages = list(result["messages"])[history_size:]
                     if not new_messages:
                         new_messages = [HumanMessage(content=user_input)]
+                    self.context_manager.add(new_messages)
                     self.chat_service.add(new_messages)
                     await self.ui.print(str(result["messages"][-1].content))
                 return result if isinstance(result, dict) else {}

@@ -12,6 +12,9 @@ class ContextManager:
     max_items: int
     _items: list[BaseMessage] = field(default_factory=list)
 
+    def replace(self, messages: list[BaseMessage]) -> None:
+        self._items = list(messages[-self.max_items :])
+
     def add(self, messages: list[BaseMessage]) -> None:
         self._items.extend(messages)
         if len(self._items) > self.max_items:

@@ -133,6 +133,7 @@ def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> Non
     assert container.intelligence_tools()
     assert container.tools()
     assert container.build_agent().graph is fake_graph
+    assert container.build_agent().context_manager is container.context_manager()
 
 
 def test_chat_command_runs_agent(

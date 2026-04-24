@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from langchain_core.messages import BaseMessage
+    from langchain_core.tools import BaseTool
 
 
 class LLMProvider(ABC):
@@ -20,6 +21,15 @@ class LLMProvider(ABC):
         **kwargs: Any,
     ) -> str:
         """Return the full completion as a single string."""
+
+    @abstractmethod
+    async def complete_with_tools(
+        self,
+        messages: list[BaseMessage],
+        tools: list[BaseTool],
+        **kwargs: Any,
+    ) -> str:
+        """Return a completion after resolving any requested tool calls."""
 
     @abstractmethod
     def stream(

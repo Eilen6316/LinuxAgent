@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Interrupt
 
 from linuxagent.app import LinuxAgent
+from linuxagent.intelligence import ContextManager
 from linuxagent.interfaces import CommandSource
 from linuxagent.services import ChatService
 
@@ -96,6 +97,7 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
         graph=graph,  # type: ignore[arg-type]
         ui=ui,
         chat_service=chat_service,
+        context_manager=ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
     )
 
@@ -127,6 +129,7 @@ async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
         graph=graph,  # type: ignore[arg-type]
         ui=ui,
         chat_service=chat_service,
+        context_manager=ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
     )
 
@@ -146,6 +149,7 @@ async def test_run_starts_and_stops_services(tmp_path) -> None:
         graph=graph,  # type: ignore[arg-type]
         ui=ui,
         chat_service=ChatService(history_path, max_messages=10),
+        context_manager=ContextManager(10),
         monitoring_service=monitoring,  # type: ignore[arg-type]
         cluster_service=cluster,  # type: ignore[arg-type]
     )

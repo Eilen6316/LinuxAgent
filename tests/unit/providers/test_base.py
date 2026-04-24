@@ -17,6 +17,7 @@ from langchain_core.language_models.fake_chat_models import (
 )
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from langchain_core.tools import tool
 
 from linuxagent.config.models import APIConfig
 from linuxagent.providers.base import BaseLLMProvider
@@ -64,6 +65,43 @@ async def test_complete_multimodal_content_joined() -> None:
     provider = BaseLLMProvider(_cfg(), model)
     out = await provider.complete([HumanMessage(content="hi")])
     assert out == "hello world"
+
+
+class _ToolCallingModel:
+    def __init__(self, responses: list[AIMessage]) -> None:
+        self._responses = list(responses)
+        self.bound_tools = []
+
+    def bind_tools(self, tools):
+        self.bound_tools = list(tools)
+        return self
+
+    async def ainvoke(self, messages: list[BaseMessage], **kwargs: Any) -> AIMessage:
+        del messages, kwargs
+        return self._responses.pop(0)
+
+
+async def test_complete_with_tools_resolves_tool_calls() -> None:
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "lookup_status", "args": {"service": "nginx"}, "id": "1", "type": "tool_call"}
+                ],
+            ),
+            AIMessage(content="systemctl status nginx"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+    out = await provider.complete_with_tools([HumanMessage(content="check nginx")], [lookup_status])
+    assert out == "systemctl status nginx"
+    assert [tool.name for tool in model.bound_tools] == ["lookup_status"]
 
 
 # ---------------------------------------------------------------------------

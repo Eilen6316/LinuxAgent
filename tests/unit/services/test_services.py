@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from langchain_core.messages import HumanMessage
 
 from linuxagent.config.models import ClusterConfig, ClusterHost, MonitoringConfig
+from linuxagent.intelligence import CommandLearner
 from linuxagent.interfaces import ExecutionResult
-from linuxagent.services import ChatService, ClusterService, MonitoringService
+from linuxagent.services import ChatService, ClusterService, CommandService, MonitoringService
 
 
 async def test_monitoring_service_start_stop() -> None:
@@ -81,3 +83,29 @@ async def test_cluster_service_runs_selected_hosts_only() -> None:
     selected = service.resolve_host_names(("web-1",))
     results = await service.run_on_hosts("uptime", selected)
     assert set(results) == {"web-1"}
+
+
+class _FakeExecutor:
+    async def execute(self, command: str) -> ExecutionResult:
+        return ExecutionResult(command, 0, "ok", "", 0.2)
+
+    async def execute_interactive(self, command: str) -> ExecutionResult:
+        return ExecutionResult(command, 0, "", "", 0.3)
+
+    def is_safe(self, command: str, *, source="user"):
+        del command, source
+        raise AssertionError("not used in this test")
+
+
+async def test_command_service_records_learner_state(tmp_path) -> None:
+    learner_path = tmp_path / "learner.json"
+    learner = CommandLearner(learner_path)
+    service = CommandService(_FakeExecutor(), learner)  # type: ignore[arg-type]
+
+    result = await service.run("/bin/echo ok")
+
+    assert result.stdout == "ok"
+    stats = learner.stats_for("/bin/echo")
+    assert stats is not None
+    assert stats.count == 1
+    assert json.loads(learner_path.read_text(encoding="utf-8"))

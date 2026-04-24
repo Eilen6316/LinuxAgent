@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from langchain_core.messages import BaseMessage
@@ -19,9 +20,18 @@ from linuxagent.services import ClusterService, CommandService
 class _FakeProvider:
     def __init__(self, responses: list[str]) -> None:
         self._responses = responses
+        self.tool_calls = 0
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
         del messages, kwargs
+        if self._responses:
+            return self._responses.pop(0)
+        return "analysis ok"
+
+    async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
+        del messages, kwargs
+        self.tool_calls += 1
+        assert tools
         if self._responses:
             return self._responses.pop(0)
         return "analysis ok"
@@ -49,18 +59,19 @@ class _FakeSSH:
 
 
 def _graph(tmp_path: Path, responses: list[str], *, cluster_service: ClusterService | None = None):
+    provider = _FakeProvider(responses)
     executor = LinuxCommandExecutor(SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist())
     deps = GraphDependencies(
-        provider=_FakeProvider(responses),  # type: ignore[arg-type]
+        provider=provider,  # type: ignore[arg-type]
         command_service=CommandService(executor),
         audit=AuditLog(tmp_path / "audit.log"),
         cluster_service=cluster_service,
     )
-    return build_agent_graph(deps)
+    return build_agent_graph(deps), provider
 
 
 async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
-    graph = _graph(tmp_path, ["/bin/echo hi", "analysis ok"])
+    graph, _provider = _graph(tmp_path, ["/bin/echo hi", "analysis ok"])
     config = {"configurable": {"thread_id": "t1"}}
     result = await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
 
@@ -73,7 +84,7 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
 
 
 async def test_graph_non_tty_deny_goes_to_refused(tmp_path) -> None:
-    graph = _graph(tmp_path, ["/bin/echo hi"])
+    graph, _provider = _graph(tmp_path, ["/bin/echo hi"])
     config = {"configurable": {"thread_id": "t2"}}
     await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
     resumed = await graph.ainvoke(
@@ -91,7 +102,7 @@ async def test_graph_only_marks_batch_for_explicit_cluster_requests(tmp_path) ->
             ClusterHost(name="b", hostname="b.invalid", username="ops"),
         ),
     )
-    graph = _graph(
+    graph, _provider = _graph(
         tmp_path,
         ["/bin/echo hi"],
         cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
@@ -110,7 +121,7 @@ async def test_graph_cluster_request_records_batch_hosts(tmp_path) -> None:
             ClusterHost(name="b", hostname="b.invalid", username="ops"),
         ),
     )
-    graph = _graph(
+    graph, _provider = _graph(
         tmp_path,
         ["/bin/echo hi"],
         cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
@@ -132,7 +143,7 @@ async def test_graph_named_host_request_selects_only_matched_hosts(tmp_path) -> 
             ClusterHost(name="db-1", hostname="db-1.example", username="ops"),
         ),
     )
-    graph = _graph(
+    graph, _provider = _graph(
         tmp_path,
         ["/bin/echo hi"],
         cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
@@ -145,3 +156,20 @@ async def test_graph_named_host_request_selects_only_matched_hosts(tmp_path) -> 
     snapshot = await graph.aget_state(config)
     assert tuple(snapshot.values["selected_hosts"]) == ("web-1",)
     assert tuple(snapshot.values["batch_hosts"]) == ()
+
+
+async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> None:
+    graph, provider = _graph(tmp_path, ["/bin/echo hi"])
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist())
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+            tools=(SimpleNamespace(name="fake_tool"),),  # type: ignore[arg-type]
+        )
+    )
+    config = {"configurable": {"thread_id": "tool-call"}}
+    await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
+    assert provider.tool_calls == 1

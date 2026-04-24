@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -19,7 +18,6 @@ from ..services import ClusterService, CommandService
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -42,12 +40,14 @@ def make_parse_intent_node(
     async def parse_intent_node(state: AgentState) -> AgentState:
         messages = list(state.get("messages", []))
         user_text = _last_message_text(messages)
-        tool_context = await _collect_tool_context(user_text, tools)
         prompt_messages = prompt.format_messages(
             chat_history=messages[:-1],
-            user_input=_intent_prompt(user_text, tool_context),
+            user_input=_intent_prompt(user_text),
         )
-        proposed = (await provider.complete(prompt_messages)).strip()
+        if tools:
+            proposed = (await provider.complete_with_tools(prompt_messages, list(tools))).strip()
+        else:
+            proposed = (await provider.complete(prompt_messages)).strip()
         command = _extract_command(proposed) or user_text.strip()
         return {
             "pending_command": command,
@@ -284,55 +284,13 @@ def _result_text(result: ExecutionResult) -> str:
     )
 
 
-def _intent_prompt(user_text: str, tool_context: list[str]) -> str:
-    context_block = ""
-    if tool_context:
-        context_block = "\n\nRelevant tool context:\n" + "\n".join(f"- {item}" for item in tool_context)
+def _intent_prompt(user_text: str) -> str:
     return (
-        f"{user_text}{context_block}\n\n"
+        f"{user_text}\n\n"
         "Return exactly one shell command with no markdown or prose. "
+        "If useful, call tools before deciding. "
         "If the user asked for all hosts or the cluster, return only the command itself."
     )
-
-
-async def _collect_tool_context(user_text: str, tools: tuple[BaseTool, ...]) -> list[str]:
-    if not tools:
-        return []
-    lowered = user_text.lower()
-    observations: list[str] = []
-    for tool in tools:
-        payload = _tool_payload(tool.name, user_text, lowered)
-        if payload is None:
-            continue
-        try:
-            result = await tool.ainvoke(payload)
-        except Exception:  # noqa: BLE001 - tool context should not break command generation
-            logger.debug("tool context collection failed for %s", tool.name, exc_info=True)
-            continue
-        observations.append(f"{tool.name}: {result}")
-    return observations
-
-
-def _tool_payload(tool_name: str, user_text: str, lowered: str) -> dict[str, Any] | None:
-    if tool_name == "get_system_info" and any(
-        token in lowered for token in ("system info", "cpu", "memory", "disk", "uptime", "load")
-    ):
-        return {}
-    if tool_name == "get_command_recommendations" and any(
-        token in lowered for token in ("recommend", "suggest", "what command", "which command")
-    ):
-        return {"context": user_text, "limit": 3}
-    if tool_name == "get_similar_commands" and "similar" in lowered:
-        return {"query": user_text, "top_k": 3}
-    if tool_name == "search_knowledge_base" and any(
-        token in lowered for token in ("how do i", "what does", "knowledge", "docs")
-    ):
-        return {"query": user_text, "k": 3}
-    if tool_name == "analyze_command_pattern" and any(
-        marker in user_text for marker in ("|", "&&", ";", "sudo ", "/bin/", "systemctl ")
-    ):
-        return {"command": user_text}
-    return None
 
 
 async def _run_command(

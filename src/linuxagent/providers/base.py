@@ -20,12 +20,14 @@ the caller's UI.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.tools import BaseTool
 from tenacity import (
     AsyncRetrying,
     retry_if_exception_type,
@@ -97,6 +99,44 @@ class BaseLLMProvider(LLMProvider):
             raise self._map_error(exc) from exc
         return _content_to_str(result.content)
 
+    async def complete_with_tools(
+        self,
+        messages: list[BaseMessage],
+        tools: list[BaseTool],
+        **kwargs: Any,
+    ) -> str:
+        if not tools:
+            return await self.complete(messages, **kwargs)
+
+        bound_model = self._model.bind_tools(tools)
+        history = list(messages)
+        tool_map = {tool.name: tool for tool in tools}
+
+        for _ in range(3):
+            try:
+                result = await asyncio.wait_for(
+                    bound_model.ainvoke(history, **kwargs),
+                    timeout=self._config.timeout,
+                )
+            except TimeoutError as exc:
+                raise ProviderTimeoutError(
+                    f"provider request exceeded timeout ({self._config.timeout}s)"
+                ) from exc
+            except ProviderError:
+                raise
+            except Exception as exc:
+                raise self._map_error(exc) from exc
+
+            ai_message = _coerce_ai_message(result)
+            history.append(ai_message)
+            if not ai_message.tool_calls:
+                return _content_to_str(ai_message.content)
+
+            tool_messages = await _execute_tool_calls(ai_message, tool_map)
+            history.extend(tool_messages)
+
+        raise ProviderError("tool loop exceeded max rounds")
+
     # -- stream -----------------------------------------------------------
 
     def stream(
@@ -149,3 +189,52 @@ def _content_to_str(content: Any) -> str:
                 parts.append(item["text"])
         return "".join(parts)
     return str(content)
+
+
+def _coerce_ai_message(message: BaseMessage) -> AIMessage:
+    if isinstance(message, AIMessage):
+        return message
+    return AIMessage(
+        content=_content_to_str(message.content),
+        tool_calls=getattr(message, "tool_calls", []),
+    )
+
+
+async def _execute_tool_calls(
+    ai_message: AIMessage,
+    tool_map: dict[str, BaseTool],
+) -> list[ToolMessage]:
+    outputs: list[ToolMessage] = []
+    for call in ai_message.tool_calls:
+        tool_name = call["name"]
+        tool_call_id = call["id"]
+        tool = tool_map.get(tool_name)
+        if tool is None:
+            outputs.append(
+                ToolMessage(
+                    content=f"unknown tool: {tool_name}",
+                    name=tool_name,
+                    tool_call_id=tool_call_id,
+                )
+            )
+            continue
+        try:
+            result = await tool.ainvoke(call.get("args", {}))
+            content = _tool_output_to_str(result)
+        except Exception as exc:  # noqa: BLE001 - tool failures feed back into the model loop
+            logger.debug("tool call failed for %s", tool_name, exc_info=exc)
+            content = f"tool error: {exc}"
+        outputs.append(
+            ToolMessage(
+                content=content,
+                name=tool_name,
+                tool_call_id=tool_call_id,
+            )
+        )
+    return outputs
+
+
+def _tool_output_to_str(result: Any) -> str:
+    if isinstance(result, str):
+        return result
+    return json.dumps(result, ensure_ascii=False, default=str)
