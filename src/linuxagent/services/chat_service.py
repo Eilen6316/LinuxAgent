@@ -21,6 +21,9 @@ class ChatService:
         if len(self._messages) > self.max_messages:
             self._messages = self._messages[-self.max_messages :]
 
+    def replace(self, messages: list[BaseMessage]) -> None:
+        self._messages = list(messages[-self.max_messages :])
+
     def snapshot(self) -> list[BaseMessage]:
         return list(self._messages)
 

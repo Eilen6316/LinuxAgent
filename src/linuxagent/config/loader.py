@@ -23,6 +23,7 @@ from typing import Any
 
 import yaml
 from pydantic import ValidationError
+from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from .models import AppConfig
 
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 _ENV_CONFIG_VAR = "LINUXAGENT_CONFIG"
 _XDG_PATH = Path.home() / ".config" / "linuxagent" / "config.yaml"
 _REQUIRED_MODE = 0o600
+PathKey = tuple[str | int, ...]
 
 
 class ConfigError(Exception):
@@ -55,19 +57,21 @@ def load_config(
     """
     effective_env = os.environ if env is None else env
     merged: dict[str, Any] = {}
+    line_map: dict[PathKey, int] = {}
 
     for source_path, requires_secure in _resolve_sources(cli_path=cli_path, env=effective_env):
         if requires_secure:
             _verify_secure(source_path)
-        data = _load_yaml(source_path)
+        data, source_lines = _load_yaml(source_path)
         if data is not None:
             _deep_merge(merged, data)
+            line_map.update(source_lines)
             logger.debug("merged config from %s", source_path)
 
     try:
         return AppConfig.model_validate(merged)
     except ValidationError as exc:
-        raise ConfigError(_format_validation_error(exc)) from exc
+        raise ConfigError(_format_validation_error(exc, line_map)) from exc
 
 
 def _resolve_sources(
@@ -156,22 +160,23 @@ def _current_uid() -> int | None:
     return getuid() if getuid is not None else None
 
 
-def _load_yaml(path: Path) -> dict[str, Any] | None:
+def _load_yaml(path: Path) -> tuple[dict[str, Any] | None, dict[PathKey, int]]:
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ConfigError(f"cannot read {path}: {exc}") from exc
 
+    line_map = _extract_line_map(text)
     try:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
         raise ConfigError(f"invalid YAML in {path}: {exc}") from exc
 
     if data is None:
-        return None
+        return None, line_map
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: top-level YAML must be a mapping, got {type(data).__name__}")
-    return data
+    return data, line_map
 
 
 def _deep_merge(base: dict[str, Any], overlay: Mapping[str, Any]) -> None:
@@ -182,9 +187,54 @@ def _deep_merge(base: dict[str, Any], overlay: Mapping[str, Any]) -> None:
             base[key] = value
 
 
-def _format_validation_error(exc: ValidationError) -> str:
+def _format_validation_error(exc: ValidationError, line_map: Mapping[PathKey, int]) -> str:
     lines = ["config validation failed:"]
     for err in exc.errors():
         loc = ".".join(str(part) for part in err["loc"])
-        lines.append(f"  - {loc}: {err['msg']} (input={err.get('input')!r})")
+        line_suffix = _line_suffix(err["loc"], line_map)
+        lines.append(f"  - {loc}: {err['msg']}{line_suffix} (input={err.get('input')!r})")
     return "\n".join(lines)
+
+
+def _extract_line_map(text: str) -> dict[PathKey, int]:
+    try:
+        root = yaml.compose(text)
+    except yaml.YAMLError:
+        return {}
+    if root is None:
+        return {}
+
+    line_map: dict[PathKey, int] = {}
+    _walk_node(root, (), line_map)
+    return line_map
+
+
+def _walk_node(node: Node, path: PathKey, line_map: dict[PathKey, int]) -> None:
+    if isinstance(node, MappingNode):
+        for key_node, value_node in node.value:
+            key = _node_key(key_node)
+            next_path = (*path, key)
+            line_map[next_path] = key_node.start_mark.line + 1
+            _walk_node(value_node, next_path, line_map)
+        return
+    if isinstance(node, SequenceNode):
+        for index, item in enumerate(node.value):
+            next_path = (*path, index)
+            line_map[next_path] = item.start_mark.line + 1
+            _walk_node(item, next_path, line_map)
+        return
+    line_map[path] = node.start_mark.line + 1
+
+
+def _node_key(node: Node) -> str:
+    if isinstance(node, ScalarNode):
+        return str(node.value)
+    return str(getattr(node, "value", ""))
+
+
+def _line_suffix(loc: tuple[Any, ...], line_map: Mapping[PathKey, int]) -> str:
+    for size in range(len(loc), 0, -1):
+        candidate = tuple(loc[:size])
+        if candidate in line_map:
+            return f" at line {line_map[candidate]}"
+    return ""

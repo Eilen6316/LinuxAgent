@@ -37,7 +37,7 @@ class LinuxAgent:
 
     async def run_turn(self, user_input: str, *, thread_id: str) -> dict[str, Any]:
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-        self.context_manager.replace(self.chat_service.snapshot())
+        self.context_manager.replace(await self._history(config))
         history = self.context_manager.snapshot()
         history_size = len(history)
         state: Any = initial_state(user_input, source=CommandSource.USER, history=history)
@@ -50,7 +50,7 @@ class LinuxAgent:
                     if not new_messages:
                         new_messages = [HumanMessage(content=user_input)]
                     self.context_manager.add(new_messages)
-                    self.chat_service.add(new_messages)
+                    self.chat_service.replace(self.context_manager.snapshot())
                     await self.ui.print(str(result["messages"][-1].content))
                 return result if isinstance(result, dict) else {}
             payload = interrupts[0].value
@@ -65,3 +65,10 @@ class LinuxAgent:
         for task in snapshot.tasks:
             interrupts.extend(task.interrupts)
         return interrupts
+
+    async def _history(self, config: RunnableConfig) -> list[Any]:
+        snapshot = await self.graph.aget_state(config)
+        values = getattr(snapshot, "values", {})
+        if isinstance(values, dict) and values.get("messages"):
+            return list(values["messages"])
+        return self.chat_service.snapshot()

@@ -104,6 +104,32 @@ async def test_complete_with_tools_resolves_tool_calls() -> None:
     assert [tool.name for tool in model.bound_tools] == ["lookup_status"]
 
 
+class _RetryingToolModel(_ToolCallingModel):
+    def __init__(self, responses: list[AIMessage], failures: int) -> None:
+        super().__init__(responses)
+        self.failures = failures
+
+    async def ainvoke(self, messages: list[BaseMessage], **kwargs: Any) -> AIMessage:
+        del messages, kwargs
+        if self.failures > 0:
+            self.failures -= 1
+            raise ProviderRateLimitError("429")
+        return self._responses.pop(0)
+
+
+async def test_complete_with_tools_retries_on_rate_limit() -> None:
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    model = _RetryingToolModel([AIMessage(content="systemctl status nginx")], failures=2)
+    provider = BaseLLMProvider(_cfg(max_retries=5), model)  # type: ignore[arg-type]
+    out = await provider.complete_with_tools([HumanMessage(content="check nginx")], [lookup_status])
+    assert out == "systemctl status nginx"
+    assert model.failures == 0
+
+
 # ---------------------------------------------------------------------------
 # complete retry semantics
 # ---------------------------------------------------------------------------

@@ -113,20 +113,7 @@ class BaseLLMProvider(LLMProvider):
         tool_map = {tool.name: tool for tool in tools}
 
         for _ in range(3):
-            try:
-                result = await asyncio.wait_for(
-                    bound_model.ainvoke(history, **kwargs),
-                    timeout=self._config.timeout,
-                )
-            except TimeoutError as exc:
-                raise ProviderTimeoutError(
-                    f"provider request exceeded timeout ({self._config.timeout}s)"
-                ) from exc
-            except ProviderError:
-                raise
-            except Exception as exc:
-                raise self._map_error(exc) from exc
-
+            result = await self._invoke_with_retry(bound_model, history, **kwargs)
             ai_message = _coerce_ai_message(result)
             history.append(ai_message)
             if not ai_message.tool_calls:
@@ -174,6 +161,42 @@ class BaseLLMProvider(LLMProvider):
         """
         logger.debug("unmapped provider exception", exc_info=exc)
         return ProviderError(str(exc))
+
+    async def _invoke_with_retry(
+        self,
+        model: Any,
+        messages: list[BaseMessage],
+        **kwargs: Any,
+    ) -> BaseMessage:
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(max(self._config.max_retries, 1)),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            retry=retry_if_exception_type(_RETRIABLE),
+            reraise=True,
+        ):
+            with attempt:
+                return await self._invoke_once(model, messages, **kwargs)
+        raise ProviderError("retry loop exited without producing a result")
+
+    async def _invoke_once(
+        self,
+        model: Any,
+        messages: list[BaseMessage],
+        **kwargs: Any,
+    ) -> BaseMessage:
+        try:
+            return await asyncio.wait_for(
+                model.ainvoke(messages, **kwargs),
+                timeout=self._config.timeout,
+            )
+        except TimeoutError as exc:
+            raise ProviderTimeoutError(
+                f"provider request exceeded timeout ({self._config.timeout}s)"
+            ) from exc
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise self._map_error(exc) from exc
 
 
 def _content_to_str(content: Any) -> str:

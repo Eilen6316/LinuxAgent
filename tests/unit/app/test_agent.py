@@ -62,9 +62,16 @@ class _FakeUI:
 
 
 class _FakeGraph:
-    def __init__(self, results: list[Any], *, snapshot_interrupts: list[Interrupt] | None = None) -> None:
+    def __init__(
+        self,
+        results: list[Any],
+        *,
+        snapshot_interrupts: list[Interrupt] | None = None,
+        snapshot_values: dict[str, Any] | None = None,
+    ) -> None:
         self._results = list(results)
         self._snapshot_interrupts = [] if snapshot_interrupts is None else list(snapshot_interrupts)
+        self._snapshot_values = {} if snapshot_values is None else dict(snapshot_values)
         self.calls: list[Any] = []
 
     async def ainvoke(self, state: Any, config: Any) -> Any:
@@ -74,7 +81,10 @@ class _FakeGraph:
 
     async def aget_state(self, config: Any) -> Any:
         del config
-        return SimpleNamespace(tasks=[SimpleNamespace(interrupts=self._snapshot_interrupts)])
+        return SimpleNamespace(
+            tasks=[SimpleNamespace(interrupts=self._snapshot_interrupts)],
+            values=self._snapshot_values,
+        )
 
 
 async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
@@ -159,3 +169,29 @@ async def test_run_starts_and_stops_services(tmp_path) -> None:
     assert monitoring.started is True
     assert monitoring.stopped is True
     assert cluster.closed is True
+
+
+async def test_run_turn_prefers_checkpoint_history(tmp_path) -> None:
+    history_path = tmp_path / "history.json"
+    chat_service = ChatService(history_path, max_messages=10)
+    chat_service.add([HumanMessage(content="disk history")])
+    checkpoint_messages = [HumanMessage(content="checkpoint history")]
+    graph = _FakeGraph(
+        [{"messages": [*checkpoint_messages, HumanMessage(content="current"), AIMessage(content="done")]}],
+        snapshot_values={"messages": checkpoint_messages},
+    )
+    agent = LinuxAgent(
+        graph=graph,  # type: ignore[arg-type]
+        ui=_FakeUI(),
+        chat_service=chat_service,
+        context_manager=ContextManager(10),
+        monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
+    )
+
+    await agent.run_turn("current", thread_id="t3")
+
+    first_call = graph.calls[0]
+    assert [message.content for message in first_call["messages"]] == [
+        "checkpoint history",
+        "current",
+    ]

@@ -90,6 +90,12 @@ def test_loader_rejects_invalid_schema(tmp_path: Path) -> None:
         load_config(cli_path=path, env={})
 
 
+def test_loader_reports_yaml_line_for_invalid_schema(tmp_path: Path) -> None:
+    path = _write_secure(tmp_path, "api:\n  timeout: not-a-number\n")
+    with pytest.raises(ConfigError, match=r"line 2"):
+        load_config(cli_path=path, env={})
+
+
 def test_loader_rejects_bad_yaml(tmp_path: Path) -> None:
     path = _write_secure(tmp_path, "api: [::broken")
     with pytest.raises(ConfigError, match="invalid YAML"):
