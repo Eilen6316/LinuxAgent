@@ -25,13 +25,20 @@ from .state import AgentState
 
 def build_agent_graph(deps: GraphDependencies) -> CompiledStateGraph:
     graph = StateGraph(AgentState)
-    graph.add_node("parse_intent", make_parse_intent_node(deps.provider))
+    graph.add_node(
+        "parse_intent",
+        make_parse_intent_node(
+            deps.provider,
+            cluster_service=deps.cluster_service,
+            tools=deps.tools,
+        ),
+    )
     graph.add_node(
         "safety_check",
         make_safety_check_node(deps.command_service, deps.cluster_service),
     )
     graph.add_node("confirm", make_confirm_node(deps.audit, deps.command_service))
-    graph.add_node("execute", make_execute_node(deps.command_service))
+    graph.add_node("execute", make_execute_node(deps.command_service, deps.audit, deps.cluster_service))
     graph.add_node("retry", increment_attempt_node)
     graph.add_node("analyze", make_analyze_result_node(deps.provider))
     graph.add_node("respond", respond_node)

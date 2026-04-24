@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import sys
 from pathlib import Path
 
 from . import __version__
 from .config.loader import ConfigError, load_config
+from .container import Container
 from .logger import configure_logging
+from .providers.errors import ProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +83,27 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
 
 def _cmd_chat(args: argparse.Namespace) -> int:
-    del args
-    print("error: 'chat' is not yet implemented.", file=sys.stderr)
-    return 2
+    try:
+        cfg = load_config(cli_path=args.config)
+        cfg.api.require_key()
+    except (ConfigError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    level: int | str = _verbose_to_level(args.verbose) if args.verbose > 0 else cfg.logging.level
+    configure_logging(level=level, fmt=cfg.logging.format)
+
+    container = Container(cfg)
+    chat_service = container.chat_service()
+    chat_service.load()
+    try:
+        asyncio.run(container.build_agent().run(thread_id="cli"))
+    except ProviderError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        chat_service.save()
+    return 0
 
 
 _COMMANDS = {

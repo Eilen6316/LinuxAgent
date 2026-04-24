@@ -54,3 +54,30 @@ async def test_cluster_service_batch_confirm_and_run() -> None:
     assert service.requires_batch_confirm() is True
     results = await service.run_on_all("uptime")
     assert set(results) == {"a", "b"}
+
+
+async def test_cluster_service_selects_named_hosts() -> None:
+    cfg = ClusterConfig(
+        batch_confirm_threshold=2,
+        hosts=(
+            ClusterHost(name="web-1", hostname="web-1.example", username="ops"),
+            ClusterHost(name="db-1", hostname="db-1.example", username="ops"),
+        ),
+    )
+    service = ClusterService(cfg, _FakeSSH())  # type: ignore[arg-type]
+    selected = service.select_hosts("check cpu on web-1 and db-1.example")
+    assert tuple(host.name for host in selected) == ("web-1", "db-1")
+
+
+async def test_cluster_service_runs_selected_hosts_only() -> None:
+    cfg = ClusterConfig(
+        batch_confirm_threshold=2,
+        hosts=(
+            ClusterHost(name="web-1", hostname="web-1.example", username="ops"),
+            ClusterHost(name="db-1", hostname="db-1.example", username="ops"),
+        ),
+    )
+    service = ClusterService(cfg, _FakeSSH())  # type: ignore[arg-type]
+    selected = service.resolve_host_names(("web-1",))
+    results = await service.run_on_hosts("uptime", selected)
+    assert set(results) == {"web-1"}

@@ -18,9 +18,22 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
         batch_hosts=("a", "b"),
     )
     await audit.record_decision(audit_id, decision="yes", latency_ms=12)
+    await audit.record_execution(
+        audit_id,
+        command="ls -la",
+        exit_code=0,
+        duration=0.25,
+        batch_hosts=("a", "b"),
+    )
 
     assert path.stat().st_mode & 0o777 == 0o600
     lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
-    assert [line["event"] for line in lines] == ["confirm_begin", "confirm_decision"]
+    assert [line["event"] for line in lines] == [
+        "confirm_begin",
+        "confirm_decision",
+        "command_executed",
+    ]
     assert lines[0]["batch_hosts"] == ["a", "b"]
     assert lines[1]["decision"] == "yes"
+    assert lines[2]["exit_code"] == 0
+    assert lines[2]["duration_ms"] == 250

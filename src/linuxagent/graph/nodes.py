@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import logging
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.tools import BaseTool
 from langgraph.types import Command, interrupt
 
 from ..audit import AuditLog
 from ..executors import is_destructive
 from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLevel
+from ..prompts_loader import build_chat_prompt
 from ..services import ClusterService, CommandService
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -24,16 +28,31 @@ class GraphDependencies:
     command_service: CommandService
     audit: AuditLog
     cluster_service: ClusterService | None = None
+    tools: tuple[BaseTool, ...] = ()
 
 
-def make_parse_intent_node(provider: LLMProvider) -> Node:
+def make_parse_intent_node(
+    provider: LLMProvider,
+    *,
+    cluster_service: ClusterService | None = None,
+    tools: tuple[BaseTool, ...] = (),
+) -> Node:
+    prompt = build_chat_prompt()
+
     async def parse_intent_node(state: AgentState) -> AgentState:
-        user_text = _last_message_text(state.get("messages", []))
-        proposed = (await provider.complete(list(state.get("messages", [])))).strip()
+        messages = list(state.get("messages", []))
+        user_text = _last_message_text(messages)
+        tool_context = await _collect_tool_context(user_text, tools)
+        prompt_messages = prompt.format_messages(
+            chat_history=messages[:-1],
+            user_input=_intent_prompt(user_text, tool_context),
+        )
+        proposed = (await provider.complete(prompt_messages)).strip()
         command = _extract_command(proposed) or user_text.strip()
         return {
             "pending_command": command,
             "command_source": CommandSource.LLM,
+            "selected_hosts": _select_host_names(user_text, cluster_service),
         }
 
     return parse_intent_node
@@ -53,13 +72,15 @@ def make_safety_check_node(
             }
         source = state.get("command_source") or CommandSource.USER
         verdict = command_service.classify(command, source=source)
-        batch_hosts = _batch_hosts(cluster_service)
+        batch_hosts = _batch_hosts(state, cluster_service)
         level = verdict.level
         if batch_hosts and level is SafetyLevel.SAFE:
             level = SafetyLevel.CONFIRM
         return {
             "safety_level": level,
-            "matched_rule": "BATCH_CONFIRM" if batch_hosts and level is SafetyLevel.CONFIRM else verdict.matched_rule,
+            "matched_rule": (
+                "BATCH_CONFIRM" if batch_hosts and level is SafetyLevel.CONFIRM else verdict.matched_rule
+            ),
             "safety_reason": "batch command requires confirmation" if batch_hosts else verdict.reason,
             "command_source": verdict.command_source,
             "batch_hosts": batch_hosts,
@@ -110,28 +131,49 @@ def make_confirm_node(audit: AuditLog, command_service: CommandService) -> Node:
     return confirm_node
 
 
-def make_execute_node(command_service: CommandService) -> Node:
+def make_execute_node(
+    command_service: CommandService,
+    audit: AuditLog,
+    cluster_service: ClusterService | None = None,
+) -> Node:
     async def execute_node(state: AgentState) -> AgentState:
         command = state.get("pending_command")
         if not command:
             return {"execution_result": _synthetic_result("", 2, "", "no command proposed")}
         try:
-            result = await command_service.run(command)
+            result = await _run_command(state, command, command_service, cluster_service)
         except Exception as exc:  # noqa: BLE001 - graph returns error state instead of crashing
             result = _synthetic_result(command, 1, "", str(exc))
+        audit_id = state.get("audit_id")
+        if audit_id is not None:
+            await audit.record_execution(
+                audit_id,
+                command=result.command,
+                exit_code=result.exit_code,
+                duration=result.duration,
+                batch_hosts=state.get("batch_hosts", ()),
+            )
         return {"execution_result": result}
 
     return execute_node
 
 
 def make_analyze_result_node(provider: LLMProvider) -> Node:
+    prompt = build_chat_prompt()
+
     async def analyze_result_node(state: AgentState) -> AgentState:
         result = state.get("execution_result")
         if result is None:
             return {"messages": [AIMessage(content="没有执行结果可分析。")]}
-        prompt: list[BaseMessage] = [AIMessage(content=_result_text(result))]
+        prompt_messages = prompt.format_messages(
+            chat_history=[],
+            user_input=(
+                "Summarize this command result for the operator in concise Chinese.\n\n"
+                f"{_result_text(result)}"
+            ),
+        )
         try:
-            analysis = await provider.complete(prompt)
+            analysis = await provider.complete(prompt_messages)
         except Exception:  # noqa: BLE001 - keep graph resilient when provider analysis fails
             analysis = _result_text(result)
         return {"messages": [AIMessage(content=analysis)]}
@@ -176,10 +218,14 @@ async def increment_attempt_node(state: AgentState) -> AgentState:
     return {"attempts": state.get("attempts", 0) + 1}
 
 
-def _batch_hosts(cluster_service: ClusterService | None) -> tuple[str, ...]:
-    if cluster_service is None or not cluster_service.requires_batch_confirm():
+def _batch_hosts(state: AgentState, cluster_service: ClusterService | None) -> tuple[str, ...]:
+    if cluster_service is None:
         return ()
-    return tuple(host.name for host in cluster_service.hosts)
+    selected_hosts = state.get("selected_hosts", ())
+    selected = cluster_service.resolve_host_names(selected_hosts)
+    if not selected or not cluster_service.requires_batch_confirm(selected):
+        return ()
+    return tuple(host.name for host in selected)
 
 
 def _last_message_text(messages: list[BaseMessage]) -> str:
@@ -236,3 +282,119 @@ def _result_text(result: ExecutionResult) -> str:
         f"stdout={result.stdout.rstrip()}\n"
         f"stderr={result.stderr.rstrip()}"
     )
+
+
+def _intent_prompt(user_text: str, tool_context: list[str]) -> str:
+    context_block = ""
+    if tool_context:
+        context_block = "\n\nRelevant tool context:\n" + "\n".join(f"- {item}" for item in tool_context)
+    return (
+        f"{user_text}{context_block}\n\n"
+        "Return exactly one shell command with no markdown or prose. "
+        "If the user asked for all hosts or the cluster, return only the command itself."
+    )
+
+
+async def _collect_tool_context(user_text: str, tools: tuple[BaseTool, ...]) -> list[str]:
+    if not tools:
+        return []
+    lowered = user_text.lower()
+    observations: list[str] = []
+    for tool in tools:
+        payload = _tool_payload(tool.name, user_text, lowered)
+        if payload is None:
+            continue
+        try:
+            result = await tool.ainvoke(payload)
+        except Exception:  # noqa: BLE001 - tool context should not break command generation
+            logger.debug("tool context collection failed for %s", tool.name, exc_info=True)
+            continue
+        observations.append(f"{tool.name}: {result}")
+    return observations
+
+
+def _tool_payload(tool_name: str, user_text: str, lowered: str) -> dict[str, Any] | None:
+    if tool_name == "get_system_info" and any(
+        token in lowered for token in ("system info", "cpu", "memory", "disk", "uptime", "load")
+    ):
+        return {}
+    if tool_name == "get_command_recommendations" and any(
+        token in lowered for token in ("recommend", "suggest", "what command", "which command")
+    ):
+        return {"context": user_text, "limit": 3}
+    if tool_name == "get_similar_commands" and "similar" in lowered:
+        return {"query": user_text, "top_k": 3}
+    if tool_name == "search_knowledge_base" and any(
+        token in lowered for token in ("how do i", "what does", "knowledge", "docs")
+    ):
+        return {"query": user_text, "k": 3}
+    if tool_name == "analyze_command_pattern" and any(
+        marker in user_text for marker in ("|", "&&", ";", "sudo ", "/bin/", "systemctl ")
+    ):
+        return {"command": user_text}
+    return None
+
+
+async def _run_command(
+    state: AgentState,
+    command: str,
+    command_service: CommandService,
+    cluster_service: ClusterService | None,
+) -> ExecutionResult:
+    selected_hosts = state.get("selected_hosts", ())
+    if selected_hosts and cluster_service is not None:
+        resolved_hosts = cluster_service.resolve_host_names(selected_hosts)
+        if not resolved_hosts:
+            return _synthetic_result(command, 2, "", "no matching cluster hosts selected")
+        if state.get("matched_rule") == "INTERACTIVE":
+            return _synthetic_result(
+                command,
+                2,
+                "",
+                "interactive commands are not supported for cluster execution",
+            )
+        return _aggregate_cluster_results(
+            command,
+            await cluster_service.run_on_hosts(command, resolved_hosts),
+        )
+    if state.get("matched_rule") == "INTERACTIVE":
+        return await command_service.run_interactive(command)
+    return await command_service.run(command)
+
+
+def _aggregate_cluster_results(
+    command: str,
+    results: Mapping[str, ExecutionResult | BaseException],
+) -> ExecutionResult:
+    exit_code = 0
+    duration = 0.0
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+    for host, outcome in results.items():
+        if isinstance(outcome, ExecutionResult):
+            duration = max(duration, outcome.duration)
+            stdout = outcome.stdout.rstrip()
+            stderr = outcome.stderr.rstrip()
+            stdout_lines.append(f"[{host}] exit_code={outcome.exit_code}")
+            if stdout:
+                stdout_lines.append(f"[{host}] stdout: {stdout}")
+            if stderr:
+                stderr_lines.append(f"[{host}] stderr: {stderr}")
+            if outcome.exit_code != 0:
+                exit_code = 1
+        else:
+            exit_code = 1
+            stderr_lines.append(f"[{host}] error: {outcome}")
+    return ExecutionResult(
+        command=command,
+        exit_code=exit_code,
+        stdout="\n".join(stdout_lines).strip(),
+        stderr="\n".join(stderr_lines).strip(),
+        duration=duration,
+    )
+
+
+def _select_host_names(user_text: str, cluster_service: ClusterService | None) -> tuple[str, ...]:
+    if cluster_service is None:
+        return ()
+    return tuple(host.name for host in cluster_service.select_hosts(user_text))

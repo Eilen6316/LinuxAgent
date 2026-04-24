@@ -59,6 +59,26 @@ class AuditLog:
             }
         )
 
+    async def record_execution(
+        self,
+        audit_id: str,
+        *,
+        command: str,
+        exit_code: int,
+        duration: float,
+        batch_hosts: tuple[str, ...] = (),
+    ) -> None:
+        self.append(
+            {
+                "event": "command_executed",
+                "audit_id": audit_id,
+                "command": command,
+                "exit_code": exit_code,
+                "duration_ms": int(duration * 1000),
+                "batch_hosts": list(batch_hosts),
+            }
+        )
+
     def append(self, record: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():

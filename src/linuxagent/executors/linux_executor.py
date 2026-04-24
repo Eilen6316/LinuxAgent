@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import shlex
+import sys
 import time
 from dataclasses import dataclass
 
@@ -126,6 +127,40 @@ class LinuxCommandExecutor(CommandExecutor):
             stdout=stdout_b.decode("utf-8", errors="replace"),
             stderr=stderr_b.decode("utf-8", errors="replace"),
             duration=duration,
+        )
+
+    async def execute_interactive(self, command: str) -> ExecutionResult:
+        """Run ``command`` with inherited stdio for TTY-bound programs."""
+        payload = self._prepare(command)
+        if not (sys.stdin.isatty() and sys.stdout.isatty()):
+            raise CommandBlockedError(
+                SafetyResult(
+                    level=SafetyLevel.BLOCK,
+                    reason="interactive execution requires a controlling TTY",
+                    matched_rule="INTERACTIVE_NON_TTY",
+                )
+            )
+
+        start = time.monotonic()
+        process = await asyncio.create_subprocess_exec(*payload.argv)
+        try:
+            await asyncio.wait_for(process.wait(), timeout=payload.timeout)
+        except TimeoutError as exc:
+            process.kill()
+            try:
+                await process.wait()
+            except Exception:  # noqa: BLE001 - best-effort cleanup after timeout
+                logger.debug("interactive wait cleanup failed for %s", payload.argv)
+            raise CommandTimeoutError(
+                f"command timed out after {payload.timeout}s: {command!r}"
+            ) from exc
+
+        return ExecutionResult(
+            command=command,
+            exit_code=process.returncode if process.returncode is not None else -1,
+            stdout="",
+            stderr="",
+            duration=time.monotonic() - start,
         )
 
     # -- Helpers ----------------------------------------------------------

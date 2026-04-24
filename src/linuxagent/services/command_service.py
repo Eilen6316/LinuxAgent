@@ -28,6 +28,9 @@ class CommandService:
     async def run(self, command: str) -> ExecutionResult:
         return await self._executor.execute(command)
 
+    async def run_interactive(self, command: str) -> ExecutionResult:
+        return await self._executor.execute_interactive(command)
+
     async def run_checked(
         self,
         command: str,

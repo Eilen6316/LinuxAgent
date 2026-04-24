@@ -6,6 +6,7 @@ Uses real ``/bin/*`` commands where possible — no subprocess mocking
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -112,6 +113,15 @@ async def test_execute_rejects_unparseable() -> None:
     ex = _make()
     with pytest.raises(CommandBlockedError):
         await ex.execute("echo 'unterminated")
+
+
+async def test_execute_interactive_requires_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    ex = _make()
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
+    with pytest.raises(CommandBlockedError) as info:
+        await ex.execute_interactive("/bin/echo hello")
+    assert info.value.safety.matched_rule == "INTERACTIVE_NON_TTY"
 
 
 # ---------------------------------------------------------------------------

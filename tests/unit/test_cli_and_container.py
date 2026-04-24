@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import runpy
 from pathlib import Path
@@ -11,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 import linuxagent.cli as cli
+import linuxagent.container as container_module
 from linuxagent.config.loader import ConfigError
 from linuxagent.config.models import AppConfig
 from linuxagent.container import Container
@@ -28,13 +30,6 @@ def test_main_without_command_prints_help(capsys: pytest.CaptureFixture[str]) ->
     captured = capsys.readouterr()
     assert code == 0
     assert "usage: linuxagent" in captured.out
-
-
-def test_chat_command_is_not_implemented(capsys: pytest.CaptureFixture[str]) -> None:
-    code = cli.main(["chat"])
-    captured = capsys.readouterr()
-    assert code == 2
-    assert "not yet implemented" in captured.err
 
 
 def test_check_command_success(
@@ -109,6 +104,97 @@ def test_container_returns_config_instance() -> None:
     cfg = AppConfig.model_validate({})
     container = Container(cfg)
     assert container.config is cfg
+
+
+def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_provider = SimpleNamespace(name="provider")
+    fake_graph = SimpleNamespace(name="graph")
+
+    class _FakeEmbeddings:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+    class _FakeSSHManager:
+        def __init__(self, config) -> None:
+            self.config = config
+
+    monkeypatch.setattr(container_module, "provider_factory", lambda config: fake_provider)
+    monkeypatch.setattr(container_module, "build_agent_graph", lambda deps: fake_graph)
+    monkeypatch.setattr(container_module, "OpenAIEmbeddings", _FakeEmbeddings)
+    monkeypatch.setattr(container_module, "SSHManager", _FakeSSHManager)
+
+    container = Container(AppConfig.model_validate({}))
+
+    assert container.provider() is fake_provider
+    assert container.provider() is fake_provider
+    assert container.graph() is fake_graph
+    assert container.graph() is fake_graph
+    assert container.system_tools()
+    assert container.intelligence_tools()
+    assert container.tools()
+    assert container.build_agent().graph is fake_graph
+
+
+def test_chat_command_runs_agent(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class _FakeAgent:
+        async def run(self, *, thread_id: str = "default") -> None:
+            assert thread_id == "cli"
+
+    class _FakeChatService:
+        def __init__(self) -> None:
+            self.loaded = False
+            self.saved = False
+
+        def load(self) -> None:
+            self.loaded = True
+
+        def save(self) -> None:
+            self.saved = True
+
+    class _FakeContainer:
+        def __init__(self, config: SimpleNamespace) -> None:
+            del config
+            self._chat = _FakeChatService()
+
+        def chat_service(self) -> _FakeChatService:
+            return self._chat
+
+        def build_agent(self) -> _FakeAgent:
+            return _FakeAgent()
+
+    cfg = SimpleNamespace(
+        api=SimpleNamespace(require_key=lambda: "key"),
+        logging=SimpleNamespace(level="INFO", format="console"),
+    )
+
+    monkeypatch.setattr(cli, "load_config", lambda cli_path=None: cfg)
+    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "Container", _FakeContainer)
+
+    def _run(coro):
+        return asyncio.new_event_loop().run_until_complete(coro)
+
+    monkeypatch.setattr(cli.asyncio, "run", _run)
+
+    code = cli.main(["chat"])
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.err == ""
+
+
+def test_chat_command_reports_config_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "load_config", lambda cli_path=None: (_ for _ in ()).throw(ConfigError("boom")))
+
+    code = cli.main(["chat"])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "error: boom" in captured.err
 
 
 def test_module_entrypoint_raises_system_exit_with_main_code(

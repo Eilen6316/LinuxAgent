@@ -22,6 +22,13 @@ def test_initial_state_seeds_human_message() -> None:
 def test_initial_state_respects_source() -> None:
     state = initial_state("hi", source=CommandSource.LLM)
     assert state["command_source"] is CommandSource.LLM
+    assert state["selected_hosts"] == ()
+
+
+def test_initial_state_includes_history() -> None:
+    history = [HumanMessage(content="previous")]
+    state = initial_state("current", history=history)
+    assert [message.content for message in state["messages"]] == ["previous", "current"]
 
 
 def test_add_messages_reducer_appends() -> None:

@@ -24,6 +24,7 @@ class AgentState(TypedDict, total=False):
     # Populated by parse_intent; consumed by safety_check + execute.
     pending_command: str | None
     command_source: CommandSource | None
+    selected_hosts: tuple[str, ...]
 
     # Populated by safety_check; consumed by HITL router + confirm_node.
     safety_level: SafetyLevel | None
@@ -44,12 +45,19 @@ class AgentState(TypedDict, total=False):
     attempts: int
 
 
-def initial_state(user_input: str, *, source: CommandSource = CommandSource.USER) -> AgentState:
+def initial_state(
+    user_input: str,
+    *,
+    source: CommandSource = CommandSource.USER,
+    history: list[BaseMessage] | None = None,
+) -> AgentState:
     """Convenience: seed an empty :class:`AgentState` for a single turn."""
+    prior_messages = [] if history is None else list(history)
     return AgentState(
-        messages=[HumanMessage(content=user_input)],
+        messages=[*prior_messages, HumanMessage(content=user_input)],
         pending_command=None,
         command_source=source,
+        selected_hosts=(),
         safety_level=None,
         matched_rule=None,
         safety_reason=None,

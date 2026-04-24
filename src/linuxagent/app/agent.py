@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
@@ -34,13 +35,18 @@ class LinuxAgent:
 
     async def run_turn(self, user_input: str, *, thread_id: str) -> dict[str, Any]:
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-        state: Any = initial_state(user_input, source=CommandSource.USER)
+        history = self.chat_service.snapshot()
+        history_size = len(history)
+        state: Any = initial_state(user_input, source=CommandSource.USER, history=history)
         while True:
             result = await self.graph.ainvoke(state, config=config)
             interrupts = await self._interrupts(result, config)
             if not interrupts:
                 if isinstance(result, dict) and result.get("messages"):
-                    self.chat_service.add(result["messages"])
+                    new_messages = list(result["messages"])[history_size:]
+                    if not new_messages:
+                        new_messages = [HumanMessage(content=user_input)]
+                    self.chat_service.add(new_messages)
                     await self.ui.print(str(result["messages"][-1].content))
                 return result if isinstance(result, dict) else {}
             payload = interrupts[0].value
