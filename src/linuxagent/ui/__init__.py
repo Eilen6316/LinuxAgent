@@ -1,1 +1,7 @@
-"""User interface — console implementation + interrupt-driven HITL prompts."""
+"""Terminal and future TUI front-ends."""
+
+from __future__ import annotations
+
+from .console import ConsoleUI
+
+__all__ = ["ConsoleUI"]
