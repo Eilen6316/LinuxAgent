@@ -16,8 +16,7 @@ if [[ -z "$WHEEL_PATH" || ! -f "$WHEEL_PATH" ]]; then
 fi
 
 TMP_VENV="$(mktemp -d)"
-python3 -m venv "$TMP_VENV"
+python3 -m venv --system-site-packages "$TMP_VENV"
 source "$TMP_VENV/bin/activate"
-python -m pip install --upgrade pip
-pip install "$WHEEL_PATH"
+pip install --no-deps "$WHEEL_PATH"
 linuxagent --help >/dev/null
