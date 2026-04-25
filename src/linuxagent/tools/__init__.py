@@ -10,6 +10,7 @@ from .intelligence_tools import (
     make_similar_commands_tool,
 )
 from .system_tools import (
+    LogFileAccessError,
     build_system_tools,
     make_execute_command_tool,
     make_get_system_info_tool,
@@ -17,6 +18,7 @@ from .system_tools import (
 )
 
 __all__ = [
+    "LogFileAccessError",
     "build_system_tools",
     "build_intelligence_tools",
     "make_command_recommendations_tool",

@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .security import redact_record
+
 
 @dataclass(frozen=True)
 class AuditLog:
@@ -92,6 +94,6 @@ class AuditLog:
                 fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 os.close(fd)
             os.chmod(self.path, 0o600)
-            payload = {"ts": datetime.now(tz=UTC).isoformat(), **record}
+            payload = redact_record({"ts": datetime.now(tz=UTC).isoformat(), **record})
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")

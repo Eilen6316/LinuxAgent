@@ -148,7 +148,15 @@ class Container:
         return self._cached("pattern_analyzer", PatternAnalyzer)
 
     def system_tools(self) -> list[BaseTool]:
-        return self._cached("system_tools", lambda: build_system_tools(self.executor()))
+        return self._cached(
+            "system_tools",
+            lambda: build_system_tools(
+                self.executor(),
+                allowed_log_roots=tuple(
+                    {path.parent for path in self._config.log_analysis.default_log_paths}
+                ),
+            ),
+        )
 
     def intelligence_tools(self) -> list[BaseTool]:
         def factory() -> list[BaseTool]:

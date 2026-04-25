@@ -17,6 +17,10 @@ import psutil
 from langchain_core.tools import BaseTool, tool
 
 from ..interfaces import CommandExecutor, CommandSource
+from ..security import redact_text
+
+DEFAULT_LOG_ROOTS: tuple[Path, ...] = (Path("/var/log"),)
+MAX_LOG_FILE_BYTES = 1_048_576
 
 
 def make_execute_command_tool(executor: CommandExecutor) -> BaseTool:
@@ -83,7 +87,15 @@ def make_get_system_info_tool() -> BaseTool:
     return get_system_info
 
 
-def make_search_logs_tool() -> BaseTool:
+class LogFileAccessError(ValueError):
+    """Raised when log search attempts to read outside configured roots."""
+
+
+def make_search_logs_tool(
+    allowed_roots: tuple[Path, ...] = DEFAULT_LOG_ROOTS,
+    *,
+    max_file_bytes: int = MAX_LOG_FILE_BYTES,
+) -> BaseTool:
     """Expose bounded regex search over a local text log file."""
 
     @tool
@@ -102,13 +114,16 @@ def make_search_logs_tool() -> BaseTool:
             raise ValueError("max_matches must be >= 1")
 
         compiled = re.compile(pattern)
-        path = Path(log_file).expanduser()
+        path = _resolve_allowed_log_file(Path(log_file).expanduser(), allowed_roots)
+        if path.stat().st_size > max_file_bytes:
+            raise LogFileAccessError(f"log file exceeds max size ({max_file_bytes} bytes): {path}")
         matches: list[str] = []
         with path.open("r", encoding="utf-8", errors="replace") as handle:
             for line_number, line in enumerate(handle, start=1):
                 text = line.rstrip("\n")
                 if compiled.search(text):
-                    matches.append(f"{line_number}:{text}")
+                    redacted = redact_text(text)
+                    matches.append(f"{line_number}:{redacted.text}")
                     if len(matches) >= max_matches:
                         break
         return matches
@@ -116,10 +131,30 @@ def make_search_logs_tool() -> BaseTool:
     return search_logs
 
 
-def build_system_tools(executor: CommandExecutor) -> list[BaseTool]:
+def build_system_tools(
+    executor: CommandExecutor,
+    *,
+    allowed_log_roots: tuple[Path, ...] = DEFAULT_LOG_ROOTS,
+) -> list[BaseTool]:
     """Assemble the default tool set the agent is granted."""
     return [
         make_execute_command_tool(executor),
         make_get_system_info_tool(),
-        make_search_logs_tool(),
+        make_search_logs_tool(allowed_log_roots),
     ]
+
+
+def _resolve_allowed_log_file(path: Path, allowed_roots: tuple[Path, ...]) -> Path:
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise LogFileAccessError(f"log file is not readable: {path}") from exc
+    roots = tuple(root.expanduser().resolve(strict=False) for root in allowed_roots)
+    if not roots:
+        raise LogFileAccessError("no log roots are configured")
+    if not any(resolved == root or root in resolved.parents for root in roots):
+        allowed = ", ".join(str(root) for root in roots)
+        raise LogFileAccessError(f"log file is outside allowed roots ({allowed}): {resolved}")
+    if not resolved.is_file():
+        raise LogFileAccessError(f"log path is not a file: {resolved}")
+    return resolved

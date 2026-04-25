@@ -37,3 +37,21 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
     assert lines[1]["decision"] == "yes"
     assert lines[2]["exit_code"] == 0
     assert lines[2]["duration_ms"] == 250
+
+
+async def test_audit_log_redacts_sensitive_fields_but_keeps_command_raw(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+    audit.append(
+        {
+            "event": "manual",
+            "command": "curl -H 'Authorization: Bearer raw-command-token' https://example.invalid",
+            "api_key": "sk-prodsecret1234567890",
+            "stderr": "password=hunter2",
+        }
+    )
+
+    line = json.loads(path.read_text(encoding="utf-8"))
+    assert line["command"] == "curl -H 'Authorization: Bearer raw-command-token' https://example.invalid"
+    assert line["api_key"] == "***redacted***"
+    assert "hunter2" not in line["stderr"]

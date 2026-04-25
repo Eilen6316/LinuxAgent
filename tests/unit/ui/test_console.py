@@ -42,3 +42,12 @@ async def test_console_ui_input_stream_uses_prompt_session(monkeypatch, tmp_path
 
     assert items == ["status"]
     assert "linuxagent" in str(session.prompts[0])
+
+
+def test_console_ui_default_history_file_is_0600(tmp_path: Path) -> None:
+    history_path = tmp_path / "prompt_history"
+    ui = ConsoleUI(history_path=history_path)
+
+    ui._default_session_factory()
+
+    assert history_path.stat().st_mode & 0o777 == 0o600

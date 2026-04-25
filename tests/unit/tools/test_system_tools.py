@@ -7,6 +7,7 @@ import pytest
 from linuxagent.config.models import SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.tools import (
+    LogFileAccessError,
     build_system_tools,
     make_execute_command_tool,
     make_get_system_info_tool,
@@ -71,7 +72,7 @@ def test_build_system_tools_returns_both() -> None:
 def test_search_logs_returns_numbered_matches(tmp_path) -> None:
     log_file = tmp_path / "app.log"
     log_file.write_text("ok\nERROR failed\nwarning\nERROR again\n", encoding="utf-8")
-    tool = make_search_logs_tool()
+    tool = make_search_logs_tool((tmp_path,))
     out = tool.invoke(
         {
             "pattern": "ERROR",
@@ -85,6 +86,29 @@ def test_search_logs_returns_numbered_matches(tmp_path) -> None:
 def test_search_logs_rejects_invalid_limit(tmp_path) -> None:
     log_file = tmp_path / "app.log"
     log_file.write_text("ERROR\n", encoding="utf-8")
-    tool = make_search_logs_tool()
+    tool = make_search_logs_tool((tmp_path,))
     with pytest.raises(ValueError, match="max_matches"):
         tool.invoke({"pattern": "ERROR", "log_file": str(log_file), "max_matches": 0})
+
+
+def test_search_logs_rejects_file_outside_allowed_roots(tmp_path) -> None:
+    allowed = tmp_path / "logs"
+    denied = tmp_path / "secrets"
+    allowed.mkdir()
+    denied.mkdir()
+    secret_file = denied / "config.yaml"
+    secret_file.write_text("api_key=sk-prodsecret1234567890\n", encoding="utf-8")
+    tool = make_search_logs_tool((allowed,))
+
+    with pytest.raises(LogFileAccessError, match="outside allowed roots"):
+        tool.invoke({"pattern": "api_key", "log_file": str(secret_file)})
+
+
+def test_search_logs_redacts_matching_lines(tmp_path) -> None:
+    log_file = tmp_path / "app.log"
+    log_file.write_text("ERROR password=hunter2\n", encoding="utf-8")
+    tool = make_search_logs_tool((tmp_path,))
+
+    out = tool.invoke({"pattern": "ERROR", "log_file": str(log_file)})
+
+    assert out == ["1:ERROR password=***redacted***"]

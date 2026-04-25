@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from collections.abc import AsyncGenerator
@@ -101,6 +102,10 @@ class ConsoleUI(UserInterface):
 
     def _default_session_factory(self) -> PromptSession[str]:
         self._history_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self._history_path.exists():
+            fd = os.open(self._history_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.close(fd)
+        os.chmod(self._history_path, 0o600)
         return PromptSession(history=FileHistory(str(self._history_path)))
 
     def _accent_style(self) -> str:

@@ -14,6 +14,7 @@ from ..audit import AuditLog
 from ..executors import is_destructive
 from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLevel
 from ..prompts_loader import build_chat_prompt
+from ..security import guard_execution_result
 from ..services import ClusterService, CommandService
 from .state import AgentState
 
@@ -169,13 +170,13 @@ def make_analyze_result_node(provider: LLMProvider) -> Node:
             chat_history=[],
             user_input=(
                 "Summarize this command result for the operator in concise Chinese.\n\n"
-                f"{_result_text(result)}"
+                f"{guard_execution_result(result).text}"
             ),
         )
         try:
             analysis = await provider.complete(prompt_messages)
         except Exception:  # noqa: BLE001 - keep graph resilient when provider analysis fails
-            analysis = _result_text(result)
+            analysis = guard_execution_result(result).text
         return {"messages": [AIMessage(content=analysis)]}
 
     return analyze_result_node
@@ -261,15 +262,6 @@ def _may_whitelist(state: AgentState, payload: dict[str, Any]) -> bool:
 
 def _synthetic_result(command: str, exit_code: int, stdout: str, stderr: str) -> ExecutionResult:
     return ExecutionResult(command=command, exit_code=exit_code, stdout=stdout, stderr=stderr, duration=0)
-
-
-def _result_text(result: ExecutionResult) -> str:
-    return (
-        f"command={result.command!r}\n"
-        f"exit_code={result.exit_code}\n"
-        f"stdout={result.stdout.rstrip()}\n"
-        f"stderr={result.stderr.rstrip()}"
-    )
 
 
 def _intent_prompt(user_text: str) -> str:

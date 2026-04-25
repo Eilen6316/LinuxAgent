@@ -21,9 +21,11 @@ class _FakeProvider:
     def __init__(self, responses: list[str]) -> None:
         self._responses = responses
         self.tool_calls = 0
+        self.complete_messages: list[list[BaseMessage]] = []
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
-        del messages, kwargs
+        del kwargs
+        self.complete_messages.append(messages)
         if self._responses:
             return self._responses.pop(0)
         return "analysis ok"
@@ -173,3 +175,17 @@ async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> N
     config = {"configurable": {"thread_id": "tool-call"}}
     await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
     assert provider.tool_calls == 1
+
+
+async def test_graph_redacts_execution_output_before_analysis(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        ["/bin/echo password=hunter2", "analysis ok"],
+    )
+    config = {"configurable": {"thread_id": "redacted-output"}}
+    await graph.ainvoke(initial_state("say secret", source=CommandSource.USER), config=config)
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+
+    analysis_prompt = str(provider.complete_messages[-1][-1].content)
+    assert "hunter2" not in analysis_prompt
+    assert "***redacted***" in analysis_prompt
