@@ -1,0 +1,78 @@
+version: 1
+rules:
+  - id: filesystem.delete
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 85
+    capabilities: [filesystem.delete]
+    reason: destructive filesystem command
+    match:
+      command: [rm, rmdir, shred, wipefs]
+
+  - id: filesystem.find_delete
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 85
+    capabilities: [filesystem.delete]
+    reason: find delete mutates filesystem
+    match:
+      command: [find]
+      args_any: [-delete]
+
+  - id: service.mutate
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 70
+    capabilities: [service.mutate]
+    reason: service state mutation
+    match:
+      command: [systemctl, service]
+      subcommand_any: [stop, disable, mask, kill, poweroff, reboot, halt, restart, reload, enable]
+
+  - id: package.remove
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 75
+    capabilities: [package.remove]
+    reason: package removal
+    match:
+      command: [apt, apt-get, yum, dnf, pacman]
+      subcommand_any: [remove, purge, autoremove, erase, -R, -Rs, -Rns]
+
+  - id: container.mutate
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 75
+    capabilities: [container.mutate]
+    reason: container mutation
+    match:
+      command: [docker]
+      subcommand_any: [rm, rmi, kill, prune, system, stop, restart]
+
+  - id: kubernetes.mutate
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 80
+    capabilities: [kubernetes.mutate]
+    reason: kubernetes mutation
+    match:
+      command: [kubectl]
+      subcommand_any: [delete, drain, cordon, replace, apply, patch, scale]
+
+  - id: privilege.sudo
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 60
+    capabilities: [privilege.sudo]
+    reason: privileged command
+    match:
+      command: [sudo]
+
+  - id: network.firewall
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 80
+    capabilities: [network.firewall]
+    reason: firewall mutation
+    match:
+      command: [iptables, nft, ufw, firewall-cmd]

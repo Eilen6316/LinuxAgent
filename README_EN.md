@@ -48,13 +48,13 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Capability | Notes |
 |---|---|
 | Natural language → command | Prompt + tool calling over OpenAI / DeepSeek / Anthropic Claude |
-| Three-tier safety classification | `SAFE` / `CONFIRM` / `BLOCK`, each with its own `matched_rule` for audit |
+| Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
 | Human-in-the-Loop | LangGraph `interrupt()` + `MemorySaver` for interrupt / persist / resume |
 | Session whitelist | Approved SAFE commands skip confirmation within the same process; destructive commands never enter |
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 179 unit tests + 10 HITL YAML scenarios + integration scaffolding, 85%+ coverage |
+| Testability | 200 unit tests + 10 HITL YAML scenarios + integration scaffolding, 86%+ coverage |
 
 ---
 
@@ -223,8 +223,8 @@ A CI red-line check `! grep -rn "AutoAddPolicy" src/linuxagent/` prevents accide
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **179 passing** |
-| Coverage | 0 | **85.65%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **200 passing** |
+| Coverage | 0 | **86.73%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
 | End-to-end scenarios | none | 10 YAML scenarios covering basic / dangerous / HITL / batch cluster |
@@ -521,7 +521,7 @@ A: Yes. Set `api.base_url` to the gateway URL and `api.model` to a model it supp
 
 ```bash
 make install   # pip install -e ".[dev]"
-make test      # pytest + 85% coverage gate
+make test      # pytest + 80% fail-under, currently 86%+
 make lint      # ruff check
 make type      # mypy --strict
 make security  # red-line grep + bandit
