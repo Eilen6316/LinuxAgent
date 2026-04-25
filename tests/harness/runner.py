@@ -52,7 +52,8 @@ class _FakeProvider:
 
 
 class _FakeSSH:
-    async def execute_many(self, hosts, command):
+    async def execute_many(self, hosts, command, **kwargs):
+        del kwargs
         return {
             host.name: ExecutionResult(command, 0, f"{host.name}:{command}", "", 0.01)
             for host in hosts

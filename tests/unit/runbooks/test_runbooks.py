@@ -9,6 +9,7 @@ import pytest
 from linuxagent.interfaces import SafetyLevel
 from linuxagent.runbooks import RunbookEngine, RunbookPolicyError, load_runbooks
 from linuxagent.runbooks.models import Runbook, RunbookStep
+from linuxagent.telemetry import TelemetryRecorder
 
 
 def test_loads_eight_builtin_runbooks_with_three_scenarios() -> None:
@@ -50,3 +51,14 @@ def test_runbook_read_only_mismatch_fails_policy_validation() -> None:
 
     with pytest.raises(RunbookPolicyError, match="read-only"):
         engine.evaluate_steps(runbook)
+
+
+def test_runbook_step_telemetry_span(tmp_path) -> None:
+    runbooks = load_runbooks(Path(__file__).resolve().parents[3] / "runbooks")
+    engine = RunbookEngine(runbooks, telemetry=TelemetryRecorder(tmp_path / "telemetry.jsonl"))
+
+    engine.evaluate_steps(runbooks[0], trace_id="trace-1")
+
+    content = (tmp_path / "telemetry.jsonl").read_text(encoding="utf-8")
+    assert "runbook.step" in content
+    assert "trace-1" in content

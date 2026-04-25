@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .audit import verify_audit_log
 from .config.loader import ConfigError, load_config
 from .container import Container
 from .logger import configure_logging
@@ -54,6 +55,21 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "chat",
         help="Start an interactive chat session.",
+    )
+    audit_parser = subparsers.add_parser(
+        "audit",
+        help="Audit log utilities.",
+    )
+    audit_subparsers = audit_parser.add_subparsers(dest="audit_command", metavar="AUDIT_COMMAND")
+    verify_parser = audit_subparsers.add_parser(
+        "verify",
+        help="Verify the audit hash chain.",
+    )
+    verify_parser.add_argument(
+        "--path",
+        type=Path,
+        metavar="PATH",
+        help="Audit log path. Defaults to audit.path from config.",
     )
     return parser
 
@@ -106,7 +122,28 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_audit(args: argparse.Namespace) -> int:
+    if args.audit_command != "verify":
+        print("error: missing audit subcommand", file=sys.stderr)
+        return 2
+    try:
+        path = args.path if args.path is not None else load_config(cli_path=args.config).audit.path
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    result = verify_audit_log(path)
+    if result.valid:
+        print(f"OK: audit log verified ({result.checked_records} records)")
+        return 0
+    print(
+        f"error: audit log tamper detected at line {result.tampered_line}: {result.reason}",
+        file=sys.stderr,
+    )
+    return 1
+
+
 _COMMANDS = {
+    "audit": _cmd_audit,
     "check": _cmd_check,
     "chat": _cmd_chat,
 }

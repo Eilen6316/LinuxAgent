@@ -15,6 +15,7 @@ Core layers:
 - `cluster/`: SSH execution and host policy
 - `graph/`: LangGraph orchestration
 - `services/`: application services
+- `telemetry.py`: local JSONL spans and trace correlation
 - `intelligence/`: learner, semantic helpers, recommendations
 - `ui/`: terminal UI
 
@@ -80,6 +81,16 @@ as `BLOCK` and no command is executed.
 Built-in runbooks live under `runbooks/`. Each runbook is YAML, has at least
 three scenario phrases, and every step is policy-evaluated by
 `RunbookEngine.evaluate_steps()` before it is considered usable.
+
+## Observability And Audit
+
+Every graph run receives a `trace_id` that is attached to HITL audit records
+and local telemetry spans. The default telemetry backend writes JSONL to
+`~/.linuxagent/telemetry.jsonl`; it does not require an external OTel service.
+
+Audit records are hash-chained with `prev_hash` and `hash`. Use
+`linuxagent audit verify` to validate the current audit log and locate the
+first tampered line.
 
 ## Repository Note
 

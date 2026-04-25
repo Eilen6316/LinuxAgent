@@ -23,6 +23,7 @@ class AgentState(TypedDict, total=False):
     messages: Annotated[list[BaseMessage], add_messages]
 
     # Populated by parse_intent; consumed by safety_check + execute.
+    trace_id: str | None
     pending_command: str | None
     command_plan: CommandPlan | None
     plan_error: str | None
@@ -55,6 +56,7 @@ def initial_state(
     prior_messages = [] if history is None else list(history)
     return AgentState(
         messages=[*prior_messages, HumanMessage(content=user_input)],
+        trace_id=None,
         pending_command=None,
         command_plan=None,
         plan_error=None,

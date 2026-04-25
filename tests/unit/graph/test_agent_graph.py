@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -45,7 +46,8 @@ class _FakeProvider:
 
 
 class _FakeSSH:
-    async def execute_many(self, hosts, command):
+    async def execute_many(self, hosts, command, **kwargs):
+        del kwargs
         return {
             host.name: ExecutionResult(
                 command=command,
@@ -84,6 +86,12 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     assert interrupts[0].value["type"] == "confirm_command"
     resumed = await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
     assert "analysis ok" in str(resumed["messages"][-1].content)
+    audit_records = [
+        json.loads(line) for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    trace_ids = {record["trace_id"] for record in audit_records}
+    assert len(trace_ids) == 1
+    assert None not in trace_ids
 
 
 async def test_graph_non_tty_deny_goes_to_refused(tmp_path) -> None:

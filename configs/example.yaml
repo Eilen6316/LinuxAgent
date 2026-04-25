@@ -50,8 +50,16 @@ cluster:
 
 audit:
   # Audit log cannot be disabled (R-HITL-06). Path can change, presence cannot.
-  # File is created 0o600 on first write.
+  # File is hash-chained and created 0o600 on first write.
   path: ~/.linuxagent/audit.log
+
+telemetry:
+  # Default is local JSONL spans. No external collector is required.
+  # Set exporter: none to disable telemetry writes.
+  enabled: true
+  exporter: local              # local | none | otlp
+  path: ~/.linuxagent/telemetry.jsonl
+  otlp_endpoint:
 
 ui:
   theme: auto                  # auto | light | dark

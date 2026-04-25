@@ -13,6 +13,7 @@ import pytest
 
 import linuxagent.cli as cli
 import linuxagent.container as container_module
+from linuxagent.audit import AuditLog
 from linuxagent.config.loader import ConfigError
 from linuxagent.config.models import AppConfig
 from linuxagent.container import Container
@@ -84,6 +85,37 @@ def test_check_command_failure(
     assert "error: boom" in captured.err
 
 
+def test_audit_verify_command_success(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+    audit.append({"event": "manual", "trace_id": "trace-1"})
+
+    code = cli.main(["audit", "verify", "--path", str(path)])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "OK: audit log verified (1 records)" in captured.out
+
+
+def test_audit_verify_command_reports_tamper(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+    audit.append({"event": "manual"})
+    path.write_text(path.read_text(encoding="utf-8").replace("manual", "changed"), encoding="utf-8")
+
+    code = cli.main(["audit", "verify", "--path", str(path)])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert "tamper detected at line 1" in captured.err
+
+
 def test_main_unknown_command_routes_to_parser_error(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeParser:
         def parse_args(self, _argv: list[str] | None = None) -> argparse.Namespace:
@@ -115,7 +147,8 @@ def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> Non
             self.kwargs = kwargs
 
     class _FakeSSHManager:
-        def __init__(self, config) -> None:
+        def __init__(self, config, **kwargs) -> None:
+            del kwargs
             self.config = config
 
     monkeypatch.setattr(container_module, "provider_factory", lambda config: fake_provider)

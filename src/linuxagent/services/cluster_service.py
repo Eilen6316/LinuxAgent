@@ -30,8 +30,10 @@ class ClusterService:
         self,
         command: str,
         hosts: tuple[ClusterHost, ...],
+        *,
+        trace_id: str | None = None,
     ) -> dict[str, ExecutionResult | SSHError]:
-        return await self.ssh.execute_many(hosts, command)
+        return await self.ssh.execute_many(hosts, command, trace_id=trace_id)
 
     def select_hosts(self, user_text: str) -> tuple[ClusterHost, ...]:
         if not self.hosts:

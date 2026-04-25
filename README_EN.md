@@ -56,7 +56,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 209 unit tests + 10 HITL YAML scenarios + integration scaffolding, 87%+ coverage |
+| Testability | 217 unit tests + 10 HITL YAML scenarios + integration scaffolding, 87%+ coverage |
 
 ---
 
@@ -219,14 +219,14 @@ A CI red-line check `! grep -rn "AutoAddPolicy" src/linuxagent/` prevents accide
 | Destructive commands | string blacklist | token match + raw scan + subcommand regex, **never** whitelisted |
 | Batch cluster operations | silent spread | hosts ≥ `cluster.batch_confirm_threshold` (default 2) forces CONFIRM |
 | Non-interactive environment | can be bypassed | no-TTY confirm auto-returns `non_tty_auto_deny` |
-| Audit trail | optional | every HITL event appended to `~/.linuxagent/audit.log` at `0o600`, not rotated |
+| Audit trail | optional | hash-chained HITL events appended to `~/.linuxagent/audit.log` at `0o600`, verifiable with `linuxagent audit verify` |
 
 ### Testing and engineering
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **209 passing** |
-| Coverage | 0 | **87.12%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **217 passing** |
+| Coverage | 0 | **87.13%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
 | End-to-end scenarios | none | 10 YAML scenarios covering basic / dangerous / HITL / batch cluster |
@@ -308,6 +308,8 @@ linuxagent check
 | `cluster` | `batch_confirm_threshold` | `2` | Host count that triggers batch confirm |
 | `cluster` | `hosts` | `[]` | Cluster host list |
 | `audit` | `path` | `~/.linuxagent/audit.log` | Audit log location; **audit cannot be disabled** |
+| `telemetry` | `exporter` | `local` | Local JSONL spans by default; `none` disables writes |
+| `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | Local telemetry path |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
 | `ui` | `max_chat_history` | `20` | Max context messages |
 | `logging` | `level` | `INFO` | `DEBUG` / `INFO` / `WARNING` / ... |
@@ -459,18 +461,27 @@ Pressing `Ctrl-C` at a `confirm` node leaves the current state in `MemorySaver`.
 
 ## Audit log
 
-Each HITL event is appended as one JSON line to `~/.linuxagent/audit.log`:
+Each HITL event is appended as one hash-chained JSON line to `~/.linuxagent/audit.log`:
 
 ```json
 {"ts": "2026-04-24T10:23:10.123+08:00", "event": "confirm_begin",
  "audit_id": "a1b2c3", "command": "uptime", "safety_level": "CONFIRM",
  "matched_rule": "BATCH_CONFIRM", "command_source": "llm",
- "batch_hosts": ["web-1", "web-2"]}
+ "trace_id": "t1", "batch_hosts": ["web-1", "web-2"],
+ "prev_hash": "0000...", "hash": "9f86..."}
 {"ts": "2026-04-24T10:23:14.456+08:00", "event": "confirm_decision",
- "audit_id": "a1b2c3", "decision": "yes", "latency_ms": 4333}
+ "audit_id": "a1b2c3", "decision": "yes", "latency_ms": 4333,
+ "trace_id": "t1", "prev_hash": "9f86...", "hash": "3a6e..."}
 {"ts": "2026-04-24T10:23:15.890+08:00", "event": "command_executed",
  "audit_id": "a1b2c3", "command": "uptime", "exit_code": 0,
- "duration_ms": 187, "batch_hosts": ["web-1", "web-2"]}
+ "duration_ms": 187, "trace_id": "t1", "batch_hosts": ["web-1", "web-2"],
+ "prev_hash": "3a6e...", "hash": "b4c1..."}
+```
+
+Verify integrity:
+
+```bash
+linuxagent audit verify
 ```
 
 Handy post-incident queries:
@@ -481,6 +492,9 @@ jq 'select(.event=="confirm_decision" and .decision=="yes")' ~/.linuxagent/audit
 
 # Full trace for one HITL round
 jq 'select(.audit_id=="a1b2c3")' ~/.linuxagent/audit.log
+
+# Full trace across audit records
+jq 'select(.trace_id=="t1")' ~/.linuxagent/audit.log
 
 # Refused decisions
 jq 'select(.event=="confirm_decision" and .decision!="yes")' ~/.linuxagent/audit.log
@@ -529,6 +543,7 @@ make type      # mypy --strict
 make security  # red-line grep + bandit
 make harness   # YAML scenario harness
 make build     # wheel + sdist
+linuxagent audit verify
 ```
 
 Details in [docs/development.md](docs/development.md).

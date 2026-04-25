@@ -41,6 +41,12 @@ monitoring:
   memory_threshold: 90.0
   disk_threshold: 90.0
 
+telemetry:
+  enabled: true
+  exporter: local
+  path: ~/.linuxagent/telemetry.jsonl
+  otlp_endpoint:
+
 analytics:
   enabled: false
 

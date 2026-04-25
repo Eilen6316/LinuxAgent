@@ -45,7 +45,8 @@ def test_chat_service_saves_history_with_0600(tmp_path) -> None:
 
 
 class _FakeSSH:
-    async def execute_many(self, hosts, command):
+    async def execute_many(self, hosts, command, **kwargs):
+        del kwargs
         return {host.name: ExecutionResult(command, 0, host.name, "", 0.0) for host in hosts}
 
     async def close(self) -> None:

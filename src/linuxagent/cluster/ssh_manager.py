@@ -27,6 +27,7 @@ import paramiko
 
 from ..config.models import ClusterConfig, ClusterHost
 from ..interfaces import ExecutionResult
+from ..telemetry import TelemetryRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +61,11 @@ class SSHManager:
         config: ClusterConfig,
         *,
         allow_unknown_hosts: bool = False,
+        telemetry: TelemetryRecorder | None = None,
     ) -> None:
         self._config = config
         self._allow_unknown_hosts = allow_unknown_hosts
+        self._telemetry = telemetry
         self._pool: dict[tuple[str, int, str], paramiko.SSHClient] = {}
         self._lock = threading.Lock()
 
@@ -83,18 +86,33 @@ class SSHManager:
 
     # -- Public API -------------------------------------------------------
 
-    async def execute(self, host: ClusterHost, command: str) -> ExecutionResult:
+    async def execute(
+        self,
+        host: ClusterHost,
+        command: str,
+        *,
+        trace_id: str | None = None,
+    ) -> ExecutionResult:
         """Run ``command`` on ``host`` and return its result."""
+        if self._telemetry is not None and trace_id is not None:
+            with self._telemetry.span(
+                "ssh.execute",
+                trace_id=trace_id,
+                attributes={"host": host.name},
+            ):
+                return await asyncio.to_thread(self._execute_sync, host, command)
         return await asyncio.to_thread(self._execute_sync, host, command)
 
     async def execute_many(
         self,
         hosts: Iterable[ClusterHost],
         command: str,
+        *,
+        trace_id: str | None = None,
     ) -> dict[str, ExecutionResult | SSHError]:
         """Fan out ``command`` across ``hosts`` concurrently, isolating failures."""
         host_list = list(hosts)
-        tasks = [self.execute(host, command) for host in host_list]
+        tasks = [self.execute(host, command, trace_id=trace_id) for host in host_list]
         gathered = await asyncio.gather(*tasks, return_exceptions=True)
         results: dict[str, ExecutionResult | SSHError] = {}
         for host, outcome in zip(host_list, gathered, strict=True):

@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from ..interfaces import SafetyLevel
 from ..policy import DEFAULT_POLICY_ENGINE, PolicyDecision, PolicyEngine
+from ..telemetry import TelemetryRecorder, new_trace_id
 from .models import Runbook
 
 
@@ -36,9 +37,11 @@ class RunbookEngine:
         runbooks: tuple[Runbook, ...],
         *,
         policy_engine: PolicyEngine = DEFAULT_POLICY_ENGINE,
+        telemetry: TelemetryRecorder | None = None,
     ) -> None:
         self._runbooks = runbooks
         self._policy_engine = policy_engine
+        self._telemetry = telemetry
 
     @property
     def runbooks(self) -> tuple[Runbook, ...]:
@@ -58,18 +61,31 @@ class RunbookEngine:
                 best = (score, runbook)
         return None if best is None else best[1]
 
-    def evaluate_steps(self, runbook: Runbook) -> tuple[PolicyDecision, ...]:
-        decisions = tuple(
-            self._policy_engine.evaluate(step.command)
-            for step in runbook.steps
-        )
+    def evaluate_steps(
+        self,
+        runbook: Runbook,
+        *,
+        trace_id: str | None = None,
+    ) -> tuple[PolicyDecision, ...]:
+        trace = trace_id or new_trace_id()
+        decisions: list[PolicyDecision] = []
+        for step in runbook.steps:
+            if self._telemetry is None:
+                decisions.append(self._policy_engine.evaluate(step.command))
+            else:
+                with self._telemetry.span(
+                    "runbook.step",
+                    trace_id=trace,
+                    attributes={"runbook": runbook.id, "purpose": step.purpose},
+                ):
+                    decisions.append(self._policy_engine.evaluate(step.command))
         for step, decision in zip(runbook.steps, decisions, strict=True):
             if step.read_only and decision.level is not SafetyLevel.SAFE:
                 raise RunbookPolicyError(
                     f"runbook {runbook.id} declares read-only step but policy returned "
                     f"{decision.level.value}: {step.command}"
                 )
-        return decisions
+        return tuple(decisions)
 
 
 def _normalized_tokens(text: str) -> frozenset[str]:

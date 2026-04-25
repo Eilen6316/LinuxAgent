@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,6 +18,7 @@ from ..plans import CommandPlan, CommandPlanParseError, parse_command_plan
 from ..prompts_loader import build_chat_prompt
 from ..security import guard_execution_result
 from ..services import ClusterService, CommandService
+from ..telemetry import TelemetryRecorder, new_trace_id
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -29,6 +31,7 @@ class GraphDependencies:
     audit: AuditLog
     cluster_service: ClusterService | None = None
     tools: tuple[BaseTool, ...] = ()
+    telemetry: TelemetryRecorder | None = None
 
 
 def make_parse_intent_node(
@@ -36,24 +39,28 @@ def make_parse_intent_node(
     *,
     cluster_service: ClusterService | None = None,
     tools: tuple[BaseTool, ...] = (),
+    telemetry: TelemetryRecorder | None = None,
 ) -> Node:
     prompt = build_chat_prompt()
 
     async def parse_intent_node(state: AgentState) -> AgentState:
+        trace_id = _trace_id(state)
         messages = list(state.get("messages", []))
         user_text = _last_message_text(messages)
         prompt_messages = prompt.format_messages(
             chat_history=messages[:-1],
             user_input=_intent_prompt(user_text),
         )
-        if tools:
-            proposed = (await provider.complete_with_tools(prompt_messages, list(tools))).strip()
-        else:
-            proposed = (await provider.complete(prompt_messages)).strip()
+        with _span(telemetry, "llm.complete", trace_id, {"node": "parse_intent"}):
+            if tools:
+                proposed = (await provider.complete_with_tools(prompt_messages, list(tools))).strip()
+            else:
+                proposed = (await provider.complete(prompt_messages)).strip()
         try:
             plan = parse_command_plan(proposed)
         except CommandPlanParseError as exc:
             return {
+                "trace_id": trace_id,
                 "pending_command": None,
                 "command_plan": None,
                 "plan_error": str(exc),
@@ -63,6 +70,7 @@ def make_parse_intent_node(
         command = plan.primary.command
         selected_hosts = plan.primary.target_hosts or _select_host_names(user_text, cluster_service)
         return {
+            "trace_id": trace_id,
             "pending_command": command,
             "command_plan": plan,
             "plan_error": None,
@@ -76,22 +84,27 @@ def make_parse_intent_node(
 def make_safety_check_node(
     command_service: CommandService,
     cluster_service: ClusterService | None = None,
+    telemetry: TelemetryRecorder | None = None,
 ) -> Node:
     async def safety_check_node(state: AgentState) -> AgentState:
+        trace_id = _trace_id(state)
         command = state.get("pending_command")
         if not command:
             return {
+                "trace_id": trace_id,
                 "safety_level": SafetyLevel.BLOCK,
                 "matched_rule": "EMPTY",
                 "safety_reason": state.get("plan_error") or "no command proposed",
             }
         source = state.get("command_source") or CommandSource.USER
-        verdict = command_service.classify(command, source=source)
+        with _span(telemetry, "policy.evaluate", trace_id, {"command_source": source.value}):
+            verdict = command_service.classify(command, source=source)
         batch_hosts = _batch_hosts(state, cluster_service)
         level = verdict.level
         if batch_hosts and level is SafetyLevel.SAFE:
             level = SafetyLevel.CONFIRM
         return {
+            "trace_id": trace_id,
             "safety_level": level,
             "matched_rule": (
                 "BATCH_CONFIRM" if batch_hosts and level is SafetyLevel.CONFIRM else verdict.matched_rule
@@ -104,8 +117,13 @@ def make_safety_check_node(
     return safety_check_node
 
 
-def make_confirm_node(audit: AuditLog, command_service: CommandService) -> Node:
+def make_confirm_node(
+    audit: AuditLog,
+    command_service: CommandService,
+    telemetry: TelemetryRecorder | None = None,
+) -> Node:
     async def confirm_node(state: AgentState) -> Command[Any]:
+        trace_id = _trace_id(state)
         command = state.get("pending_command")
         safety_level = state.get("safety_level")
         audit_id = await audit.begin(
@@ -113,6 +131,7 @@ def make_confirm_node(audit: AuditLog, command_service: CommandService) -> Node:
             safety_level=safety_level.value if safety_level else None,
             matched_rule=state.get("matched_rule"),
             command_source=(state.get("command_source") or CommandSource.USER).value,
+            trace_id=trace_id,
             batch_hosts=state.get("batch_hosts", ()),
         )
         payload = {
@@ -127,22 +146,27 @@ def make_confirm_node(audit: AuditLog, command_service: CommandService) -> Node:
             **_plan_payload(state.get("command_plan")),
         }
         response = interrupt(payload)
-        decision = _decision(response)
-        await audit.record_decision(
-            audit_id,
-            decision=decision,
-            latency_ms=_latency_ms(response),
-        )
+        with _span(telemetry, "hitl.confirm", trace_id, {"matched_rule": state.get("matched_rule")}):
+            decision = _decision(response)
+            await audit.record_decision(
+                audit_id,
+                decision=decision,
+                latency_ms=_latency_ms(response),
+                trace_id=trace_id,
+            )
         if decision != "yes":
             return Command(
                 goto="respond_refused",
-                update={"user_confirmed": False, "audit_id": audit_id},
+                update={"trace_id": trace_id, "user_confirmed": False, "audit_id": audit_id},
             )
         if _may_whitelist(state, payload):
             whitelist = getattr(command_service.executor, "whitelist", None)
             if whitelist is not None and command is not None:
                 whitelist.add(command)
-        return Command(goto="execute", update={"user_confirmed": True, "audit_id": audit_id})
+        return Command(
+            goto="execute",
+            update={"trace_id": trace_id, "user_confirmed": True, "audit_id": audit_id},
+        )
 
     return confirm_node
 
@@ -151,13 +175,19 @@ def make_execute_node(
     command_service: CommandService,
     audit: AuditLog,
     cluster_service: ClusterService | None = None,
+    telemetry: TelemetryRecorder | None = None,
 ) -> Node:
     async def execute_node(state: AgentState) -> AgentState:
+        trace_id = _trace_id(state)
         command = state.get("pending_command")
         if not command:
-            return {"execution_result": _synthetic_result("", 2, "", "no command proposed")}
+            return {
+                "trace_id": trace_id,
+                "execution_result": _synthetic_result("", 2, "", "no command proposed"),
+            }
         try:
-            result = await _run_command(state, command, command_service, cluster_service)
+            with _span(telemetry, "command.execute", trace_id, {"cluster": bool(state.get("selected_hosts"))}):
+                result = await _run_command(state, command, command_service, cluster_service)
         except Exception as exc:  # noqa: BLE001 - graph returns error state instead of crashing
             result = _synthetic_result(command, 1, "", str(exc))
         audit_id = state.get("audit_id")
@@ -167,17 +197,22 @@ def make_execute_node(
                 command=result.command,
                 exit_code=result.exit_code,
                 duration=result.duration,
+                trace_id=trace_id,
                 batch_hosts=state.get("batch_hosts", ()),
             )
-        return {"execution_result": result}
+        return {"trace_id": trace_id, "execution_result": result}
 
     return execute_node
 
 
-def make_analyze_result_node(provider: LLMProvider) -> Node:
+def make_analyze_result_node(
+    provider: LLMProvider,
+    telemetry: TelemetryRecorder | None = None,
+) -> Node:
     prompt = build_chat_prompt()
 
     async def analyze_result_node(state: AgentState) -> AgentState:
+        trace_id = _trace_id(state)
         result = state.get("execution_result")
         if result is None:
             return {"messages": [AIMessage(content="没有执行结果可分析。")]}
@@ -189,10 +224,11 @@ def make_analyze_result_node(provider: LLMProvider) -> Node:
             ),
         )
         try:
-            analysis = await provider.complete(prompt_messages)
+            with _span(telemetry, "llm.complete", trace_id, {"node": "analyze"}):
+                analysis = await provider.complete(prompt_messages)
         except Exception:  # noqa: BLE001 - keep graph resilient when provider analysis fails
             analysis = guard_execution_result(result).text
-        return {"messages": [AIMessage(content=analysis)]}
+        return {"trace_id": trace_id, "messages": [AIMessage(content=analysis)]}
 
     return analyze_result_node
 
@@ -236,6 +272,21 @@ def _last_message_text(messages: list[BaseMessage]) -> str:
     if not messages:
         return ""
     return str(messages[-1].content)
+
+
+def _trace_id(state: AgentState) -> str:
+    return state.get("trace_id") or new_trace_id()
+
+
+def _span(
+    telemetry: TelemetryRecorder | None,
+    name: str,
+    trace_id: str,
+    attributes: dict[str, Any] | None = None,
+) -> AbstractContextManager[None]:
+    if telemetry is None:
+        return nullcontext()
+    return telemetry.span(name, trace_id=trace_id, attributes=attributes)
 
 
 def _decision(response: Any) -> str:
@@ -310,9 +361,10 @@ async def _run_command(
                 "",
                 "interactive commands are not supported for cluster execution",
             )
+        trace_id = _trace_id(state)
         return _aggregate_cluster_results(
             command,
-            await cluster_service.run_on_hosts(command, resolved_hosts),
+            await cluster_service.run_on_hosts(command, resolved_hosts, trace_id=trace_id),
         )
     if state.get("matched_rule") == "INTERACTIVE":
         return await command_service.run_interactive(command)

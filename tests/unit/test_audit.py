@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from linuxagent.audit import AuditLog
+from linuxagent.audit import AuditLog, verify_audit_log
 
 
 async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
@@ -37,6 +37,9 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
     assert lines[1]["decision"] == "yes"
     assert lines[2]["exit_code"] == 0
     assert lines[2]["duration_ms"] == 250
+    assert all(line["trace_id"] is None for line in lines)
+    assert lines[0]["prev_hash"] == "0" * 64
+    assert verify_audit_log(path).valid is True
 
 
 async def test_audit_log_redacts_sensitive_fields_but_keeps_command_raw(tmp_path) -> None:
@@ -55,3 +58,37 @@ async def test_audit_log_redacts_sensitive_fields_but_keeps_command_raw(tmp_path
     assert line["command"] == "curl -H 'Authorization: Bearer raw-command-token' https://example.invalid"
     assert line["api_key"] == "***redacted***"
     assert "hunter2" not in line["stderr"]
+
+
+async def test_audit_log_records_trace_id_and_detects_tampering(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+    audit_id = await audit.begin(
+        command="ls -la",
+        safety_level="CONFIRM",
+        matched_rule="LLM_FIRST_RUN",
+        command_source="llm",
+        trace_id="trace-1",
+    )
+    await audit.record_decision(audit_id, decision="yes", trace_id="trace-1")
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    records = [json.loads(line) for line in lines]
+    assert records[0]["trace_id"] == "trace-1"
+    assert records[1]["prev_hash"] == records[0]["hash"]
+    assert verify_audit_log(path).checked_records == 2
+
+    records[0]["decision"] = "tampered"
+    path.write_text("\n".join(json.dumps(record, sort_keys=True) for record in records), encoding="utf-8")
+
+    result = verify_audit_log(path)
+    assert result.valid is False
+    assert result.tampered_line == 1
+    assert result.reason == "hash mismatch"
+
+
+def test_verify_audit_log_reports_missing_file_as_valid(tmp_path) -> None:
+    result = verify_audit_log(tmp_path / "missing.log")
+
+    assert result.valid is True
+    assert result.checked_records == 0

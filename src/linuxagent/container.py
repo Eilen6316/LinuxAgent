@@ -33,6 +33,7 @@ from .intelligence import (
 from .interfaces import LLMProvider
 from .providers import provider_factory
 from .services import ChatService, ClusterService, CommandService, MonitoringService
+from .telemetry import TelemetryRecorder
 from .tools import build_intelligence_tools, build_system_tools
 from .ui import ConsoleUI
 
@@ -74,7 +75,10 @@ class Container:
     def cluster_service(self) -> ClusterService:
         return self._cached(
             "cluster_service",
-            lambda: ClusterService(self._config.cluster, SSHManager(self._config.cluster)),
+            lambda: ClusterService(
+                self._config.cluster,
+                SSHManager(self._config.cluster, telemetry=self.telemetry()),
+            ),
         )
 
     def command_service(self) -> CommandService:
@@ -105,6 +109,7 @@ class Container:
                     audit=self.audit_log(),
                     cluster_service=self.cluster_service(),
                     tools=tuple(self.tools()),
+                    telemetry=self.telemetry(),
                 )
             ),
         )
@@ -121,6 +126,16 @@ class Container:
         return self._cached(
             "monitoring_service",
             lambda: MonitoringService(self._config.monitoring),
+        )
+
+    def telemetry(self) -> TelemetryRecorder:
+        return self._cached(
+            "telemetry",
+            lambda: TelemetryRecorder(
+                self._config.telemetry.path,
+                enabled=self._config.telemetry.enabled
+                and self._config.telemetry.exporter == "local",
+            ),
         )
 
     def provider(self) -> LLMProvider:
