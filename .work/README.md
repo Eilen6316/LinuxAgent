@@ -36,7 +36,7 @@
 - [x] Plan 7：隐私脱敏与输出保护
 - [x] Plan 8：能力驱动的策略引擎
 - [x] Plan 9：结构化 CommandPlan 与 Runbook
-- [ ] Plan 10：可观测性与防篡改审计
+- [x] Plan 10：可观测性与防篡改审计
 
 ## 技术栈总览
 
