@@ -47,11 +47,19 @@
 
 ## 验收标准
 
-- [ ] `make test` 通过且覆盖率 ≥80%
-- [ ] `make lint` / `make type` / `make security` 通过
-- [ ] `make harness` 通过
-- [ ] `search_logs` 不再可读取 allowlist 外文件
-- [ ] `analyze_result_node` 不再把原始 stdout/stderr 发给 LLM
-- [ ] audit record 中敏感字段脱敏，command 原文本身保持可追溯
+- [x] `make test` 通过且覆盖率 ≥80%
+- [x] `make lint` / `make type` / `make security` 通过
+- [x] `make harness` 通过
+- [x] `search_logs` 不再可读取 allowlist 外文件
+- [x] `analyze_result_node` 不再把原始 stdout/stderr 发给 LLM
+- [x] audit record 中敏感字段脱敏，command 原文本身保持可追溯
 
 <!-- 完成记录（完成后追加） -->
+
+## 完成记录
+
+- **日期**：2026-04-25
+- **实现 commit**：`aec137a`
+- **偏差清单**：
+  - 未新增 harness YAML 场景；Plan7 风险点通过单元测试覆盖，现有 harness 全量通过。
+  - `search_logs` allowlist 当前由 `log_analysis.default_log_paths` 的父目录推导，后续如需独立配置可在 Plan8 policy 配置中统一收口。
