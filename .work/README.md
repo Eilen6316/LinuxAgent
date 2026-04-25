@@ -35,7 +35,7 @@
 - [x] UI + Harness + CI + 本地 build / wheel verify 闭环已打通
 - [x] Plan 7：隐私脱敏与输出保护
 - [x] Plan 8：能力驱动的策略引擎
-- [ ] Plan 9：结构化 CommandPlan 与 Runbook
+- [x] Plan 9：结构化 CommandPlan 与 Runbook
 - [ ] Plan 10：可观测性与防篡改审计
 
 ## 技术栈总览

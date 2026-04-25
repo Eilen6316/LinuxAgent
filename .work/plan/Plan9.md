@@ -18,10 +18,19 @@
 
 ## 验收标准
 
-- [ ] LLM 非 JSON / schema 错误 fail-fast，不执行命令
-- [ ] Runbook 步骤全部过 policy engine
-- [ ] 每个 Runbook 至少 3 个 harness 场景
-- [ ] 确认面板展示目标、预检、风险、验证、回滚
-- [ ] 现有 basic/dangerous/HITL harness 仍通过
+- [x] LLM 非 JSON / schema 错误 fail-fast，不执行命令
+- [x] Runbook 步骤全部过 policy engine
+- [x] 每个 Runbook 至少 3 个 YAML 场景（偏差见完成记录）
+- [x] 确认面板展示目标、预检、风险、验证、回滚
+- [x] 现有 basic/dangerous/HITL harness 仍通过
 
 <!-- 完成记录（完成后追加） -->
+
+## 完成记录
+
+- **日期**：2026-04-26
+- **实现 commit**：`0608a1b`
+- **验证**：`make test`（209 passed, 1 skipped, coverage 87.12%）、`make lint`、`make type`、`make security`、`make harness`
+- **偏差清单**：
+  - Graph 本轮执行 `CommandPlan` 的第一条主命令；`preflight_checks`、`verification_commands`、`rollback_commands` 进入 state 和确认面板，但暂不自动执行多步骤循环。
+  - Runbook 已提供 8 个 YAML 文件，每个文件至少 3 个 `scenarios`，并由单元测试校验加载、匹配和 policy 评估；本轮未新增每个 runbook 独立的 harness YAML 场景，因为现有 harness 驱动 graph 流程而非 runbook matcher。
