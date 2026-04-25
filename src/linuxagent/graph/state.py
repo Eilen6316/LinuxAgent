@@ -14,6 +14,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph.message import add_messages
 
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel
+from ..plans import CommandPlan
 
 
 class AgentState(TypedDict, total=False):
@@ -23,6 +24,8 @@ class AgentState(TypedDict, total=False):
 
     # Populated by parse_intent; consumed by safety_check + execute.
     pending_command: str | None
+    command_plan: CommandPlan | None
+    plan_error: str | None
     command_source: CommandSource | None
     selected_hosts: tuple[str, ...]
 
@@ -53,6 +56,8 @@ def initial_state(
     return AgentState(
         messages=[*prior_messages, HumanMessage(content=user_input)],
         pending_command=None,
+        command_plan=None,
+        plan_error=None,
         command_source=source,
         selected_hosts=(),
         safety_level=None,

@@ -1,6 +1,6 @@
 scenario: "basic echo command"
 provider_responses:
-  - "/bin/echo files"
+  - '{"goal":"list files","commands":[{"command":"/bin/echo files","purpose":"list files","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
   - "文件列表获取成功"
 inputs:
   - role: human

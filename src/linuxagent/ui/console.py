@@ -76,9 +76,23 @@ class ConsoleUI(UserInterface):
         table.add_column(style=f"bold {self._accent_style()}")
         table.add_column(style="white")
         table.add_row("Command", str(payload.get("command") or ""))
+        if payload.get("goal"):
+            table.add_row("Goal", str(payload["goal"]))
+        if payload.get("purpose"):
+            table.add_row("Purpose", str(payload["purpose"]))
         table.add_row("Safety", str(payload.get("safety_level") or "?"))
         table.add_row("Rule", str(payload.get("matched_rule") or "?"))
         table.add_row("Source", str(payload.get("command_source") or "?"))
+        if payload.get("risk_summary"):
+            table.add_row("Risk", str(payload["risk_summary"]))
+        for label, key in (
+            ("Preflight", "preflight_checks"),
+            ("Verify", "verification_commands"),
+            ("Rollback", "rollback_commands"),
+        ):
+            items = payload.get(key) or []
+            if items:
+                table.add_row(label, "\n".join(str(item) for item in items))
         hosts = payload.get("batch_hosts") or []
         if hosts:
             table.add_row("Batch hosts", ", ".join(str(host) for host in hosts))

@@ -1,6 +1,6 @@
 scenario: "audit log written for hitl flow"
 provider_responses:
-  - "/bin/echo audited"
+  - '{"goal":"audited echo","commands":[{"command":"/bin/echo audited","purpose":"emit audited text","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
   - "审计完成"
 inputs:
   - role: human

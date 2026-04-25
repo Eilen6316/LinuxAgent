@@ -69,12 +69,14 @@ packages = ["src/linuxagent"]
 "configs/default.yaml" = "linuxagent/_data/default.yaml"
 "configs/policy.default.yaml" = "linuxagent/_data/policy.default.yaml"
 "prompts/system.md" = "linuxagent/_data/prompts/system.md"
+"runbooks" = "linuxagent/_data/runbooks"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "src/linuxagent",
     "configs",
     "prompts",
+    "runbooks",
     "pyproject.toml",
     "README.md",
     "CHANGELOG.md",

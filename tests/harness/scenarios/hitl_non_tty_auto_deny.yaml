@@ -1,6 +1,6 @@
 scenario: "non tty decision denied"
 provider_responses:
-  - "/bin/echo hello"
+  - '{"goal":"say hello","commands":[{"command":"/bin/echo hello","purpose":"emit hello","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
 inputs:
   - role: human
     content: "ls /"

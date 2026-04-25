@@ -13,6 +13,7 @@ from langgraph.types import Command, interrupt
 from ..audit import AuditLog
 from ..executors import is_destructive
 from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLevel
+from ..plans import CommandPlan, CommandPlanParseError, parse_command_plan
 from ..prompts_loader import build_chat_prompt
 from ..security import guard_execution_result
 from ..services import ClusterService, CommandService
@@ -49,11 +50,24 @@ def make_parse_intent_node(
             proposed = (await provider.complete_with_tools(prompt_messages, list(tools))).strip()
         else:
             proposed = (await provider.complete(prompt_messages)).strip()
-        command = _extract_command(proposed) or user_text.strip()
+        try:
+            plan = parse_command_plan(proposed)
+        except CommandPlanParseError as exc:
+            return {
+                "pending_command": None,
+                "command_plan": None,
+                "plan_error": str(exc),
+                "command_source": CommandSource.LLM,
+                "selected_hosts": (),
+            }
+        command = plan.primary.command
+        selected_hosts = plan.primary.target_hosts or _select_host_names(user_text, cluster_service)
         return {
             "pending_command": command,
+            "command_plan": plan,
+            "plan_error": None,
             "command_source": CommandSource.LLM,
-            "selected_hosts": _select_host_names(user_text, cluster_service),
+            "selected_hosts": selected_hosts,
         }
 
     return parse_intent_node
@@ -69,7 +83,7 @@ def make_safety_check_node(
             return {
                 "safety_level": SafetyLevel.BLOCK,
                 "matched_rule": "EMPTY",
-                "safety_reason": "no command proposed",
+                "safety_reason": state.get("plan_error") or "no command proposed",
             }
         source = state.get("command_source") or CommandSource.USER
         verdict = command_service.classify(command, source=source)
@@ -110,6 +124,7 @@ def make_confirm_node(audit: AuditLog, command_service: CommandService) -> Node:
             "command_source": (state.get("command_source") or CommandSource.USER).value,
             "batch_hosts": list(state.get("batch_hosts", ())),
             "is_destructive": is_destructive(command or ""),
+            **_plan_payload(state.get("command_plan")),
         }
         response = interrupt(payload)
         decision = _decision(response)
@@ -223,22 +238,6 @@ def _last_message_text(messages: list[BaseMessage]) -> str:
     return str(messages[-1].content)
 
 
-def _extract_command(text: str) -> str | None:
-    stripped = text.strip()
-    if not stripped:
-        return None
-    if "```" not in stripped:
-        return stripped.splitlines()[0].strip()
-    parts = stripped.split("```")
-    if len(parts) >= 2:
-        block = parts[1]
-        lines = [line for line in block.splitlines() if line.strip()]
-        if lines and lines[0].strip() in {"bash", "sh", "shell", "console"}:
-            lines = lines[1:]
-        return lines[0].strip() if lines else None
-    return None
-
-
 def _decision(response: Any) -> str:
     if isinstance(response, dict):
         value = response.get("decision")
@@ -267,10 +266,30 @@ def _synthetic_result(command: str, exit_code: int, stdout: str, stderr: str) ->
 def _intent_prompt(user_text: str) -> str:
     return (
         f"{user_text}\n\n"
-        "Return exactly one shell command with no markdown or prose. "
+        "Return only a JSON CommandPlan object with this schema: "
+        '{"goal": str, "commands": [{"command": str, "purpose": str, '
+        '"read_only": bool, "target_hosts": [str]}], "risk_summary": str, '
+        '"preflight_checks": [str], "verification_commands": [str], '
+        '"rollback_commands": [str], "requires_root": bool, '
+        '"expected_side_effects": [str]}. '
         "If useful, call tools before deciding. "
-        "If the user asked for all hosts or the cluster, return only the command itself."
+        "Do not include markdown or prose."
     )
+
+
+def _plan_payload(plan: CommandPlan | None) -> dict[str, Any]:
+    if plan is None:
+        return {}
+    return {
+        "goal": plan.goal,
+        "purpose": plan.primary.purpose,
+        "risk_summary": plan.risk_summary,
+        "preflight_checks": list(plan.preflight_checks),
+        "verification_commands": list(plan.verification_commands),
+        "rollback_commands": list(plan.rollback_commands),
+        "expected_side_effects": list(plan.expected_side_effects),
+        "requires_root": plan.requires_root,
+    }
 
 
 async def _run_command(

@@ -1,6 +1,6 @@
 scenario: "session whitelist skips second confirm"
 provider_responses:
-  - "/bin/echo whitelisted"
+  - '{"goal":"whitelisted echo","commands":[{"command":"/bin/echo whitelisted","purpose":"emit whitelisted text","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
   - "完成"
 setup:
   session_whitelist:

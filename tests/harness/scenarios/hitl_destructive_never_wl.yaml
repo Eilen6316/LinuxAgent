@@ -1,6 +1,6 @@
 scenario: "destructive command still confirms even if preloaded"
 provider_responses:
-  - "rm -rf /tmp/foo"
+  - '{"goal":"delete temp path","commands":[{"command":"rm -rf /tmp/foo","purpose":"remove temp path","read_only":false,"target_hosts":[]}],"risk_summary":"destructive","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":["delete files"]}'
   - "执行完成"
 setup:
   session_whitelist:

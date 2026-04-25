@@ -1,6 +1,6 @@
 scenario: "dangerous command blocked"
 provider_responses:
-  - "rm -rf /"
+  - '{"goal":"delete root","commands":[{"command":"rm -rf /","purpose":"dangerous delete","read_only":false,"target_hosts":[]}],"risk_summary":"destructive","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":true,"expected_side_effects":["delete filesystem"]}'
 inputs:
   - role: human
     content: "删除根目录"

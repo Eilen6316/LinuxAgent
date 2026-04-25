@@ -1,0 +1,17 @@
+id: load.high
+title: Investigate high load
+triggers: [load, cpu, high, 高负载, 负载]
+scenarios:
+  - 服务器负载很高
+  - investigate high load
+  - cpu usage is high
+steps:
+  - command: uptime
+    purpose: Show load averages
+    read_only: true
+  - command: ps aux --sort=-%cpu
+    purpose: List CPU-heavy processes
+    read_only: true
+preflight_checks: [uptime]
+verification_commands: [uptime]
+rollback_commands: []

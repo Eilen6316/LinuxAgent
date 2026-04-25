@@ -14,6 +14,7 @@ from linuxagent.config.models import ClusterConfig, ClusterHost, SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.interfaces import CommandSource, ExecutionResult
+from linuxagent.plans import command_plan_json
 from linuxagent.services import ClusterService, CommandService
 
 
@@ -73,7 +74,7 @@ def _graph(tmp_path: Path, responses: list[str], *, cluster_service: ClusterServ
 
 
 async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
-    graph, _provider = _graph(tmp_path, ["/bin/echo hi", "analysis ok"])
+    graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo hi"), "analysis ok"])
     config = {"configurable": {"thread_id": "t1"}}
     result = await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
 
@@ -86,7 +87,7 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
 
 
 async def test_graph_non_tty_deny_goes_to_refused(tmp_path) -> None:
-    graph, _provider = _graph(tmp_path, ["/bin/echo hi"])
+    graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo hi")])
     config = {"configurable": {"thread_id": "t2"}}
     await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
     resumed = await graph.ainvoke(
@@ -106,7 +107,7 @@ async def test_graph_only_marks_batch_for_explicit_cluster_requests(tmp_path) ->
     )
     graph, _provider = _graph(
         tmp_path,
-        ["/bin/echo hi"],
+        [command_plan_json("/bin/echo hi")],
         cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
     )
     config = {"configurable": {"thread_id": "local"}}
@@ -125,7 +126,7 @@ async def test_graph_cluster_request_records_batch_hosts(tmp_path) -> None:
     )
     graph, _provider = _graph(
         tmp_path,
-        ["/bin/echo hi"],
+        [command_plan_json("/bin/echo hi")],
         cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
     )
     config = {"configurable": {"thread_id": "cluster"}}
@@ -147,7 +148,7 @@ async def test_graph_named_host_request_selects_only_matched_hosts(tmp_path) -> 
     )
     graph, _provider = _graph(
         tmp_path,
-        ["/bin/echo hi"],
+        [command_plan_json("/bin/echo hi")],
         cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
     )
     config = {"configurable": {"thread_id": "named-host"}}
@@ -161,7 +162,7 @@ async def test_graph_named_host_request_selects_only_matched_hosts(tmp_path) -> 
 
 
 async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> None:
-    graph, provider = _graph(tmp_path, ["/bin/echo hi"])
+    graph, provider = _graph(tmp_path, [command_plan_json("/bin/echo hi")])
     graph = build_agent_graph(
         GraphDependencies(
             provider=provider,  # type: ignore[arg-type]
@@ -180,7 +181,7 @@ async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> N
 async def test_graph_redacts_execution_output_before_analysis(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
-        ["/bin/echo password=hunter2", "analysis ok"],
+        [command_plan_json("/bin/echo password=hunter2"), "analysis ok"],
     )
     config = {"configurable": {"thread_id": "redacted-output"}}
     await graph.ainvoke(initial_state("say secret", source=CommandSource.USER), config=config)
@@ -189,3 +190,13 @@ async def test_graph_redacts_execution_output_before_analysis(tmp_path) -> None:
     analysis_prompt = str(provider.complete_messages[-1][-1].content)
     assert "hunter2" not in analysis_prompt
     assert "***redacted***" in analysis_prompt
+
+
+async def test_graph_blocks_non_json_command_plan(tmp_path) -> None:
+    graph, _provider = _graph(tmp_path, ["/bin/echo legacy"])
+    config = {"configurable": {"thread_id": "invalid-plan"}}
+
+    result = await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
+
+    assert "已阻止执行" in str(result["messages"][-1].content)
+    assert "JSON CommandPlan" in str(result["messages"][-1].content)

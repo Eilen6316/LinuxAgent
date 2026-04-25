@@ -11,12 +11,13 @@ from linuxagent.config.models import SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.interfaces import CommandSource
+from linuxagent.plans import command_plan_json
 from linuxagent.services import CommandService
 
 
 class _Provider:
     def __init__(self) -> None:
-        self._responses = ["/bin/echo graph", "集成流程完成"]
+        self._responses = [command_plan_json("/bin/echo graph"), "集成流程完成"]
 
     async def complete(self, messages: list[BaseMessage], **kwargs) -> str:
         del messages, kwargs

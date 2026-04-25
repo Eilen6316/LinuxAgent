@@ -40,11 +40,13 @@ you: find services listening on port 8080
 ## Highlights
 
 - **Capability-based policy engine** — `SAFE` / `CONFIRM` / `BLOCK` plus risk scores, capabilities, and matched rules
+- **Structured CommandPlan** — model output must be JSON with purpose, preflight, verification, rollback, and side-effect hints
+- **YAML Runbooks** — 8 built-in high-frequency ops runbooks for disk, ports, services, logs, certs, memory, load, and containers
 - **LangGraph state machine** — explicit nodes, conditional edges, `interrupt()`-based Human-in-the-Loop
 - **No `shell=True`, no `AutoAddPolicy`** — enforced by CI red-line grep, not just convention
 - **Append-only audit log** at `~/.linuxagent/audit.log`, `0o600`, cannot be disabled
 - **Cluster-aware batch confirmation** — ≥2 hosts triggers an explicit approval prompt
-- **200 unit tests + 10 HITL scenarios**, 86%+ coverage, `mypy --strict`, `bandit` clean
+- **209 unit tests + 10 HITL scenarios**, 87%+ coverage, `mypy --strict`, `bandit` clean
 
 ## Quick start
 
@@ -74,8 +76,9 @@ Short version — the older single-file agent had a 4710-line God Object, substr
 | Command classifier | `pattern in command` substring match | Capability-based policy engine with `shlex` token facts, risk score, and source upgrades |
 | SSH host trust | `AutoAddPolicy` (MITM-friendly) | `RejectPolicy` + explicit `known_hosts` |
 | HITL | implicit, bypassable | `interrupt()` + checkpointing + audit log |
+| Planning | raw shell string | validated JSON `CommandPlan` |
 | Semantic search | hand-rolled TF-IDF, ~500MB local stack | LLM embedding API + disk cache, no local models |
-| Tests | 0 | 200 unit + 10 HITL scenarios + integration suite |
+| Tests | 0 | 209 unit + 10 HITL scenarios + integration suite |
 
 See the [full comparison](README_CN.md#与旧版本的全面对比) ([English](README_EN.md#full-comparison-with-the-original-prototype)) for algorithm-level diffs.
 
@@ -84,6 +87,9 @@ See the [full comparison](README_CN.md#与旧版本的全面对比) ([English](R
 ```
 src/linuxagent/     active package (src-layout)
 src/linuxagent/policy/ capability-based command policy engine
+src/linuxagent/plans/  structured CommandPlan schema and parser
+src/linuxagent/runbooks/ YAML runbook loader and matcher
+runbooks/           built-in ops runbooks
 tests/unit/         unit tests
 tests/integration/  optional integration tests
 tests/harness/      YAML scenario harness
@@ -96,7 +102,7 @@ scripts/            bootstrap + verification scripts
 ## Core make targets
 
 ```bash
-make test       # pytest with 80% fail-under, currently 86%+
+make test       # pytest with 80% fail-under, currently 87%+
 make lint       # ruff
 make type       # mypy --strict
 make security   # grep red-lines + bandit

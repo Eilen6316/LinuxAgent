@@ -1,0 +1,14 @@
+id: port.listener
+title: Find process listening on a port
+triggers: [port, listen, listener, 端口, 监听]
+scenarios:
+  - 找一下监听 8080 端口的服务
+  - what is listening on port 443
+  - show listening sockets
+steps:
+  - command: ss -tlnp
+    purpose: List TCP listeners with processes
+    read_only: true
+preflight_checks: [ss -tlnp]
+verification_commands: [ss -tlnp]
+rollback_commands: []

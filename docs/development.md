@@ -10,6 +10,8 @@ Core layers:
 - `providers/`: LangChain-backed LLM providers
 - `executors/`: safe local command execution
 - `policy/`: capability-based command policy engine
+- `plans/`: strict JSON CommandPlan models and parsing
+- `runbooks/`: YAML runbook models, loading, matching, and policy validation
 - `cluster/`: SSH execution and host policy
 - `graph/`: LangGraph orchestration
 - `services/`: application services
@@ -68,6 +70,16 @@ rules:
 Policy YAML is validated fail-fast with Pydantic. Runtime currently uses the
 built-in rules to avoid file I/O in the hot path; user override wiring belongs
 to the next policy configuration pass.
+
+## CommandPlan And Runbooks
+
+The graph no longer accepts a raw shell string from the LLM. Provider output is
+parsed as strict JSON `CommandPlan`; invalid JSON or schema errors are treated
+as `BLOCK` and no command is executed.
+
+Built-in runbooks live under `runbooks/`. Each runbook is YAML, has at least
+three scenario phrases, and every step is policy-evaluated by
+`RunbookEngine.evaluate_steps()` before it is considered usable.
 
 ## Repository Note
 

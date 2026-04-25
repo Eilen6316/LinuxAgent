@@ -1,0 +1,17 @@
+id: cert.expiry
+title: Inspect certificate expiry
+triggers: [cert, certificate, tls, ssl, 证书]
+scenarios:
+  - 检查证书过期时间
+  - show TLS certificate expiry
+  - inspect ssl cert
+steps:
+  - command: openssl version
+    purpose: Verify openssl is available
+    read_only: true
+  - command: date -u
+    purpose: Show current UTC time for comparison
+    read_only: true
+preflight_checks: [openssl version]
+verification_commands: [date -u]
+rollback_commands: []

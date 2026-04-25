@@ -1,6 +1,6 @@
 scenario: "interrupt resume flow"
 provider_responses:
-  - "/bin/echo resumable"
+  - '{"goal":"resumable echo","commands":[{"command":"/bin/echo resumable","purpose":"emit resumable text","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
   - "恢复成功"
 inputs:
   - role: human

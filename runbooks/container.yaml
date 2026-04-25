@@ -1,0 +1,17 @@
+id: container.inspect
+title: Inspect container state
+triggers: [container, docker, podman, 容器]
+scenarios:
+  - 查看容器状态
+  - show docker containers
+  - inspect container health
+steps:
+  - command: docker ps
+    purpose: List running containers
+    read_only: true
+  - command: docker logs --tail 100 web
+    purpose: Show recent container logs
+    read_only: true
+preflight_checks: [docker ps]
+verification_commands: [docker ps]
+rollback_commands: []

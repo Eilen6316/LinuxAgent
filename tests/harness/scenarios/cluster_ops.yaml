@@ -1,6 +1,6 @@
 scenario: "cluster uptime command"
 provider_responses:
-  - "uptime"
+  - '{"goal":"cluster uptime","commands":[{"command":"uptime","purpose":"check uptime","read_only":true,"target_hosts":[]}],"risk_summary":"read-only batch","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
   - "集群运行正常"
 setup:
   cluster_hosts:
