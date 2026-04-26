@@ -200,3 +200,9 @@ def test_cluster_paths_expand_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     )
     assert cfg.known_hosts_path == tmp_path / ".ssh" / "known_hosts"
     assert cfg.hosts[0].key_filename == tmp_path / ".ssh" / "id_ed25519"
+
+
+def test_cluster_empty_hosts_field_is_treated_as_empty_tuple() -> None:
+    cfg = ClusterConfig.model_validate({"hosts": None})
+
+    assert cfg.hosts == ()

@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -93,6 +93,11 @@ class ClusterConfig(BaseModel):
     known_hosts_path: UserPath = Field(default_factory=lambda: Path.home() / ".ssh" / "known_hosts")
     hosts: tuple[ClusterHost, ...] = ()
 
+    @field_validator("hosts", mode="before")
+    @classmethod
+    def _empty_hosts_is_empty_tuple(cls, value: Any) -> Any:
+        return () if value is None else value
+
 
 class AuditConfig(BaseModel):
     """HITL audit log settings.
@@ -111,7 +116,9 @@ class UIConfig(BaseModel):
 
     theme: Literal["auto", "light", "dark"] = "auto"
     max_chat_history: int = Field(default=20, ge=1, le=1000)
-    history_path: UserPath = Field(default_factory=lambda: Path.home() / ".linuxagent" / "history.json")
+    history_path: UserPath = Field(
+        default_factory=lambda: Path.home() / ".linuxagent" / "history.json"
+    )
     prompt_symbol: str = "❯"
 
 
@@ -145,7 +152,9 @@ class AnalyticsConfig(BaseModel):
     model_config = _FROZEN
 
     enabled: bool = False
-    data_path: UserPath = Field(default_factory=lambda: Path.home() / ".linuxagent" / "analytics.json")
+    data_path: UserPath = Field(
+        default_factory=lambda: Path.home() / ".linuxagent" / "analytics.json"
+    )
 
 
 class LogAnalysisConfig(BaseModel):
