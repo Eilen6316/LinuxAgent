@@ -8,7 +8,7 @@ but :func:`is_available` returns ``False`` and instantiation raises
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ..config.models import APIConfig
 from .base import BaseLLMProvider
@@ -28,10 +28,6 @@ try:
 except ImportError:  # pragma: no cover - exercised when extra is absent
     ChatAnthropic = None  # type: ignore[assignment,misc,unused-ignore]
     _AVAILABLE = False
-
-if TYPE_CHECKING:
-    pass
-
 
 def is_available() -> bool:
     """True iff ``langchain-anthropic`` is importable."""

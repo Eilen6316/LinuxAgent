@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from rich.console import Console
+
 from linuxagent.ui import ConsoleUI
 
 
@@ -51,3 +53,75 @@ def test_console_ui_default_history_file_is_0600(tmp_path: Path) -> None:
     ui._default_session_factory()
 
     assert history_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_render_confirm_shows_basic_command_fields() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+
+    ui._render_confirm(
+        {
+            "command": "ls -la",
+            "goal": "List files",
+            "purpose": "Inspect current directory",
+            "safety_level": "CONFIRM",
+            "matched_rule": "LLM_FIRST_RUN",
+            "command_source": "llm",
+            "risk_summary": "read-only",
+            "preflight_checks": ["pwd"],
+            "verification_commands": ["ls -la"],
+        }
+    )
+
+    rendered = console.export_text()
+    assert "Command" in rendered
+    assert "ls -la" in rendered
+    assert "LLM_FIRST_RUN" in rendered
+    assert "read-only" in rendered
+
+
+def test_render_confirm_shows_only_remaining_runbook_steps() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+
+    ui._render_confirm(
+        {
+            "command": "du -sh /var/log",
+            "runbook_id": "disk.full",
+            "runbook_title": "Investigate disk usage",
+            "runbook_step_index": 1,
+            "runbook_steps": [
+                {"command": "df -h", "purpose": "Show filesystem usage"},
+                {"command": "du -sh /var/log", "purpose": "Estimate log directory usage"},
+                {"command": "find /tmp -maxdepth 1", "purpose": "Inspect temp files"},
+            ],
+        }
+    )
+
+    rendered = console.export_text()
+    assert "disk.full - Investigate disk usage" in rendered
+    assert "Next steps" in rendered
+    assert "find /tmp -maxdepth 1" in rendered
+    assert "df -h - Show filesystem usage" not in rendered
+
+
+def test_render_confirm_shows_batch_hosts() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+
+    ui._render_confirm({"command": "uptime", "batch_hosts": ["web-1", "db-1"]})
+
+    rendered = console.export_text()
+    assert "Batch hosts" in rendered
+    assert "web-1, db-1" in rendered
+
+
+def test_render_confirm_shows_destructive_warning() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+
+    ui._render_confirm({"command": "rm -rf /tmp/x", "is_destructive": True})
+
+    rendered = console.export_text()
+    assert "Destructive" in rendered
+    assert "approval will not be whitelisted" in rendered
