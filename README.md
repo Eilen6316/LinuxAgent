@@ -1,152 +1,180 @@
 <div align="center">
   <h1>LinuxAgent</h1>
-  <img src="logo.jpg" alt="LinuxAgent Logo" width="320" />
+  <img src="logo.jpg" alt="LinuxAgent Logo" width="280" />
 
   <p>
-    <a href="https://github.com/Eilen6316/LinuxAgent.git"><img src="https://img.shields.io/badge/GitHub-Repository-black?style=flat-square&logo=github" alt="GitHub"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://pypi.org/project/linuxagent/"><img src="https://img.shields.io/pypi/v/linuxagent?style=flat-square" alt="PyPI"></a>
-    <a href="README.md#core-make-targets"><img src="https://img.shields.io/badge/coverage-90.65%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-90.65%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
-    <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
-    <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
-    <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=o2ByKsl_gBN-fODJxH4Ps4Xboa_hCSI3&authKey=nVfsLJBin1CnZBd9pPNkxFk%2FGFqCe1FLsRMQmmxv%2FQnM78bC%2FjcWyMSeQcJDZC1U&noverify=0&group_code=281392454"><img src="https://img.shields.io/badge/QQ_Group-281392454-brightgreen?style=flat-square&logo=tencent-qq" alt="QQ Group"></a>
-    <a href="https://blog.csdn.net/qq_69174109/article/details/146365413"><img src="https://img.shields.io/badge/CSDN-Project_Intro-blue?style=flat-square&logo=csdn" alt="CSDN"></a>
   </p>
 
-  <p><em>LinuxAgent v4.0.0: LLM-driven Linux operations assistant CLI with mandatory Human-in-the-Loop safety.</em></p>
+  <p><strong>A HITL-first Linux ops agent that turns LLM suggestions into policy-checked, audited, operator-approved commands.</strong></p>
+
+  <p>
+    <a href="README_CN.md">简体中文完整文档</a> ·
+    <a href="README_EN.md">Full English manual</a> ·
+    <a href="docs/releases/v4.0.0.md">v4.0.0 release notes</a>
+  </p>
 </div>
 
 ---
 
-**LinuxAgent** translates plain-language ops requests into Linux commands your team actually wants to run. Every model-generated command is classified at the token level, every side-effecting action needs a human approval, and every decision lands in an append-only audit log.
+LinuxAgent is a production-minded CLI for Linux operations. It lets an LLM propose commands, but execution stays behind explicit policy checks, Human-in-the-Loop confirmation, SSH safety guards, output redaction, and a hash-chained audit log.
 
-Built on **LangGraph** + **LangChain** + **Pydantic v2**. No local deep-learning stack required.
+It is built on **LangGraph**, **LangChain**, and **Pydantic v2**. No local deep-learning stack is required.
 
-**v4.0.0 is the first formal release of the rewritten agent.** It replaces the earlier prototype with a policy-driven, audited, runbook-aware CLI designed for controlled operator-in-the-loop use.
+## Why It Exists
 
-## Language
+LLM command agents usually fail at the exact point operators care about: trust.
 
-- [简体中文（完整文档）](README_CN.md)
-- [English (full documentation)](README_EN.md)
+LinuxAgent's default stance is different:
 
-## At a glance
+| Principle | What LinuxAgent does |
+|---|---|
+| The model is not trusted | First-time LLM-generated commands require confirmation |
+| Safety is policy, not substring matching | Commands are tokenized and evaluated by a capability-based policy engine |
+| Production output may contain secrets | Tool output is guarded and redacted before LLM-facing analysis |
+| SSH must not silently trust hosts | Remote execution uses known-host verification and shell-syntax guards |
+| Every approval should be reviewable | HITL decisions are written to a `0o600` hash-chained audit log |
 
-```
-you: find services listening on port 8080
-
-  parse_intent  → LLM proposes: ss -tlnp sport = :8080
-  safety_check  → CONFIRM (LLM_FIRST_RUN)
-  confirm       → [ y ] Allow this operation?
-  execute       → asyncio subprocess (no shell)
-  analyze       → "nginx (PID 4312) owns 8080"
-  audit.log     → JSONL record of request / decision / execution
-```
-
-## Highlights
-
-- **Capability-based policy engine** — `SAFE` / `CONFIRM` / `BLOCK` plus risk scores, capabilities, and matched rules
-- **Structured CommandPlan** — model output must be JSON with purpose, preflight, verification, rollback, and side-effect hints
-- **Graph-integrated YAML Runbooks** — 8 built-in ops runbooks are matched before LLM command generation; safe follow-up steps can continue after one approval
-- **LangGraph state machine** — explicit nodes, conditional edges, `interrupt()`-based Human-in-the-Loop
-- **No `shell=True`, no `AutoAddPolicy`** — enforced by CI red-line grep, not just convention
-- **Remote SSH shell-syntax guard** — cluster commands reject `;`, pipes, redirects, command substitution, and variable expansion before SSH
-- **Hash-chained audit log** at `~/.linuxagent/audit.log`, `0o600`, verifiable with `linuxagent audit verify`
-- **Local telemetry JSONL** with per-run `trace_id`, no external collector required by default
-- **Resource threshold alerts** for CPU, memory, and root filesystem usage in `linuxagent check`
-- **Cluster-aware batch confirmation** — ≥2 hosts triggers an explicit approval prompt
-- **272 default unit tests + 4 optional Anthropic compatibility tests + 12 HITL scenarios**, 90%+ coverage, `mypy --strict`, `bandit` clean
-
-## Quick start
+## 30-Second Start
 
 ```bash
 git clone https://github.com/Eilen6316/LinuxAgent.git
 cd LinuxAgent
-./scripts/bootstrap.sh          # creates .venv, seeds config.yaml (0600)
+./scripts/bootstrap.sh
 source .venv/bin/activate
-
-# set your API key in ./config.yaml then:
-linuxagent check                # validate config
-linuxagent chat                 # start the interactive session
 ```
 
-Full installation, configuration, and usage walkthroughs live in the localized READMEs:
-
-- [Full README (中文)](README_CN.md) — **recommended**
-- [Full README (English)](README_EN.md)
-
-## Why v4 over the earlier prototype
-
-Short version — the older single-file agent had a 4710-line God Object, substring-based command filtering, `AutoAddPolicy` SSH, and zero tests. The current release rewrites all four dimensions:
-
-| Area | Earlier | Current `v4` |
-|---|---|---|
-| Orchestration | 4710-line agent class, recursive control flow | LangGraph state machine, 72-line coordinator |
-| Command classifier | `pattern in command` substring match | Capability-based policy engine with `shlex` token facts, risk score, and source upgrades |
-| SSH execution | `AutoAddPolicy` + raw shell strings | `RejectPolicy` + explicit `known_hosts` + remote shell-syntax guard |
-| HITL | implicit, bypassable | `interrupt()` + checkpointing + audit log |
-| Planning | raw shell string | validated JSON `CommandPlan` |
-| Semantic search | hand-rolled TF-IDF, ~500MB local stack | LLM embedding API + disk cache, no local models |
-| Tests | 0 | 272 default unit + 4 optional Anthropic compatibility tests + 12 HITL scenarios + 8 integration smoke tests |
-
-See the [full comparison](README_CN.md#与旧版本的全面对比) ([English](README_EN.md#full-comparison-with-the-original-prototype)) for algorithm-level diffs.
-
-## Repository layout
-
-```
-src/linuxagent/     active package (src-layout)
-src/linuxagent/policy/ capability-based command policy engine
-src/linuxagent/plans/  structured CommandPlan schema and parser
-src/linuxagent/graph/  LangGraph orchestration split by intent/safety/routing/nodes
-src/linuxagent/runbooks/ YAML runbook loader and matcher
-src/linuxagent/telemetry.py local JSONL spans and trace IDs
-runbooks/           built-in ops runbooks
-tests/unit/         unit tests
-tests/integration/  optional integration tests (`make integration`)
-tests/harness/      YAML scenario harness
-configs/            default + example config
-prompts/            runtime prompts
-docs/               user and release docs
-scripts/            bootstrap + verification scripts
-```
-
-Runtime policy overrides can be enabled in `config.yaml`:
+Then edit `./config.yaml` and set your provider API key:
 
 ```yaml
-policy:
-  path: ~/.config/linuxagent/policy.yaml
-  include_builtin: true  # built-ins + user rule overrides/appends
+api:
+  api_key: "replace-me"
 ```
 
-## Core make targets
+Run:
 
 ```bash
-make test       # pytest with 80% fail-under, currently 90%+
-make integration  # optional integration tests
-make optional-anthropic  # optional Anthropic extra compatibility
-make lint       # ruff
-make type       # mypy --strict
-make security   # grep red-lines + bandit
-make harness    # YAML scenario harness
-make build      # wheel + sdist
-make verify-build  # build + wheel install + packaged data check
-linuxagent audit verify  # verify audit hash chain
+linuxagent check
+linuxagent chat
 ```
 
-## Docs
+`config.yaml` must be owned by the current user and `chmod 600`; secrets are not loaded from `.env`.
 
-- [Quick Start](docs/quickstart.md)
-- [Development Guide](docs/development.md)
-- [Release Guide](docs/release.md)
-- [Migration Guide: v3 to v4.0.0](docs/migration-v3-to-v4.md)
-- [Threat Model](docs/threat-model.md)
-- [Production Readiness](docs/production-readiness.md)
-- [Release Notes](docs/releases/v4.0.0.md)
-- [Changelog](CHANGELOG.md) / [中文更新日志](CHANGELOG_CN.md)
-- [Security Policy](SECURITY.md) / [安全政策](SECURITY_CN.md)
-- [Contributing](CONTRIBUTING.md) / [贡献指南](CONTRIBUTING_CN.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md) / [行为准则](CODE_OF_CONDUCT_CN.md)
+## What a Turn Looks Like
+
+```text
+you: find services listening on port 8080
+
+parse_intent  -> LLM proposes: ss -tlnp sport = :8080
+safety_check  -> CONFIRM (LLM_FIRST_RUN)
+confirm       -> operator approves in terminal
+execute       -> asyncio subprocess, no shell=True
+analyze       -> concise operator summary
+audit.log     -> hash-chained JSONL decision record
+```
+
+## Core Capabilities
+
+| Capability | Why it matters |
+|---|---|
+| Capability-based policy engine | Produces `SAFE` / `CONFIRM` / `BLOCK`, risk scores, capabilities, and matched rules |
+| Structured `CommandPlan` | LLM output must validate as JSON before any policy or execution path |
+| YAML runbooks | Common ops scenarios can be matched before free-form command generation |
+| LangGraph HITL | Confirmation uses `interrupt()` and checkpointing rather than inline `input()` |
+| SSH cluster guard | Batch confirmation plus remote shell metacharacter blocking |
+| Output protection | Command results are redacted and bounded before model-facing analysis |
+| Hash-chained audit | `linuxagent audit verify` detects local audit-log tampering |
+| Reproducible release | `constraints.txt`, wheel verification, and packaged config/prompt/runbook checks |
+
+## Safety Model
+
+| Operation | Default behavior |
+|---|---|
+| User-authored read-only command | May run when policy returns `SAFE` |
+| First LLM-generated command | `CONFIRM` |
+| Destructive command | `CONFIRM` every time; never session-whitelisted |
+| Command targeting root or sensitive paths | `BLOCK` when matched by policy |
+| SSH batch across two or more hosts | Explicit batch confirmation |
+| Non-TTY confirmation request | Auto-deny |
+| Unknown SSH host | Reject by default |
+
+LinuxAgent is **not** an autonomous remediator or a command sandbox. It is intended for controlled operator-in-the-loop use. See [Production Readiness](docs/production-readiness.md) and [Threat Model](docs/threat-model.md).
+
+## Built-In Runbooks
+
+LinuxAgent v4 ships with eight YAML runbooks for common diagnostics:
+
+| Runbook area | Examples |
+|---|---|
+| Disk and filesystem | `df`, top directories, journal usage |
+| Ports and networking | listeners, port ownership, connectivity checks |
+| Services and logs | systemd status, recent unit logs, error search |
+| Load and memory | CPU pressure, memory pressure, OOM clues |
+| Containers and certificates | container status, Docker usage, certificate expiry |
+
+Safe follow-up steps can continue automatically after approval; every step still goes through policy evaluation.
+
+## Quality Gate
+
+The current `v4.0.0` baseline:
+
+| Gate | Status |
+|---|---|
+| Unit tests | 272 passing |
+| Optional Anthropic compatibility | 4 passing |
+| Harness scenarios | 12 HITL / runbook / cluster scenarios |
+| Integration smoke tests | 8 passing |
+| Coverage | 90.65% |
+| Static checks | `ruff`, `mypy --strict`, `bandit` |
+| Build verification | wheel + sdist + packaged data install check |
+
+Useful commands:
+
+```bash
+make test
+make lint
+make type
+make security
+make harness
+make verify-build
+```
+
+## Install Paths
+
+| Path | Use when |
+|---|---|
+| `./scripts/bootstrap.sh` | You are working from a source checkout |
+| `pip install -c constraints.txt https://github.com/Eilen6316/LinuxAgent/releases/download/v4.0.0/linuxagent-4.0.0-py3-none-any.whl` | You want the published GitHub Release wheel |
+| `pip install -e ".[dev]"` | You are developing or running the full local gate |
+| `pip install -e ".[anthropic]"` | You need the optional Anthropic provider |
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [README_CN.md](README_CN.md) | Full Chinese manual |
+| [README_EN.md](README_EN.md) | Full English manual |
+| [Quick Start](docs/quickstart.md) | Installation and first run |
+| [Migration Guide](docs/migration-v3-to-v4.md) | v3 to v4 breaking changes |
+| [Threat Model](docs/threat-model.md) | Assets, trust boundaries, and mitigations |
+| [Production Readiness](docs/production-readiness.md) | Where LinuxAgent is and is not appropriate |
+| [Security Policy](SECURITY.md) | Vulnerability reporting and supported versions |
+| [Contributing](CONTRIBUTING.md) | Contribution workflow and review expectations |
+| [Changelog](CHANGELOG.md) | Release history |
+
+## Mirrors and Community
+
+| Link | Notes |
+|---|---|
+| [GitHub](https://github.com/Eilen6316/LinuxAgent.git) | Primary repository |
+| [GitCode](https://gitcode.com/qq_69174109/LinuxAgent.git) | Mirror |
+| [Gitee](https://gitee.com/xinsai6316/LinuxAgent.git) | Mirror |
+| [QQ Group 281392454](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=o2ByKsl_gBN-fODJxH4Ps4Xboa_hCSI3&authKey=nVfsLJBin1CnZBd9pPNkxFk%2FGFqCe1FLsRMQmmxv%2FQnM78bC%2FjcWyMSeQcJDZC1U&noverify=0&group_code=281392454) | Community |
+| [CSDN intro](https://blog.csdn.net/qq_69174109/article/details/146365413) | Project article |
 
 ## License
 
