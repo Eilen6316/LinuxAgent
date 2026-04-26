@@ -41,6 +41,19 @@ These are enforced both locally and in CI:
 - no bare `except:`
 - no `input()` calls inside `src/linuxagent/graph/`
 
+## SSH Remote Execution
+
+Local commands run through argv-based subprocess execution. Remote SSH is
+stricter because Paramiko `exec_command()` talks to the remote user's shell.
+`src/linuxagent/cluster/remote_command.py` therefore rejects shell syntax
+before SSH fan-out: command sequencing, pipes, redirects, command
+substitution, variable expansion, and related metacharacters are not allowed
+on the cluster path.
+
+The graph applies this check after host selection and returns `BLOCK` before
+HITL. `SSHManager` repeats the same validation before connecting so direct
+service calls cannot bypass the boundary.
+
 ## Policy Rules
 
 Command safety is evaluated by `src/linuxagent/policy/` and exposed through

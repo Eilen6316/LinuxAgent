@@ -7,6 +7,7 @@ from .ssh_manager import (
     SSHConnectionError,
     SSHError,
     SSHManager,
+    SSHRemoteCommandError,
     SSHUnknownHostError,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "SSHConnectionError",
     "SSHError",
     "SSHManager",
+    "SSHRemoteCommandError",
     "SSHUnknownHostError",
 ]

@@ -56,7 +56,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 217 unit tests + 10 HITL YAML scenarios + integration scaffolding, 87%+ coverage |
+| Testability | 228 unit tests + 11 HITL YAML scenarios + integration scaffolding, 87%+ coverage |
 
 ---
 
@@ -210,6 +210,11 @@ else:
 
 A CI red-line check `! grep -rn "AutoAddPolicy" src/linuxagent/` prevents accidental regression.
 
+Remote execution is also narrower than local execution. Cluster commands are
+accepted only as simple argv-like commands; shell sequencing, pipes,
+redirects, command substitution, and variable expansion are blocked before
+confirmation and again before SSH connection setup.
+
 ### Safety model
 
 | Policy | Previous | Current `v4` |
@@ -217,7 +222,7 @@ A CI red-line check `! grep -rn "AutoAddPolicy" src/linuxagent/` prevents accide
 | First model-generated command | runs directly | forced CONFIRM (`LLM_FIRST_RUN`) |
 | Re-running an approved command | every run re-prompts | whitelisted within the session, cleared on exit |
 | Destructive commands | string blacklist | token match + raw scan + subcommand regex, **never** whitelisted |
-| Batch cluster operations | silent spread | hosts ≥ `cluster.batch_confirm_threshold` (default 2) forces CONFIRM |
+| Batch cluster operations | silent spread | hosts ≥ `cluster.batch_confirm_threshold` (default 2) forces CONFIRM; shell syntax is blocked before SSH |
 | Non-interactive environment | can be bypassed | no-TTY confirm auto-returns `non_tty_auto_deny` |
 | Audit trail | optional | hash-chained HITL events appended to `~/.linuxagent/audit.log` at `0o600`, verifiable with `linuxagent audit verify` |
 
@@ -225,11 +230,11 @@ A CI red-line check `! grep -rn "AutoAddPolicy" src/linuxagent/` prevents accide
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **217 passing** |
-| Coverage | 0 | **87.13%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **228 passing** |
+| Coverage | 0 | **87.27%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
-| End-to-end scenarios | none | 10 YAML scenarios covering basic / dangerous / HITL / batch cluster |
+| End-to-end scenarios | none | 11 YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard |
 | Release flow | manual | tag-triggered GitHub Actions builds wheel + sdist + Release |
 
 ---

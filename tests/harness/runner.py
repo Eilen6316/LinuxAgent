@@ -16,6 +16,7 @@ from langchain_core.messages import BaseMessage
 from langgraph.types import Command
 
 from linuxagent.audit import AuditLog
+from linuxagent.cluster.remote_command import RemoteCommandError, validate_remote_command
 from linuxagent.config.models import ClusterConfig, ClusterHost, SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
@@ -54,6 +55,10 @@ class _FakeProvider:
 class _FakeSSH:
     async def execute_many(self, hosts, command, **kwargs):
         del kwargs
+        try:
+            validate_remote_command(command)
+        except RemoteCommandError as exc:
+            return {host.name: exc for host in hosts}
         return {
             host.name: ExecutionResult(command, 0, f"{host.name}:{command}", "", 0.01)
             for host in hosts

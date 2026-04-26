@@ -11,6 +11,7 @@ from langchain_core.messages import BaseMessage
 from langgraph.types import Command
 
 from linuxagent.audit import AuditLog
+from linuxagent.cluster.remote_command import RemoteCommandError, validate_remote_command
 from linuxagent.config.models import ClusterConfig, ClusterHost, SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
@@ -48,6 +49,10 @@ class _FakeProvider:
 class _FakeSSH:
     async def execute_many(self, hosts, command, **kwargs):
         del kwargs
+        try:
+            validate_remote_command(command)
+        except RemoteCommandError as exc:
+            return {host.name: exc for host in hosts}
         return {
             host.name: ExecutionResult(
                 command=command,
@@ -144,6 +149,31 @@ async def test_graph_cluster_request_records_batch_hosts(tmp_path) -> None:
     )
     snapshot = await graph.aget_state(config)
     assert tuple(snapshot.values["batch_hosts"]) == ("a", "b")
+
+
+async def test_graph_cluster_execution_blocks_remote_shell_syntax_before_confirm(tmp_path) -> None:
+    cfg = ClusterConfig(
+        batch_confirm_threshold=2,
+        hosts=(
+            ClusterHost(name="a", hostname="a.invalid", username="ops"),
+            ClusterHost(name="b", hostname="b.invalid", username="ops"),
+        ),
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        [command_plan_json("echo ok; whoami")],
+        cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
+    )
+    config = {"configurable": {"thread_id": "cluster-shell-syntax"}}
+    result = await graph.ainvoke(
+        initial_state("run echo ok; whoami on all hosts", source=CommandSource.USER),
+        config=config,
+    )
+
+    assert "已阻止执行" in str(result["messages"][-1].content)
+    assert "remote shell metacharacter" in str(result["messages"][-1].content)
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
 
 
 async def test_graph_named_host_request_selects_only_matched_hosts(tmp_path) -> None:

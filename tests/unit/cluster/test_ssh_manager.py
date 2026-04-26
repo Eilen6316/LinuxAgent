@@ -21,6 +21,7 @@ from linuxagent.cluster.ssh_manager import (
     SSHAuthError,
     SSHConnectionError,
     SSHManager,
+    SSHRemoteCommandError,
     SSHUnknownHostError,
     _is_alive,
 )
@@ -180,6 +181,26 @@ async def test_execute_many_isolates_per_host_failures(
     results = await mgr.execute_many(hosts, "uptime")
     assert set(results.keys()) == {"a", "b"}
     assert all(isinstance(r, SSHUnknownHostError) for r in results.values())
+
+
+async def test_execute_many_rejects_remote_shell_syntax_before_connect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mgr = SSHManager(ClusterConfig())
+
+    def _should_not_connect(self: SSHManager, host: ClusterHost, command: str) -> None:
+        del self, host, command
+        raise AssertionError("unsafe remote command must not connect")
+
+    monkeypatch.setattr(SSHManager, "_execute_sync", _should_not_connect)
+    hosts = [
+        ClusterHost(name="a", hostname="a.invalid", username="ops"),
+        ClusterHost(name="b", hostname="b.invalid", username="ops"),
+    ]
+    results = await mgr.execute_many(hosts, "echo ok; rm -rf /")
+
+    assert set(results.keys()) == {"a", "b"}
+    assert all(isinstance(result, SSHRemoteCommandError) for result in results.values())
 
 
 # ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ import paramiko
 from ..config.models import ClusterConfig, ClusterHost
 from ..interfaces import ExecutionResult
 from ..telemetry import TelemetryRecorder
+from .remote_command import RemoteCommandError, validate_remote_command
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,10 @@ class SSHAuthError(SSHError):
 
 class SSHConnectionError(SSHError):
     """TCP / transport-level failure before authentication succeeded."""
+
+
+class SSHRemoteCommandError(SSHError):
+    """Command is unsafe for remote shell transport."""
 
 
 class SSHManager:
@@ -94,14 +99,18 @@ class SSHManager:
         trace_id: str | None = None,
     ) -> ExecutionResult:
         """Run ``command`` on ``host`` and return its result."""
+        try:
+            remote_command = validate_remote_command(command)
+        except RemoteCommandError as exc:
+            raise SSHRemoteCommandError(str(exc)) from exc
         if self._telemetry is not None and trace_id is not None:
             with self._telemetry.span(
                 "ssh.execute",
                 trace_id=trace_id,
                 attributes={"host": host.name},
             ):
-                return await asyncio.to_thread(self._execute_sync, host, command)
-        return await asyncio.to_thread(self._execute_sync, host, command)
+                return await asyncio.to_thread(self._execute_sync, host, remote_command.raw)
+        return await asyncio.to_thread(self._execute_sync, host, remote_command.raw)
 
     async def execute_many(
         self,
@@ -112,6 +121,10 @@ class SSHManager:
     ) -> dict[str, ExecutionResult | SSHError]:
         """Fan out ``command`` across ``hosts`` concurrently, isolating failures."""
         host_list = list(hosts)
+        try:
+            validate_remote_command(command)
+        except RemoteCommandError as exc:
+            return {host.name: SSHRemoteCommandError(str(exc)) for host in host_list}
         tasks = [self.execute(host, command, trace_id=trace_id) for host in host_list]
         gathered = await asyncio.gather(*tasks, return_exceptions=True)
         results: dict[str, ExecutionResult | SSHError] = {}

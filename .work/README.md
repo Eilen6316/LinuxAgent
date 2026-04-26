@@ -37,6 +37,7 @@
 - [x] Plan 8：能力驱动的策略引擎
 - [x] Plan 9：结构化 CommandPlan 与 Runbook
 - [x] Plan 10：可观测性与防篡改审计
+- [ ] Plan 11：SSH 远程执行语义安全化
 
 ## 技术栈总览
 

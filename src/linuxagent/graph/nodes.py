@@ -12,6 +12,7 @@ from langchain_core.tools import BaseTool
 from langgraph.types import Command, interrupt
 
 from ..audit import AuditLog
+from ..cluster.remote_command import RemoteCommandError, validate_remote_command
 from ..executors import is_destructive
 from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLevel
 from ..plans import CommandPlan, CommandPlanParseError, parse_command_plan
@@ -99,6 +100,16 @@ def make_safety_check_node(
         source = state.get("command_source") or CommandSource.USER
         with _span(telemetry, "policy.evaluate", trace_id, {"command_source": source.value}):
             verdict = command_service.classify(command, source=source)
+        remote_error = _remote_command_error(command, state, cluster_service)
+        if remote_error is not None:
+            return {
+                "trace_id": trace_id,
+                "safety_level": SafetyLevel.BLOCK,
+                "matched_rule": "REMOTE_SHELL_SYNTAX",
+                "safety_reason": remote_error,
+                "command_source": verdict.command_source,
+                "batch_hosts": (),
+            }
         batch_hosts = _batch_hosts(state, cluster_service)
         level = verdict.level
         if batch_hosts and level is SafetyLevel.SAFE:
@@ -266,6 +277,23 @@ def _batch_hosts(state: AgentState, cluster_service: ClusterService | None) -> t
     if not selected or not cluster_service.requires_batch_confirm(selected):
         return ()
     return tuple(host.name for host in selected)
+
+
+def _remote_command_error(
+    command: str,
+    state: AgentState,
+    cluster_service: ClusterService | None,
+) -> str | None:
+    if cluster_service is None:
+        return None
+    selected_hosts = state.get("selected_hosts", ())
+    if not selected_hosts or not cluster_service.resolve_host_names(selected_hosts):
+        return None
+    try:
+        validate_remote_command(command)
+    except RemoteCommandError as exc:
+        return str(exc)
+    return None
 
 
 def _last_message_text(messages: list[BaseMessage]) -> str:
