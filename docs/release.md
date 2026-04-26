@@ -14,6 +14,10 @@ python -m build --no-isolation
 ./scripts/verify_wheel_install.sh
 ```
 
+The wheel verification step installs the built wheel in a temporary virtualenv,
+checks `linuxagent --help`, and verifies packaged config, prompt, and runbook
+data are present.
+
 ## Expected Artifacts
 
 - `dist/*.whl`

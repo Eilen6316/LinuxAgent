@@ -16,7 +16,25 @@ if [[ -z "$WHEEL_PATH" || ! -f "$WHEEL_PATH" ]]; then
 fi
 
 TMP_VENV="$(mktemp -d)"
+trap 'rm -rf "$TMP_VENV"' EXIT
 python3 -m venv --system-site-packages "$TMP_VENV"
 source "$TMP_VENV/bin/activate"
 pip install --no-deps "$WHEEL_PATH"
 linuxagent --help >/dev/null
+python - <<'PY'
+from importlib import resources
+
+root = resources.files("linuxagent")
+required = [
+    root / "_data" / "default.yaml",
+    root / "_data" / "policy.default.yaml",
+    root / "_data" / "prompts" / "system.md",
+]
+missing = [str(path) for path in required if not path.is_file()]
+runbooks_dir = root / "_data" / "runbooks"
+runbooks = sorted(path.name for path in runbooks_dir.iterdir() if path.name.endswith(".yaml"))
+if missing:
+    raise SystemExit(f"missing packaged data: {missing}")
+if len(runbooks) != 8:
+    raise SystemExit(f"expected 8 packaged runbooks, found {len(runbooks)}: {runbooks}")
+PY
