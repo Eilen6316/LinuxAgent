@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "linuxagent"
-version = "4.0.0.dev0"
+version = "4.0.0"
 description = "LLM-driven Linux operations assistant CLI with Human-in-the-Loop safety."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,7 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "LinuxAgent contributors" }]
 keywords = ["linux", "ops", "llm", "agent", "langgraph", "cli"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: System Administrators",
     "Operating System :: POSIX :: Linux",
@@ -61,6 +61,10 @@ linuxagent = "linuxagent.cli:main"
 
 [project.urls]
 Repository = "https://github.com/Eilen6316/LinuxAgent"
+Documentation = "https://github.com/Eilen6316/LinuxAgent#readme"
+Changelog = "https://github.com/Eilen6316/LinuxAgent/blob/master/CHANGELOG.md"
+Issues = "https://github.com/Eilen6316/LinuxAgent/issues"
+Security = "https://github.com/Eilen6316/LinuxAgent/security/policy"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/linuxagent"]
@@ -77,9 +81,20 @@ include = [
     "configs",
     "prompts",
     "runbooks",
+    "docs",
     "pyproject.toml",
     "README.md",
+    "README_CN.md",
+    "README_EN.md",
     "CHANGELOG.md",
+    "CHANGELOG_CN.md",
+    "SECURITY.md",
+    "SECURITY_CN.md",
+    "CONTRIBUTING.md",
+    "CONTRIBUTING_CN.md",
+    "CODE_OF_CONDUCT.md",
+    "CODE_OF_CONDUCT_CN.md",
+    "constraints.txt",
 ]
 exclude = [".work/", ".claude/"]
 

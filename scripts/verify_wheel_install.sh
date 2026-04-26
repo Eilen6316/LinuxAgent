@@ -7,7 +7,16 @@ cd "$ROOT"
 
 WHEEL_PATH="${1:-}"
 if [[ -z "$WHEEL_PATH" ]]; then
-    WHEEL_PATH="$(find dist -maxdepth 1 -name '*.whl' | head -n 1)"
+    WHEEL_PATH="$(python3 - <<'PY'
+from pathlib import Path
+import tomllib
+
+version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+matches = sorted(Path("dist").glob(f"linuxagent-{version}-*.whl"))
+if matches:
+    print(matches[0])
+PY
+)"
 fi
 
 if [[ -z "$WHEEL_PATH" || ! -f "$WHEEL_PATH" ]]; then
@@ -19,7 +28,11 @@ TMP_VENV="$(mktemp -d)"
 trap 'rm -rf "$TMP_VENV"' EXIT
 python3 -m venv "$TMP_VENV"
 source "$TMP_VENV/bin/activate"
-pip install --index-url "${LINUXAGENT_PIP_INDEX_URL:-https://pypi.org/simple}" "$WHEEL_PATH"
+PIP_INSTALL=(pip install --index-url "${LINUXAGENT_PIP_INDEX_URL:-https://pypi.org/simple}")
+if [[ -f constraints.txt ]]; then
+    PIP_INSTALL+=(--constraint constraints.txt)
+fi
+"${PIP_INSTALL[@]}" "$WHEEL_PATH"
 linuxagent --help >/dev/null
 python - <<'PY'
 from importlib import resources

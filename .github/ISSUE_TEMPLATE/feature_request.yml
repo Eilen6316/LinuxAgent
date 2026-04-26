@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest an operator-visible improvement
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What operator workflow or safety gap should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior, configuration, or API shape.
+    validations:
+      required: true
+  - type: dropdown
+    id: safety
+    attributes:
+      label: Security impact
+      options:
+        - No command execution impact
+        - Changes command classification or HITL
+        - Changes SSH or cluster execution
+        - Changes audit, telemetry, or redaction
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: tests
+    attributes:
+      label: Suggested tests or scenarios

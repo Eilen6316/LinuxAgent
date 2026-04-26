@@ -1,0 +1,39 @@
+name: 功能请求
+description: 提议一个对操作员可见的改进
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题背景
+      description: 这个需求解决什么运维流程或安全缺口？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 方案
+      description: 描述期望行为、配置或 API 形状。
+    validations:
+      required: true
+  - type: dropdown
+    id: safety
+    attributes:
+      label: 安全影响
+      options:
+        - 不影响命令执行
+        - 改动命令分类或 HITL
+        - 改动 SSH 或集群执行
+        - 改动审计、telemetry 或脱敏
+        - 不确定
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 备选方案
+  - type: textarea
+    id: tests
+    attributes:
+      label: 建议测试或场景

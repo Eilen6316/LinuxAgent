@@ -1,6 +1,8 @@
 # LinuxAgent v4 developer commands.
 # Red-lines enforced by `make security` mirror the CI security job.
 
+PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo python; fi)
+
 .PHONY: help install test integration optional-anthropic lint type security harness build verify-build clean
 
 help:
@@ -18,26 +20,26 @@ help:
 	@echo "  clean      remove build / cache artifacts"
 
 install:
-	pip install -e ".[dev]"
+	$(PYTHON) -m pip install -e ".[dev]"
 
 test:
-	pytest tests/unit/ --cov=linuxagent --cov-report=term-missing --cov-fail-under=80
+	$(PYTHON) -m pytest tests/unit/ --cov=linuxagent --cov-report=term-missing --cov-fail-under=80
 
 integration:
-	pytest tests/integration/ -m integration --integration
+	$(PYTHON) -m pytest tests/integration/ -m integration --integration
 
 optional-anthropic:
-	@python -c "import langchain_anthropic" >/dev/null 2>&1 || { \
+	@$(PYTHON) -c "import langchain_anthropic" >/dev/null 2>&1 || { \
 		echo "error: install Anthropic extra first: pip install -e '.[anthropic,dev]'" >&2; \
 		exit 1; \
 	}
-	pytest tests/unit/providers/test_factory.py -q
+	$(PYTHON) -m pytest tests/unit/providers/test_factory.py -q
 
 lint:
-	ruff check src/linuxagent/ tests/
+	$(PYTHON) -m ruff check src/linuxagent/ tests/
 
 type:
-	mypy src/linuxagent/
+	$(PYTHON) -m mypy src/linuxagent/
 
 security:
 	@echo "--> R-SEC-01 shell=True"
@@ -49,17 +51,17 @@ security:
 	@echo "--> R-HITL-05 input() in graph nodes"
 	@if [ -d src/linuxagent/graph ]; then ! grep -rn "input(" src/linuxagent/graph/; fi
 	@echo "--> bandit"
-	@bandit -q -r src/linuxagent/ -ll
+	@$(PYTHON) -m bandit -q -r src/linuxagent/ -ll
 
 harness:
-	python -m tests.harness.runner --scenarios tests/harness/scenarios/
+	$(PYTHON) -m tests.harness.runner --scenarios tests/harness/scenarios/
 
 build:
-	@python -c "import hatchling.build" >/dev/null 2>&1 || { \
+	@$(PYTHON) -c "import hatchling.build" >/dev/null 2>&1 || { \
 		echo "error: hatchling.build is unavailable. Run 'make install' or activate the project .venv before make build." >&2; \
 		exit 1; \
 	}
-	python -m build --no-isolation
+	$(PYTHON) -m build --no-isolation
 
 verify-build: build
 	./scripts/verify_wheel_install.sh

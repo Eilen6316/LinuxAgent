@@ -1,0 +1,12 @@
+name: Security report
+description: Do not use this public form for vulnerabilities
+title: "security: do not file publicly"
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not submit vulnerabilities as public issues.
+
+        Use GitHub private vulnerability reporting if available, or follow SECURITY.md.
+        Public security issues may be closed without details to protect users.

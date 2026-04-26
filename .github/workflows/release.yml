@@ -24,6 +24,7 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: docs/releases/v4.0.0.md
           files: |
             dist/*.whl
             dist/*.tar.gz

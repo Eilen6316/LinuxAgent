@@ -4,13 +4,18 @@
 
   <p>
     <a href="https://github.com/Eilen6316/LinuxAgent.git"><img src="https://img.shields.io/badge/GitHub-Repository-black?style=flat-square&logo=github" alt="GitHub"></a>
+    <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
+    <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
+    <a href="https://pypi.org/project/linuxagent/"><img src="https://img.shields.io/pypi/v/linuxagent?style=flat-square" alt="PyPI"></a>
+    <a href="README_EN.md#development"><img src="https://img.shields.io/badge/coverage-90.65%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
     <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=o2ByKsl_gBN-fODJxH4Ps4Xboa_hCSI3&authKey=nVfsLJBin1CnZBd9pPNkxFk%2FGFqCe1FLsRMQmmxv%2FQnM78bC%2FjcWyMSeQcJDZC1U&noverify=0&group_code=281392454"><img src="https://img.shields.io/badge/QQ_Group-281392454-brightgreen?style=flat-square&logo=tencent-qq" alt="QQ Group"></a>
     <a href="https://blog.csdn.net/qq_69174109/article/details/146365413"><img src="https://img.shields.io/badge/CSDN-Project_Intro-blue?style=flat-square&logo=csdn" alt="CSDN"></a>
   </p>
 
-  <p><em>LLM-driven Linux operations assistant CLI with mandatory Human-in-the-Loop safety</em></p>
+  <p><em>LinuxAgent v4.0.0: LLM-driven Linux operations assistant CLI with mandatory Human-in-the-Loop safety</em></p>
 
   <p>
     <a href="README.md">README (short)</a> ·
@@ -25,6 +30,8 @@
 **LinuxAgent** translates plain-language ops requests into Linux commands your team actually wants to run. Every LLM-generated command goes through token-level safety classification, every side-effecting action requires a human to press `y` in a terminal, and every decision is written to an append-only audit log.
 
 Built on **LangGraph** for state-machine orchestration, **LangChain** for model abstraction, and **Pydantic v2** for fail-fast configuration. No local deep-learning stack is required.
+
+**v4.0.0 is the first formal release of the rewritten agent.** It turns the earlier prototype into a policy-driven, audited, runbook-aware operations CLI for controlled operator-in-the-loop use, not unattended remediation.
 
 ### Who it's for
 
@@ -57,7 +64,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 271 default unit tests + 1 optional provider test + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
+| Testability | 272 default unit tests + 4 optional Anthropic compatibility tests + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
 
 ---
 
@@ -231,7 +238,7 @@ confirmation and again before SSH connection setup.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **271 passing by default; 272 with the Anthropic extra installed** |
+| Unit tests | 0 | **272 passing by default; 4 additional Anthropic compatibility tests with the extra installed** |
 | Coverage | 0 | **90.65%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
@@ -585,7 +592,15 @@ See [docs/release.md](docs/release.md).
 
 - [Quick Start](docs/quickstart.md)
 - [Development Guide](docs/development.md)
-- [Release Guide](docs/release.md)
+- [Release Guide](docs/release.md) / [中文发布指南](docs/release_CN.md)
+- [Migration Guide: v3 to v4.0.0](docs/migration-v3-to-v4.md)
+- [Threat Model](docs/threat-model.md)
+- [Production Readiness](docs/production-readiness.md)
+- [Release Notes](docs/releases/v4.0.0.md) / [中文发布说明](docs/releases/v4.0.0_CN.md)
+- [Changelog](CHANGELOG.md) / [中文更新日志](CHANGELOG_CN.md)
+- [Security Policy](SECURITY.md) / [安全政策](SECURITY_CN.md)
+- [Contributing](CONTRIBUTING.md) / [贡献指南](CONTRIBUTING_CN.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md) / [行为准则](CODE_OF_CONDUCT_CN.md)
 
 ---
 

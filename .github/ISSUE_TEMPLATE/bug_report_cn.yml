@@ -1,0 +1,62 @@
+name: Bug 报告
+description: 报告可复现的 LinuxAgent 问题
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请不要在公开 issue 中报告安全漏洞。安全问题请按 SECURITY_CN.md 私下报告。
+  - type: input
+    id: version
+    attributes:
+      label: LinuxAgent 版本
+      placeholder: "4.0.0 或 commit SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响范围
+      options:
+        - CLI
+        - 配置
+        - 策略 / 安全分类
+        - HITL / 确认
+        - Runbook
+        - SSH / 集群
+        - 审计 / telemetry
+        - 打包
+        - 文档
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 请包含具体命令、prompt、配置形状和观察到的输出。
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境
+      placeholder: "OS、Python 版本、安装方式、shell/TTY 信息"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: 请脱敏 API key、token、主机名、IP、用户名和生产数据。
+      render: text

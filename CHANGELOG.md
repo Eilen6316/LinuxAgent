@@ -4,47 +4,69 @@ All notable changes to LinuxAgent are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.0.0] - 2026-04-26
 
-### Added — Plan 6 foundation
+LinuxAgent v4.0.0 is the first formal release of the rewritten operations
+assistant. It replaces the earlier prototype with a LangGraph-based,
+policy-driven, audited CLI for controlled human-in-the-loop Linux operations.
 
-- `src/linuxagent/ui/console.py`: `prompt_toolkit`-driven async prompt session with theme-aware Rich rendering
-- `tests/harness/`: YAML scenario harness runner plus HITL and cluster scenarios
-- `.github/workflows/release.yml`: tag-driven build + GitHub Release flow
-- `Makefile build`: wheel + sdist build target
-- `tests/integration/`: optional integration coverage for executor, graph, and SSH policy wiring
-- `scripts/verify_wheel_install.sh`: post-build wheel install verification
-- `docs/quickstart.md`, `docs/development.md`, `docs/release.md`
+### Added
 
-### Changed — release readiness
+- LangGraph state machine with explicit parse, policy, confirm, execute, and
+  analyze stages.
+- Capability-based policy engine with `SAFE`, `CONFIRM`, `BLOCK`, risk scores,
+  capabilities, matched rules, and runtime YAML policy overrides.
+- Structured JSON `CommandPlan` validation before policy evaluation.
+- Eight YAML runbooks for common operations diagnostics, with multi-step
+  orchestration and per-step policy checks.
+- SSH cluster execution with batch confirmation, host-key verification, and
+  remote shell-syntax guards.
+- Hash-chained JSONL audit log at `~/.linuxagent/audit.log`, plus
+  `linuxagent audit verify`.
+- Output redaction and guarded tool results before LLM-facing analysis paths.
+- Local telemetry JSONL spans with trace IDs.
+- Resource threshold alerts for CPU, memory, and root filesystem usage.
+- Unit, integration, security, type, lint, harness, optional-provider, and
+  wheel-install verification gates.
+- Public project governance files: `SECURITY.md`, `CONTRIBUTING.md`,
+  `CODE_OF_CONDUCT.md`, issue templates, and PR template.
+- v3 to v4 migration guide, threat model, production-readiness checklist, and
+  formal release notes.
+- Reproducible install constraints in `constraints.txt`.
 
-- `README.md` rewritten for the v4 codebase and current release workflow
-- CI build job now verifies wheel installation after artifact build
-- frozen `v3` source removed from the repository; `v4` is now the only active code path
+### Changed
 
-### Added — Plan 1 skeleton
+- Package metadata now marks v4.0.0 as a stable release instead of a development
+  alpha.
+- Configuration uses Pydantic v2 fail-fast validation and requires user config
+  files to be owned by the current user and `chmod 600`.
+- Secrets are configured through `config.yaml`; `.env` is not used for secret
+  values.
+- The README family, PyPI metadata, CHANGELOG, and release notes use the same
+  v4.0.0 release narrative.
+- CI publishes coverage artifacts and runs build verification against packaged
+  config, prompt, and runbook data.
 
-- `src/linuxagent/` v4 package under PyPA src-layout
-- `src/linuxagent/config/models.py`: Pydantic v2 configuration models (fail-fast validation, `SecretStr` for secrets, `frozen=True`)
-- `src/linuxagent/config/loader.py`: multi-source loader with `0o600` + owner checks for all user-supplied paths (R-SEC-04, R-HITL prerequisites)
-- `src/linuxagent/interfaces/`: `LLMProvider`, `CommandExecutor`, `UserInterface`, `BaseService` ABCs; `ExecutionResult` / `SafetyResult` / `SafetyLevel` sentinels
-- `src/linuxagent/container.py`: minimal DI container (grows across Plan 2–6)
-- `src/linuxagent/logger.py`: JSON (production) + Rich console (dev) handlers
-- `src/linuxagent/cli.py`: argparse entry point, `linuxagent check` subcommand validates config
-- `pyproject.toml`: PEP 517/621 build; LangChain Core / LangGraph / Pydantic pinned
-- `Makefile`, `.pre-commit-config.yaml`, `.github/workflows/ci.yml` enforcing R-SEC / R-QUAL / R-HITL red-lines
-- `configs/default.yaml`, `configs/example.yaml` template
-- `scripts/bootstrap.sh` one-shot dev environment setup (chmod 600 on generated `./config.yaml`)
-- `tests/unit/test_framework_ready.py`, `tests/unit/test_config.py`
+### Removed
 
-### Changed — breaking (v3 → v4)
-
-- Package name is `linuxagent` (was top-level `src.*`)
-- `setup.py` + `requirements.txt` removed in favor of `pyproject.toml` (single source of truth)
-- `src/` moved to `legacy/src_v3/`; all v3 imports break
-- `.env` no longer supported — configuration lives in `config.yaml` only (see `.work/change/2026-04-23-config-yaml-only.md`)
+- The frozen v3 code path is no longer part of the active package.
+- `setup.py` and ad hoc dependency files are replaced by `pyproject.toml` plus
+  release constraints.
 
 ### Security
 
-- `shell=True`, `AutoAddPolicy`, bare `except:` banned at CI level (see `.work/rule/baseline.md` R-SEC-01 / R-SEC-03 / R-QUAL-01)
-- HITL ground rules landed (`.work/rule/baseline.md` R-HITL-01..06); concrete enforcement in Plan 2 and Plan 4
+- `shell=True`, `AutoAddPolicy`, bare `except:`, and graph-node `input()` are
+  blocked by CI red-line checks.
+- LLM-generated commands require confirmation on first use.
+- Destructive commands never enter the session whitelist.
+- Non-TTY confirmation requests auto-deny.
+- SSH cluster mode blocks shell chaining, redirects, substitutions, and variable
+  expansion before execution.
+- Tool outputs are redacted and guarded before entering the LLM tool loop.
+
+### Migration
+
+This release is not a drop-in upgrade from v3. See
+[docs/migration-v3-to-v4.md](docs/migration-v3-to-v4.md).
+
+[4.0.0]: https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0

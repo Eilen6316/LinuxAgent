@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a reproducible LinuxAgent bug
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Use SECURITY.md for private reporting.
+  - type: input
+    id: version
+    attributes:
+      label: LinuxAgent version
+      placeholder: "4.0.0 or commit SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Configuration
+        - Policy / safety
+        - HITL / confirmation
+        - Runbooks
+        - SSH / cluster
+        - Audit / telemetry
+        - Packaging
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Include exact commands, prompts, config shape, and observed output.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "OS, Python version, install method, shell/TTY details"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Redact API keys, tokens, hostnames, IPs, usernames, and production data.
+      render: text
