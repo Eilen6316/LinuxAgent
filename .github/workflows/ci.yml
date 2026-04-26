@@ -96,7 +96,5 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Build
-        run: python -m build --no-isolation
-      - name: Verify wheel install
-        run: ./scripts/verify_wheel_install.sh
+      - name: Verify build
+        run: make verify-build
