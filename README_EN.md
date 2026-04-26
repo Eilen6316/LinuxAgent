@@ -57,7 +57,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 254 default unit tests + 1 optional provider test + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
+| Testability | 259 default unit tests + 1 optional provider test + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
 
 ---
 
@@ -107,7 +107,7 @@ The earlier incarnation was a monolithic agent script. To make it production-fit
 | Aspect | Previous | Current `v4` |
 |---|---|---|
 | Agent class | One 4710-line God Object covering parsing, execution, UI, SSH, monitoring | `app/agent.py` at **72 lines**, pure coordinator wiring graph / ui / services |
-| Flow control | Recursive `process_user_input` with nested `if/else` | LangGraph `StateGraph`, explicit nodes + conditional edges |
+| Flow control | Recursive `process_user_input` with nested `if/else` | LangGraph `StateGraph`, split into intent / safety / routing / node-factory modules |
 | State persistence | Hand-written JSON files, permissions not enforced | LangGraph `MemorySaver` with thread_id checkpointing |
 | UI coupling | UI logic directly embedded in the agent class | `ConsoleUI` implementing `UserInterface`, Rich + prompt_toolkit |
 | DI | Module-level singletons / globals | Hand-written `Container` with lazy factories + explicit injection |
@@ -231,8 +231,8 @@ confirmation and again before SSH connection setup.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **254 passing by default; 255 with the Anthropic extra installed** |
-| Coverage | 0 | **90.19%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **259 passing by default; 260 with the Anthropic extra installed** |
+| Coverage | 0 | **90.70%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
 | End-to-end scenarios | none | 12 YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard / runbook |

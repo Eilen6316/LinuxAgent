@@ -49,7 +49,7 @@ you: find services listening on port 8080
 - **Local telemetry JSONL** with per-run `trace_id`, no external collector required by default
 - **Resource threshold alerts** for CPU, memory, and root filesystem usage in `linuxagent check`
 - **Cluster-aware batch confirmation** — ≥2 hosts triggers an explicit approval prompt
-- **254 default unit tests + 1 optional provider test + 12 HITL scenarios**, 90%+ coverage, `mypy --strict`, `bandit` clean
+- **259 default unit tests + 1 optional provider test + 12 HITL scenarios**, 90%+ coverage, `mypy --strict`, `bandit` clean
 
 ## Quick start
 
@@ -81,7 +81,7 @@ Short version — the older single-file agent had a 4710-line God Object, substr
 | HITL | implicit, bypassable | `interrupt()` + checkpointing + audit log |
 | Planning | raw shell string | validated JSON `CommandPlan` |
 | Semantic search | hand-rolled TF-IDF, ~500MB local stack | LLM embedding API + disk cache, no local models |
-| Tests | 0 | 254 default unit + 1 optional provider + 12 HITL scenarios + 8 integration smoke tests |
+| Tests | 0 | 259 default unit + 1 optional provider + 12 HITL scenarios + 8 integration smoke tests |
 
 See the [full comparison](README_CN.md#与旧版本的全面对比) ([English](README_EN.md#full-comparison-with-the-original-prototype)) for algorithm-level diffs.
 
@@ -91,6 +91,7 @@ See the [full comparison](README_CN.md#与旧版本的全面对比) ([English](R
 src/linuxagent/     active package (src-layout)
 src/linuxagent/policy/ capability-based command policy engine
 src/linuxagent/plans/  structured CommandPlan schema and parser
+src/linuxagent/graph/  LangGraph orchestration split by intent/safety/routing/nodes
 src/linuxagent/runbooks/ YAML runbook loader and matcher
 src/linuxagent/telemetry.py local JSONL spans and trace IDs
 runbooks/           built-in ops runbooks

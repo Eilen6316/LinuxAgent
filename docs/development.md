@@ -13,7 +13,7 @@ Core layers:
 - `plans/`: strict JSON CommandPlan models and parsing
 - `runbooks/`: YAML runbook models, loading, matching, and policy validation
 - `cluster/`: SSH execution and host policy
-- `graph/`: LangGraph orchestration
+- `graph/`: LangGraph orchestration split into intent parsing, safety checks, routing, and node factories
 - `services/`: application services
 - `telemetry.py`: local JSONL spans and trace correlation
 - `intelligence/`: learner, semantic helpers, recommendations
