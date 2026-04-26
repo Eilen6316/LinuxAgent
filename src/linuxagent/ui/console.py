@@ -99,10 +99,11 @@ class ConsoleUI(UserInterface):
             if items:
                 table.add_row(label, "\n".join(str(item) for item in items))
         runbook_steps = payload.get("runbook_steps") or []
+        step_index = int(payload.get("runbook_step_index") or 0)
         if runbook_steps:
             rendered = [
                 f"{step.get('command')} - {step.get('purpose')}"
-                for step in runbook_steps[1:]
+                for step in runbook_steps[step_index + 1:]
             ]
             if rendered:
                 table.add_row("Next steps", "\n".join(rendered))

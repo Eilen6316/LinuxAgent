@@ -17,7 +17,7 @@ from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.interfaces import CommandSource, ExecutionResult
 from linuxagent.plans import command_plan_json
-from linuxagent.runbooks import RunbookEngine, load_runbooks
+from linuxagent.runbooks import Runbook, RunbookEngine, RunbookStep, load_runbooks
 from linuxagent.services import ClusterService, CommandService
 
 
@@ -270,3 +270,60 @@ async def test_graph_prefers_matching_runbook_before_llm(tmp_path) -> None:
     assert interrupt_payload["runbook_id"] == "disk.full"
     assert interrupt_payload["goal"] == "Investigate disk usage"
     assert interrupt_payload["runbook_steps"][0]["command"] == "df -h"
+
+
+async def test_graph_continues_safe_runbook_steps_after_first_confirmation(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        ["runbook analysis"],
+        runbook_engine=_runbook_engine(),
+    )
+    config = {"configurable": {"thread_id": "runbook-disk-continue"}}
+
+    await graph.ainvoke(initial_state("机器磁盘满了", source=CommandSource.USER), config=config)
+    resumed = await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+
+    snapshot = await graph.aget_state(config)
+    results = snapshot.values["runbook_results"]
+    assert not snapshot.tasks
+    assert [result.command for result in results] == ["df -h", "du -sh /var/log"]
+    assert snapshot.values["runbook_step_index"] == 1
+    assert snapshot.values["command_source"] is CommandSource.RUNBOOK
+    assert "runbook analysis" in str(resumed["messages"][-1].content)
+    analysis_prompt = str(provider.complete_messages[-1][-1].content)
+    assert "Runbook step results" in analysis_prompt
+    assert "df -h" in analysis_prompt
+    assert "du -sh /var/log" in analysis_prompt
+
+
+async def test_graph_rechecks_policy_for_later_runbook_steps(tmp_path) -> None:
+    runbook = Runbook(
+        id="service.restart",
+        title="Restart service",
+        triggers=("restart-demo",),
+        scenarios=("restart-demo one", "restart-demo two", "restart-demo three"),
+        steps=(
+            RunbookStep(command="/bin/echo inspect", purpose="Inspect service", read_only=True),
+            RunbookStep(
+                command="systemctl restart ssh",
+                purpose="Restart ssh when requested",
+                read_only=False,
+            ),
+        ),
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        ["runbook analysis"],
+        runbook_engine=RunbookEngine((runbook,)),
+    )
+    config = {"configurable": {"thread_id": "runbook-reconfirm"}}
+
+    await graph.ainvoke(initial_state("restart-demo", source=CommandSource.USER), config=config)
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+
+    snapshot = await graph.aget_state(config)
+    interrupt_payload = snapshot.tasks[0].interrupts[0].value
+    assert snapshot.values["pending_command"] == "systemctl restart ssh"
+    assert interrupt_payload["command_source"] == CommandSource.RUNBOOK.value
+    assert interrupt_payload["matched_rule"] == "DESTRUCTIVE"
+    assert interrupt_payload["runbook_step_index"] == 1

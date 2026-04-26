@@ -59,6 +59,8 @@ def make_parse_intent_node(
                 "pending_command": None,
                 "command_plan": None,
                 "selected_runbook": None,
+                "runbook_step_index": 0,
+                "runbook_results": (),
                 "plan_error": str(exc),
                 "command_source": CommandSource.LLM,
                 "selected_hosts": (),
@@ -71,6 +73,8 @@ def make_parse_intent_node(
                 "pending_command": plan.primary.command,
                 "command_plan": plan,
                 "selected_runbook": runbook,
+                "runbook_step_index": 0,
+                "runbook_results": (),
                 "plan_error": None,
                 "command_source": CommandSource.LLM,
                 "selected_hosts": selected_hosts,
@@ -92,6 +96,8 @@ def make_parse_intent_node(
                 "pending_command": None,
                 "command_plan": None,
                 "selected_runbook": None,
+                "runbook_step_index": 0,
+                "runbook_results": (),
                 "plan_error": str(exc),
                 "command_source": CommandSource.LLM,
                 "selected_hosts": (),
@@ -103,6 +109,8 @@ def make_parse_intent_node(
             "pending_command": command,
             "command_plan": plan,
             "selected_runbook": None,
+            "runbook_step_index": 0,
+            "runbook_results": (),
             "plan_error": None,
             "command_source": CommandSource.LLM,
             "selected_hosts": selected_hosts,
@@ -183,8 +191,8 @@ def make_confirm_node(
             "command_source": (state.get("command_source") or CommandSource.USER).value,
             "batch_hosts": list(state.get("batch_hosts", ())),
             "is_destructive": is_destructive(command or ""),
-            **_plan_payload(state.get("command_plan")),
-            **_runbook_payload(state.get("selected_runbook")),
+            **_plan_payload(state.get("command_plan"), state.get("runbook_step_index", 0)),
+            **_runbook_payload(state.get("selected_runbook"), state.get("runbook_step_index", 0)),
         }
         response = interrupt(payload)
         with _span(telemetry, "hitl.confirm", trace_id, {"matched_rule": state.get("matched_rule")}):
@@ -241,9 +249,34 @@ def make_execute_node(
                 trace_id=trace_id,
                 batch_hosts=state.get("batch_hosts", ()),
             )
-        return {"trace_id": trace_id, "execution_result": result}
+        update: AgentState = {"trace_id": trace_id, "execution_result": result}
+        if state.get("selected_runbook") is not None:
+            update["runbook_results"] = (*state.get("runbook_results", ()), result)
+        return update
 
     return execute_node
+
+
+def make_advance_runbook_node() -> Node:
+    async def advance_runbook_node(state: AgentState) -> AgentState:
+        plan = state.get("command_plan")
+        next_index = state.get("runbook_step_index", 0) + 1
+        if plan is None or next_index >= len(plan.commands):
+            return {}
+        next_command = plan.commands[next_index]
+        return {
+            "pending_command": next_command.command,
+            "runbook_step_index": next_index,
+            "command_source": CommandSource.RUNBOOK,
+            "safety_level": None,
+            "matched_rule": None,
+            "safety_reason": None,
+            "batch_hosts": (),
+            "user_confirmed": False,
+            "audit_id": None,
+        }
+
+    return advance_runbook_node
 
 
 def make_analyze_result_node(
@@ -261,7 +294,7 @@ def make_analyze_result_node(
             chat_history=[],
             user_input=(
                 "Summarize this command result for the operator in concise Chinese.\n\n"
-                f"{guard_execution_result(result).text}"
+                f"{_analysis_context(state, result)}"
             ),
         )
         try:
@@ -297,6 +330,16 @@ def route_by_safety(state: AgentState) -> str:
     if level is SafetyLevel.CONFIRM:
         return "CONFIRM"
     return "SAFE"
+
+
+def route_after_execute(state: AgentState) -> str:
+    plan = state.get("command_plan")
+    if state.get("selected_runbook") is None or plan is None:
+        return "ANALYZE"
+    next_index = state.get("runbook_step_index", 0) + 1
+    if next_index >= len(plan.commands):
+        return "ANALYZE"
+    return "CONTINUE_RUNBOOK"
 
 
 def _batch_hosts(state: AgentState, cluster_service: ClusterService | None) -> tuple[str, ...]:
@@ -424,12 +467,13 @@ def _plan_from_runbook(runbook: Runbook) -> CommandPlan:
     )
 
 
-def _plan_payload(plan: CommandPlan | None) -> dict[str, Any]:
+def _plan_payload(plan: CommandPlan | None, step_index: int = 0) -> dict[str, Any]:
     if plan is None:
         return {}
+    current = plan.commands[min(step_index, len(plan.commands) - 1)]
     return {
         "goal": plan.goal,
-        "purpose": plan.primary.purpose,
+        "purpose": current.purpose,
         "risk_summary": plan.risk_summary,
         "preflight_checks": list(plan.preflight_checks),
         "verification_commands": list(plan.verification_commands),
@@ -439,17 +483,28 @@ def _plan_payload(plan: CommandPlan | None) -> dict[str, Any]:
     }
 
 
-def _runbook_payload(runbook: Runbook | None) -> dict[str, Any]:
+def _runbook_payload(runbook: Runbook | None, step_index: int = 0) -> dict[str, Any]:
     if runbook is None:
         return {}
     return {
         "runbook_id": runbook.id,
         "runbook_title": runbook.title,
+        "runbook_step_index": step_index,
         "runbook_steps": [
             {"command": step.command, "purpose": step.purpose, "read_only": step.read_only}
             for step in runbook.steps
         ],
     }
+
+
+def _analysis_context(state: AgentState, result: ExecutionResult) -> str:
+    runbook_results = state.get("runbook_results", ())
+    if not runbook_results:
+        return guard_execution_result(result).text
+    sections = ["Runbook step results:"]
+    for index, step_result in enumerate(runbook_results, start=1):
+        sections.append(f"\nStep {index}:\n{guard_execution_result(step_result).text}")
+    return "\n".join(sections)
 
 
 async def _run_command(
