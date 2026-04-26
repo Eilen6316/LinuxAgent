@@ -18,10 +18,18 @@
 
 ## 验收标准
 
-- [ ] `echo ok; whoami` 这类远程 shell 序列在集群路径进入 `BLOCK`
-- [ ] `echo ok; rm -rf /` 不会触发任何 SSH 连接
-- [ ] 简单 argv 命令（如 `uptime` / `systemctl status nginx --no-pager`）仍可远程执行
-- [ ] SSH 层和 Graph 层均有测试
-- [ ] 现有 HITL / cluster harness 仍通过，并新增远程 shell 语义场景
+- [x] `echo ok; whoami` 这类远程 shell 序列在集群路径进入 `BLOCK`
+- [x] `echo ok; rm -rf /` 不会触发任何 SSH 连接
+- [x] 简单 argv 命令（如 `uptime` / `systemctl status nginx --no-pager`）仍可远程执行
+- [x] SSH 层和 Graph 层均有测试
+- [x] 现有 HITL / cluster harness 仍通过，并新增远程 shell 语义场景
 
 <!-- 完成记录（完成后追加） -->
+
+## 完成记录
+
+- **日期**：2026-04-26
+- **实现 commit**：`85724c7`
+- **验证**：`make test`（228 passed, 1 skipped, coverage 87.27%）、`make lint`、`make type`、`make security`、`make harness`
+- **偏差清单**：
+  - 本轮采用保守的远程 shell 语法拒绝策略；复杂 shell 管道需要拆成简单远程命令，或后续引入受控 remote runner。
