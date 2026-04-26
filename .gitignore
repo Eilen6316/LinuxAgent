@@ -1,5 +1,7 @@
 # IDE / 本地 agent 缓存（不入库）
 .claude/
+.codex
+.codex/
 .work/
 AGENTS.md
 CLAUDE.md

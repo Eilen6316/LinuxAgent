@@ -13,7 +13,13 @@ from linuxagent.providers.openai import OpenAIProvider
 
 
 def _cfg(provider: LLMProviderName) -> APIConfig:
-    return APIConfig(provider=provider, api_key="sk-test")
+    return APIConfig(
+        provider=provider,
+        api_key="sk-test",
+        model="test-model",
+        max_tokens=1024,
+        temperature=0.0,
+    )
 
 
 def test_openai_route() -> None:
@@ -31,6 +37,9 @@ def test_deepseek_route() -> None:
 def test_anthropic_route_when_available() -> None:
     provider = provider_factory(_cfg(LLMProviderName.ANTHROPIC))
     assert isinstance(provider, AnthropicProvider)
+    assert provider.chat_model.model == "test-model"
+    assert provider.chat_model.max_tokens == 1024
+    assert provider.chat_model.temperature == 0.0
 
 
 def test_anthropic_raises_when_extra_missing(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -22,10 +22,11 @@ Optional integration smoke checks:
 
 ```bash
 make integration
+make optional-anthropic  # after pip install -e '.[anthropic,dev]'
 ```
 
-Run these when the local environment supports the integration assumptions.
-They are not part of the default CI gate.
+Run these when the local environment supports the integration assumptions and
+optional provider extras. They are not part of the default CI gate.
 
 ## Expected Artifacts
 

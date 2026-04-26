@@ -30,6 +30,7 @@ Run locally:
 ```bash
 pytest tests/unit/ --cov=linuxagent --cov-fail-under=80
 make integration
+make optional-anthropic
 python -m tests.harness.runner --scenarios tests/harness/scenarios
 make verify-build
 ```
@@ -37,6 +38,9 @@ make verify-build
 `make integration` is intentionally optional and runs only tests marked
 `integration` with the explicit `--integration` flag. Keep external-resource
 coverage behind that gate so the default unit suite stays deterministic.
+
+`make optional-anthropic` is also optional. Run `pip install -e '.[anthropic,dev]'`
+first when validating Claude provider compatibility.
 
 `make build` expects the dev build backend to be importable in the active
 Python environment. Run `make install` first, or activate the project virtualenv

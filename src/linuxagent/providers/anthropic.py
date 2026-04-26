@@ -41,11 +41,12 @@ def _build_chat_model(config: APIConfig) -> Any:
             "Anthropic support requires the optional extra: pip install 'linuxagent[anthropic]'"
         )
     return ChatAnthropic(
-        model=config.model,
+        model_name=config.model,
         api_key=config.api_key,
         timeout=config.timeout,
         temperature=config.temperature,
-        max_tokens=config.max_tokens,
+        max_tokens_to_sample=config.max_tokens,
+        stop=None,
     )
 
 
