@@ -22,7 +22,7 @@ Core layers:
 ## Test Matrix
 
 - `tests/unit/`: default CI test suite
-- `tests/integration/`: optional integration coverage, gated by `--integration`
+- `tests/integration/`: optional graph/runtime/SSH integration coverage, gated by `--integration`
 - `tests/harness/`: YAML scenarios for graph and HITL behavior
 
 Run locally:

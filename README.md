@@ -81,7 +81,7 @@ Short version — the older single-file agent had a 4710-line God Object, substr
 | HITL | implicit, bypassable | `interrupt()` + checkpointing + audit log |
 | Planning | raw shell string | validated JSON `CommandPlan` |
 | Semantic search | hand-rolled TF-IDF, ~500MB local stack | LLM embedding API + disk cache, no local models |
-| Tests | 0 | 254 unit + 12 HITL scenarios + integration suite |
+| Tests | 0 | 254 unit + 12 HITL scenarios + 8 integration smoke tests |
 
 See the [full comparison](README_CN.md#与旧版本的全面对比) ([English](README_EN.md#full-comparison-with-the-original-prototype)) for algorithm-level diffs.
 

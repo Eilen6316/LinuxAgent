@@ -57,7 +57,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 254 unit tests + 12 HITL YAML scenarios + integration scaffolding, 90%+ coverage |
+| Testability | 254 unit tests + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
 
 ---
 
