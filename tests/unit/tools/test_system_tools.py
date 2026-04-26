@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from linuxagent.config.models import SecurityConfig
+from linuxagent.config.models import MonitoringConfig, SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.tools import (
     LogFileAccessError,
@@ -57,10 +57,27 @@ def test_get_system_info_returns_snapshot() -> None:
         "disk_total",
         "disk_percent",
         "boot_time",
+        "alerts",
     }
     assert expected_keys.issubset(info.keys())
     assert isinstance(info["memory_total"], int)
     assert info["memory_percent"] >= 0
+    assert isinstance(info["alerts"], list)
+
+
+def test_get_system_info_includes_threshold_alerts() -> None:
+    tool = make_get_system_info_tool(
+        MonitoringConfig(cpu_threshold=0.0, memory_threshold=0.0, disk_threshold=0.0)
+    )
+
+    info = tool.invoke({})
+
+    assert isinstance(info["alerts"], list)
+    assert {alert["metric"] for alert in info["alerts"]} == {
+        "cpu_percent",
+        "memory_percent",
+        "disk_percent",
+    }
 
 
 def test_build_system_tools_returns_both() -> None:

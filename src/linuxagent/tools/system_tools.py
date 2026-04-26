@@ -16,8 +16,10 @@ from pathlib import Path
 import psutil
 from langchain_core.tools import BaseTool, tool
 
+from ..config.models import MonitoringConfig
 from ..interfaces import CommandExecutor, CommandSource
 from ..security import redact_text
+from ..services import evaluate_alerts
 
 DEFAULT_LOG_ROOTS: tuple[Path, ...] = (Path("/var/log"),)
 MAX_LOG_FILE_BYTES = 1_048_576
@@ -59,7 +61,7 @@ def make_execute_command_tool(executor: CommandExecutor) -> BaseTool:
     return execute_command
 
 
-def make_get_system_info_tool() -> BaseTool:
+def make_get_system_info_tool(monitoring_config: MonitoringConfig | None = None) -> BaseTool:
     """Expose host resource snapshot (platform / CPU / memory / disk)."""
 
     @tool
@@ -71,7 +73,7 @@ def make_get_system_info_tool() -> BaseTool:
         """
         vm = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
-        return {
+        snapshot: dict[str, object] = {
             "platform": platform.system(),
             "release": platform.release(),
             "python_version": sys.version.split()[0],
@@ -83,6 +85,18 @@ def make_get_system_info_tool() -> BaseTool:
             "disk_percent": disk.percent,
             "boot_time": int(psutil.boot_time()),
         }
+        config = monitoring_config or MonitoringConfig()
+        snapshot["alerts"] = [
+            {
+                "metric": alert.metric,
+                "value": alert.value,
+                "threshold": alert.threshold,
+                "severity": alert.severity,
+                "message": alert.message,
+            }
+            for alert in evaluate_alerts(snapshot, config)
+        ]
+        return snapshot
 
     return get_system_info
 
