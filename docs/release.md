@@ -10,8 +10,7 @@ make lint
 make type
 make security
 python -m tests.harness.runner --scenarios tests/harness/scenarios
-python -m build --no-isolation
-./scripts/verify_wheel_install.sh
+make verify-build
 ```
 
 The wheel verification step installs the built wheel in a temporary virtualenv,

@@ -30,7 +30,12 @@ Run locally:
 ```bash
 pytest tests/unit/ --cov=linuxagent --cov-fail-under=80
 python -m tests.harness.runner --scenarios tests/harness/scenarios
+make verify-build
 ```
+
+`make build` expects the dev build backend to be importable in the active
+Python environment. Run `make install` first, or activate the project virtualenv
+before building.
 
 ## Security Red Lines
 

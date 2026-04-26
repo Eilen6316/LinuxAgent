@@ -112,6 +112,7 @@ make type       # mypy --strict
 make security   # grep red-lines + bandit
 make harness    # YAML scenario harness
 make build      # wheel + sdist
+make verify-build  # build + wheel install + packaged data check
 linuxagent audit verify  # verify audit hash chain
 ```
 

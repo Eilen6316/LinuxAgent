@@ -549,6 +549,7 @@ make type      # mypy --strict
 make security  # red-line grep + bandit
 make harness   # YAML scenario harness
 make build     # wheel + sdist
+make verify-build  # build + wheel install + packaged data check
 linuxagent audit verify
 ```
 
@@ -560,8 +561,7 @@ Details in [docs/development.md](docs/development.md).
 
 ```bash
 python -m tests.harness.runner --scenarios tests/harness/scenarios
-python -m build --no-isolation
-./scripts/verify_wheel_install.sh
+make verify-build
 git tag v4.0.0
 git push origin v4.0.0     # triggers release.yml
 ```

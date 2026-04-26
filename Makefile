@@ -1,7 +1,7 @@
 # LinuxAgent v4 developer commands.
 # Red-lines enforced by `make security` mirror the CI security job.
 
-.PHONY: help install test lint type security harness build clean
+.PHONY: help install test lint type security harness build verify-build clean
 
 help:
 	@echo "Targets:"
@@ -12,6 +12,7 @@ help:
 	@echo "  security   grep red-lines + bandit"
 	@echo "  harness    scenario-driven HITL harness"
 	@echo "  build      build wheel + sdist"
+	@echo "  verify-build build wheel + verify install + packaged data"
 	@echo "  clean      remove build / cache artifacts"
 
 install:
@@ -42,7 +43,14 @@ harness:
 	python -m tests.harness.runner --scenarios tests/harness/scenarios/
 
 build:
+	@python -c "import hatchling.build" >/dev/null 2>&1 || { \
+		echo "error: hatchling.build is unavailable. Run 'make install' or activate the project .venv before make build." >&2; \
+		exit 1; \
+	}
 	python -m build --no-isolation
+
+verify-build: build
+	./scripts/verify_wheel_install.sh
 
 clean:
 	rm -rf build/ dist/ *.egg-info src/*.egg-info \
