@@ -17,6 +17,7 @@ from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.interfaces import CommandSource, ExecutionResult
 from linuxagent.plans import command_plan_json
+from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.services import ClusterService, CommandService
 
 
@@ -68,7 +69,13 @@ class _FakeSSH:
         return None
 
 
-def _graph(tmp_path: Path, responses: list[str], *, cluster_service: ClusterService | None = None):
+def _graph(
+    tmp_path: Path,
+    responses: list[str],
+    *,
+    cluster_service: ClusterService | None = None,
+    runbook_engine: RunbookEngine | None = None,
+):
     provider = _FakeProvider(responses)
     executor = LinuxCommandExecutor(SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist())
     deps = GraphDependencies(
@@ -76,8 +83,13 @@ def _graph(tmp_path: Path, responses: list[str], *, cluster_service: ClusterServ
         command_service=CommandService(executor),
         audit=AuditLog(tmp_path / "audit.log"),
         cluster_service=cluster_service,
+        runbook_engine=runbook_engine,
     )
     return build_agent_graph(deps), provider
+
+
+def _runbook_engine() -> RunbookEngine:
+    return RunbookEngine(load_runbooks(Path(__file__).resolve().parents[3] / "runbooks"))
 
 
 async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
@@ -238,3 +250,23 @@ async def test_graph_blocks_non_json_command_plan(tmp_path) -> None:
 
     assert "已阻止执行" in str(result["messages"][-1].content)
     assert "JSON CommandPlan" in str(result["messages"][-1].content)
+
+
+async def test_graph_prefers_matching_runbook_before_llm(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        ["runbook analysis"],
+        runbook_engine=_runbook_engine(),
+    )
+    config = {"configurable": {"thread_id": "runbook-disk"}}
+
+    await graph.ainvoke(initial_state("机器磁盘满了", source=CommandSource.USER), config=config)
+
+    snapshot = await graph.aget_state(config)
+    interrupt_payload = snapshot.tasks[0].interrupts[0].value
+    assert provider.complete_messages == []
+    assert snapshot.values["pending_command"] == "df -h"
+    assert snapshot.values["selected_runbook"].id == "disk.full"
+    assert interrupt_payload["runbook_id"] == "disk.full"
+    assert interrupt_payload["goal"] == "Investigate disk usage"
+    assert interrupt_payload["runbook_steps"][0]["command"] == "df -h"

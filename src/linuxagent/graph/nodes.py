@@ -15,8 +15,9 @@ from ..audit import AuditLog
 from ..cluster.remote_command import RemoteCommandError, validate_remote_command
 from ..executors import is_destructive
 from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLevel
-from ..plans import CommandPlan, CommandPlanParseError, parse_command_plan
+from ..plans import CommandPlan, CommandPlanParseError, PlannedCommand, parse_command_plan
 from ..prompts_loader import build_chat_prompt
+from ..runbooks import Runbook, RunbookEngine, RunbookPolicyError
 from ..security import guard_execution_result
 from ..services import ClusterService, CommandService
 from ..telemetry import TelemetryRecorder, new_trace_id
@@ -33,6 +34,7 @@ class GraphDependencies:
     cluster_service: ClusterService | None = None
     tools: tuple[BaseTool, ...] = ()
     telemetry: TelemetryRecorder | None = None
+    runbook_engine: RunbookEngine | None = None
 
 
 def make_parse_intent_node(
@@ -41,6 +43,7 @@ def make_parse_intent_node(
     cluster_service: ClusterService | None = None,
     tools: tuple[BaseTool, ...] = (),
     telemetry: TelemetryRecorder | None = None,
+    runbook_engine: RunbookEngine | None = None,
 ) -> Node:
     prompt = build_chat_prompt()
 
@@ -48,6 +51,30 @@ def make_parse_intent_node(
         trace_id = _trace_id(state)
         messages = list(state.get("messages", []))
         user_text = _last_message_text(messages)
+        try:
+            runbook_plan = _match_runbook_plan(user_text, trace_id, runbook_engine)
+        except CommandPlanParseError as exc:
+            return {
+                "trace_id": trace_id,
+                "pending_command": None,
+                "command_plan": None,
+                "selected_runbook": None,
+                "plan_error": str(exc),
+                "command_source": CommandSource.LLM,
+                "selected_hosts": (),
+            }
+        if runbook_plan is not None:
+            plan, runbook = runbook_plan
+            selected_hosts = plan.primary.target_hosts or _select_host_names(user_text, cluster_service)
+            return {
+                "trace_id": trace_id,
+                "pending_command": plan.primary.command,
+                "command_plan": plan,
+                "selected_runbook": runbook,
+                "plan_error": None,
+                "command_source": CommandSource.LLM,
+                "selected_hosts": selected_hosts,
+            }
         prompt_messages = prompt.format_messages(
             chat_history=messages[:-1],
             user_input=_intent_prompt(user_text),
@@ -64,6 +91,7 @@ def make_parse_intent_node(
                 "trace_id": trace_id,
                 "pending_command": None,
                 "command_plan": None,
+                "selected_runbook": None,
                 "plan_error": str(exc),
                 "command_source": CommandSource.LLM,
                 "selected_hosts": (),
@@ -74,6 +102,7 @@ def make_parse_intent_node(
             "trace_id": trace_id,
             "pending_command": command,
             "command_plan": plan,
+            "selected_runbook": None,
             "plan_error": None,
             "command_source": CommandSource.LLM,
             "selected_hosts": selected_hosts,
@@ -155,6 +184,7 @@ def make_confirm_node(
             "batch_hosts": list(state.get("batch_hosts", ())),
             "is_destructive": is_destructive(command or ""),
             **_plan_payload(state.get("command_plan")),
+            **_runbook_payload(state.get("selected_runbook")),
         }
         response = interrupt(payload)
         with _span(telemetry, "hitl.confirm", trace_id, {"matched_rule": state.get("matched_rule")}):
@@ -356,6 +386,44 @@ def _intent_prompt(user_text: str) -> str:
     )
 
 
+def _match_runbook_plan(
+    user_text: str,
+    trace_id: str,
+    runbook_engine: RunbookEngine | None,
+) -> tuple[CommandPlan, Runbook] | None:
+    if runbook_engine is None:
+        return None
+    runbook = runbook_engine.match(user_text)
+    if runbook is None:
+        return None
+    try:
+        runbook_engine.evaluate_steps(runbook, trace_id=trace_id)
+    except RunbookPolicyError as exc:
+        raise CommandPlanParseError(str(exc)) from exc
+    return _plan_from_runbook(runbook), runbook
+
+
+def _plan_from_runbook(runbook: Runbook) -> CommandPlan:
+    return CommandPlan(
+        goal=runbook.title,
+        commands=tuple(
+            PlannedCommand(
+                command=step.command,
+                purpose=step.purpose,
+                read_only=step.read_only,
+                target_hosts=(),
+            )
+            for step in runbook.steps
+        ),
+        risk_summary=f"Matched runbook {runbook.id}.",
+        preflight_checks=runbook.preflight_checks,
+        verification_commands=runbook.verification_commands,
+        rollback_commands=runbook.rollback_commands,
+        requires_root=False,
+        expected_side_effects=(),
+    )
+
+
 def _plan_payload(plan: CommandPlan | None) -> dict[str, Any]:
     if plan is None:
         return {}
@@ -368,6 +436,19 @@ def _plan_payload(plan: CommandPlan | None) -> dict[str, Any]:
         "rollback_commands": list(plan.rollback_commands),
         "expected_side_effects": list(plan.expected_side_effects),
         "requires_root": plan.requires_root,
+    }
+
+
+def _runbook_payload(runbook: Runbook | None) -> dict[str, Any]:
+    if runbook is None:
+        return {}
+    return {
+        "runbook_id": runbook.id,
+        "runbook_title": runbook.title,
+        "runbook_steps": [
+            {"command": step.command, "purpose": step.purpose, "read_only": step.read_only}
+            for step in runbook.steps
+        ],
     }
 
 

@@ -32,6 +32,7 @@ from .intelligence import (
 )
 from .interfaces import LLMProvider
 from .providers import provider_factory
+from .runbooks import RunbookEngine, find_runbooks_dir, load_runbooks
 from .services import ChatService, ClusterService, CommandService, MonitoringService
 from .telemetry import TelemetryRecorder
 from .tools import build_intelligence_tools, build_system_tools
@@ -110,6 +111,7 @@ class Container:
                     cluster_service=self.cluster_service(),
                     tools=tuple(self.tools()),
                     telemetry=self.telemetry(),
+                    runbook_engine=self.runbook_engine(),
                 )
             ),
         )
@@ -145,6 +147,12 @@ class Container:
         return self._cached(
             "recommendation_engine",
             lambda: RecommendationEngine(self.learner(), self.nlp_enhancer()),
+        )
+
+    def runbook_engine(self) -> RunbookEngine:
+        return self._cached(
+            "runbook_engine",
+            lambda: RunbookEngine(load_runbooks(find_runbooks_dir()), telemetry=self.telemetry()),
         )
 
     def knowledge_base(self) -> KnowledgeBase:

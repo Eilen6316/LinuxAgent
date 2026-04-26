@@ -1,0 +1,20 @@
+scenario: "runbook disk usage"
+provider_responses:
+  - "Runbook disk analysis"
+setup:
+  runbooks_enabled: true
+inputs:
+  - role: human
+    content: "机器磁盘满了，帮我看看哪里占空间"
+expected_interrupts:
+  - type: confirm_command
+    matched_rule: LLM_FIRST_RUN
+    runbook_id: disk.full
+resume:
+  decision: yes
+  latency_ms: 90
+expected:
+  command_executed: true
+  exit_code: 0
+  response_contains:
+    - "Runbook"

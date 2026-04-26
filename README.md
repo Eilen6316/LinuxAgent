@@ -41,14 +41,14 @@ you: find services listening on port 8080
 
 - **Capability-based policy engine** — `SAFE` / `CONFIRM` / `BLOCK` plus risk scores, capabilities, and matched rules
 - **Structured CommandPlan** — model output must be JSON with purpose, preflight, verification, rollback, and side-effect hints
-- **YAML Runbooks** — 8 built-in high-frequency ops runbooks for disk, ports, services, logs, certs, memory, load, and containers
+- **Graph-integrated YAML Runbooks** — 8 built-in ops runbooks are matched before LLM command generation
 - **LangGraph state machine** — explicit nodes, conditional edges, `interrupt()`-based Human-in-the-Loop
 - **No `shell=True`, no `AutoAddPolicy`** — enforced by CI red-line grep, not just convention
 - **Remote SSH shell-syntax guard** — cluster commands reject `;`, pipes, redirects, command substitution, and variable expansion before SSH
 - **Hash-chained audit log** at `~/.linuxagent/audit.log`, `0o600`, verifiable with `linuxagent audit verify`
 - **Local telemetry JSONL** with per-run `trace_id`, no external collector required by default
 - **Cluster-aware batch confirmation** — ≥2 hosts triggers an explicit approval prompt
-- **228 unit tests + 11 HITL scenarios**, 87%+ coverage, `mypy --strict`, `bandit` clean
+- **229 unit tests + 12 HITL scenarios**, 86%+ coverage, `mypy --strict`, `bandit` clean
 
 ## Quick start
 
@@ -80,7 +80,7 @@ Short version — the older single-file agent had a 4710-line God Object, substr
 | HITL | implicit, bypassable | `interrupt()` + checkpointing + audit log |
 | Planning | raw shell string | validated JSON `CommandPlan` |
 | Semantic search | hand-rolled TF-IDF, ~500MB local stack | LLM embedding API + disk cache, no local models |
-| Tests | 0 | 228 unit + 11 HITL scenarios + integration suite |
+| Tests | 0 | 229 unit + 12 HITL scenarios + integration suite |
 
 See the [full comparison](README_CN.md#与旧版本的全面对比) ([English](README_EN.md#full-comparison-with-the-original-prototype)) for algorithm-level diffs.
 
@@ -105,7 +105,7 @@ scripts/            bootstrap + verification scripts
 ## Core make targets
 
 ```bash
-make test       # pytest with 80% fail-under, currently 87%+
+make test       # pytest with 80% fail-under, currently 86%+
 make lint       # ruff
 make type       # mypy --strict
 make security   # grep red-lines + bandit

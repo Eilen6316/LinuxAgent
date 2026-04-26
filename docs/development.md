@@ -95,6 +95,11 @@ Built-in runbooks live under `runbooks/`. Each runbook is YAML, has at least
 three scenario phrases, and every step is policy-evaluated by
 `RunbookEngine.evaluate_steps()` before it is considered usable.
 
+The graph tries `RunbookEngine.match()` before calling the LLM for a command
+plan. A match is converted into a normal `CommandPlan`, so policy, HITL,
+execution, audit, and analysis continue through the same path as LLM-generated
+plans.
+
 ## Observability And Audit
 
 Every graph run receives a `trace_id` that is attached to HITL audit records

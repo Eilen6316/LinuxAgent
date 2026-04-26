@@ -17,6 +17,22 @@ class RunbookPolicyError(ValueError):
     """Raised when a runbook step violates its declared safety boundary."""
 
 
+class RunbookNotFoundError(FileNotFoundError):
+    """Raised when packaged runbook YAML files cannot be located."""
+
+
+def find_runbooks_dir() -> Path:
+    here = Path(__file__).resolve()
+    wheel_dir = here.parents[1] / "_data" / "runbooks"
+    if wheel_dir.is_dir():
+        return wheel_dir
+    for parent in here.parents:
+        candidate = parent / "runbooks"
+        if candidate.is_dir():
+            return candidate
+    raise RunbookNotFoundError("no 'runbooks/' directory found in package data or repo checkout")
+
+
 def load_runbooks(directory: Path) -> tuple[Runbook, ...]:
     runbooks: list[Runbook] = []
     for path in sorted(directory.glob("*.yaml")):

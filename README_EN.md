@@ -50,13 +50,13 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Natural language → command | Prompt + tool calling over OpenAI / DeepSeek / Anthropic Claude |
 | Structured planning | LLM output is validated as JSON `CommandPlan` before any policy check or execution |
 | Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
-| Runbooks | 8 YAML runbooks for disk, port, service, logs, certs, memory, load, and containers |
+| Runbooks | 8 YAML runbooks matched before LLM command generation |
 | Human-in-the-Loop | LangGraph `interrupt()` + `MemorySaver` for interrupt / persist / resume |
 | Session whitelist | Approved SAFE commands skip confirmation within the same process; destructive commands never enter |
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 228 unit tests + 11 HITL YAML scenarios + integration scaffolding, 87%+ coverage |
+| Testability | 229 unit tests + 12 HITL YAML scenarios + integration scaffolding, 86%+ coverage |
 
 ---
 
@@ -230,11 +230,11 @@ confirmation and again before SSH connection setup.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **228 passing** |
-| Coverage | 0 | **87.27%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **229 passing** |
+| Coverage | 0 | **86.82%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
-| End-to-end scenarios | none | 11 YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard |
+| End-to-end scenarios | none | 12 YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard / runbook |
 | Release flow | manual | tag-triggered GitHub Actions builds wheel + sdist + Release |
 
 ---
@@ -542,7 +542,7 @@ A: Yes. Set `api.base_url` to the gateway URL and `api.model` to a model it supp
 
 ```bash
 make install   # pip install -e ".[dev]"
-make test      # pytest + 80% fail-under, currently 87%+
+make test      # pytest + 80% fail-under, currently 86%+
 make lint      # ruff check
 make type      # mypy --strict
 make security  # red-line grep + bandit

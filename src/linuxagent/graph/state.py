@@ -15,6 +15,7 @@ from langgraph.graph.message import add_messages
 
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel
 from ..plans import CommandPlan
+from ..runbooks import Runbook
 
 
 class AgentState(TypedDict, total=False):
@@ -26,6 +27,7 @@ class AgentState(TypedDict, total=False):
     trace_id: str | None
     pending_command: str | None
     command_plan: CommandPlan | None
+    selected_runbook: Runbook | None
     plan_error: str | None
     command_source: CommandSource | None
     selected_hosts: tuple[str, ...]
@@ -59,6 +61,7 @@ def initial_state(
         trace_id=None,
         pending_command=None,
         command_plan=None,
+        selected_runbook=None,
         plan_error=None,
         command_source=source,
         selected_hosts=(),

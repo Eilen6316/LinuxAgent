@@ -76,6 +76,11 @@ class ConsoleUI(UserInterface):
         table.add_column(style=f"bold {self._accent_style()}")
         table.add_column(style="white")
         table.add_row("Command", str(payload.get("command") or ""))
+        if payload.get("runbook_id"):
+            table.add_row(
+                "Runbook",
+                f"{payload.get('runbook_id')} - {payload.get('runbook_title')}",
+            )
         if payload.get("goal"):
             table.add_row("Goal", str(payload["goal"]))
         if payload.get("purpose"):
@@ -93,6 +98,14 @@ class ConsoleUI(UserInterface):
             items = payload.get(key) or []
             if items:
                 table.add_row(label, "\n".join(str(item) for item in items))
+        runbook_steps = payload.get("runbook_steps") or []
+        if runbook_steps:
+            rendered = [
+                f"{step.get('command')} - {step.get('purpose')}"
+                for step in runbook_steps[1:]
+            ]
+            if rendered:
+                table.add_row("Next steps", "\n".join(rendered))
         hosts = payload.get("batch_hosts") or []
         if hosts:
             table.add_row("Batch hosts", ", ".join(str(host) for host in hosts))

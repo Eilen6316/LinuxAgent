@@ -21,7 +21,10 @@ from linuxagent.config.models import ClusterConfig, ClusterHost, SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.interfaces import ExecutionResult
+from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.services import ClusterService, CommandService
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
@@ -78,6 +81,9 @@ class HarnessRunner:
                 whitelist.add(command)
 
             cluster_service = _cluster_service(scenario.setup.get("cluster_hosts", []))
+            runbook_engine = None
+            if scenario.setup.get("runbooks_enabled", False):
+                runbook_engine = RunbookEngine(load_runbooks(_REPO_ROOT / "runbooks"))
             graph = build_agent_graph(
                 GraphDependencies(
                     provider=_FakeProvider(scenario.provider_responses),
@@ -86,6 +92,7 @@ class HarnessRunner:
                     ),
                     audit=audit,
                     cluster_service=cluster_service,
+                    runbook_engine=runbook_engine,
                 )
             )
             thread_id = scenario.name.replace(" ", "-")

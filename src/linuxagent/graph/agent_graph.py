@@ -30,6 +30,7 @@ def build_agent_graph(deps: GraphDependencies) -> CompiledStateGraph:
             cluster_service=deps.cluster_service,
             tools=deps.tools,
             telemetry=deps.telemetry,
+            runbook_engine=deps.runbook_engine,
         ),
     )
     graph.add_node(
