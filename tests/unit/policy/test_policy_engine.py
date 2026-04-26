@@ -38,6 +38,48 @@ def test_policy_config_loads_default_yaml() -> None:
     assert len(config.rules) >= 7
 
 
+def test_policy_config_loads_minimal_yaml(tmp_path: Path) -> None:
+    path = tmp_path / "policy.yaml"
+    path.write_text(
+        """
+version: 1
+rules:
+  - id: custom.echo
+    legacy_rule: CUSTOM_ECHO
+    level: SAFE
+    risk_score: 1
+    reason: allow echo
+    match:
+      command: [echo]
+""",
+        encoding="utf-8",
+    )
+
+    config = load_policy_config(path)
+
+    assert config.version == 1
+    assert len(config.rules) == 1
+    rule = config.rules[0]
+    assert rule.id == "custom.echo"
+    assert rule.level is SafetyLevel.SAFE
+    assert rule.match.command == ("echo",)
+
+
+def test_policy_config_reports_missing_file(tmp_path: Path) -> None:
+    path = tmp_path / "missing.yaml"
+
+    with pytest.raises(PolicyConfigError, match="cannot read policy config"):
+        load_policy_config(path)
+
+
+def test_policy_config_reports_invalid_yaml(tmp_path: Path) -> None:
+    path = tmp_path / "policy.yaml"
+    path.write_text("[unclosed\n", encoding="utf-8")
+
+    with pytest.raises(PolicyConfigError, match="invalid policy YAML"):
+        load_policy_config(path)
+
+
 def test_policy_config_rejects_duplicate_rule_ids() -> None:
     raw_rule = {
         "id": "duplicate",
@@ -59,6 +101,31 @@ def test_policy_config_rejects_invalid_yaml_shape(tmp_path: Path) -> None:
 
     with pytest.raises(PolicyConfigError, match="top-level"):
         load_policy_config(path)
+
+
+def test_policy_config_reports_validation_errors(tmp_path: Path) -> None:
+    path = tmp_path / "policy.yaml"
+    path.write_text(
+        """
+version: 1
+rules:
+  - id: bad.score
+    legacy_rule: BAD
+    level: SAFE
+    risk_score: 200
+    reason: invalid score
+    match:
+      command: [echo]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PolicyConfigError) as info:
+        load_policy_config(path)
+
+    message = str(info.value)
+    assert "policy validation failed" in message
+    assert "rules.0.risk_score" in message
 
 
 def test_custom_policy_rule_can_override_decision_shape() -> None:

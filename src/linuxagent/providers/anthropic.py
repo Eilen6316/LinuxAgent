@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover - exercised when extra is absent
     ChatAnthropic = None  # type: ignore[assignment,misc,unused-ignore]
     _AVAILABLE = False
 
+
 def is_available() -> bool:
     """True iff ``langchain-anthropic`` is importable."""
     return _AVAILABLE

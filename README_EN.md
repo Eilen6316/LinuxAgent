@@ -57,7 +57,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 249 unit tests + 12 HITL YAML scenarios + integration scaffolding, 89%+ coverage |
+| Testability | 254 unit tests + 12 HITL YAML scenarios + integration scaffolding, 90%+ coverage |
 
 ---
 
@@ -231,8 +231,8 @@ confirmation and again before SSH connection setup.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **249 passing** |
-| Coverage | 0 | **89.71%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **254 passing** |
+| Coverage | 0 | **90.19%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
 | End-to-end scenarios | none | 12 YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard / runbook |
@@ -543,7 +543,7 @@ A: Yes. Set `api.base_url` to the gateway URL and `api.model` to a model it supp
 
 ```bash
 make install   # pip install -e ".[dev]"
-make test      # pytest + 80% fail-under, currently 89%+
+make test      # pytest + 80% fail-under, currently 90%+
 make lint      # ruff check
 make type      # mypy --strict
 make security  # red-line grep + bandit
