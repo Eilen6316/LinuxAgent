@@ -1,0 +1,23 @@
+id: system.health
+title: Inspect overall system health
+triggers: [服务器, system health, server health, server status, host health, 系统健康, 系统状态]
+scenarios:
+  - 查看服务器状态
+  - 帮我查看一下服务器的状态如何
+  - inspect overall server health
+steps:
+  - command: uptime
+    purpose: Show uptime and load averages
+    read_only: true
+  - command: free -h
+    purpose: Show memory usage
+    read_only: true
+  - command: df -h
+    purpose: Show filesystem usage
+    read_only: true
+  - command: systemctl --failed --no-pager
+    purpose: List failed systemd units without paging
+    read_only: true
+preflight_checks: [uptime]
+verification_commands: [uptime, free -h, df -h]
+rollback_commands: []

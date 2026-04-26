@@ -7,7 +7,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-90.67%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-90.39%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -57,14 +57,14 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Natural language → command | Prompt + tool calling over OpenAI / DeepSeek / Anthropic Claude |
 | Structured planning | LLM output is validated as JSON `CommandPlan` before any policy check or execution |
 | Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
-| Runbooks | 8 YAML runbooks matched before LLM command generation; safe follow-up steps continue after one approval |
+| Runbooks | 11 YAML runbooks matched before LLM command generation; safe follow-up steps continue after one approval |
 | Human-in-the-Loop | LangGraph `interrupt()` + `MemorySaver` for interrupt / persist / resume |
 | Session whitelist | Approved SAFE commands skip confirmation within the same process; destructive commands never enter |
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 273 default unit tests + 4 optional Anthropic compatibility tests + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
+| Testability | 285 default unit tests + 4 optional Anthropic compatibility tests + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
 
 ---
 
@@ -238,8 +238,8 @@ confirmation and again before SSH connection setup.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **273 passing by default; 4 additional Anthropic compatibility tests with the extra installed** |
-| Coverage | 0 | **90.67%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **285 passing by default; 4 additional Anthropic compatibility tests with the extra installed** |
+| Coverage | 0 | **90.39%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
 

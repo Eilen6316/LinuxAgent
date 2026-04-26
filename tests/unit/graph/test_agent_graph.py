@@ -17,6 +17,7 @@ from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.interfaces import CommandSource, ExecutionResult
 from linuxagent.plans import command_plan_json
+from linuxagent.providers.errors import ProviderError
 from linuxagent.runbooks import Runbook, RunbookEngine, RunbookStep, load_runbooks
 from linuxagent.services import ClusterService, CommandService
 
@@ -35,7 +36,8 @@ class _FakeProvider:
         return "analysis ok"
 
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
-        del messages, kwargs
+        del kwargs
+        self.complete_messages.append(messages)
         self.tool_calls += 1
         assert tools
         if self._responses:
@@ -45,6 +47,13 @@ class _FakeProvider:
     def stream(self, messages: list[BaseMessage], **kwargs: Any):
         del messages, kwargs
         raise NotImplementedError
+
+
+class _ToolLoopFailingProvider(_FakeProvider):
+    async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
+        del messages, tools, kwargs
+        self.tool_calls += 1
+        raise ProviderError("tool loop exceeded max rounds")
 
 
 class _FakeSSH:
@@ -77,7 +86,9 @@ def _graph(
     runbook_engine: RunbookEngine | None = None,
 ):
     provider = _FakeProvider(responses)
-    executor = LinuxCommandExecutor(SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist())
+    executor = LinuxCommandExecutor(
+        SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+    )
     deps = GraphDependencies(
         provider=provider,  # type: ignore[arg-type]
         command_service=CommandService(executor),
@@ -92,6 +103,26 @@ def _runbook_engine() -> RunbookEngine:
     return RunbookEngine(load_runbooks(Path(__file__).resolve().parents[3] / "runbooks"))
 
 
+def _command_plan_json_with_hosts(command: str, hosts: list[str]) -> str:
+    payload = json.loads(command_plan_json(command))
+    payload["commands"][0]["target_hosts"] = hosts
+    return json.dumps(payload)
+
+
+def _multi_command_plan_json(commands: list[str]) -> str:
+    payload = json.loads(command_plan_json(commands[0]))
+    payload["commands"] = [
+        {
+            "command": command,
+            "purpose": f"Run {command}",
+            "read_only": True,
+            "target_hosts": [],
+        }
+        for command in commands
+    ]
+    return json.dumps(payload)
+
+
 async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo hi"), "analysis ok"])
     config = {"configurable": {"thread_id": "t1"}}
@@ -101,10 +132,13 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     snapshot = await graph.aget_state(config)
     interrupts = snapshot.tasks[0].interrupts
     assert interrupts[0].value["type"] == "confirm_command"
-    resumed = await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
     assert "analysis ok" in str(resumed["messages"][-1].content)
     audit_records = [
-        json.loads(line) for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+        json.loads(line)
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
     ]
     trace_ids = {record["trace_id"] for record in audit_records}
     assert len(trace_ids) == 1
@@ -211,13 +245,37 @@ async def test_graph_named_host_request_selects_only_matched_hosts(tmp_path) -> 
     assert tuple(snapshot.values["batch_hosts"]) == ()
 
 
+async def test_graph_treats_localhost_target_as_local_execution(tmp_path) -> None:
+    cfg = ClusterConfig(
+        batch_confirm_threshold=2,
+        hosts=(ClusterHost(name="web-1", hostname="web-1.example", username="ops"),),
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        [_command_plan_json_with_hosts("/bin/echo local-os", ["localhost"]), "analysis ok"],
+        cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
+    )
+    config = {"configurable": {"thread_id": "localhost-target"}}
+
+    await graph.ainvoke(initial_state("what OS am I", source=CommandSource.USER), config=config)
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert tuple(snapshot.values["selected_hosts"]) == ()
+    assert "analysis ok" in str(resumed["messages"][-1].content)
+
+
 async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> None:
     graph, provider = _graph(tmp_path, [command_plan_json("/bin/echo hi")])
     graph = build_agent_graph(
         GraphDependencies(
             provider=provider,  # type: ignore[arg-type]
             command_service=CommandService(
-                LinuxCommandExecutor(SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist())
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
             ),
             audit=AuditLog(tmp_path / "audit.log"),
             tools=(SimpleNamespace(name="fake_tool"),),  # type: ignore[arg-type]
@@ -226,6 +284,72 @@ async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> N
     config = {"configurable": {"thread_id": "tool-call"}}
     await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
     assert provider.tool_calls == 1
+
+
+async def test_graph_answers_capability_question_without_command(tmp_path) -> None:
+    graph, provider = _graph(tmp_path, ["dynamic capability answer"])
+    config = {"configurable": {"thread_id": "capabilities"}}
+
+    result = await graph.ainvoke(
+        initial_state("你都能做什么", source=CommandSource.USER), config=config
+    )
+
+    assert "dynamic capability answer" in str(result["messages"][-1].content)
+    assert len(provider.complete_messages) == 1
+    assert provider.tool_calls == 0
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values["pending_command"] is None
+    assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_retries_json_plan_without_tools_after_tool_plaintext(tmp_path) -> None:
+    provider = _FakeProvider(["当前服务器状态正常", command_plan_json("/bin/echo hi")])
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+            tools=(SimpleNamespace(name="fake_tool"),),  # type: ignore[arg-type]
+        )
+    )
+    config = {"configurable": {"thread_id": "tool-json-retry"}}
+
+    await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
+
+    snapshot = await graph.aget_state(config)
+    assert provider.tool_calls == 1
+    assert len(provider.complete_messages) == 2
+    assert snapshot.values["pending_command"] == "/bin/echo hi"
+
+
+async def test_graph_retries_json_plan_after_tool_loop_error(tmp_path) -> None:
+    provider = _ToolLoopFailingProvider([command_plan_json("/bin/echo packages")])
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+            tools=(SimpleNamespace(name="fake_tool"),),  # type: ignore[arg-type]
+        )
+    )
+    config = {"configurable": {"thread_id": "tool-loop-retry"}}
+
+    await graph.ainvoke(
+        initial_state("what packages are installed", source=CommandSource.USER), config=config
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert provider.tool_calls == 1
+    assert snapshot.values["pending_command"] == "/bin/echo packages"
 
 
 async def test_graph_redacts_execution_output_before_analysis(tmp_path) -> None:
@@ -272,6 +396,59 @@ async def test_graph_prefers_matching_runbook_before_llm(tmp_path) -> None:
     assert interrupt_payload["runbook_steps"][0]["command"] == "df -h"
 
 
+async def test_graph_matches_server_status_runbook_before_tools(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        ["runbook analysis"],
+        runbook_engine=_runbook_engine(),
+    )
+    config = {"configurable": {"thread_id": "runbook-server-status"}}
+
+    await graph.ainvoke(
+        initial_state("帮我查看一下服务器的状态如何", source=CommandSource.USER),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert provider.complete_messages == []
+    assert snapshot.values["pending_command"] == "uptime"
+    assert snapshot.values["selected_runbook"].id == "system.health"
+
+
+async def test_graph_matches_installed_packages_runbook_before_tools(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        ["runbook analysis"],
+        runbook_engine=_runbook_engine(),
+    )
+    config = {"configurable": {"thread_id": "runbook-packages"}}
+
+    await graph.ainvoke(
+        initial_state("我都安装什么应用了", source=CommandSource.USER), config=config
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert provider.complete_messages == []
+    assert snapshot.values["pending_command"] == "rpm -qa --last"
+    assert snapshot.values["selected_runbook"].id == "package.inventory"
+
+
+async def test_graph_matches_os_runbook_before_tools(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        ["runbook analysis"],
+        runbook_engine=_runbook_engine(),
+    )
+    config = {"configurable": {"thread_id": "runbook-os"}}
+
+    await graph.ainvoke(initial_state("我是什么操作系统", source=CommandSource.USER), config=config)
+
+    snapshot = await graph.aget_state(config)
+    assert provider.complete_messages == []
+    assert snapshot.values["pending_command"] == "cat /etc/os-release"
+    assert snapshot.values["selected_runbook"].id == "system.os"
+
+
 async def test_graph_continues_safe_runbook_steps_after_first_confirmation(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
@@ -281,7 +458,9 @@ async def test_graph_continues_safe_runbook_steps_after_first_confirmation(tmp_p
     config = {"configurable": {"thread_id": "runbook-disk-continue"}}
 
     await graph.ainvoke(initial_state("机器磁盘满了", source=CommandSource.USER), config=config)
-    resumed = await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
 
     snapshot = await graph.aget_state(config)
     results = snapshot.values["runbook_results"]
@@ -294,6 +473,36 @@ async def test_graph_continues_safe_runbook_steps_after_first_confirmation(tmp_p
     assert "Runbook step results" in analysis_prompt
     assert "df -h" in analysis_prompt
     assert "du -sh /var/log" in analysis_prompt
+
+
+async def test_graph_continues_multi_command_llm_plan_after_confirmation(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [_multi_command_plan_json(["/bin/echo install", "/bin/echo verify"]), "analysis ok"],
+    )
+    config = {"configurable": {"thread_id": "llm-plan-continue"}}
+
+    await graph.ainvoke(
+        initial_state("install and verify demo", source=CommandSource.USER), config=config
+    )
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+    snapshot = await graph.aget_state(config)
+
+    assert snapshot.tasks[0].interrupts[0].value["command"] == "/bin/echo verify"
+    assert snapshot.values["command_source"] is CommandSource.LLM
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+
+    snapshot = await graph.aget_state(config)
+    results = snapshot.values["runbook_results"]
+    assert not snapshot.tasks
+    assert [result.command for result in results] == ["/bin/echo install", "/bin/echo verify"]
+    assert "analysis ok" in str(resumed["messages"][-1].content)
+    analysis_prompt = str(provider.complete_messages[-1][-1].content)
+    assert "Command step results" in analysis_prompt
+    assert "/bin/echo install" in analysis_prompt
+    assert "/bin/echo verify" in analysis_prompt
 
 
 async def test_graph_rechecks_policy_for_later_runbook_steps(tmp_path) -> None:

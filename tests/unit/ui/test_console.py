@@ -125,3 +125,13 @@ def test_render_confirm_shows_destructive_warning() -> None:
     rendered = console.export_text()
     assert "Destructive" in rendered
     assert "approval will not be whitelisted" in rendered
+
+
+async def test_console_print_treats_model_output_as_plain_text() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+
+    await ui.print("[bold]Rocky[/bold] **Linux**")
+
+    rendered = console.export_text()
+    assert "[bold]Rocky[/bold] **Linux**" in rendered

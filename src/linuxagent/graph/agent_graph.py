@@ -21,6 +21,7 @@ from .routing import (
     respond_node,
     respond_refused_node,
     route_after_execute,
+    route_after_parse,
     route_by_safety,
 )
 from .state import AgentState
@@ -55,17 +56,25 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     graph.add_node(
         "execute",
         _langgraph_node(
-            make_execute_node(deps.command_service, deps.audit, deps.cluster_service, deps.telemetry)
+            make_execute_node(
+                deps.command_service, deps.audit, deps.cluster_service, deps.telemetry
+            )
         ),
     )
     graph.add_node("advance_runbook", _langgraph_node(make_advance_runbook_node()))
-    graph.add_node("analyze", _langgraph_node(make_analyze_result_node(deps.provider, deps.telemetry)))
+    graph.add_node(
+        "analyze", _langgraph_node(make_analyze_result_node(deps.provider, deps.telemetry))
+    )
     graph.add_node("respond", _langgraph_node(respond_node))
     graph.add_node("respond_block", _langgraph_node(respond_block_node))
     graph.add_node("respond_refused", _langgraph_node(respond_refused_node))
 
     graph.add_edge(START, "parse_intent")
-    graph.add_edge("parse_intent", "safety_check")
+    graph.add_conditional_edges(
+        "parse_intent",
+        route_after_parse,
+        {"RESPOND": "respond", "SAFETY": "safety_check"},
+    )
     graph.add_conditional_edges(
         "safety_check",
         route_by_safety,

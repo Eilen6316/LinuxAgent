@@ -282,7 +282,7 @@ def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(container_module, "OpenAIEmbeddings", _FakeEmbeddings)
     monkeypatch.setattr(container_module, "SSHManager", _FakeSSHManager)
 
-    container = Container(AppConfig.model_validate({}))
+    container = Container(AppConfig.model_validate({"intelligence": {"tools_enabled": True}}))
 
     assert container.provider() is fake_provider
     assert container.provider() is fake_provider
@@ -293,6 +293,16 @@ def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> Non
     assert container.tools()
     assert container.build_agent().graph is fake_graph
     assert container.build_agent().context_manager is container.context_manager()
+
+
+def test_container_disables_embedding_tools_for_deepseek_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(container_module, "OpenAIEmbeddings", pytest.fail)
+    container = Container(AppConfig.model_validate({}))
+
+    assert container.intelligence_tools() == []
+    assert all(tool.name != "get_command_recommendations" for tool in container.tools())
 
 
 def test_chat_command_runs_agent(
@@ -349,7 +359,9 @@ def test_chat_command_reports_config_error(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli, "load_config", lambda cli_path=None: (_ for _ in ()).throw(ConfigError("boom")))
+    monkeypatch.setattr(
+        cli, "load_config", lambda cli_path=None: (_ for _ in ()).throw(ConfigError("boom"))
+    )
 
     code = cli.main(["chat"])
     captured = capsys.readouterr()

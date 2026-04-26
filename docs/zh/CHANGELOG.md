@@ -4,6 +4,25 @@ LinuxAgent 的重要变更记录在这里。
 格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 版本遵循 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)。
 
+## [Unreleased]
+
+### Added
+
+- 新增通用系统健康 Runbook，用于“查看服务器状态”类请求，覆盖 uptime、
+  内存、文件系统使用率和 failed systemd units。
+- 新增软件包清单和操作系统版本 Runbook，覆盖常见本机诊断请求。
+- 新增直接回答 Prompt 路径，用于能力说明类对话问题，避免为非执行回答生成
+  `echo` 命令和 HITL 确认。
+- 新增面向终端的分析 Prompt，要求模型输出纯文本总结，避免 Markdown 格式影响阅读。
+
+### Fixed
+
+- 当带工具的计划生成返回自然语言而不是严格 JSON `CommandPlan` 时，会无工具重试一次。
+- `localhost` / `本机` 一类 `CommandPlan.target_hosts` 保持本地执行，不再误走
+  未解析的 SSH 集群目标。
+- DeepSeek 默认不再启用依赖 embedding 的 intelligence tools，除非显式配置。
+- LLM 多命令计划现在会在每一步成功后继续执行后续计划步骤，不再第一条命令后提前结束。
+
 ## [4.0.0] - 2026-04-26
 
 LinuxAgent v4.0.0 是重写后的第一个正式版本。它用基于 LangGraph 的、
@@ -56,4 +75,5 @@ LinuxAgent v4.0.0 是重写后的第一个正式版本。它用基于 LangGraph 
 本版本不能从 v3 原地平滑升级。参见
 [docs/zh/migration-v3-to-v4.md](migration-v3-to-v4.md)。
 
+[Unreleased]: https://github.com/Eilen6316/LinuxAgent/compare/v4.0.0...HEAD
 [4.0.0]: https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0

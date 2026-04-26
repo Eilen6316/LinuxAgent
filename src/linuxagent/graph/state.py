@@ -33,6 +33,7 @@ class AgentState(TypedDict, total=False):
     plan_error: str | None
     command_source: CommandSource | None
     selected_hosts: tuple[str, ...]
+    direct_response: bool
 
     # Populated by safety_check; consumed by HITL router + confirm_node.
     safety_level: SafetyLevel | None
@@ -70,6 +71,7 @@ def initial_state(
         plan_error=None,
         command_source=source,
         selected_hosts=(),
+        direct_response=False,
         safety_level=None,
         matched_rule=None,
         safety_reason=None,

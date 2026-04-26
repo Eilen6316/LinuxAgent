@@ -62,7 +62,7 @@ class ConsoleUI(UserInterface):
         }
 
     async def print(self, text: str) -> None:
-        self._console.print(Panel(Text.from_markup(text), border_style=self._panel_style()))
+        self._console.print(Panel(Text(text), border_style=self._panel_style()))
 
     def _print_hero(self) -> None:
         hero = Text()
@@ -103,7 +103,7 @@ class ConsoleUI(UserInterface):
         if runbook_steps:
             rendered = [
                 f"{step.get('command')} - {step.get('purpose')}"
-                for step in runbook_steps[step_index + 1:]
+                for step in runbook_steps[step_index + 1 :]
             ]
             if rendered:
                 table.add_row("Next steps", "\n".join(rendered))
@@ -124,8 +124,8 @@ class ConsoleUI(UserInterface):
     def _build_prompt(self) -> HTML:
         accent = "ansiblue" if self._theme == "light" else "ansibrightcyan"
         return HTML(
-            f"<b><style fg=\"{accent}\">linuxagent</style></b> "
-            f"<style fg=\"ansibrightblack\">{self._prompt_symbol}</style> "
+            f'<b><style fg="{accent}">linuxagent</style></b> '
+            f'<style fg="ansibrightblack">{self._prompt_symbol}</style> '
         )
 
     def _default_session_factory(self) -> PromptSession[str]:

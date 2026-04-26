@@ -172,6 +172,7 @@ class IntelligenceConfig(BaseModel):
     model_config = _FROZEN
 
     enabled: bool = True
+    tools_enabled: bool | None = None
     context_window: int = Field(default=50, ge=1, le=1000)
     embedding_model: str = "text-embedding-3-small"
     embedding_cache_dir: UserPath = Field(

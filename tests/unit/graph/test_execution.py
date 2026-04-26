@@ -8,8 +8,12 @@ from linuxagent.graph.execution import aggregate_cluster_results, analysis_conte
 from linuxagent.interfaces import ExecutionResult
 
 
-def _result(command: str, exit_code: int = 0, stdout: str = "ok", stderr: str = "") -> ExecutionResult:
-    return ExecutionResult(command=command, exit_code=exit_code, stdout=stdout, stderr=stderr, duration=0.2)
+def _result(
+    command: str, exit_code: int = 0, stdout: str = "ok", stderr: str = ""
+) -> ExecutionResult:
+    return ExecutionResult(
+        command=command, exit_code=exit_code, stdout=stdout, stderr=stderr, duration=0.2
+    )
 
 
 def test_aggregate_cluster_results_merges_successes_and_failures() -> None:
@@ -37,13 +41,18 @@ def test_analysis_context_uses_single_result_without_runbook() -> None:
     assert "***redacted***" in text
 
 
-def test_analysis_context_aggregates_runbook_results() -> None:
+def test_analysis_context_aggregates_command_step_results() -> None:
     text = analysis_context(
-        {"runbook_results": (_result("df -h", stdout="disk"), _result("du -sh /var/log", stdout="logs"))},
+        {
+            "runbook_results": (
+                _result("df -h", stdout="disk"),
+                _result("du -sh /var/log", stdout="logs"),
+            )
+        },
         _result("du -sh /var/log", stdout="logs"),
     )
 
-    assert "Runbook step results" in text
+    assert "Command step results" in text
     assert "Step 1" in text
     assert "df -h" in text
     assert "du -sh /var/log" in text
@@ -74,8 +83,7 @@ class _FakeClusterService:
     async def run_on_hosts(self, command, resolved_hosts, *, trace_id):
         self.trace_id = trace_id
         return {
-            host.name: ExecutionResult(command, 0, host.name, "", 0.1)
-            for host in resolved_hosts
+            host.name: ExecutionResult(command, 0, host.name, "", 0.1) for host in resolved_hosts
         }
 
 

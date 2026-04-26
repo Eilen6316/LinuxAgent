@@ -72,7 +72,7 @@ packages = ["src/linuxagent"]
 [tool.hatch.build.targets.wheel.force-include]
 "configs/default.yaml" = "linuxagent/_data/default.yaml"
 "configs/policy.default.yaml" = "linuxagent/_data/policy.default.yaml"
-"prompts/system.md" = "linuxagent/_data/prompts/system.md"
+"prompts" = "linuxagent/_data/prompts"
 "runbooks" = "linuxagent/_data/runbooks"
 
 [tool.hatch.build.targets.sdist]

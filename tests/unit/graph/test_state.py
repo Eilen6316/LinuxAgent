@@ -17,6 +17,7 @@ def test_initial_state_seeds_human_message() -> None:
     assert msgs[0].content == "list files"
     assert state["command_source"] is CommandSource.USER
     assert state["selected_hosts"] == ()
+    assert state["direct_response"] is False
 
 
 def test_initial_state_respects_source() -> None:

@@ -18,6 +18,7 @@ from langchain_openai import OpenAIEmbeddings
 from .app import LinuxAgent
 from .audit import AuditLog
 from .cluster import SSHManager
+from .config.models import LLMProviderName
 from .executors import LinuxCommandExecutor
 from .graph import GraphDependencies, build_agent_graph
 from .graph.agent_graph import AgentGraph
@@ -203,7 +204,7 @@ class Container:
 
     def intelligence_tools(self) -> list[BaseTool]:
         def factory() -> list[BaseTool]:
-            if not self._config.intelligence.enabled:
+            if not self._intelligence_tools_enabled():
                 return []
             command_candidates = [command for command, _ in self.learner().top_commands(limit=50)]
             if not command_candidates:
@@ -217,6 +218,14 @@ class Container:
             )
 
         return self._cached("intelligence_tools", factory)
+
+    def _intelligence_tools_enabled(self) -> bool:
+        if not self._config.intelligence.enabled:
+            return False
+        override = self._config.intelligence.tools_enabled
+        if override is not None:
+            return override
+        return self._config.api.provider is LLMProviderName.OPENAI
 
     def tools(self) -> list[BaseTool]:
         return self._cached(

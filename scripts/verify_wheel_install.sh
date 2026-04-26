@@ -42,12 +42,14 @@ required = [
     root / "_data" / "default.yaml",
     root / "_data" / "policy.default.yaml",
     root / "_data" / "prompts" / "system.md",
+    root / "_data" / "prompts" / "analysis.md",
+    root / "_data" / "prompts" / "direct_answer.md",
 ]
 missing = [str(path) for path in required if not path.is_file()]
 runbooks_dir = root / "_data" / "runbooks"
 runbooks = sorted(path.name for path in runbooks_dir.iterdir() if path.name.endswith(".yaml"))
 if missing:
     raise SystemExit(f"missing packaged data: {missing}")
-if len(runbooks) != 8:
-    raise SystemExit(f"expected 8 packaged runbooks, found {len(runbooks)}: {runbooks}")
+if len(runbooks) != 11:
+    raise SystemExit(f"expected 11 packaged runbooks, found {len(runbooks)}: {runbooks}")
 PY

@@ -4,6 +4,30 @@ All notable changes to LinuxAgent are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- General system health runbook for server-status requests, covering uptime,
+  memory, filesystem usage, and failed systemd units.
+- Package inventory and OS-version runbooks for common local diagnostic
+  requests.
+- Direct-answer prompt path for conversational capability questions, avoiding
+  `echo` command plans and HITL prompts for non-execution answers.
+- Terminal-friendly analysis prompt for plain-text summaries without Markdown
+  formatting.
+
+### Fixed
+
+- Tool-backed planning now retries once without tools when the model returns
+  prose instead of a strict JSON `CommandPlan`.
+- Localhost-style `CommandPlan.target_hosts` values now stay local instead of
+  being treated as unresolved SSH cluster targets.
+- DeepSeek defaults no longer enable embedding-backed intelligence tools unless
+  explicitly configured.
+- Multi-command LLM plans now continue through all successful planned steps
+  instead of stopping after the first command.
+
 ## [4.0.0] - 2026-04-26
 
 LinuxAgent v4.0.0 is the first formal release of the rewritten operations
@@ -69,4 +93,5 @@ policy-driven, audited CLI for controlled human-in-the-loop Linux operations.
 This release is not a drop-in upgrade from v3. See
 [docs/migration-v3-to-v4.md](docs/migration-v3-to-v4.md).
 
+[Unreleased]: https://github.com/Eilen6316/LinuxAgent/compare/v4.0.0...HEAD
 [4.0.0]: https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0

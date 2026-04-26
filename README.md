@@ -6,7 +6,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-90.67%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-90.39%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -106,15 +106,15 @@ LinuxAgent is **not** an autonomous remediator or a command sandbox. It is inten
 
 ## Built-In Runbooks
 
-LinuxAgent v4 ships with eight YAML runbooks for common diagnostics:
+LinuxAgent v4 ships with eleven YAML runbooks for common diagnostics:
 
 | Runbook area | Examples |
 |---|---|
 | Disk and filesystem | `df`, top directories, journal usage |
 | Ports and networking | listeners, port ownership, connectivity checks |
 | Services and logs | systemd status, recent unit logs, error search |
-| Load and memory | CPU pressure, memory pressure, OOM clues |
-| Containers and certificates | container status, Docker usage, certificate expiry |
+| System health, OS, load, and memory | overall host health, OS release, CPU pressure, memory pressure, OOM clues |
+| Containers, packages, and certificates | container status, installed packages, certificate expiry |
 
 Safe follow-up steps can continue automatically after approval; every step still goes through policy evaluation.
 
@@ -124,11 +124,11 @@ The current `v4.0.0` baseline:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 273 passing |
+| Unit tests | 285 passing |
 | Optional Anthropic compatibility | 4 passing |
 | Harness scenarios | 12 HITL / runbook / cluster scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 90.67% |
+| Coverage | 90.39% |
 | Static checks | `ruff`, `mypy --strict`, `bandit` |
 | Build verification | wheel + sdist + packaged data install check |
 

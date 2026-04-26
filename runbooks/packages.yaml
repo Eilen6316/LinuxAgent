@@ -1,0 +1,17 @@
+id: package.inventory
+title: List installed packages
+triggers: [installed, applications, packages, apps, 软件, 应用, 安装, 安装了什么]
+scenarios:
+  - 我都安装什么应用了
+  - 查看已安装的软件包
+  - list installed packages
+steps:
+  - command: rpm -qa --last
+    purpose: List installed RPM packages with install time when available
+    read_only: true
+  - command: dnf list installed
+    purpose: List packages known to DNF on RPM-based systems
+    read_only: true
+preflight_checks: [rpm -qa --last]
+verification_commands: [rpm -qa --last]
+rollback_commands: []

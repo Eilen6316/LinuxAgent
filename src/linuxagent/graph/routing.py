@@ -5,7 +5,7 @@ from __future__ import annotations
 from langchain_core.messages import AIMessage
 
 from ..interfaces import SafetyLevel
-from .runbook_planning import has_next_runbook_step
+from .runbook_planning import has_next_plan_step
 from .state import AgentState
 
 
@@ -34,7 +34,16 @@ async def route_by_safety(state: AgentState) -> str:
     return "SAFE"
 
 
+async def route_after_parse(state: AgentState) -> str:
+    if state.get("direct_response"):
+        return "RESPOND"
+    return "SAFETY"
+
+
 async def route_after_execute(state: AgentState) -> str:
-    if has_next_runbook_step(state):
+    result = state.get("execution_result")
+    if result is not None and result.exit_code != 0:
+        return "ANALYZE"
+    if has_next_plan_step(state):
         return "CONTINUE_RUNBOOK"
     return "ANALYZE"

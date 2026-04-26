@@ -30,9 +30,14 @@ def find_prompts_dir() -> Path:
 
 def load_system_prompt() -> str:
     """Return the raw system-prompt markdown."""
-    path = find_prompts_dir() / "system.md"
+    return load_prompt("system.md")
+
+
+def load_prompt(name: str) -> str:
+    """Return a raw prompt template from the packaged prompt directory."""
+    path = find_prompts_dir() / name
     if not path.is_file():
-        raise PromptNotFoundError(f"system prompt missing at {path}")
+        raise PromptNotFoundError(f"prompt missing at {path}")
     return path.read_text(encoding="utf-8")
 
 
@@ -45,3 +50,19 @@ def build_chat_prompt() -> ChatPromptTemplate:
             ("human", "{user_input}"),
         ]
     )
+
+
+def build_direct_answer_prompt() -> ChatPromptTemplate:
+    """Build a prompt for non-execution conversational answers."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", load_prompt("direct_answer.md")),
+            MessagesPlaceholder("chat_history", optional=True),
+            ("human", "{user_input}"),
+        ]
+    )
+
+
+def build_analysis_prompt() -> ChatPromptTemplate:
+    """Build a prompt for terminal-friendly command-result analysis."""
+    return ChatPromptTemplate.from_messages([("system", load_prompt("analysis.md"))])

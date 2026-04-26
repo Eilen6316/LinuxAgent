@@ -12,10 +12,10 @@ from linuxagent.runbooks.models import Runbook, RunbookStep
 from linuxagent.telemetry import TelemetryRecorder
 
 
-def test_loads_eight_builtin_runbooks_with_three_scenarios() -> None:
+def test_loads_eleven_builtin_runbooks_with_three_scenarios() -> None:
     runbooks = load_runbooks(Path(__file__).resolve().parents[3] / "runbooks")
 
-    assert len(runbooks) == 8
+    assert len(runbooks) == 11
     assert all(len(runbook.scenarios) >= 3 for runbook in runbooks)
 
 

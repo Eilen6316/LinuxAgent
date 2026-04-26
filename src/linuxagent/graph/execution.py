@@ -11,14 +11,21 @@ from .state import AgentState
 
 
 def synthetic_result(command: str, exit_code: int, stdout: str, stderr: str) -> ExecutionResult:
-    return ExecutionResult(command=command, exit_code=exit_code, stdout=stdout, stderr=stderr, duration=0)
+    return ExecutionResult(
+        command=command, exit_code=exit_code, stdout=stdout, stderr=stderr, duration=0
+    )
 
 
 def analysis_context(state: AgentState, result: ExecutionResult) -> str:
     runbook_results = state.get("runbook_results", ())
     if not runbook_results:
         return guard_execution_result(result).text
-    sections = ["Runbook step results:"]
+    label = (
+        "Runbook step results:"
+        if state.get("selected_runbook") is not None
+        else "Command step results:"
+    )
+    sections = [label]
     for index, step_result in enumerate(runbook_results, start=1):
         sections.append(f"\nStep {index}:\n{guard_execution_result(step_result).text}")
     return "\n".join(sections)

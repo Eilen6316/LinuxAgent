@@ -12,7 +12,7 @@ from langgraph.types import Command, interrupt
 
 from ..audit import AuditLog
 from ..interfaces import CommandSource, LLMProvider
-from ..prompts_loader import build_chat_prompt
+from ..prompts_loader import build_analysis_prompt
 from ..runbooks import RunbookEngine
 from ..security import guard_execution_result
 from ..services import ClusterService, CommandService
@@ -21,7 +21,7 @@ from .common import span, trace_id
 from .execution import analysis_context, run_command, synthetic_result
 from .intent import make_parse_intent_node
 from .payloads import build_confirm_payload, decision, latency_ms, may_whitelist
-from .runbook_planning import next_runbook_step_update
+from .runbook_planning import next_plan_step_update
 from .safety_nodes import make_safety_check_node
 from .state import AgentState
 
@@ -68,7 +68,9 @@ def make_confirm_node(
         )
         payload = build_confirm_payload(state, audit_id)
         response = interrupt(payload)
-        with span(telemetry, "hitl.confirm", current_trace_id, {"matched_rule": state.get("matched_rule")}):
+        with span(
+            telemetry, "hitl.confirm", current_trace_id, {"matched_rule": state.get("matched_rule")}
+        ):
             user_decision = decision(response)
             await audit.record_decision(
                 audit_id,
@@ -79,7 +81,11 @@ def make_confirm_node(
         if user_decision != "yes":
             return Command(
                 goto="respond_refused",
-                update={"trace_id": current_trace_id, "user_confirmed": False, "audit_id": audit_id},
+                update={
+                    "trace_id": current_trace_id,
+                    "user_confirmed": False,
+                    "audit_id": audit_id,
+                },
             )
         if may_whitelist(state, payload):
             whitelist = getattr(command_service.executor, "whitelist", None)
@@ -134,7 +140,10 @@ def make_execute_node(
                 batch_hosts=state.get("batch_hosts", ()),
             )
         update: AgentState = {"trace_id": current_trace_id, "execution_result": result}
-        if state.get("selected_runbook") is not None:
+        plan = state.get("command_plan")
+        if state.get("selected_runbook") is not None or (
+            plan is not None and len(plan.commands) > 1
+        ):
             update["runbook_results"] = (*state.get("runbook_results", ()), result)
         return update
 
@@ -143,7 +152,7 @@ def make_execute_node(
 
 def make_advance_runbook_node() -> Node:
     async def advance_runbook_node(state: AgentState) -> AgentState:
-        return next_runbook_step_update(state)
+        return next_plan_step_update(state)
 
     return advance_runbook_node
 
@@ -152,20 +161,14 @@ def make_analyze_result_node(
     provider: LLMProvider,
     telemetry: TelemetryRecorder | None = None,
 ) -> Node:
-    prompt = build_chat_prompt()
+    prompt = build_analysis_prompt()
 
     async def analyze_result_node(state: AgentState) -> AgentState:
         current_trace_id = trace_id(state)
         result = state.get("execution_result")
         if result is None:
             return {"messages": [AIMessage(content="没有执行结果可分析。")]}
-        prompt_messages = prompt.format_messages(
-            chat_history=[],
-            user_input=(
-                "Summarize this command result for the operator in concise Chinese.\n\n"
-                f"{analysis_context(state, result)}"
-            ),
-        )
+        prompt_messages = prompt.format_messages(result_context=analysis_context(state, result))
         try:
             with span(telemetry, "llm.complete", current_trace_id, {"node": "analyze"}):
                 analysis = await provider.complete(prompt_messages)

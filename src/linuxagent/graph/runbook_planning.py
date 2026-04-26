@@ -46,24 +46,27 @@ def plan_from_runbook(runbook: Runbook) -> CommandPlan:
     )
 
 
-def has_next_runbook_step(state: AgentState) -> bool:
+def has_next_plan_step(state: AgentState) -> bool:
     plan = state.get("command_plan")
-    if state.get("selected_runbook") is None or plan is None:
+    if plan is None:
         return False
     next_index = state.get("runbook_step_index", 0) + 1
     return next_index < len(plan.commands)
 
 
-def next_runbook_step_update(state: AgentState) -> AgentState:
+def next_plan_step_update(state: AgentState) -> AgentState:
     plan = state.get("command_plan")
     next_index = state.get("runbook_step_index", 0) + 1
     if plan is None or next_index >= len(plan.commands):
         return {}
     next_command = plan.commands[next_index]
+    source = (
+        CommandSource.RUNBOOK if state.get("selected_runbook") is not None else CommandSource.LLM
+    )
     return {
         "pending_command": next_command.command,
         "runbook_step_index": next_index,
-        "command_source": CommandSource.RUNBOOK,
+        "command_source": source,
         "safety_level": None,
         "matched_rule": None,
         "safety_reason": None,
