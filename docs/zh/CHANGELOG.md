@@ -23,8 +23,8 @@ LinuxAgent v4.0.0 是重写后的第一个正式版本。它用基于 LangGraph 
 - 带 trace ID 的本地 telemetry JSONL spans。
 - CPU、内存、根文件系统资源阈值告警。
 - 单元、集成、安全、类型、lint、harness、可选 provider 和 wheel 安装验证门禁。
-- 公开项目治理文件：`SECURITY.md` / `SECURITY_CN.md`、
-  `CONTRIBUTING.md` / `CONTRIBUTING_CN.md`、行为准则、Issue/PR 模板。
+- 公开项目治理文件：`SECURITY.md` / `docs/zh/SECURITY.md`、
+  `CONTRIBUTING.md` / `docs/zh/CONTRIBUTING.md`、行为准则、Issue/PR 模板。
 - v3 到 v4 迁移指南、威胁模型、生产就绪清单和正式 release notes。
 - `constraints.txt` 可复现安装约束。
 
@@ -54,6 +54,6 @@ LinuxAgent v4.0.0 是重写后的第一个正式版本。它用基于 LangGraph 
 ### Migration
 
 本版本不能从 v3 原地平滑升级。参见
-[docs/migration-v3-to-v4_CN.md](docs/migration-v3-to-v4_CN.md)。
+[docs/zh/migration-v3-to-v4.md](migration-v3-to-v4.md)。
 
 [4.0.0]: https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0

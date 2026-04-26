@@ -84,16 +84,10 @@ include = [
     "docs",
     "pyproject.toml",
     "README.md",
-    "README_CN.md",
-    "README_EN.md",
     "CHANGELOG.md",
-    "CHANGELOG_CN.md",
     "SECURITY.md",
-    "SECURITY_CN.md",
     "CONTRIBUTING.md",
-    "CONTRIBUTING_CN.md",
     "CODE_OF_CONDUCT.md",
-    "CODE_OF_CONDUCT_CN.md",
     "constraints.txt",
 ]
 exclude = [".work/", ".claude/"]

@@ -13,8 +13,8 @@
   <p><strong>A HITL-first Linux ops agent that turns LLM suggestions into policy-checked, audited, operator-approved commands.</strong></p>
 
   <p>
-    <a href="README_CN.md">简体中文完整文档</a> ·
-    <a href="README_EN.md">Full English manual</a> ·
+    <a href="docs/zh/README.md">简体中文完整文档</a> ·
+    <a href="docs/en/README.md">Full English manual</a> ·
     <a href="docs/releases/v4.0.0.md">v4.0.0 release notes</a>
   </p>
 </div>
@@ -156,8 +156,9 @@ make verify-build
 
 | Document | Purpose |
 |---|---|
-| [README_CN.md](README_CN.md) | Full Chinese manual |
-| [README_EN.md](README_EN.md) | Full English manual |
+| [Documentation index](docs/README.md) | All long-form docs in one place |
+| [docs/zh/README.md](docs/zh/README.md) | Full Chinese manual |
+| [docs/en/README.md](docs/en/README.md) | Full English manual |
 | [Quick Start](docs/quickstart.md) | Installation and first run |
 | [Migration Guide](docs/migration-v3-to-v4.md) | v3 to v4 breaking changes |
 | [Threat Model](docs/threat-model.md) | Assets, trust boundaries, and mitigations |

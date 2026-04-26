@@ -5,8 +5,8 @@
 
 ## 开始之前
 
-1. 阅读 [README_CN.md](README_CN.md)、[docs/development.md](docs/development.md)
-   和 [docs/threat-model_CN.md](docs/threat-model_CN.md)。
+1. 阅读 [中文完整文档](README.md)、[开发指南](../development.md)
+   和 [威胁模型](threat-model.md)。
 2. 创建虚拟环境并安装开发依赖：
 
 ```bash

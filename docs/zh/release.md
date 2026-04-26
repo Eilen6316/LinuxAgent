@@ -71,4 +71,4 @@ git push origin v4.0.0
 ```
 
 GitHub Actions release workflow 会构建产物，并使用 `docs/releases/v4.0.0.md`
-作为 GitHub Release 正文。中文发布说明位于 `docs/releases/v4.0.0_CN.md`。
+作为 GitHub Release 正文。中文发布说明位于 `docs/zh/releases/v4.0.0.md`。

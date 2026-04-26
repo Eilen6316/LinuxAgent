@@ -45,5 +45,4 @@ LinuxAgent 是一个需要人工确认的运维助手，不是命令沙箱。项
 - 默认不信任未知 SSH 主机。
 - 命令会以调用 LinuxAgent 的用户权限执行。
 
-参见 [威胁模型](docs/threat-model_CN.md) 和
-[生产就绪清单](docs/production-readiness_CN.md)。
+参见 [威胁模型](threat-model.md) 和 [生产就绪清单](production-readiness.md)。

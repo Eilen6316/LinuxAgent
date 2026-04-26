@@ -75,4 +75,4 @@ git push origin v4.0.0
 
 The GitHub Actions release workflow builds artifacts and creates a GitHub
 Release using `docs/releases/v4.0.0.md` as the release body. The Chinese release
-notes live in `docs/releases/v4.0.0_CN.md`.
+notes live in `docs/zh/releases/v4.0.0.md`.

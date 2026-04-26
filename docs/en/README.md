@@ -1,14 +1,14 @@
 <div align="center">
   <h1>LinuxAgent</h1>
-  <img src="logo.jpg" alt="LinuxAgent Logo" width="320" />
+  <img src="../../logo.jpg" alt="LinuxAgent Logo" width="320" />
 
   <p>
     <a href="https://github.com/Eilen6316/LinuxAgent.git"><img src="https://img.shields.io/badge/GitHub-Repository-black?style=flat-square&logo=github" alt="GitHub"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://pypi.org/project/linuxagent/"><img src="https://img.shields.io/pypi/v/linuxagent?style=flat-square" alt="PyPI"></a>
-    <a href="README_EN.md#development"><img src="https://img.shields.io/badge/coverage-90.65%25-brightgreen?style=flat-square" alt="Coverage"></a>
-    <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-90.65%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
     <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=o2ByKsl_gBN-fODJxH4Ps4Xboa_hCSI3&authKey=nVfsLJBin1CnZBd9pPNkxFk%2FGFqCe1FLsRMQmmxv%2FQnM78bC%2FjcWyMSeQcJDZC1U&noverify=0&group_code=281392454"><img src="https://img.shields.io/badge/QQ_Group-281392454-brightgreen?style=flat-square&logo=tencent-qq" alt="QQ Group"></a>
@@ -18,8 +18,8 @@
   <p><em>LinuxAgent v4.0.0: LLM-driven Linux operations assistant CLI with mandatory Human-in-the-Loop safety</em></p>
 
   <p>
-    <a href="README.md">README (short)</a> ·
-    <a href="README_CN.md">简体中文</a>
+    <a href="../../README.md">Project homepage</a> ·
+    <a href="../zh/README.md">简体中文</a>
   </p>
 </div>
 
@@ -337,7 +337,7 @@ linuxagent check
 | `logging` | `format` | `console` | `console` (Rich colour) / `json` (production) |
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | Semantic search model; **local PyTorch models are disallowed** |
 
-Full example: [`configs/example.yaml`](configs/example.yaml).
+Full example: [`configs/example.yaml`](../../configs/example.yaml).
 
 ---
 
@@ -467,7 +467,7 @@ Allow this operation? [y/N]: y
 
 ### Scenario 5: interrupt and resume
 
-Pressing `Ctrl-C` at a `confirm` node leaves the current state in `MemorySaver`. Within the same process, invoking the graph again with the same `thread_id` resumes from the checkpoint. See [docs/development.md](docs/development.md) for programmatic resume.
+Pressing `Ctrl-C` at a `confirm` node leaves the current state in `MemorySaver`. Within the same process, invoking the graph again with the same `thread_id` resumes from the checkpoint. See [Development Guide](../development.md) for programmatic resume.
 
 ### Example prompts
 
@@ -570,7 +570,7 @@ make verify-build  # build + wheel install + packaged data check
 linuxagent audit verify
 ```
 
-Details in [docs/development.md](docs/development.md).
+Details in [Development Guide](../development.md).
 
 ---
 
@@ -584,23 +584,23 @@ git tag v4.0.0
 git push origin v4.0.0     # triggers release.yml
 ```
 
-See [docs/release.md](docs/release.md).
+See [Release Guide](../release.md).
 
 ---
 
 ## Docs
 
-- [Quick Start](docs/quickstart.md)
-- [Development Guide](docs/development.md)
-- [Release Guide](docs/release.md) / [中文发布指南](docs/release_CN.md)
-- [Migration Guide: v3 to v4.0.0](docs/migration-v3-to-v4.md)
-- [Threat Model](docs/threat-model.md)
-- [Production Readiness](docs/production-readiness.md)
-- [Release Notes](docs/releases/v4.0.0.md) / [中文发布说明](docs/releases/v4.0.0_CN.md)
-- [Changelog](CHANGELOG.md) / [中文更新日志](CHANGELOG_CN.md)
-- [Security Policy](SECURITY.md) / [安全政策](SECURITY_CN.md)
-- [Contributing](CONTRIBUTING.md) / [贡献指南](CONTRIBUTING_CN.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md) / [行为准则](CODE_OF_CONDUCT_CN.md)
+- [Quick Start](../quickstart.md)
+- [Development Guide](../development.md)
+- [Release Guide](../release.md) / [中文发布指南](../zh/release.md)
+- [Migration Guide: v3 to v4.0.0](../migration-v3-to-v4.md)
+- [Threat Model](../threat-model.md)
+- [Production Readiness](../production-readiness.md)
+- [Release Notes](../releases/v4.0.0.md) / [中文发布说明](../zh/releases/v4.0.0.md)
+- [Changelog](../../CHANGELOG.md) / [中文更新日志](../zh/CHANGELOG.md)
+- [Security Policy](../../SECURITY.md) / [安全政策](../zh/SECURITY.md)
+- [Contributing](../../CONTRIBUTING.md) / [贡献指南](../zh/CONTRIBUTING.md)
+- [Code of Conduct](../../CODE_OF_CONDUCT.md) / [行为准则](../zh/CODE_OF_CONDUCT.md)
 
 ---
 

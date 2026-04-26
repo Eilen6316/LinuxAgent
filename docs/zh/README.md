@@ -1,14 +1,14 @@
 <div align="center">
   <h1>LinuxAgent</h1>
-  <img src="logo.jpg" alt="LinuxAgent Logo" width="320" />
+  <img src="../../logo.jpg" alt="LinuxAgent Logo" width="320" />
 
   <p>
     <a href="https://github.com/Eilen6316/LinuxAgent.git"><img src="https://img.shields.io/badge/GitHub-项目仓库-black?style=flat-square&logo=github" alt="GitHub"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://pypi.org/project/linuxagent/"><img src="https://img.shields.io/pypi/v/linuxagent?style=flat-square" alt="PyPI"></a>
-    <a href="README_CN.md#开发"><img src="https://img.shields.io/badge/coverage-90.65%25-brightgreen?style=flat-square" alt="Coverage"></a>
-    <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
+    <a href="#开发"><img src="https://img.shields.io/badge/coverage-90.65%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-项目仓库-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-项目仓库-red?style=flat-square&logo=gitee" alt="Gitee"></a>
     <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=o2ByKsl_gBN-fODJxH4Ps4Xboa_hCSI3&authKey=nVfsLJBin1CnZBd9pPNkxFk%2FGFqCe1FLsRMQmmxv%2FQnM78bC%2FjcWyMSeQcJDZC1U&noverify=0&group_code=281392454"><img src="https://img.shields.io/badge/QQ群-281392454-brightgreen?style=flat-square&logo=tencent-qq" alt="QQ Group"></a>
@@ -18,8 +18,8 @@
   <p><em>LinuxAgent v4.0.0：LLM 驱动、带强制人机确认的 Linux 运维 CLI 助手</em></p>
 
   <p>
-    <a href="README.md">English README</a> ·
-    <a href="README_EN.md">Full English</a>
+    <a href="../../README.md">Project homepage</a> ·
+    <a href="../en/README.md">Full English</a>
   </p>
 </div>
 
@@ -336,7 +336,7 @@ linuxagent check
 | `logging` | `format` | `console` | `console`（Rich 彩色） / `json`（生产） |
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | 语义检索模型；**禁止本地 PyTorch 模型** |
 
-完整样例见 [`configs/example.yaml`](configs/example.yaml)。
+完整样例见 [`configs/example.yaml`](../../configs/example.yaml)。
 
 ---
 
@@ -466,7 +466,7 @@ Allow this operation? [y/N]: y
 
 ### 场景 5：中断与恢复
 
-在 `confirm` 节点按 `Ctrl-C`，当前对话状态被 `MemorySaver` 保留在内存中；同一进程内再次触发同一 `thread_id` 时可从断点继续。具体使用方式见 [docs/development.md](docs/development.md)。
+在 `confirm` 节点按 `Ctrl-C`，当前对话状态被 `MemorySaver` 保留在内存中；同一进程内再次触发同一 `thread_id` 时可从断点继续。具体使用方式见 [开发指南](../development.md)。
 
 ### 示例自然语言输入
 
@@ -569,7 +569,7 @@ make verify-build  # build + wheel 安装 + package data 检查
 linuxagent audit verify
 ```
 
-更多细节见 [docs/development.md](docs/development.md)。
+更多细节见 [开发指南](../development.md)。
 
 ---
 
@@ -583,23 +583,23 @@ git tag v4.0.0
 git push origin v4.0.0     # 触发 release.yml
 ```
 
-详见 [docs/release.md](docs/release.md)。
+详见 [发布指南](release.md)。
 
 ---
 
 ## 文档
 
-- [快速开始](docs/quickstart.md)
-- [开发指南](docs/development.md)
-- [发布指南](docs/release_CN.md) / [Release Guide](docs/release.md)
-- [v3 到 v4.0.0 迁移指南（中文）](docs/migration-v3-to-v4_CN.md)
-- [威胁模型（中文）](docs/threat-model_CN.md)
-- [生产就绪清单（中文）](docs/production-readiness_CN.md)
-- [Release Notes](docs/releases/v4.0.0.md) / [发布说明](docs/releases/v4.0.0_CN.md)
-- [更新日志](CHANGELOG_CN.md) / [Changelog](CHANGELOG.md)
-- [安全政策](SECURITY_CN.md) / [Security Policy](SECURITY.md)
-- [贡献指南](CONTRIBUTING_CN.md) / [Contributing](CONTRIBUTING.md)
-- [行为准则](CODE_OF_CONDUCT_CN.md) / [Code of Conduct](CODE_OF_CONDUCT.md)
+- [快速开始](../quickstart.md)
+- [开发指南](../development.md)
+- [发布指南](release.md) / [Release Guide](../release.md)
+- [v3 到 v4.0.0 迁移指南（中文）](migration-v3-to-v4.md)
+- [威胁模型（中文）](threat-model.md)
+- [生产就绪清单（中文）](production-readiness.md)
+- [Release Notes](../releases/v4.0.0.md) / [发布说明](releases/v4.0.0.md)
+- [更新日志](CHANGELOG.md) / [Changelog](../../CHANGELOG.md)
+- [安全政策](SECURITY.md) / [Security Policy](../../SECURITY.md)
+- [贡献指南](CONTRIBUTING.md) / [Contributing](../../CONTRIBUTING.md)
+- [行为准则](CODE_OF_CONDUCT.md) / [Code of Conduct](../../CODE_OF_CONDUCT.md)
 
 ---
 
