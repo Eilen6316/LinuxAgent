@@ -1,16 +1,16 @@
 id: service.status
-title: Check service health
-triggers: [service, status, systemctl, 服务, 状态]
+title: Check SSH service health
+triggers: [ssh, sshd, openssh]
 scenarios:
-  - 看一下 nginx 服务状态
+  - 查看 ssh 服务状态
   - check ssh service health
-  - systemd service status
+  - inspect sshd status and logs
 steps:
   - command: systemctl status ssh --no-pager
-    purpose: Show service status without paging
+    purpose: Show SSH service status without paging
     read_only: true
   - command: journalctl -u ssh --no-pager -n 100
-    purpose: Show recent service logs
+    purpose: Show recent SSH service logs
     read_only: true
 preflight_checks: [systemctl status ssh --no-pager]
 verification_commands: [systemctl is-active ssh]

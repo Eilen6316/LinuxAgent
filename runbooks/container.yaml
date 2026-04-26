@@ -9,8 +9,8 @@ steps:
   - command: docker ps
     purpose: List running containers
     read_only: true
-  - command: docker logs --tail 100 web
-    purpose: Show recent container logs
+  - command: docker stats --no-stream
+    purpose: Show one-shot container resource usage
     read_only: true
 preflight_checks: [docker ps]
 verification_commands: [docker ps]

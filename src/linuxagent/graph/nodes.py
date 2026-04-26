@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from typing import Any
@@ -13,14 +13,20 @@ from langgraph.types import Command, interrupt
 
 from ..audit import AuditLog
 from ..cluster.remote_command import RemoteCommandError, validate_remote_command
-from ..executors import is_destructive
-from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLevel
-from ..plans import CommandPlan, CommandPlanParseError, PlannedCommand, parse_command_plan
+from ..interfaces import CommandSource, LLMProvider, SafetyLevel
+from ..plans import CommandPlanParseError, parse_command_plan
 from ..prompts_loader import build_chat_prompt
-from ..runbooks import Runbook, RunbookEngine, RunbookPolicyError
+from ..runbooks import RunbookEngine
 from ..security import guard_execution_result
 from ..services import ClusterService, CommandService
 from ..telemetry import TelemetryRecorder, new_trace_id
+from .execution import analysis_context, run_command, synthetic_result
+from .payloads import build_confirm_payload, decision, latency_ms, may_whitelist
+from .runbook_planning import (
+    has_next_runbook_step,
+    match_runbook_plan,
+    next_runbook_step_update,
+)
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -52,7 +58,7 @@ def make_parse_intent_node(
         messages = list(state.get("messages", []))
         user_text = _last_message_text(messages)
         try:
-            runbook_plan = _match_runbook_plan(user_text, trace_id, runbook_engine)
+            runbook_plan = match_runbook_plan(user_text, trace_id, runbook_engine)
         except CommandPlanParseError as exc:
             return {
                 "trace_id": trace_id,
@@ -182,33 +188,22 @@ def make_confirm_node(
             trace_id=trace_id,
             batch_hosts=state.get("batch_hosts", ()),
         )
-        payload = {
-            "type": "confirm_command",
-            "audit_id": audit_id,
-            "command": command,
-            "safety_level": safety_level.value if safety_level else None,
-            "matched_rule": state.get("matched_rule"),
-            "command_source": (state.get("command_source") or CommandSource.USER).value,
-            "batch_hosts": list(state.get("batch_hosts", ())),
-            "is_destructive": is_destructive(command or ""),
-            **_plan_payload(state.get("command_plan"), state.get("runbook_step_index", 0)),
-            **_runbook_payload(state.get("selected_runbook"), state.get("runbook_step_index", 0)),
-        }
+        payload = build_confirm_payload(state, audit_id)
         response = interrupt(payload)
         with _span(telemetry, "hitl.confirm", trace_id, {"matched_rule": state.get("matched_rule")}):
-            decision = _decision(response)
+            user_decision = decision(response)
             await audit.record_decision(
                 audit_id,
-                decision=decision,
-                latency_ms=_latency_ms(response),
+                decision=user_decision,
+                latency_ms=latency_ms(response),
                 trace_id=trace_id,
             )
-        if decision != "yes":
+        if user_decision != "yes":
             return Command(
                 goto="respond_refused",
                 update={"trace_id": trace_id, "user_confirmed": False, "audit_id": audit_id},
             )
-        if _may_whitelist(state, payload):
+        if may_whitelist(state, payload):
             whitelist = getattr(command_service.executor, "whitelist", None)
             if whitelist is not None and command is not None:
                 whitelist.add(command)
@@ -232,13 +227,19 @@ def make_execute_node(
         if not command:
             return {
                 "trace_id": trace_id,
-                "execution_result": _synthetic_result("", 2, "", "no command proposed"),
+                "execution_result": synthetic_result("", 2, "", "no command proposed"),
             }
         try:
             with _span(telemetry, "command.execute", trace_id, {"cluster": bool(state.get("selected_hosts"))}):
-                result = await _run_command(state, command, command_service, cluster_service)
+                result = await run_command(
+                    state,
+                    command,
+                    command_service,
+                    cluster_service,
+                    trace_id=trace_id,
+                )
         except Exception as exc:  # noqa: BLE001 - graph returns error state instead of crashing
-            result = _synthetic_result(command, 1, "", str(exc))
+            result = synthetic_result(command, 1, "", str(exc))
         audit_id = state.get("audit_id")
         if audit_id is not None:
             await audit.record_execution(
@@ -259,22 +260,7 @@ def make_execute_node(
 
 def make_advance_runbook_node() -> Node:
     async def advance_runbook_node(state: AgentState) -> AgentState:
-        plan = state.get("command_plan")
-        next_index = state.get("runbook_step_index", 0) + 1
-        if plan is None or next_index >= len(plan.commands):
-            return {}
-        next_command = plan.commands[next_index]
-        return {
-            "pending_command": next_command.command,
-            "runbook_step_index": next_index,
-            "command_source": CommandSource.RUNBOOK,
-            "safety_level": None,
-            "matched_rule": None,
-            "safety_reason": None,
-            "batch_hosts": (),
-            "user_confirmed": False,
-            "audit_id": None,
-        }
+        return next_runbook_step_update(state)
 
     return advance_runbook_node
 
@@ -294,7 +280,7 @@ def make_analyze_result_node(
             chat_history=[],
             user_input=(
                 "Summarize this command result for the operator in concise Chinese.\n\n"
-                f"{_analysis_context(state, result)}"
+                f"{analysis_context(state, result)}"
             ),
         )
         try:
@@ -333,13 +319,9 @@ def route_by_safety(state: AgentState) -> str:
 
 
 def route_after_execute(state: AgentState) -> str:
-    plan = state.get("command_plan")
-    if state.get("selected_runbook") is None or plan is None:
-        return "ANALYZE"
-    next_index = state.get("runbook_step_index", 0) + 1
-    if next_index >= len(plan.commands):
-        return "ANALYZE"
-    return "CONTINUE_RUNBOOK"
+    if has_next_runbook_step(state):
+        return "CONTINUE_RUNBOOK"
+    return "ANALYZE"
 
 
 def _batch_hosts(state: AgentState, cluster_service: ClusterService | None) -> tuple[str, ...]:
@@ -390,31 +372,6 @@ def _span(
     return telemetry.span(name, trace_id=trace_id, attributes=attributes)
 
 
-def _decision(response: Any) -> str:
-    if isinstance(response, dict):
-        value = response.get("decision")
-        return str(value) if value else "non_tty_auto_deny"
-    return "non_tty_auto_deny"
-
-
-def _latency_ms(response: Any) -> int | None:
-    if isinstance(response, dict) and isinstance(response.get("latency_ms"), int):
-        return int(response["latency_ms"])
-    return None
-
-
-def _may_whitelist(state: AgentState, payload: dict[str, Any]) -> bool:
-    return (
-        state.get("command_source") is CommandSource.LLM
-        and not payload["is_destructive"]
-        and not payload["batch_hosts"]
-    )
-
-
-def _synthetic_result(command: str, exit_code: int, stdout: str, stderr: str) -> ExecutionResult:
-    return ExecutionResult(command=command, exit_code=exit_code, stdout=stdout, stderr=stderr, duration=0)
-
-
 def _intent_prompt(user_text: str) -> str:
     return (
         f"{user_text}\n\n"
@@ -426,144 +383,6 @@ def _intent_prompt(user_text: str) -> str:
         '"expected_side_effects": [str]}. '
         "If useful, call tools before deciding. "
         "Do not include markdown or prose."
-    )
-
-
-def _match_runbook_plan(
-    user_text: str,
-    trace_id: str,
-    runbook_engine: RunbookEngine | None,
-) -> tuple[CommandPlan, Runbook] | None:
-    if runbook_engine is None:
-        return None
-    runbook = runbook_engine.match(user_text)
-    if runbook is None:
-        return None
-    try:
-        runbook_engine.evaluate_steps(runbook, trace_id=trace_id)
-    except RunbookPolicyError as exc:
-        raise CommandPlanParseError(str(exc)) from exc
-    return _plan_from_runbook(runbook), runbook
-
-
-def _plan_from_runbook(runbook: Runbook) -> CommandPlan:
-    return CommandPlan(
-        goal=runbook.title,
-        commands=tuple(
-            PlannedCommand(
-                command=step.command,
-                purpose=step.purpose,
-                read_only=step.read_only,
-                target_hosts=(),
-            )
-            for step in runbook.steps
-        ),
-        risk_summary=f"Matched runbook {runbook.id}.",
-        preflight_checks=runbook.preflight_checks,
-        verification_commands=runbook.verification_commands,
-        rollback_commands=runbook.rollback_commands,
-        requires_root=False,
-        expected_side_effects=(),
-    )
-
-
-def _plan_payload(plan: CommandPlan | None, step_index: int = 0) -> dict[str, Any]:
-    if plan is None:
-        return {}
-    current = plan.commands[min(step_index, len(plan.commands) - 1)]
-    return {
-        "goal": plan.goal,
-        "purpose": current.purpose,
-        "risk_summary": plan.risk_summary,
-        "preflight_checks": list(plan.preflight_checks),
-        "verification_commands": list(plan.verification_commands),
-        "rollback_commands": list(plan.rollback_commands),
-        "expected_side_effects": list(plan.expected_side_effects),
-        "requires_root": plan.requires_root,
-    }
-
-
-def _runbook_payload(runbook: Runbook | None, step_index: int = 0) -> dict[str, Any]:
-    if runbook is None:
-        return {}
-    return {
-        "runbook_id": runbook.id,
-        "runbook_title": runbook.title,
-        "runbook_step_index": step_index,
-        "runbook_steps": [
-            {"command": step.command, "purpose": step.purpose, "read_only": step.read_only}
-            for step in runbook.steps
-        ],
-    }
-
-
-def _analysis_context(state: AgentState, result: ExecutionResult) -> str:
-    runbook_results = state.get("runbook_results", ())
-    if not runbook_results:
-        return guard_execution_result(result).text
-    sections = ["Runbook step results:"]
-    for index, step_result in enumerate(runbook_results, start=1):
-        sections.append(f"\nStep {index}:\n{guard_execution_result(step_result).text}")
-    return "\n".join(sections)
-
-
-async def _run_command(
-    state: AgentState,
-    command: str,
-    command_service: CommandService,
-    cluster_service: ClusterService | None,
-) -> ExecutionResult:
-    selected_hosts = state.get("selected_hosts", ())
-    if selected_hosts and cluster_service is not None:
-        resolved_hosts = cluster_service.resolve_host_names(selected_hosts)
-        if not resolved_hosts:
-            return _synthetic_result(command, 2, "", "no matching cluster hosts selected")
-        if state.get("matched_rule") == "INTERACTIVE":
-            return _synthetic_result(
-                command,
-                2,
-                "",
-                "interactive commands are not supported for cluster execution",
-            )
-        trace_id = _trace_id(state)
-        return _aggregate_cluster_results(
-            command,
-            await cluster_service.run_on_hosts(command, resolved_hosts, trace_id=trace_id),
-        )
-    if state.get("matched_rule") == "INTERACTIVE":
-        return await command_service.run_interactive(command)
-    return await command_service.run(command)
-
-
-def _aggregate_cluster_results(
-    command: str,
-    results: Mapping[str, ExecutionResult | BaseException],
-) -> ExecutionResult:
-    exit_code = 0
-    duration = 0.0
-    stdout_lines: list[str] = []
-    stderr_lines: list[str] = []
-    for host, outcome in results.items():
-        if isinstance(outcome, ExecutionResult):
-            duration = max(duration, outcome.duration)
-            stdout = outcome.stdout.rstrip()
-            stderr = outcome.stderr.rstrip()
-            stdout_lines.append(f"[{host}] exit_code={outcome.exit_code}")
-            if stdout:
-                stdout_lines.append(f"[{host}] stdout: {stdout}")
-            if stderr:
-                stderr_lines.append(f"[{host}] stderr: {stderr}")
-            if outcome.exit_code != 0:
-                exit_code = 1
-        else:
-            exit_code = 1
-            stderr_lines.append(f"[{host}] error: {outcome}")
-    return ExecutionResult(
-        command=command,
-        exit_code=exit_code,
-        stdout="\n".join(stdout_lines).strip(),
-        stderr="\n".join(stderr_lines).strip(),
-        duration=duration,
     )
 
 

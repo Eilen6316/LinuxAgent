@@ -2,8 +2,8 @@ id: port.listener
 title: Find process listening on a port
 triggers: [port, listen, listener, 端口, 监听]
 scenarios:
-  - 找一下监听 8080 端口的服务
-  - what is listening on port 443
+  - 查看当前监听端口
+  - list listening sockets
   - show listening sockets
 steps:
   - command: ss -tlnp

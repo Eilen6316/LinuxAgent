@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-import openai
 import pytest
 
 from linuxagent.config.models import APIConfig
@@ -22,31 +19,28 @@ def _make() -> OpenAIProvider:
     return OpenAIProvider(APIConfig(api_key="sk-test"))
 
 
-def _fake_response() -> object:
-    return SimpleNamespace(
-        status_code=429,
-        headers={},
-        request=SimpleNamespace(),
-    )
+def _openai_error(name: str) -> BaseException:
+    error_type = type(name, (Exception,), {"__module__": "openai"})
+    return error_type("vendor error")
 
 
 @pytest.mark.parametrize(
     ("raw_exc_factory", "expected_type"),
     [
         (
-            lambda: openai.AuthenticationError("bad key", response=_fake_response(), body=None),
+            lambda: _openai_error("AuthenticationError"),
             ProviderAuthError,
         ),
         (
-            lambda: openai.RateLimitError("429", response=_fake_response(), body=None),
+            lambda: _openai_error("RateLimitError"),
             ProviderRateLimitError,
         ),
         (
-            lambda: openai.APITimeoutError(request=SimpleNamespace()),
+            lambda: _openai_error("APITimeoutError"),
             ProviderTimeoutError,
         ),
         (
-            lambda: openai.APIConnectionError(request=SimpleNamespace()),
+            lambda: _openai_error("APIConnectionError"),
             ProviderConnectionError,
         ),
     ],

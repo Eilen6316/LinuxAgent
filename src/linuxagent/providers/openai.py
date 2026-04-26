@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import openai
 from langchain_openai import ChatOpenAI
 
 from ..config.models import APIConfig
@@ -14,6 +13,13 @@ from .errors import (
     ProviderRateLimitError,
     ProviderTimeoutError,
 )
+
+_OPENAI_ERROR_MAP: dict[str, type[ProviderError]] = {
+    "AuthenticationError": ProviderAuthError,
+    "RateLimitError": ProviderRateLimitError,
+    "APITimeoutError": ProviderTimeoutError,
+    "APIConnectionError": ProviderConnectionError,
+}
 
 
 def _build_chat_model(config: APIConfig) -> ChatOpenAI:
@@ -37,12 +43,18 @@ class OpenAIProvider(BaseLLMProvider):
         super().__init__(config, _build_chat_model(config))
 
     def _map_error(self, exc: BaseException) -> ProviderError:
-        if isinstance(exc, openai.AuthenticationError):
-            return ProviderAuthError(str(exc))
-        if isinstance(exc, openai.RateLimitError):
-            return ProviderRateLimitError(str(exc))
-        if isinstance(exc, openai.APITimeoutError):
-            return ProviderTimeoutError(str(exc))
-        if isinstance(exc, openai.APIConnectionError):
-            return ProviderConnectionError(str(exc))
+        mapped = _map_openai_error(exc)
+        if mapped is not None:
+            return mapped
         return super()._map_error(exc)
+
+
+def _map_openai_error(exc: BaseException) -> ProviderError | None:
+    """Classify OpenAI SDK errors without importing the SDK directly."""
+    for cls in type(exc).mro():
+        if not cls.__module__.startswith("openai"):
+            continue
+        mapped = _OPENAI_ERROR_MAP.get(cls.__name__)
+        if mapped is not None:
+            return mapped(str(exc))
+    return None

@@ -29,6 +29,20 @@ def test_runbook_match_uses_triggers() -> None:
     assert matched.id == "disk.full"
 
 
+def test_ssh_service_runbook_does_not_capture_arbitrary_services() -> None:
+    runbooks = load_runbooks(Path(__file__).resolve().parents[3] / "runbooks")
+    engine = RunbookEngine(runbooks)
+
+    assert engine.match("看一下 nginx 服务状态") is None
+
+
+def test_builtin_runbooks_do_not_use_fixed_example_targets() -> None:
+    runbooks = load_runbooks(Path(__file__).resolve().parents[3] / "runbooks")
+    commands = [step.command for runbook in runbooks for step in runbook.steps]
+
+    assert "docker logs --tail 100 web" not in commands
+
+
 def test_runbook_steps_are_policy_evaluated() -> None:
     runbooks = load_runbooks(Path(__file__).resolve().parents[3] / "runbooks")
     engine = RunbookEngine(runbooks)
