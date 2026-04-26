@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from linuxagent.interfaces import SafetyLevel
-from linuxagent.runbooks import RunbookEngine, RunbookPolicyError, load_runbooks
+from linuxagent.runbooks import RunbookEngine, RunbookPolicyError, find_runbooks_dir, load_runbooks
 from linuxagent.runbooks.models import Runbook, RunbookStep
 from linuxagent.telemetry import TelemetryRecorder
 
@@ -17,6 +17,11 @@ def test_loads_eight_builtin_runbooks_with_three_scenarios() -> None:
 
     assert len(runbooks) == 8
     assert all(len(runbook.scenarios) >= 3 for runbook in runbooks)
+
+
+def test_find_runbooks_dir_skips_python_package_directory() -> None:
+    assert find_runbooks_dir().name == "runbooks"
+    assert (find_runbooks_dir() / "disk.yaml").is_file()
 
 
 def test_runbook_match_uses_triggers() -> None:

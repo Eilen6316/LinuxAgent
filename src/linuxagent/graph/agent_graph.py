@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, TypeAlias
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
 
 from .intent import make_parse_intent_node
 from .nodes import (
@@ -26,10 +25,7 @@ from .routing import (
 )
 from .state import AgentState
 
-if TYPE_CHECKING:
-    AgentGraph = CompiledStateGraph[AgentState, None, AgentState, AgentState]
-else:
-    AgentGraph = CompiledStateGraph
+AgentGraph: TypeAlias = Any
 
 
 def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
@@ -85,7 +81,7 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     graph.add_edge("respond", END)
     graph.add_edge("respond_block", END)
     graph.add_edge("respond_refused", END)
-    return cast(AgentGraph, graph.compile(checkpointer=MemorySaver()))
+    return graph.compile(checkpointer=MemorySaver())
 
 
 def _langgraph_node(action: Any) -> Any:

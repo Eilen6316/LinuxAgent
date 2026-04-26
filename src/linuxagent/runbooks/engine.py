@@ -24,11 +24,11 @@ class RunbookNotFoundError(FileNotFoundError):
 def find_runbooks_dir() -> Path:
     here = Path(__file__).resolve()
     wheel_dir = here.parents[1] / "_data" / "runbooks"
-    if wheel_dir.is_dir():
+    if _contains_runbook_yaml(wheel_dir):
         return wheel_dir
     for parent in here.parents:
         candidate = parent / "runbooks"
-        if candidate.is_dir():
+        if _contains_runbook_yaml(candidate):
             return candidate
     raise RunbookNotFoundError("no 'runbooks/' directory found in package data or repo checkout")
 
@@ -106,3 +106,7 @@ class RunbookEngine:
 
 def _normalized_tokens(text: str) -> frozenset[str]:
     return frozenset(part.strip(".,:;!?()[]{}").casefold() for part in text.split())
+
+
+def _contains_runbook_yaml(path: Path) -> bool:
+    return path.is_dir() and any(path.glob("*.yaml"))

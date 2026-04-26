@@ -57,7 +57,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 269 default unit tests + 1 optional provider test + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
+| Testability | 271 default unit tests + 1 optional provider test + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
 
 ---
 
@@ -231,8 +231,8 @@ confirmation and again before SSH connection setup.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **269 passing by default; 270 with the Anthropic extra installed** |
-| Coverage | 0 | **90.62%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **271 passing by default; 272 with the Anthropic extra installed** |
+| Coverage | 0 | **90.65%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
 

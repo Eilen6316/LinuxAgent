@@ -167,7 +167,11 @@ class Container:
     def runbook_engine(self) -> RunbookEngine:
         return self._cached(
             "runbook_engine",
-            lambda: RunbookEngine(load_runbooks(find_runbooks_dir()), telemetry=self.telemetry()),
+            lambda: RunbookEngine(
+                load_runbooks(find_runbooks_dir()),
+                policy_engine=self.policy_engine(),
+                telemetry=self.telemetry(),
+            ),
         )
 
     def knowledge_base(self) -> KnowledgeBase:

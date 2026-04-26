@@ -202,6 +202,40 @@ rules:
     assert runtime.executor().is_safe("systemctl restart nginx").level.name == "SAFE"
 
 
+def test_container_passes_runtime_policy_to_runbook_engine(tmp_path: Path) -> None:
+    policy_path = tmp_path / "policy.yaml"
+    policy_path.write_text(
+        """
+version: 1
+rules:
+  - id: custom.df.block
+    legacy_rule: CUSTOM_DF
+    level: BLOCK
+    risk_score: 100
+    capabilities: [filesystem.inspect]
+    reason: block df in this environment
+    match:
+      command: [df]
+""",
+        encoding="utf-8",
+    )
+    cfg = AppConfig.model_validate(
+        {
+            "policy": {"path": policy_path},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+    runtime = Container(cfg)
+    runbook = next(
+        item
+        for item in runtime.runbook_engine().runbooks
+        if any(step.command == "df -h" for step in item.steps)
+    )
+
+    with pytest.raises(ValueError, match="CUSTOM_DF|BLOCK|read-only"):
+        runtime.runbook_engine().evaluate_steps(runbook)
+
+
 def test_container_reports_invalid_policy_yaml(tmp_path: Path) -> None:
     policy_path = tmp_path / "policy.yaml"
     policy_path.write_text("[broken\n", encoding="utf-8")

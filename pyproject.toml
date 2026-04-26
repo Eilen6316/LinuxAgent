@@ -119,7 +119,7 @@ warn_unused_configs = true
 exclude = ["build/", "dist/"]
 
 [[tool.mypy.overrides]]
-module = ["paramiko.*", "psutil.*", "yaml"]
+module = ["langchain_anthropic.*", "paramiko.*", "psutil.*", "yaml"]
 ignore_missing_imports = true
 
 # ---- pytest -------------------------------------------------------------
