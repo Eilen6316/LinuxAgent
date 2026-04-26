@@ -55,8 +55,9 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Session whitelist | Approved SAFE commands skip confirmation within the same process; destructive commands never enter |
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
+| Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 231 unit tests + 12 HITL YAML scenarios + integration scaffolding, 87%+ coverage |
+| Testability | 234 unit tests + 12 HITL YAML scenarios + integration scaffolding, 86%+ coverage |
 
 ---
 
@@ -230,8 +231,8 @@ confirmation and again before SSH connection setup.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **231 passing** |
-| Coverage | 0 | **87.01%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **234 passing** |
+| Coverage | 0 | **86.79%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
 | End-to-end scenarios | none | 12 YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard / runbook |
@@ -542,7 +543,7 @@ A: Yes. Set `api.base_url` to the gateway URL and `api.model` to a model it supp
 
 ```bash
 make install   # pip install -e ".[dev]"
-make test      # pytest + 80% fail-under, currently 87%+
+make test      # pytest + 80% fail-under, currently 86%+
 make lint      # ruff check
 make type      # mypy --strict
 make security  # red-line grep + bandit

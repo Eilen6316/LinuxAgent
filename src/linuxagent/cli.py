@@ -14,6 +14,7 @@ from .config.loader import ConfigError, load_config
 from .container import Container
 from .logger import configure_logging
 from .providers.errors import ProviderError
+from .services import MonitoringAlert, collect_system_snapshot, evaluate_alerts
 
 logger = logging.getLogger(__name__)
 
@@ -89,11 +90,14 @@ def _cmd_check(args: argparse.Namespace) -> int:
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    alerts = evaluate_alerts(collect_system_snapshot(), cfg.monitoring)
+    alert_summary = "none" if not alerts else ", ".join(_format_alert(alert) for alert in alerts)
     print(
         f"OK: provider={cfg.api.provider}, "
         f"model={cfg.api.model}, "
         f"batch_confirm_threshold={cfg.cluster.batch_confirm_threshold}, "
-        f"audit_log={cfg.audit.path}"
+        f"audit_log={cfg.audit.path}, "
+        f"monitoring_alerts={alert_summary}"
     )
     return 0
 
@@ -147,6 +151,10 @@ _COMMANDS = {
     "check": _cmd_check,
     "chat": _cmd_chat,
 }
+
+
+def _format_alert(alert: MonitoringAlert) -> str:
+    return f"{alert.severity}:{alert.metric}={alert.value:.1f}>={alert.threshold:.1f}"
 
 
 def main(argv: list[str] | None = None) -> int:

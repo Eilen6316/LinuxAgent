@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
-from ..services.monitoring_service import MonitoringService, collect_system_snapshot
+from ..services.monitoring_service import (
+    MonitoringAlert,
+    MonitoringService,
+    collect_system_snapshot,
+    evaluate_alerts,
+)
 
-__all__ = ["MonitoringService", "collect_system_snapshot"]
+__all__ = ["MonitoringAlert", "MonitoringService", "collect_system_snapshot", "evaluate_alerts"]

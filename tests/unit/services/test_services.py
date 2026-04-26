@@ -18,6 +18,7 @@ from linuxagent.services import (
     CommandConfirmationRequiredError,
     CommandService,
     MonitoringService,
+    evaluate_alerts,
 )
 
 
@@ -29,6 +30,30 @@ async def test_monitoring_service_start_stop() -> None:
     await service.stop()
     assert "platform" in snapshot
     assert "python_version" in snapshot
+
+
+def test_monitoring_alerts_follow_thresholds() -> None:
+    alerts = evaluate_alerts(
+        {
+            "cpu_percent": 91.0,
+            "memory_percent": 80.0,
+            "disk_percent": 100.0,
+        },
+        MonitoringConfig(cpu_threshold=90.0, memory_threshold=90.0, disk_threshold=90.0),
+    )
+
+    assert [alert.metric for alert in alerts] == ["cpu_percent", "disk_percent"]
+    assert alerts[0].severity == "warning"
+    assert alerts[1].severity == "critical"
+
+
+def test_monitoring_alerts_respect_disabled_config() -> None:
+    alerts = evaluate_alerts(
+        {"cpu_percent": 100.0, "memory_percent": 100.0, "disk_percent": 100.0},
+        MonitoringConfig(enabled=False),
+    )
+
+    assert alerts == ()
 
 
 def test_chat_service_saves_history_with_0600(tmp_path) -> None:

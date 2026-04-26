@@ -11,7 +11,12 @@ from .command_service import (
     CommandSafetyError,
     CommandService,
 )
-from .monitoring_service import MonitoringService, collect_system_snapshot
+from .monitoring_service import (
+    MonitoringAlert,
+    MonitoringService,
+    collect_system_snapshot,
+    evaluate_alerts,
+)
 
 __all__ = [
     "ChatService",
@@ -21,6 +26,8 @@ __all__ = [
     "CommandRunResult",
     "CommandSafetyError",
     "CommandService",
+    "MonitoringAlert",
     "MonitoringService",
     "collect_system_snapshot",
+    "evaluate_alerts",
 ]

@@ -15,8 +15,9 @@ import linuxagent.cli as cli
 import linuxagent.container as container_module
 from linuxagent.audit import AuditLog
 from linuxagent.config.loader import ConfigError
-from linuxagent.config.models import AppConfig
+from linuxagent.config.models import AppConfig, MonitoringConfig
 from linuxagent.container import Container
+from linuxagent.services import MonitoringAlert
 
 
 def test_verbose_to_level_mapping() -> None:
@@ -41,6 +42,7 @@ def test_check_command_success(
         api=SimpleNamespace(provider="deepseek", model="deepseek-chat"),
         cluster=SimpleNamespace(batch_confirm_threshold=2),
         audit=SimpleNamespace(path=Path("audit.log")),
+        monitoring=MonitoringConfig(enabled=False),
     )
 
     called: list[int] = []
@@ -58,12 +60,49 @@ def test_check_command_success(
 
     monkeypatch.setattr(cli, "configure_logging", fake_configure_logging)
     monkeypatch.setattr(cli, "load_config", fake_load_config)
+    monkeypatch.setattr(cli, "collect_system_snapshot", lambda: {})
 
     code = cli.main(["-v", "check"])
     captured = capsys.readouterr()
     assert code == 0
     assert called == [logging.INFO]
     assert "OK: provider=deepseek" in captured.out
+    assert "monitoring_alerts=none" in captured.out
+
+
+def test_check_command_reports_monitoring_alerts(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cfg = SimpleNamespace(
+        api=SimpleNamespace(provider="deepseek", model="deepseek-chat"),
+        cluster=SimpleNamespace(batch_confirm_threshold=2),
+        audit=SimpleNamespace(path=Path("audit.log")),
+        monitoring=MonitoringConfig(),
+    )
+
+    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+    monkeypatch.setattr(cli, "collect_system_snapshot", lambda: {"cpu_percent": 95.0})
+    monkeypatch.setattr(
+        cli,
+        "evaluate_alerts",
+        lambda *_: (
+            MonitoringAlert(
+                metric="cpu_percent",
+                value=95.0,
+                threshold=90.0,
+                severity="warning",
+                message="CPU usage is high",
+            ),
+        ),
+    )
+
+    code = cli.main(["check"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "monitoring_alerts=warning:cpu_percent=95.0>=90.0" in captured.out
 
 
 def test_check_command_failure(
