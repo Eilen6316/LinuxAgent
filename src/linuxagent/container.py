@@ -193,6 +193,7 @@ class Container:
                 allowed_log_roots=tuple(
                     {path.parent for path in self._config.log_analysis.default_log_paths}
                 ),
+                monitoring_config=self._config.monitoring,
             ),
         )
 

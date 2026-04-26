@@ -18,7 +18,7 @@ from langchain_core.tools import BaseTool, tool
 
 from ..config.models import MonitoringConfig
 from ..interfaces import CommandExecutor, CommandSource
-from ..security import redact_text
+from ..security import guard_execution_result, redact_text
 from ..services import evaluate_alerts
 
 DEFAULT_LOG_ROOTS: tuple[Path, ...] = (Path("/var/log"),)
@@ -54,9 +54,7 @@ def make_execute_command_tool(executor: CommandExecutor) -> BaseTool:
                 f"rule={verdict.matched_rule or '?'} reason={verdict.reason or '?'}"
             )
         result = await executor.execute(command)
-        return (
-            f"exit_code={result.exit_code}\n{result.stdout.rstrip()}\n{result.stderr.rstrip()}"
-        ).rstrip()
+        return guard_execution_result(result).text
 
     return execute_command
 
@@ -149,11 +147,12 @@ def build_system_tools(
     executor: CommandExecutor,
     *,
     allowed_log_roots: tuple[Path, ...] = DEFAULT_LOG_ROOTS,
+    monitoring_config: MonitoringConfig | None = None,
 ) -> list[BaseTool]:
     """Assemble the default tool set the agent is granted."""
     return [
         make_execute_command_tool(executor),
-        make_get_system_info_tool(),
+        make_get_system_info_tool(monitoring_config),
         make_search_logs_tool(allowed_log_roots),
     ]
 

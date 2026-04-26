@@ -49,7 +49,7 @@ you: find services listening on port 8080
 - **Local telemetry JSONL** with per-run `trace_id`, no external collector required by default
 - **Resource threshold alerts** for CPU, memory, and root filesystem usage in `linuxagent check`
 - **Cluster-aware batch confirmation** — ≥2 hosts triggers an explicit approval prompt
-- **266 default unit tests + 1 optional provider test + 12 HITL scenarios**, 90%+ coverage, `mypy --strict`, `bandit` clean
+- **269 default unit tests + 1 optional provider test + 12 HITL scenarios**, 90%+ coverage, `mypy --strict`, `bandit` clean
 
 ## Quick start
 
@@ -81,7 +81,7 @@ Short version — the older single-file agent had a 4710-line God Object, substr
 | HITL | implicit, bypassable | `interrupt()` + checkpointing + audit log |
 | Planning | raw shell string | validated JSON `CommandPlan` |
 | Semantic search | hand-rolled TF-IDF, ~500MB local stack | LLM embedding API + disk cache, no local models |
-| Tests | 0 | 266 default unit + 1 optional provider + 12 HITL scenarios + 8 integration smoke tests |
+| Tests | 0 | 269 default unit + 1 optional provider + 12 HITL scenarios + 8 integration smoke tests |
 
 See the [full comparison](README_CN.md#与旧版本的全面对比) ([English](README_EN.md#full-comparison-with-the-original-prototype)) for algorithm-level diffs.
 

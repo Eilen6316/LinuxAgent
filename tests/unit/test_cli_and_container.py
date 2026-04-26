@@ -212,6 +212,24 @@ def test_container_reports_invalid_policy_yaml(tmp_path: Path) -> None:
         runtime.policy_engine()
 
 
+def test_container_passes_monitoring_config_to_system_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, MonitoringConfig] = {}
+
+    def fake_build_system_tools(executor, **kwargs):
+        del executor
+        captured["monitoring_config"] = kwargs["monitoring_config"]
+        return []
+
+    monkeypatch.setattr(container_module, "build_system_tools", fake_build_system_tools)
+    cfg = AppConfig.model_validate({"monitoring": {"cpu_threshold": 12.0}})
+    runtime = Container(cfg)
+
+    assert runtime.system_tools() == []
+    assert captured["monitoring_config"].cpu_threshold == 12.0
+
+
 def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_provider = SimpleNamespace(name="provider")
     fake_graph = SimpleNamespace(name="graph")

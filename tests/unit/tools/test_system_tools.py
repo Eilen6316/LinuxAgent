@@ -25,7 +25,20 @@ async def test_execute_command_tool_runs_whitelisted_command() -> None:
     tool = make_execute_command_tool(executor)
     out = await tool.ainvoke({"command": "/bin/echo hi"})
     assert "hi" in out
-    assert out.startswith("exit_code=0")
+    assert "exit_code=0" in out
+
+
+async def test_execute_command_tool_redacts_output_before_llm() -> None:
+    executor = _executor()
+    command = "/bin/printf password=hunter2"
+    assert executor.whitelist.add(command) is True
+    tool = make_execute_command_tool(executor)
+
+    out = await tool.ainvoke({"command": command})
+
+    assert "hunter2" not in out
+    assert "password=***redacted***" in out
+    assert "redacted_count=" in out
 
 
 async def test_execute_command_tool_refuses_blocked_command() -> None:
@@ -84,6 +97,26 @@ def test_build_system_tools_returns_both() -> None:
     tools = build_system_tools(_executor())
     names = {t.name for t in tools}
     assert names == {"execute_command", "get_system_info", "search_logs"}
+
+
+def test_build_system_tools_passes_monitoring_config() -> None:
+    tools = build_system_tools(
+        _executor(),
+        monitoring_config=MonitoringConfig(
+            cpu_threshold=0.0,
+            memory_threshold=0.0,
+            disk_threshold=0.0,
+        ),
+    )
+    get_info = next(tool for tool in tools if tool.name == "get_system_info")
+
+    info = get_info.invoke({})
+
+    assert {alert["metric"] for alert in info["alerts"]} == {
+        "cpu_percent",
+        "memory_percent",
+        "disk_percent",
+    }
 
 
 def test_search_logs_returns_numbered_matches(tmp_path) -> None:
