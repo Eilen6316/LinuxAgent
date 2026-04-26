@@ -11,10 +11,7 @@ from langchain_core.callbacks.manager import (
     AsyncCallbackManagerForLLMRun,
     CallbackManagerForLLMRun,
 )
-from langchain_core.language_models.fake_chat_models import (
-    FakeListChatModel,
-    GenericFakeChatModel,
-)
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.tools import tool
@@ -58,11 +55,8 @@ async def test_complete_returns_content() -> None:
 
 
 async def test_complete_multimodal_content_joined() -> None:
-    def gen():
-        yield AIMessage(content=[{"type": "text", "text": "hello"}, " world"])
-
-    model = GenericFakeChatModel(messages=gen())
-    provider = BaseLLMProvider(_cfg(), model)
+    model = _ToolCallingModel([AIMessage(content=[{"type": "text", "text": "hello"}, " world"])])
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
     out = await provider.complete([HumanMessage(content="hi")])
     assert out == "hello world"
 
@@ -151,6 +145,17 @@ class _FlakyModel(FakeListChatModel):
             object.__setattr__(self, "failures_left", self.failures_left - 1)
             raise ProviderRateLimitError("429")
         return super()._call(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+    async def _agenerate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        del run_manager
+        content = self._call(messages, stop=stop, **kwargs)
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
 
 
 async def test_complete_retries_on_rate_limit() -> None:

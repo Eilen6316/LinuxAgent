@@ -1,12 +1,13 @@
 # LinuxAgent v4 developer commands.
 # Red-lines enforced by `make security` mirror the CI security job.
 
-.PHONY: help install test lint type security harness build verify-build clean
+.PHONY: help install test integration lint type security harness build verify-build clean
 
 help:
 	@echo "Targets:"
 	@echo "  install    Editable install with dev extras"
 	@echo "  test       pytest tests/unit/ with coverage"
+	@echo "  integration optional integration tests"
 	@echo "  lint       ruff check"
 	@echo "  type       mypy"
 	@echo "  security   grep red-lines + bandit"
@@ -20,6 +21,9 @@ install:
 
 test:
 	pytest tests/unit/ --cov=linuxagent --cov-report=term-missing --cov-fail-under=80
+
+integration:
+	pytest tests/integration/ -m integration --integration
 
 lint:
 	ruff check src/linuxagent/ tests/

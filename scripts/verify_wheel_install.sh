@@ -17,9 +17,9 @@ fi
 
 TMP_VENV="$(mktemp -d)"
 trap 'rm -rf "$TMP_VENV"' EXIT
-python3 -m venv --system-site-packages "$TMP_VENV"
+python3 -m venv "$TMP_VENV"
 source "$TMP_VENV/bin/activate"
-pip install --no-deps "$WHEEL_PATH"
+pip install --index-url "${LINUXAGENT_PIP_INDEX_URL:-https://pypi.org/simple}" "$WHEEL_PATH"
 linuxagent --help >/dev/null
 python - <<'PY'
 from importlib import resources

@@ -544,6 +544,7 @@ A: Yes. Set `api.base_url` to the gateway URL and `api.model` to a model it supp
 ```bash
 make install   # pip install -e ".[dev]"
 make test      # pytest + 80% fail-under, currently 90%+
+make integration  # optional integration tests
 make lint      # ruff check
 make type      # mypy --strict
 make security  # red-line grep + bandit
@@ -561,6 +562,7 @@ Details in [docs/development.md](docs/development.md).
 
 ```bash
 python -m tests.harness.runner --scenarios tests/harness/scenarios
+make integration  # optional, when local environment permits
 make verify-build
 git tag v4.0.0
 git push origin v4.0.0     # triggers release.yml

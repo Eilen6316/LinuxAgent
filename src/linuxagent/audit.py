@@ -7,7 +7,6 @@ locally for post-incident review.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import os
@@ -39,8 +38,7 @@ class AuditLog:
         batch_hosts: tuple[str, ...] = (),
     ) -> str:
         audit_id = uuid.uuid4().hex
-        await asyncio.to_thread(
-            self.append,
+        self.append(
             {
                 "event": "confirm_begin",
                 "audit_id": audit_id,
@@ -50,7 +48,7 @@ class AuditLog:
                 "command_source": command_source,
                 "trace_id": trace_id,
                 "batch_hosts": list(batch_hosts),
-            },
+            }
         )
         return audit_id
 
@@ -62,15 +60,14 @@ class AuditLog:
         latency_ms: int | None = None,
         trace_id: str | None = None,
     ) -> None:
-        await asyncio.to_thread(
-            self.append,
+        self.append(
             {
                 "event": "confirm_decision",
                 "audit_id": audit_id,
                 "decision": decision,
                 "latency_ms": latency_ms,
                 "trace_id": trace_id,
-            },
+            }
         )
 
     async def record_execution(
@@ -83,8 +80,7 @@ class AuditLog:
         trace_id: str | None = None,
         batch_hosts: tuple[str, ...] = (),
     ) -> None:
-        await asyncio.to_thread(
-            self.append,
+        self.append(
             {
                 "event": "command_executed",
                 "audit_id": audit_id,
@@ -93,7 +89,7 @@ class AuditLog:
                 "duration_ms": int(duration * 1000),
                 "trace_id": trace_id,
                 "batch_hosts": list(batch_hosts),
-            },
+            }
         )
 
     def append(self, record: dict[str, Any]) -> None:

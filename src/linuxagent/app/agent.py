@@ -7,10 +7,10 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
 from ..graph import initial_state
+from ..graph.agent_graph import AgentGraph
 from ..intelligence import ContextManager
 from ..interfaces import CommandSource, UserInterface
 from ..services import ChatService, ClusterService, MonitoringService
@@ -18,7 +18,7 @@ from ..services import ChatService, ClusterService, MonitoringService
 
 @dataclass
 class LinuxAgent:
-    graph: CompiledStateGraph
+    graph: AgentGraph
     ui: UserInterface
     chat_service: ChatService
     context_manager: ContextManager

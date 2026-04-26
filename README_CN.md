@@ -543,6 +543,7 @@ A：可以。把 `api.base_url` 换成你的网关地址，`api.model` 换成它
 ```bash
 make install   # pip install -e ".[dev]"
 make test      # pytest + 80% fail-under，当前 90%+
+make integration  # 可选集成测试
 make lint      # ruff check
 make type      # mypy --strict
 make security  # 红线 grep + bandit
@@ -560,6 +561,7 @@ linuxagent audit verify
 
 ```bash
 python -m tests.harness.runner --scenarios tests/harness/scenarios
+make integration  # 可选，本地环境允许时运行
 make verify-build
 git tag v4.0.0
 git push origin v4.0.0     # 触发 release.yml

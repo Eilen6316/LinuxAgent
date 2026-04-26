@@ -3,8 +3,8 @@
 Real TCP sockets aren't available in CI, so we drive behaviour through the
 paramiko client API: we inject ``SSHException`` / ``BadHostKeyException``
 via a subclass of ``paramiko.SSHClient`` and assert the wrapper maps them
-to the right custom exception hierarchy. Real SSH lives in the integration
-suite (``tests/integration/``, gated behind ``--integration``).
+to the right custom exception hierarchy. Real SSH lives in the optional
+integration suite (``make integration``).
 
 R-TEST-02 spirit: the policy decision (RejectPolicy vs WarningPolicy) is
 asserted directly on the client object rather than mocked out.

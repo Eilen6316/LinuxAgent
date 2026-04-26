@@ -14,13 +14,13 @@ from typing import TYPE_CHECKING, TypeVar, cast
 
 from langchain_core.tools import BaseTool
 from langchain_openai import OpenAIEmbeddings
-from langgraph.graph.state import CompiledStateGraph
 
 from .app import LinuxAgent
 from .audit import AuditLog
 from .cluster import SSHManager
 from .executors import LinuxCommandExecutor
 from .graph import GraphDependencies, build_agent_graph
+from .graph.agent_graph import AgentGraph
 from .intelligence import (
     CommandLearner,
     ContextManager,
@@ -100,7 +100,7 @@ class Container:
             lambda: LinuxCommandExecutor(self._config.security),
         )
 
-    def graph(self) -> CompiledStateGraph:
+    def graph(self) -> AgentGraph:
         return self._cached(
             "graph",
             lambda: build_agent_graph(

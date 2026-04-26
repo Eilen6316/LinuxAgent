@@ -309,7 +309,7 @@ async def respond_node(state: AgentState) -> AgentState:
     return {"messages": [AIMessage(content="操作已完成。")]}
 
 
-def route_by_safety(state: AgentState) -> str:
+async def route_by_safety(state: AgentState) -> str:
     level = state.get("safety_level")
     if level is SafetyLevel.BLOCK:
         return "BLOCK"
@@ -318,7 +318,7 @@ def route_by_safety(state: AgentState) -> str:
     return "SAFE"
 
 
-def route_after_execute(state: AgentState) -> str:
+async def route_after_execute(state: AgentState) -> str:
     if has_next_runbook_step(state):
         return "CONTINUE_RUNBOOK"
     return "ANALYZE"

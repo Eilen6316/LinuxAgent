@@ -22,20 +22,29 @@ Core layers:
 ## Test Matrix
 
 - `tests/unit/`: default CI test suite
-- `tests/integration/`: optional integration coverage
+- `tests/integration/`: optional integration coverage, gated by `--integration`
 - `tests/harness/`: YAML scenarios for graph and HITL behavior
 
 Run locally:
 
 ```bash
 pytest tests/unit/ --cov=linuxagent --cov-fail-under=80
+make integration
 python -m tests.harness.runner --scenarios tests/harness/scenarios
 make verify-build
 ```
 
+`make integration` is intentionally optional and runs only tests marked
+`integration` with the explicit `--integration` flag. Keep external-resource
+coverage behind that gate so the default unit suite stays deterministic.
+
 `make build` expects the dev build backend to be importable in the active
 Python environment. Run `make install` first, or activate the project virtualenv
 before building.
+
+`make verify-build` installs the wheel in an isolated virtualenv with runtime
+dependencies. It uses PyPI by default; set `LINUXAGENT_PIP_INDEX_URL` to test
+against a private mirror.
 
 ## Security Red Lines
 

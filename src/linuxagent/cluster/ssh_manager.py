@@ -7,8 +7,8 @@ Key properties:
   (or explicitly opted into ``WarningPolicy`` via the ``allow_unknown_hosts`` flag).
 - Connections are pooled per ``(hostname, port, username)`` so repeated
   commands to the same host reuse one TCP/SSH session.
-- Paramiko is blocking; public methods are async and dispatch work to a
-  thread pool via ``asyncio.to_thread``.
+- Paramiko is blocking; public methods are async and dispatch work to explicit
+  short-lived thread pools so no default executor threads leak across runs.
 - ``execute`` returns the same :class:`ExecutionResult` shape as
   :mod:`..executors.linux_executor`, so HITL / audit sites can treat local
   and remote executions uniformly.
@@ -20,8 +20,11 @@ import asyncio
 import logging
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
+from typing import TypeVar
 
 import paramiko
 
@@ -31,6 +34,7 @@ from ..telemetry import TelemetryRecorder
 from .remote_command import RemoteCommandError, validate_remote_command
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 class SSHError(RuntimeError):
@@ -78,7 +82,7 @@ class SSHManager:
 
     async def close(self) -> None:
         """Close every pooled client."""
-        await asyncio.to_thread(self._close_all)
+        self._close_all()
 
     def _close_all(self) -> None:
         with self._lock:
@@ -109,8 +113,8 @@ class SSHManager:
                 trace_id=trace_id,
                 attributes={"host": host.name},
             ):
-                return await asyncio.to_thread(self._execute_sync, host, remote_command.raw)
-        return await asyncio.to_thread(self._execute_sync, host, remote_command.raw)
+                return await _run_blocking(self._execute_sync, host, remote_command.raw)
+        return await _run_blocking(self._execute_sync, host, remote_command.raw)
 
     async def execute_many(
         self,
@@ -227,3 +231,9 @@ class SSHManager:
 def _is_alive(client: paramiko.SSHClient) -> bool:
     transport = client.get_transport()
     return transport is not None and transport.is_active()
+
+
+async def _run_blocking(func: Callable[..., T], *args: object) -> T:
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="linuxagent-ssh") as executor:
+        return await loop.run_in_executor(executor, partial(func, *args))

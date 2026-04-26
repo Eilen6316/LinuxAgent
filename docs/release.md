@@ -13,9 +13,19 @@ python -m tests.harness.runner --scenarios tests/harness/scenarios
 make verify-build
 ```
 
-The wheel verification step installs the built wheel in a temporary virtualenv,
-checks `linuxagent --help`, and verifies packaged config, prompt, and runbook
-data are present.
+The wheel verification step installs the built wheel and runtime dependencies
+in a temporary virtualenv, checks `linuxagent --help`, and verifies packaged
+config, prompt, and runbook data are present. It uses PyPI by default; set
+`LINUXAGENT_PIP_INDEX_URL` to test against a private mirror.
+
+Optional integration smoke checks:
+
+```bash
+make integration
+```
+
+Run these when the local environment supports the integration assumptions.
+They are not part of the default CI gate.
 
 ## Expected Artifacts
 

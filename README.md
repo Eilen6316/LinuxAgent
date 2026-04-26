@@ -95,7 +95,7 @@ src/linuxagent/runbooks/ YAML runbook loader and matcher
 src/linuxagent/telemetry.py local JSONL spans and trace IDs
 runbooks/           built-in ops runbooks
 tests/unit/         unit tests
-tests/integration/  optional integration tests
+tests/integration/  optional integration tests (`make integration`)
 tests/harness/      YAML scenario harness
 configs/            default + example config
 prompts/            runtime prompts
@@ -107,6 +107,7 @@ scripts/            bootstrap + verification scripts
 
 ```bash
 make test       # pytest with 80% fail-under, currently 90%+
+make integration  # optional integration tests
 make lint       # ruff
 make type       # mypy --strict
 make security   # grep red-lines + bandit
