@@ -31,6 +31,7 @@ def make_safety_check_node(
                 "safety_level": SafetyLevel.BLOCK,
                 "matched_rule": "EMPTY",
                 "safety_reason": state.get("plan_error") or "no command proposed",
+                "safety_capabilities": (),
             }
         source = state.get("command_source") or CommandSource.USER
         with span(telemetry, "policy.evaluate", current_trace_id, {"command_source": source.value}):
@@ -43,6 +44,7 @@ def make_safety_check_node(
                 "matched_rule": "REMOTE_SHELL_SYNTAX",
                 "safety_reason": remote_error,
                 "command_source": verdict.command_source,
+                "safety_capabilities": verdict.capabilities,
                 "batch_hosts": (),
             }
         batch_hosts = _batch_hosts(state, cluster_service)
@@ -57,6 +59,7 @@ def make_safety_check_node(
             ),
             "safety_reason": "batch command requires confirmation" if batch_hosts else verdict.reason,
             "command_source": verdict.command_source,
+            "safety_capabilities": verdict.capabilities,
             "batch_hosts": batch_hosts,
         }
 

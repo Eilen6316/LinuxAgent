@@ -38,6 +38,7 @@ class AgentState(TypedDict, total=False):
     safety_level: SafetyLevel | None
     matched_rule: str | None
     safety_reason: str | None
+    safety_capabilities: tuple[str, ...]
 
     # Populated by HITL batch detector (services layer).
     batch_hosts: tuple[str, ...]
@@ -72,6 +73,7 @@ def initial_state(
         safety_level=None,
         matched_rule=None,
         safety_reason=None,
+        safety_capabilities=(),
         batch_hosts=(),
         user_confirmed=False,
         execution_result=None,

@@ -31,6 +31,7 @@ from .intelligence import (
     RecommendationEngine,
 )
 from .interfaces import LLMProvider
+from .policy import PolicyEngine, runtime_policy_config
 from .providers import provider_factory
 from .runbooks import RunbookEngine, find_runbooks_dir, load_runbooks
 from .services import ChatService, ClusterService, CommandService, MonitoringService
@@ -97,7 +98,21 @@ class Container:
     def executor(self) -> LinuxCommandExecutor:
         return self._cached(
             "executor",
-            lambda: LinuxCommandExecutor(self._config.security),
+            lambda: LinuxCommandExecutor(
+                self._config.security,
+                policy_engine=self.policy_engine(),
+            ),
+        )
+
+    def policy_engine(self) -> PolicyEngine:
+        return self._cached(
+            "policy_engine",
+            lambda: PolicyEngine(
+                runtime_policy_config(
+                    path=self._config.policy.path,
+                    include_builtin=self._config.policy.include_builtin,
+                )
+            ),
         )
 
     def graph(self) -> AgentGraph:

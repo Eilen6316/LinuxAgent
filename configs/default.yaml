@@ -17,6 +17,10 @@ security:
   max_command_length: 2048
   session_whitelist_enabled: true
 
+policy:
+  path:                         # optional user policy YAML path
+  include_builtin: true          # true = built-ins + user overrides; false = user rules only
+
 cluster:
   batch_confirm_threshold: 2
   timeout: 60.0

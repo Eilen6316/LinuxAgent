@@ -7,7 +7,14 @@ from pathlib import Path
 import pytest
 
 from linuxagent.interfaces import CommandSource, SafetyLevel
-from linuxagent.policy import DEFAULT_POLICY_ENGINE, PolicyEngine, load_policy_config
+from linuxagent.policy import (
+    DEFAULT_POLICY_ENGINE,
+    PolicyEngine,
+    load_policy_config,
+    merge_policy_configs,
+    runtime_policy_config,
+)
+from linuxagent.policy.builtin_rules import builtin_policy_config
 from linuxagent.policy.config_rules import PolicyConfigError
 from linuxagent.policy.models import PolicyConfig, PolicyMatch, PolicyRule
 
@@ -151,6 +158,77 @@ def test_custom_policy_rule_can_override_decision_shape() -> None:
     assert decision.risk_score == 88
     assert decision.capabilities == ("custom.service",)
     assert decision.matched_rules == ("CUSTOM_RESTART",)
+
+
+def test_runtime_policy_config_merges_user_rules_with_builtin(tmp_path: Path) -> None:
+    path = tmp_path / "policy.yaml"
+    path.write_text(
+        """
+version: 1
+rules:
+  - id: custom.echo.block
+    legacy_rule: CUSTOM_BLOCK
+    level: BLOCK
+    risk_score: 100
+    capabilities: [custom.block]
+    reason: block echo for this environment
+    match:
+      command: [echo]
+""",
+        encoding="utf-8",
+    )
+
+    config = runtime_policy_config(path=path)
+    engine = PolicyEngine(config)
+
+    assert engine.evaluate("systemctl restart nginx").matched_rule == "DESTRUCTIVE"
+    assert engine.evaluate("echo hello").matched_rule == "CUSTOM_BLOCK"
+
+
+def test_runtime_policy_config_can_disable_builtin_rules(tmp_path: Path) -> None:
+    path = tmp_path / "policy.yaml"
+    path.write_text(
+        """
+version: 1
+rules:
+  - id: custom.echo.block
+    legacy_rule: CUSTOM_BLOCK
+    level: BLOCK
+    risk_score: 100
+    capabilities: [custom.block]
+    reason: block echo for this environment
+    match:
+      command: [echo]
+""",
+        encoding="utf-8",
+    )
+
+    engine = PolicyEngine(runtime_policy_config(path=path, include_builtin=False))
+
+    assert engine.evaluate("systemctl restart nginx").level is SafetyLevel.SAFE
+    assert engine.evaluate("echo hello").matched_rule == "CUSTOM_BLOCK"
+
+
+def test_merge_policy_configs_replaces_duplicate_rule_ids() -> None:
+    replacement = PolicyRule(
+        id="service.mutate",
+        legacy_rule="CUSTOM_SERVICE",
+        level=SafetyLevel.BLOCK,
+        risk_score=99,
+        capabilities=("service.mutate",),
+        reason="custom service lock",
+        match=PolicyMatch(command=("systemctl",), subcommand_any=("restart",)),
+    )
+
+    merged = merge_policy_configs(
+        builtin_policy_config(),
+        PolicyConfig(rules=(replacement,)),
+    )
+    engine = PolicyEngine(merged)
+
+    decision = engine.evaluate("systemctl restart nginx")
+    assert decision.level is SafetyLevel.BLOCK
+    assert decision.matched_rule == "CUSTOM_SERVICE"
 
 
 DANGEROUS_GOLDEN_CASES = (

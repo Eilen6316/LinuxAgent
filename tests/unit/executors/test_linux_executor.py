@@ -19,6 +19,8 @@ from linuxagent.executors import (
     SessionWhitelist,
 )
 from linuxagent.interfaces import CommandSource, SafetyLevel
+from linuxagent.policy import PolicyEngine
+from linuxagent.policy.models import PolicyConfig, PolicyMatch, PolicyRule
 
 
 def _make(
@@ -38,6 +40,32 @@ def test_is_safe_delegates_to_module_level_classifier() -> None:
     result = ex.is_safe("rm -rf /tmp/x")
     assert result.level is SafetyLevel.CONFIRM
     assert result.matched_rule == "DESTRUCTIVE"
+
+
+def test_is_safe_uses_injected_policy_engine() -> None:
+    engine = PolicyEngine(
+        PolicyConfig(
+            rules=(
+                PolicyRule(
+                    id="custom.echo.block",
+                    legacy_rule="CUSTOM_BLOCK",
+                    level=SafetyLevel.BLOCK,
+                    risk_score=100,
+                    capabilities=("custom.block",),
+                    reason="blocked by custom policy",
+                    match=PolicyMatch(command=("echo",)),
+                ),
+            )
+        )
+    )
+    ex = LinuxCommandExecutor(SecurityConfig(command_timeout=5.0), policy_engine=engine)
+
+    result = ex.is_safe("echo hello")
+
+    assert result.level is SafetyLevel.BLOCK
+    assert result.matched_rule == "CUSTOM_BLOCK"
+    assert result.risk_score == 100
+    assert result.capabilities == ("custom.block",)
 
 
 def test_whitelisted_llm_command_downgraded_to_safe() -> None:

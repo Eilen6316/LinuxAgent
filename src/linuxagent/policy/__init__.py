@@ -1,7 +1,7 @@
 """Capability-based command policy engine."""
 
 from .builtin_rules import builtin_policy_config
-from .config_rules import load_policy_config
+from .config_rules import load_policy_config, merge_policy_configs, runtime_policy_config
 from .engine import PolicyEngine
 from .models import (
     ApprovalMode,
@@ -25,4 +25,6 @@ __all__ = [
     "PolicyRule",
     "builtin_policy_config",
     "load_policy_config",
+    "merge_policy_configs",
+    "runtime_policy_config",
 ]

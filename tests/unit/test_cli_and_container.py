@@ -17,6 +17,7 @@ from linuxagent.audit import AuditLog
 from linuxagent.config.loader import ConfigError
 from linuxagent.config.models import AppConfig, MonitoringConfig
 from linuxagent.container import Container
+from linuxagent.policy.config_rules import PolicyConfigError
 from linuxagent.services import MonitoringAlert
 
 
@@ -175,6 +176,40 @@ def test_container_returns_config_instance() -> None:
     cfg = AppConfig.model_validate({})
     container = Container(cfg)
     assert container.config is cfg
+
+
+def test_container_loads_runtime_policy_from_config(tmp_path: Path) -> None:
+    policy_path = tmp_path / "policy.yaml"
+    policy_path.write_text(
+        """
+version: 1
+rules:
+  - id: custom.echo.block
+    legacy_rule: CUSTOM_BLOCK
+    level: BLOCK
+    risk_score: 100
+    capabilities: [custom.block]
+    reason: block echo
+    match:
+      command: [echo]
+""",
+        encoding="utf-8",
+    )
+    cfg = AppConfig.model_validate({"policy": {"path": policy_path, "include_builtin": False}})
+    runtime = Container(cfg)
+
+    assert runtime.executor().is_safe("echo hello").matched_rule == "CUSTOM_BLOCK"
+    assert runtime.executor().is_safe("systemctl restart nginx").level.name == "SAFE"
+
+
+def test_container_reports_invalid_policy_yaml(tmp_path: Path) -> None:
+    policy_path = tmp_path / "policy.yaml"
+    policy_path.write_text("[broken\n", encoding="utf-8")
+    cfg = AppConfig.model_validate({"policy": {"path": policy_path}})
+    runtime = Container(cfg)
+
+    with pytest.raises(PolicyConfigError, match="invalid policy YAML"):
+        runtime.policy_engine()
 
 
 def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> None:

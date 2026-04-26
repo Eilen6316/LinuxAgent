@@ -27,7 +27,7 @@ from ..interfaces import (
     SafetyLevel,
     SafetyResult,
 )
-from . import safety
+from ..policy import DEFAULT_POLICY_ENGINE, PolicyDecision, PolicyEngine
 from .session_whitelist import SessionWhitelist
 
 logger = logging.getLogger(__name__)
@@ -59,9 +59,11 @@ class LinuxCommandExecutor(CommandExecutor):
         config: SecurityConfig,
         *,
         whitelist: SessionWhitelist | None = None,
+        policy_engine: PolicyEngine | None = None,
     ) -> None:
         self._config = config
         self._whitelist = whitelist or SessionWhitelist()
+        self._policy_engine = policy_engine or DEFAULT_POLICY_ENGINE
 
     # -- CommandExecutor interface ----------------------------------------
 
@@ -71,7 +73,7 @@ class LinuxCommandExecutor(CommandExecutor):
         *,
         source: CommandSource = CommandSource.USER,
     ) -> SafetyResult:
-        result = safety.is_safe(command, source=source)
+        result = _safety_result(self._policy_engine.evaluate(command, source=source))
 
         if (
             result.level is SafetyLevel.CONFIRM
@@ -87,6 +89,12 @@ class LinuxCommandExecutor(CommandExecutor):
                 command_source=CommandSource.WHITELIST,
             )
         return result
+
+    def is_destructive(self, command: str) -> bool:
+        decision = self._policy_engine.evaluate(command, source=CommandSource.USER)
+        if decision.level is SafetyLevel.BLOCK:
+            return True
+        return _has_destructive_capability(decision.capabilities)
 
     async def execute(self, command: str) -> ExecutionResult:
         """Run ``command`` and return its result.
@@ -166,7 +174,7 @@ class LinuxCommandExecutor(CommandExecutor):
     # -- Helpers ----------------------------------------------------------
 
     def _prepare(self, command: str) -> _SpawnPayload:
-        verdict = safety.is_safe(command)
+        verdict = self.is_safe(command)
         if verdict.level is SafetyLevel.BLOCK:
             raise CommandBlockedError(verdict)
 
@@ -196,3 +204,31 @@ class LinuxCommandExecutor(CommandExecutor):
     @property
     def whitelist(self) -> SessionWhitelist:
         return self._whitelist
+
+
+def _safety_result(decision: PolicyDecision) -> SafetyResult:
+    return SafetyResult(
+        level=decision.level,
+        reason=decision.reason,
+        matched_rule=decision.matched_rule,
+        command_source=decision.command_source,
+        risk_score=decision.risk_score,
+        capabilities=decision.capabilities,
+    )
+
+
+def _has_destructive_capability(capabilities: tuple[str, ...]) -> bool:
+    destructive_prefixes = (
+        "filesystem.delete",
+        "filesystem.truncate",
+        "block_device.",
+        "service.mutate",
+        "package.remove",
+        "container.mutate",
+        "kubernetes.",
+        "network.firewall",
+        "identity.mutate",
+        "cron.mutate",
+        "privilege.sudo",
+    )
+    return any(capability.startswith(destructive_prefixes) for capability in capabilities)

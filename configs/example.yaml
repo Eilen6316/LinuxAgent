@@ -36,6 +36,14 @@ security:
   # are NEVER whitelisted, regardless of this flag.
   session_whitelist_enabled: true
 
+policy:
+  # Optional path to a user policy YAML file. See configs/policy.default.yaml
+  # for the schema. Duplicate rule IDs override built-in rules; new IDs append.
+  path:
+  # Keep built-ins by default. Set false only when intentionally replacing the
+  # full policy set with user rules.
+  include_builtin: true
+
 cluster:
   # Any command sent to >= this many hosts triggers R-HITL-02 batch confirm.
   # The default of 2 catches even a tiny dev+prod pair by design.

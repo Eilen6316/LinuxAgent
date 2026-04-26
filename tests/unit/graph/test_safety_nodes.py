@@ -20,6 +20,7 @@ class _FakeCommandService:
             matched_rule="SAFE",
             reason="ok",
             command_source=source,
+            capabilities=(),
         )
 
 

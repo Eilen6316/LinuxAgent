@@ -88,6 +88,8 @@ def is_safe(
         reason=decision.reason,
         matched_rule=decision.matched_rule,
         command_source=decision.command_source,
+        risk_score=decision.risk_score,
+        capabilities=decision.capabilities,
     )
 
 

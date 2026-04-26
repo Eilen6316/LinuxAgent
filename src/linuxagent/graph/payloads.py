@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..executors import is_destructive
 from ..interfaces import CommandSource
 from ..plans import CommandPlan
 from ..runbooks import Runbook
@@ -22,7 +21,7 @@ def build_confirm_payload(state: AgentState, audit_id: str) -> dict[str, Any]:
         "matched_rule": state.get("matched_rule"),
         "command_source": (state.get("command_source") or CommandSource.USER).value,
         "batch_hosts": list(state.get("batch_hosts", ())),
-        "is_destructive": is_destructive(command or ""),
+        "is_destructive": _is_destructive(command or "", state.get("safety_capabilities", ())),
         **_plan_payload(state.get("command_plan"), state.get("runbook_step_index", 0)),
         **_runbook_payload(state.get("selected_runbook"), state.get("runbook_step_index", 0)),
     }
@@ -34,6 +33,33 @@ def may_whitelist(state: AgentState, payload: dict[str, Any]) -> bool:
         and not payload["is_destructive"]
         and not payload["batch_hosts"]
     )
+
+
+def _is_destructive(command: str, capabilities: tuple[str, ...]) -> bool:
+    if _has_destructive_capability(capabilities):
+        return True
+    # Safety-related callers should populate capabilities. The fallback keeps
+    # direct unit usage conservative for legacy payload construction.
+    from ..executors import is_destructive
+
+    return is_destructive(command)
+
+
+def _has_destructive_capability(capabilities: tuple[str, ...]) -> bool:
+    destructive_prefixes = (
+        "filesystem.delete",
+        "filesystem.truncate",
+        "block_device.",
+        "service.mutate",
+        "package.remove",
+        "container.mutate",
+        "kubernetes.",
+        "network.firewall",
+        "identity.mutate",
+        "cron.mutate",
+        "privilege.sudo",
+    )
+    return any(capability.startswith(destructive_prefixes) for capability in capabilities)
 
 
 def decision(response: Any) -> str:

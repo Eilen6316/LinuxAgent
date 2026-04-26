@@ -99,9 +99,18 @@ rules:
       subcommand_any: [stop, restart, reload, disable]
 ```
 
-Policy YAML is validated fail-fast with Pydantic. Runtime currently uses the
-built-in rules to avoid file I/O in the hot path; user override wiring belongs
-to the next policy configuration pass.
+Policy YAML is validated fail-fast with Pydantic and can be enabled at runtime:
+
+```yaml
+policy:
+  path: ~/.config/linuxagent/policy.yaml
+  include_builtin: true
+```
+
+With `include_builtin: true`, user rule IDs replace matching built-in IDs and
+new IDs are appended. Set `include_builtin: false` only when intentionally
+replacing the full policy set. Invalid configured policy YAML fails before the
+runtime services are built.
 
 ## CommandPlan And Runbooks
 

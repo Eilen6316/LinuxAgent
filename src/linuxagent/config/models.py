@@ -68,6 +68,13 @@ class SecurityConfig(BaseModel):
     session_whitelist_enabled: bool = True
 
 
+class PolicyRuntimeConfig(BaseModel):
+    model_config = _FROZEN
+
+    path: OptionalUserPath = None
+    include_builtin: bool = True
+
+
 class ClusterHost(BaseModel):
     model_config = _FROZEN
 
@@ -175,6 +182,7 @@ class AppConfig(BaseModel):
 
     api: APIConfig = Field(default_factory=APIConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
+    policy: PolicyRuntimeConfig = Field(default_factory=PolicyRuntimeConfig)
     cluster: ClusterConfig = Field(default_factory=ClusterConfig)
     audit: AuditConfig = Field(default_factory=AuditConfig)
     ui: UIConfig = Field(default_factory=UIConfig)

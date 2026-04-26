@@ -33,6 +33,8 @@ class SafetyResult:
     reason: str | None = None
     matched_rule: str | None = None
     command_source: CommandSource = CommandSource.USER
+    risk_score: int = 0
+    capabilities: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

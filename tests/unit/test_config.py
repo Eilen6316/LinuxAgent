@@ -30,6 +30,8 @@ def test_defaults_populate_every_section() -> None:
     cfg = AppConfig.model_validate({})
     assert cfg.api.provider == LLMProviderName.DEEPSEEK
     assert cfg.security.session_whitelist_enabled is True
+    assert cfg.policy.path is None
+    assert cfg.policy.include_builtin is True
     assert cfg.cluster.batch_confirm_threshold == 2
     assert cfg.audit.path.name == "audit.log"
     assert cfg.ui.max_chat_history == 20
@@ -65,6 +67,12 @@ def test_negative_timeout_rejected() -> None:
 def test_batch_threshold_must_be_positive() -> None:
     with pytest.raises(ValidationError, match="batch_confirm_threshold"):
         AppConfig.model_validate({"cluster": {"batch_confirm_threshold": 0}})
+
+
+def test_policy_path_expands_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg = AppConfig.model_validate({"policy": {"path": "~/.config/linuxagent/policy.yaml"}})
+    assert cfg.policy.path == tmp_path / ".config" / "linuxagent" / "policy.yaml"
 
 
 # ---- Loader tests -------------------------------------------------------

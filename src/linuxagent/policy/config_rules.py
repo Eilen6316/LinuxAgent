@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from .builtin_rules import builtin_policy_config
 from .models import PolicyConfig
 
 
@@ -27,6 +28,34 @@ def load_policy_config(path: Path) -> PolicyConfig:
         return PolicyConfig.model_validate(raw)
     except ValidationError as exc:
         raise PolicyConfigError(_format_validation_error(exc)) from exc
+
+
+def merge_policy_configs(base: PolicyConfig, overlay: PolicyConfig) -> PolicyConfig:
+    """Return ``base`` plus ``overlay`` rules, replacing duplicate rule ids."""
+    rules_by_id = {rule.id: rule for rule in base.rules}
+    order = [rule.id for rule in base.rules]
+    for rule in overlay.rules:
+        if rule.id not in rules_by_id:
+            order.append(rule.id)
+        rules_by_id[rule.id] = rule
+    return PolicyConfig(
+        version=max(base.version, overlay.version),
+        rules=tuple(rules_by_id[id_] for id_ in order),
+    )
+
+
+def runtime_policy_config(
+    *,
+    path: Path | None = None,
+    include_builtin: bool = True,
+) -> PolicyConfig:
+    """Build the runtime policy config from built-ins and an optional YAML file."""
+    if path is None:
+        return builtin_policy_config()
+    user_config = load_policy_config(path)
+    if not include_builtin:
+        return user_config
+    return merge_policy_configs(builtin_policy_config(), user_config)
 
 
 def _format_validation_error(exc: ValidationError) -> str:
