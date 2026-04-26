@@ -38,7 +38,7 @@
 - [x] Plan 9：结构化 CommandPlan 与 Runbook
 - [x] Plan 10：可观测性与防篡改审计
 - [x] Plan 11：SSH 远程执行语义安全化
-- [ ] Plan 12：Runbook 接入 Graph 主流程
+- [x] Plan 12：Runbook 接入 Graph 主流程
 
 ## 技术栈总览
 

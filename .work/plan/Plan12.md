@@ -18,10 +18,18 @@
 
 ## 验收标准
 
-- [ ] 命中 runbook 时不调用 LLM 生成命令
-- [ ] runbook 生成的命令仍触发 `LLM_FIRST_RUN` 确认
-- [ ] 确认 payload 包含 runbook id/title/steps
-- [ ] harness 新增 runbook 场景并通过
-- [ ] 现有 HITL / SSH / policy 门禁仍通过
+- [x] 命中 runbook 时不调用 LLM 生成命令
+- [x] runbook 生成的命令仍触发 `LLM_FIRST_RUN` 确认
+- [x] 确认 payload 包含 runbook id/title/steps
+- [x] harness 新增 runbook 场景并通过
+- [x] 现有 HITL / SSH / policy 门禁仍通过
 
 <!-- 完成记录（完成后追加） -->
+
+## 完成记录
+
+- **日期**：2026-04-26
+- **实现 commit**：`788868c`
+- **验证**：`make test`（229 passed, 1 skipped, coverage 86.82%）、`make lint`、`make type`、`make security`、`make harness`
+- **偏差清单**：
+  - 本轮执行命中 runbook 的第一条命令；后续步骤展示在确认 payload 中，完整多步骤自动编排留给后续增强。
