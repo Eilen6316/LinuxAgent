@@ -243,6 +243,10 @@ async def test_history_load_explicitly_injects_context(tmp_path) -> None:
         "second answer",
         "continue",
     ]
+    rendered = "\n".join(agent.ui.printed)  # type: ignore[attr-defined]
+    assert "已召回历史 #1" in rendered
+    assert "second question" in rendered
+    assert "second answer" in rendered
 
 
 async def test_new_slash_command_resets_active_context(tmp_path) -> None:

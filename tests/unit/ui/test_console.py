@@ -5,9 +5,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from prompt_toolkit.document import Document
 from rich.console import Console
 
 from linuxagent.ui import ConsoleUI
+from linuxagent.ui.console import SlashCommandCompleter
 
 
 async def test_console_ui_non_tty_auto_denies(monkeypatch) -> None:
@@ -53,6 +55,21 @@ def test_console_ui_default_history_file_is_0600(tmp_path: Path) -> None:
     ui._default_session_factory()
 
     assert history_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_slash_command_completer_suggests_commands() -> None:
+    completer = SlashCommandCompleter()
+
+    completions = list(completer.get_completions(Document("/h"), object()))
+
+    assert [item.text for item in completions] == ["/help", "/history"]
+    assert all(item.display_meta_text for item in completions)
+
+
+def test_slash_command_completer_ignores_plain_text() -> None:
+    completer = SlashCommandCompleter()
+
+    assert list(completer.get_completions(Document("history"), object())) == []
 
 
 def test_render_confirm_shows_basic_command_fields() -> None:

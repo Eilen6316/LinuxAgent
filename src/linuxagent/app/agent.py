@@ -146,9 +146,10 @@ class LinuxAgent:
         if not 1 <= index <= len(turns):
             await self.ui.print("历史编号不存在。输入 /history 重新查看。")
             return thread_id
-        self.context_manager.replace(list(turns[index - 1]))
+        selected = list(turns[index - 1])
+        self.context_manager.replace(selected)
         self._history_threads.add(thread_id)
-        await self.ui.print(f"已召回历史 #{index} 到当前对话。")
+        await self.ui.print(f"已召回历史 #{index} 到当前对话：\n\n{_render_history_turn(selected)}")
         return thread_id
 
     def _persist_active_history(self) -> None:
@@ -207,6 +208,19 @@ def _preview_message(message: Any) -> str:
     if len(text) > 48:
         text = f"{text[:45]}..."
     return f"{role}: {text}"
+
+
+def _render_history_turn(messages: list[Any]) -> str:
+    lines: list[str] = []
+    for message in messages:
+        role = _display_role(str(getattr(message, "type", "message")))
+        content = str(getattr(message, "content", "")).strip()
+        lines.append(f"{role}:\n{content}")
+    return "\n\n".join(lines)
+
+
+def _display_role(role: str) -> str:
+    return {"human": "你", "ai": "LinuxAgent"}.get(role, role)
 
 
 def _merge_messages(archive: list[Any], active: list[Any]) -> list[Any]:

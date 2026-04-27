@@ -6,7 +6,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-89.64%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-89.72%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -89,7 +89,7 @@ Each CLI launch starts with an empty conversation context. Saved history is
 available only when the operator asks for it with `/history`; then enter the
 shown number to recall that conversation into the current turn. Use `/new` to
 reset context inside a running CLI session and `/tools` to see available
-slash/tool entry points.
+slash/tool entry points. Typing `/` opens the slash-command completion menu.
 
 ## Core Capabilities
 
@@ -142,11 +142,11 @@ The current `v4.0.0` baseline:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 300 passing |
+| Unit tests | 302 passing |
 | Optional Anthropic compatibility | 4 passing |
 | Harness scenarios | 12 HITL / runbook / cluster scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 89.64% |
+| Coverage | 89.72% |
 | Static checks | `ruff`, `mypy --strict`, `bandit` |
 | Build verification | wheel + sdist + packaged data install check |
 

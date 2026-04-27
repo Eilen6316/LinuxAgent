@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 import sys
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import CompleteEvent, Completer, Completion
+from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
 from rich.console import Console
@@ -19,6 +21,16 @@ from rich.table import Table
 from rich.text import Text
 
 from ..interfaces import UserInterface
+
+_SLASH_COMMANDS: tuple[tuple[str, str], ...] = (
+    ("/help", "Show available slash commands"),
+    ("/history", "List saved conversations, then choose a number to restore one"),
+    ("/new", "Start a fresh empty-context conversation"),
+    ("/clear", "Alias for /new"),
+    ("/tools", "Show enabled local/LLM tool entry points"),
+    ("/exit", "Exit LinuxAgent"),
+    ("/quit", "Alias for /exit"),
+)
 
 
 class ConsoleUI(UserInterface):
@@ -134,7 +146,12 @@ class ConsoleUI(UserInterface):
             fd = os.open(self._history_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             os.close(fd)
         os.chmod(self._history_path, 0o600)
-        return PromptSession(history=FileHistory(str(self._history_path)))
+        return PromptSession(
+            history=FileHistory(str(self._history_path)),
+            completer=cast(Completer, SlashCommandCompleter()),
+            complete_while_typing=True,
+            reserve_space_for_menu=8,
+        )
 
     def _accent_style(self) -> str:
         if self._theme == "light":
@@ -147,3 +164,23 @@ class ConsoleUI(UserInterface):
         if self._theme == "light":
             return "blue"
         return "bright_black"
+
+
+class SlashCommandCompleter:
+    """Prompt-toolkit completer for slash commands."""
+
+    def get_completions(
+        self, document: Document, complete_event: CompleteEvent
+    ) -> Iterable[Completion]:
+        del complete_event
+        text = document.text_before_cursor
+        if not text.startswith("/") or " " in text:
+            return
+        for command, description in _SLASH_COMMANDS:
+            if command.startswith(text):
+                yield Completion(
+                    command,
+                    start_position=-len(text),
+                    display=command,
+                    display_meta=description,
+                )
