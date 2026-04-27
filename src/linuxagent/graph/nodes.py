@@ -143,6 +143,8 @@ def make_execute_node(
         plan = state.get("command_plan")
         if plan is not None:
             update["runbook_results"] = (*state.get("runbook_results", ()), result)
+        if state.get("selected_runbook") is not None:
+            update["command_source"] = CommandSource.RUNBOOK
         return update
 
     return execute_node
