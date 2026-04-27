@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage
@@ -11,7 +14,7 @@ from langgraph.types import Command
 
 from ..interfaces import CommandSource, LLMProvider
 from ..plans import CommandPlan, CommandPlanParseError, parse_command_plan
-from ..prompts_loader import build_chat_prompt, build_direct_answer_prompt
+from ..prompts_loader import build_chat_prompt, build_intent_router_prompt
 from ..providers.errors import ProviderError
 from ..runbooks import RunbookEngine
 from ..services import ClusterService
@@ -23,6 +26,19 @@ from .state import AgentState
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 
 
+class IntentMode(StrEnum):
+    DIRECT_ANSWER = "DIRECT_ANSWER"
+    COMMAND_PLAN = "COMMAND_PLAN"
+    CLARIFY = "CLARIFY"
+
+
+@dataclass(frozen=True)
+class IntentDecision:
+    mode: IntentMode
+    answer: str
+    reason: str
+
+
 def make_parse_intent_node(
     provider: LLMProvider,
     *,
@@ -32,37 +48,22 @@ def make_parse_intent_node(
     runbook_engine: RunbookEngine | None = None,
 ) -> Node:
     prompt = build_chat_prompt()
-    direct_prompt = build_direct_answer_prompt()
+    intent_router_prompt = build_intent_router_prompt()
 
     async def parse_intent_node(state: AgentState) -> AgentState:
         current_trace_id = trace_id(state)
         messages = list(state.get("messages", []))
         user_text = _last_message_text(messages)
-        if _is_direct_answer_request(user_text):
-            direct_messages = direct_prompt.format_messages(
-                chat_history=messages[:-1],
-                user_input=user_text,
-            )
-            with span(
-                telemetry,
-                "llm.complete",
-                current_trace_id,
-                {"node": "parse_intent", "mode": "direct_answer"},
-            ):
-                direct_response = (await provider.complete(direct_messages)).strip()
-            return {
-                "trace_id": current_trace_id,
-                "messages": [AIMessage(content=direct_response)],
-                "pending_command": None,
-                "command_plan": None,
-                "selected_runbook": None,
-                "runbook_step_index": 0,
-                "runbook_results": (),
-                "plan_error": None,
-                "command_source": CommandSource.USER,
-                "selected_hosts": (),
-                "direct_response": True,
-            }
+        intent = await _route_intent(
+            provider,
+            intent_router_prompt,
+            messages,
+            user_text,
+            current_trace_id,
+            telemetry,
+        )
+        if intent.mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY}:
+            return _direct_response_update(current_trace_id, intent.answer)
         try:
             runbook_plan = match_runbook_plan(user_text, current_trace_id, runbook_engine)
         except CommandPlanParseError as exc:
@@ -77,6 +78,7 @@ def make_parse_intent_node(
                 "selected_runbook": runbook,
                 "runbook_step_index": 0,
                 "runbook_results": (),
+                "plan_result_start_index": 0,
                 "plan_error": None,
                 "command_source": CommandSource.LLM,
                 "selected_hosts": selected_hosts,
@@ -127,6 +129,7 @@ def make_parse_intent_node(
             "selected_runbook": None,
             "runbook_step_index": 0,
             "runbook_results": (),
+            "plan_result_start_index": 0,
             "plan_error": None,
             "command_source": CommandSource.LLM,
             "selected_hosts": selected_hosts,
@@ -134,6 +137,63 @@ def make_parse_intent_node(
         }
 
     return parse_intent_node
+
+
+async def _route_intent(
+    provider: LLMProvider,
+    intent_router_prompt: Any,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    telemetry: TelemetryRecorder | None,
+) -> IntentDecision:
+    router_messages = intent_router_prompt.format_messages(
+        chat_history=messages[:-1],
+        user_input=user_text,
+    )
+    with span(
+        telemetry,
+        "llm.complete",
+        current_trace_id,
+        {"node": "parse_intent", "mode": "intent_router"},
+    ):
+        raw = (await provider.complete(router_messages)).strip()
+    return _parse_intent_decision(raw)
+
+
+def _parse_intent_decision(raw: str) -> IntentDecision:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return IntentDecision(IntentMode.COMMAND_PLAN, "", "invalid router JSON")
+    if not isinstance(payload, dict):
+        return IntentDecision(IntentMode.COMMAND_PLAN, "", "router JSON is not an object")
+    try:
+        mode = IntentMode(str(payload.get("mode", IntentMode.COMMAND_PLAN.value)).strip())
+    except ValueError:
+        mode = IntentMode.COMMAND_PLAN
+    answer = str(payload.get("answer", "")).strip()
+    reason = str(payload.get("reason", "")).strip()
+    if mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY} and not answer:
+        return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
+    return IntentDecision(mode, answer, reason)
+
+
+def _direct_response_update(current_trace_id: str, response: str) -> AgentState:
+    return {
+        "trace_id": current_trace_id,
+        "messages": [AIMessage(content=response)],
+        "pending_command": None,
+        "command_plan": None,
+        "selected_runbook": None,
+        "runbook_step_index": 0,
+        "runbook_results": (),
+        "plan_result_start_index": 0,
+        "plan_error": None,
+        "command_source": CommandSource.USER,
+        "selected_hosts": (),
+        "direct_response": True,
+    }
 
 
 def _parse_error_update(current_trace_id: str, message: str) -> AgentState:
@@ -144,6 +204,7 @@ def _parse_error_update(current_trace_id: str, message: str) -> AgentState:
         "selected_runbook": None,
         "runbook_step_index": 0,
         "runbook_results": (),
+        "plan_result_start_index": 0,
         "plan_error": message,
         "command_source": CommandSource.LLM,
         "selected_hosts": (),
@@ -168,6 +229,11 @@ def _intent_prompt(user_text: str) -> str:
         '"expected_side_effects": [str]}. '
         "If the user asks for an outcome that needs multiple operations, include the full "
         "ordered workflow in commands, including service start/configuration and verification steps. "
+        "Do not stop after installation when the requested outcome also requires configuration, "
+        "password changes, service startup, or verification. "
+        "Prefer non-interactive package-manager flags and non-interactive administration commands. "
+        "Each command is executed without a shell: do not use OS command chaining, pipes, "
+        "redirects, command substitution, or fallback operators such as ||. "
         "If useful, call tools before deciding. "
         "Do not include markdown or prose."
     )
@@ -247,15 +313,3 @@ def _is_local_target(host: str) -> bool:
         "当前主机",
         "当前服务器",
     }
-
-
-def _is_direct_answer_request(user_text: str) -> bool:
-    normalized = user_text.strip().casefold()
-    if not normalized:
-        return False
-    compact = "".join(normalized.split())
-    chinese_patterns = ("你都能做什么", "你能做什么", "你可以做什么", "你会做什么")
-    english_patterns = ("what can you do", "what do you do", "capabilities")
-    return any(pattern in compact for pattern in chinese_patterns) or any(
-        pattern in normalized for pattern in english_patterns
-    )

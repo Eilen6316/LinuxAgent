@@ -6,7 +6,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-90.39%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-90.00%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -77,13 +77,24 @@ analyze       -> concise operator summary
 audit.log     -> hash-chained JSONL decision record
 ```
 
+For ordinary conversation, LinuxAgent first asks an LLM-owned intent router for
+`DIRECT_ANSWER`, `COMMAND_PLAN`, or `CLARIFY`. Direct answers do not create a
+command plan and therefore do not show the confirmation panel. Operational
+methods are not hard-coded in Python; successful command patterns are learned in
+the local learner memory after sensitive values are redacted. Deterministic
+safety policy data lives in YAML, while Python code only loads, validates, and
+applies those policies.
+
 ## Core Capabilities
 
 | Capability | Why it matters |
 |---|---|
 | Capability-based policy engine | Produces `SAFE` / `CONFIRM` / `BLOCK`, risk scores, capabilities, and matched rules |
+| YAML policy defaults | Command policy data is loaded from `configs/policy.default.yaml`, not Python rule tables |
 | Structured `CommandPlan` | LLM output must validate as JSON before any policy or execution path |
+| AI-owned intent routing | Conversation vs operation vs clarification is decided by `prompts/intent_router.md`, not Python keyword rules |
 | YAML runbooks | Common ops scenarios can be matched before free-form command generation |
+| Learner memory | Successful command patterns are persisted locally after secret redaction |
 | LangGraph HITL | Confirmation uses `interrupt()` and checkpointing rather than inline `input()` |
 | SSH cluster guard | Batch confirmation plus remote shell metacharacter blocking |
 | Output protection | Command results are redacted and bounded before model-facing analysis |
@@ -124,11 +135,11 @@ The current `v4.0.0` baseline:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 285 passing |
+| Unit tests | 296 passing |
 | Optional Anthropic compatibility | 4 passing |
 | Harness scenarios | 12 HITL / runbook / cluster scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 90.39% |
+| Coverage | 90.00% |
 | Static checks | `ruff`, `mypy --strict`, `bandit` |
 | Build verification | wheel + sdist + packaged data install check |
 

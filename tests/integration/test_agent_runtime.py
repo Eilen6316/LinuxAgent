@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,10 @@ class _Provider:
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
         del kwargs
         self.complete_messages.append(messages)
+        if _is_intent_router_call(messages):
+            if self._responses and _is_intent_router_response(self._responses[0]):
+                return self._responses.pop(0)
+            return _router_response("COMMAND_PLAN")
         return self._responses.pop(0)
 
     async def complete_with_tools(
@@ -59,6 +64,26 @@ class _UI:
 
     async def print(self, text: str) -> None:
         self.printed.append(text)
+
+
+def _router_response(mode: str, answer: str = "", reason: str = "test route") -> str:
+    return json.dumps({"mode": mode, "answer": answer, "reason": reason}, ensure_ascii=False)
+
+
+def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
+    return bool(messages) and "intent router" in str(messages[0].content).casefold()
+
+
+def _is_intent_router_response(text: str) -> bool:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and payload.get("mode") in {
+        "DIRECT_ANSWER",
+        "COMMAND_PLAN",
+        "CLARIFY",
+    }
 
 
 class _Monitoring:

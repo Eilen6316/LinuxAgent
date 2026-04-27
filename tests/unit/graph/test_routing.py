@@ -6,9 +6,11 @@ from linuxagent.graph.routing import (
     respond_block_node,
     respond_node,
     respond_refused_node,
+    route_after_execute,
     route_by_safety,
 )
-from linuxagent.interfaces import SafetyLevel
+from linuxagent.interfaces import ExecutionResult, SafetyLevel
+from linuxagent.plans import command_plan_json, parse_command_plan
 
 
 async def test_route_by_safety_maps_levels() -> None:
@@ -16,6 +18,28 @@ async def test_route_by_safety_maps_levels() -> None:
     assert await route_by_safety({"safety_level": SafetyLevel.CONFIRM}) == "CONFIRM"
     assert await route_by_safety({"safety_level": SafetyLevel.SAFE}) == "SAFE"
     assert await route_by_safety({}) == "SAFE"
+
+
+async def test_route_after_execute_repairs_exhausted_failed_plan() -> None:
+    plan = parse_command_plan(command_plan_json("/bin/false"))
+    result = ExecutionResult(
+        command="/bin/false",
+        exit_code=1,
+        stdout="",
+        stderr="failed",
+        duration=0,
+    )
+
+    route = await route_after_execute(
+        {
+            "command_plan": plan,
+            "runbook_step_index": 0,
+            "runbook_results": (result,),
+            "plan_result_start_index": 0,
+        }
+    )
+
+    assert route == "REPAIR_PLAN"
 
 
 async def test_response_nodes_render_operator_messages() -> None:

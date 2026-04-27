@@ -18,6 +18,7 @@ def test_initial_state_seeds_human_message() -> None:
     assert state["command_source"] is CommandSource.USER
     assert state["selected_hosts"] == ()
     assert state["direct_response"] is False
+    assert state["plan_result_start_index"] == 0
 
 
 def test_initial_state_respects_source() -> None:

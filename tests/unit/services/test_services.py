@@ -144,7 +144,7 @@ async def test_command_service_records_learner_state(tmp_path) -> None:
     result = await service.run("/bin/echo ok")
 
     assert result.stdout == "ok"
-    stats = learner.stats_for("/bin/echo")
+    stats = learner.stats_for("/bin/echo ok")
     assert stats is not None
     assert stats.count == 1
     assert json.loads(learner_path.read_text(encoding="utf-8"))

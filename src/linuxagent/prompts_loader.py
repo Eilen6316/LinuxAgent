@@ -63,6 +63,17 @@ def build_direct_answer_prompt() -> ChatPromptTemplate:
     )
 
 
+def build_intent_router_prompt() -> ChatPromptTemplate:
+    """Build a prompt for LLM-owned intent routing before command planning."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", load_prompt("intent_router.md")),
+            MessagesPlaceholder("chat_history", optional=True),
+            ("human", "{user_input}"),
+        ]
+    )
+
+
 def build_analysis_prompt() -> ChatPromptTemplate:
     """Build a prompt for terminal-friendly command-result analysis."""
     return ChatPromptTemplate.from_messages([("system", load_prompt("analysis.md"))])

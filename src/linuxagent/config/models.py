@@ -178,13 +178,7 @@ class IntelligenceConfig(BaseModel):
     embedding_cache_dir: UserPath = Field(
         default_factory=lambda: Path.home() / ".cache" / "linuxagent" / "embeddings"
     )
-    default_command_candidates: tuple[str, ...] = (
-        "ls -la",
-        "df -h",
-        "du -sh /var/log",
-        "systemctl status ssh",
-        "journalctl -u ssh --no-pager -n 100",
-    )
+    default_command_candidates: tuple[str, ...] = ()
 
 
 class AppConfig(BaseModel):

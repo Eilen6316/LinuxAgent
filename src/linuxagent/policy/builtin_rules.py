@@ -1,343 +1,42 @@
-"""Built-in policy rules for LinuxAgent command classification."""
+"""Packaged policy defaults for LinuxAgent command classification."""
 
 from __future__ import annotations
 
-from ..interfaces import SafetyLevel
-from .models import PolicyConfig, PolicyMatch, PolicyRule
+from functools import lru_cache
+from pathlib import Path
 
-INTERACTIVE_COMMANDS: frozenset[str] = frozenset(
-    {
-        "vim",
-        "vi",
-        "nano",
-        "emacs",
-        "htop",
-        "top",
-        "less",
-        "more",
-        "man",
-        "ssh",
-        "python",
-        "python3",
-        "bash",
-        "zsh",
-        "sh",
-        "ipython",
-        "mysql",
-        "psql",
-        "redis-cli",
-        "mongo",
-    }
-)
+import yaml
+from pydantic import ValidationError
+
+from .models import PolicyConfig
 
 
+@lru_cache(maxsize=1)
 def builtin_policy_config() -> PolicyConfig:
-    return PolicyConfig(
-        rules=(
-            PolicyRule(
-                id="input.validation",
-                legacy_rule="INPUT_VALIDATION",
-                level=SafetyLevel.BLOCK,
-                risk_score=100,
-                capabilities=("input.validation",),
-                reason="command failed structural validation",
-                match=PolicyMatch(input_validation=True),
-            ),
-            PolicyRule(
-                id="shell.parse_error",
-                legacy_rule="PARSE_ERROR",
-                level=SafetyLevel.BLOCK,
-                risk_score=100,
-                capabilities=("shell.parse",),
-                reason="shell parse failed",
-                match=PolicyMatch(parse_error=True),
-            ),
-            PolicyRule(
-                id="shell.empty",
-                legacy_rule="EMPTY",
-                level=SafetyLevel.BLOCK,
-                risk_score=100,
-                capabilities=("shell.empty",),
-                reason="empty command",
-                match=PolicyMatch(empty=True),
-            ),
-            PolicyRule(
-                id="embedded.danger",
-                legacy_rule="EMBEDDED_DANGER",
-                level=SafetyLevel.BLOCK,
-                risk_score=100,
-                capabilities=("shell.injection", "filesystem.delete"),
-                reason="embedded danger pattern",
-                match=PolicyMatch(
-                    embedded_regex=(
-                        r"\brm\s+-[rRfF]{2,}\s+/(?!\w)",
-                        r"\bmkfs(\.[a-z0-9]+)?\b",
-                        r"\bdd\s+if=",
-                        r">\s*/dev/(sd[a-z]|nvme\d)",
-                        r":\s*\(\s*\)\s*\{.*:\s*\|\s*:.*;\s*:",
-                        r"\$\(",
-                        r"`[^`]+`",
-                    )
-                ),
-            ),
-            PolicyRule(
-                id="filesystem.root_mutation",
-                legacy_rule="ROOT_PATH",
-                level=SafetyLevel.BLOCK,
-                risk_score=100,
-                capabilities=("filesystem.delete",),
-                reason="destructive command targeting root filesystem",
-                match=PolicyMatch(
-                    command=("rm", "rmdir", "shred", "dd", "mkfs", "wipefs"),
-                    args_regex=(r"^/+$",),
-                ),
-            ),
-            PolicyRule(
-                id="filesystem.sensitive_path",
-                legacy_rule="SENSITIVE_PATH",
-                level=SafetyLevel.BLOCK,
-                risk_score=100,
-                capabilities=("filesystem.sensitive_read",),
-                reason="sensitive path access",
-                match=PolicyMatch(
-                    path_regex=(
-                        r"^/etc/shadow(/|$)",
-                        r"^/etc/gshadow(/|$)",
-                        r"^/etc/sudoers(/|$)",
-                        r"^/boot(/|$)",
-                        r"^/dev/[sh]d[a-z]",
-                        r"^/dev/nvme\d",
-                        r"^/proc/(?!self/status|cpuinfo|meminfo|version|loadavg|uptime)",
-                        r"^/sys/(?!class/net|devices/system/cpu)",
-                    )
-                ),
-            ),
-            PolicyRule(
-                id="filesystem.delete",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=85,
-                capabilities=("filesystem.delete",),
-                reason="destructive filesystem command",
-                match=PolicyMatch(command=("rm", "rmdir", "shred", "wipefs")),
-            ),
-            PolicyRule(
-                id="filesystem.recursive_or_force",
-                legacy_rule="DESTRUCTIVE_ARG",
-                level=SafetyLevel.CONFIRM,
-                risk_score=75,
-                capabilities=("filesystem.mutate",),
-                reason="destructive filesystem argument",
-                match=PolicyMatch(args_regex=(r"^-[rRfF]*[rRfF][rRfF]+[rRfF]*$", r"^--force$")),
-            ),
-            PolicyRule(
-                id="filesystem.find_delete",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=85,
-                capabilities=("filesystem.delete",),
-                reason="find delete mutates filesystem",
-                match=PolicyMatch(command=("find",), args_any=("-delete",)),
-            ),
-            PolicyRule(
-                id="filesystem.truncate",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=70,
-                capabilities=("filesystem.truncate",),
-                reason="truncate mutates file contents",
-                match=PolicyMatch(command=("truncate",)),
-            ),
-            PolicyRule(
-                id="filesystem.ownership_or_mode_recursive",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=75,
-                capabilities=("filesystem.permission",),
-                reason="recursive ownership or mode change",
-                match=PolicyMatch(command=("chmod", "chown"), args_regex=(r"^-R$", r"^--recursive$")),
-            ),
-            PolicyRule(
-                id="filesystem.edit_system_config",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=80,
-                capabilities=("filesystem.config_write",),
-                reason="system configuration mutation",
-                match=PolicyMatch(command=("tee", "sed", "cp", "mv"), path_regex=(r"^/etc/",)),
-            ),
-            PolicyRule(
-                id="block_device.mutate",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=95,
-                capabilities=("block_device.mutate",),
-                reason="block device mutation command",
-                match=PolicyMatch(command=("mkfs", "dd", "fdisk", "parted", "mkswap")),
-            ),
-            PolicyRule(
-                id="service.mutate",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=70,
-                capabilities=("service.mutate",),
-                reason="service state mutation",
-                match=PolicyMatch(
-                    command=("systemctl",),
-                    subcommand_any=("stop", "disable", "mask", "kill", "poweroff", "reboot", "halt", "restart", "reload", "enable"),
-                ),
-            ),
-            PolicyRule(
-                id="service.legacy_mutate",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=70,
-                capabilities=("service.mutate",),
-                reason="service state mutation",
-                match=PolicyMatch(command=("service",), args_any=("stop", "restart", "reload")),
-            ),
-            PolicyRule(
-                id="package.remove",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=75,
-                capabilities=("package.remove",),
-                reason="package removal",
-                match=PolicyMatch(
-                    command=("apt", "apt-get", "yum", "dnf", "pacman"),
-                    subcommand_any=("remove", "purge", "autoremove", "erase", "-R", "-Rs", "-Rns"),
-                ),
-            ),
-            PolicyRule(
-                id="container.mutate",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=75,
-                capabilities=("container.mutate",),
-                reason="container mutation",
-                match=PolicyMatch(
-                    command=("docker",),
-                    subcommand_any=(
-                        "rm",
-                        "rmi",
-                        "kill",
-                        "prune",
-                        "system",
-                        "stop",
-                        "restart",
-                        "compose",
-                        "volume",
-                        "network",
-                    ),
-                ),
-            ),
-            PolicyRule(
-                id="kubernetes.mutate",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=80,
-                capabilities=("kubernetes.mutate",),
-                reason="kubernetes mutation",
-                match=PolicyMatch(
-                    command=("kubectl",),
-                    subcommand_any=(
-                        "delete",
-                        "drain",
-                        "cordon",
-                        "replace",
-                        "apply",
-                        "patch",
-                        "scale",
-                        "rollout",
-                    ),
-                ),
-            ),
-            PolicyRule(
-                id="helm.mutate",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=75,
-                capabilities=("kubernetes.helm",),
-                reason="helm release mutation",
-                match=PolicyMatch(
-                    command=("helm",),
-                    subcommand_any=("uninstall", "delete", "rollback", "upgrade", "install"),
-                ),
-            ),
-            PolicyRule(
-                id="git.history_mutate",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=65,
-                capabilities=("git.mutate",),
-                reason="git history or remote mutation",
-                match=PolicyMatch(
-                    command=("git",),
-                    subcommand_any=("push", "reset", "clean", "checkout", "rebase"),
-                ),
-            ),
-            PolicyRule(
-                id="network.firewall",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=80,
-                capabilities=("network.firewall",),
-                reason="firewall mutation",
-                match=PolicyMatch(command=("iptables", "nft", "ufw", "firewall-cmd")),
-            ),
-            PolicyRule(
-                id="identity.delete_user_or_group",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=85,
-                capabilities=("identity.mutate",),
-                reason="user or group deletion",
-                match=PolicyMatch(command=("userdel", "groupdel")),
-            ),
-            PolicyRule(
-                id="identity.delete_password",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=80,
-                capabilities=("identity.mutate",),
-                reason="password deletion",
-                match=PolicyMatch(command=("passwd",), args_any=("-d", "--delete")),
-            ),
-            PolicyRule(
-                id="scheduled_tasks.remove",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=70,
-                capabilities=("cron.mutate",),
-                reason="crontab removal",
-                match=PolicyMatch(command=("crontab",), args_any=("-r",)),
-            ),
-            PolicyRule(
-                id="privilege.sudo",
-                legacy_rule="DESTRUCTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=60,
-                capabilities=("privilege.sudo",),
-                reason="privileged command",
-                match=PolicyMatch(command=("sudo",)),
-            ),
-            PolicyRule(
-                id="interactive.command",
-                legacy_rule="INTERACTIVE",
-                level=SafetyLevel.CONFIRM,
-                risk_score=40,
-                capabilities=("terminal.interactive",),
-                reason="interactive command",
-                match=PolicyMatch(interactive=True),
-            ),
-            PolicyRule(
-                id="llm.first_run",
-                legacy_rule="LLM_FIRST_RUN",
-                level=SafetyLevel.CONFIRM,
-                risk_score=30,
-                capabilities=("llm.generated",),
-                reason="LLM-generated command; first run requires approval",
-                match=PolicyMatch(llm_first_run=True),
-            ),
-        )
-    )
+    """Load packaged policy defaults from YAML."""
+    path = _find_packaged_policy_default()
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:  # pragma: no cover - packaging failure
+        raise RuntimeError(f"cannot load packaged policy config {path}: {exc}") from exc
+    if not isinstance(raw, dict):  # pragma: no cover - packaging failure
+        raise RuntimeError(f"packaged policy config {path} must be a mapping")
+    try:
+        return PolicyConfig.model_validate(raw)
+    except ValidationError as exc:  # pragma: no cover - packaging failure
+        raise RuntimeError(f"packaged policy config {path} failed validation: {exc}") from exc
+
+
+def _find_packaged_policy_default() -> Path:
+    here = Path(__file__).resolve()
+    wheel_data = here.parent.parent / "_data" / "policy.default.yaml"
+    if wheel_data.is_file():
+        return wheel_data
+    for parent in here.parents:
+        candidate = parent / "configs" / "policy.default.yaml"
+        if candidate.is_file():
+            return candidate
+    raise RuntimeError("no packaged policy.default.yaml found")
+
+
+INTERACTIVE_COMMANDS: frozenset[str] = frozenset(builtin_policy_config().interactive_commands)

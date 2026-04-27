@@ -7,7 +7,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-90.39%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-90.00%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -64,7 +64,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 285 default unit tests + 4 optional Anthropic compatibility tests + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
+| Testability | 296 default unit tests + 4 optional Anthropic compatibility tests + 12 HITL YAML scenarios + 8 integration smoke tests, 90%+ coverage |
 
 ---
 
@@ -103,6 +103,13 @@ you: find services listening on port 8080
  every step is appended to ~/.linuxagent/audit.log
 ```
 
+Before command planning, an LLM-owned intent router chooses `DIRECT_ANSWER`,
+`COMMAND_PLAN`, or `CLARIFY`. Conversational answers do not create a command
+plan or confirmation panel. Operational methods are generated at runtime and
+successful command patterns are stored in local learner memory after redaction;
+Python code does not hard-code business or intent keyword rules. Deterministic
+safety policy data is loaded from `configs/policy.default.yaml`.
+
 ---
 
 ## Full comparison with the original prototype
@@ -124,29 +131,18 @@ The earlier incarnation was a monolithic agent script. To make it production-fit
 
 #### 1. Command safety classification
 
-**Previous**: substring match — trivial to bypass via quoting or variable substitution.
+**Previous**: command risk data lived inside Python substring checks, which were
+easy to bypass via quoting or variable substitution.
 
-```python
-DANGER = ["rm -rf", "mkfs", "dd if=/"]
-if any(pattern in command for pattern in DANGER):
-    reject()
-```
-
-**Current**: multi-layer token analysis.
+**Current**: multi-layer token analysis driven by `configs/policy.default.yaml`.
 
 ```python
 def is_safe(command, source=USER):
     validate_input(command)                 # 1. length / NUL / BiDi controls
-    if _has_embedded_danger(command):       # 2. raw-string scan (defeats quote smuggling)
-        return BLOCK
-    tokens = shlex.split(command)           # 3. proper shell tokenisation
-    if tokens[0] in DESTRUCTIVE_COMMANDS:   # 4. exact command-name match, never substring
-        return CONFIRM
-    if any(pat.match(t) for t in tokens[1:] for pat in DESTRUCTIVE_ARG_PATTERNS):
-        return CONFIRM                      # 5. per-argument regexes (-rf / --force / ...)
-    if source is LLM:                       # 6. source upgrade: LLM first-run → CONFIRM
-        return CONFIRM
-    return SAFE
+    tokens = shlex.split(command)           # 2. proper shell tokenisation
+    facts = CommandFacts(command, source, tokens)
+    matches = policy_engine.match(facts)    # 3. rule data comes from YAML
+    return decision_from(matches)           # 4. SAFE / CONFIRM / BLOCK
 ```
 
 **Concrete differences**:
@@ -238,8 +234,8 @@ confirmation and again before SSH connection setup.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **285 passing by default; 4 additional Anthropic compatibility tests with the extra installed** |
-| Coverage | 0 | **90.39%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **296 passing by default; 4 additional Anthropic compatibility tests with the extra installed** |
+| Coverage | 0 | **90.00%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
 

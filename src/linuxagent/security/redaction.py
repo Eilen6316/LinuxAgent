@@ -29,6 +29,7 @@ _PRIVATE_KEY_PATTERN = re.compile(
 _TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?i)(authorization\s*:\s*)(bearer|basic)\s+[A-Za-z0-9._~+/=-]+"),
     re.compile(r"(?i)\b(password|passwd|pwd|token|api[_-]?key|secret)\s*[:=]\s*[^\s&;,]+"),
+    re.compile(r"(?i)\b(identified\s+by\s+)(['\"]?)[^\s;'\",]+(['\"]?)"),
     re.compile(r"(?i)\b((?:postgres(?:ql)?|mysql|mariadb|redis|mongodb)://[^:\s/@]+:)[^@\s]+(@)"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bghp_[A-Za-z0-9_]{20,}\b"),
@@ -94,7 +95,9 @@ def _redact_value(value: Any, *, key: str | None) -> tuple[Any, int]:
 
 def _is_sensitive_key(key: str) -> bool:
     normalized = key.lower().replace("-", "_")
-    return normalized in _SENSITIVE_KEYS or any(part in _SENSITIVE_KEYS for part in normalized.split("_"))
+    return normalized in _SENSITIVE_KEYS or any(
+        part in _SENSITIVE_KEYS for part in normalized.split("_")
+    )
 
 
 def _replacement(match: re.Match[str]) -> str:
@@ -105,4 +108,6 @@ def _replacement(match: re.Match[str]) -> str:
         return f"{groups[0]}{REDACTED}{groups[1]}"
     if groups and match.re.pattern.startswith("(?i)\\b(password"):
         return f"{groups[0]}={REDACTED}"
+    if groups and match.re.pattern.startswith("(?i)\\b(identified"):
+        return f"{groups[0]}{groups[1]}{REDACTED}{groups[2]}"
     return REDACTED

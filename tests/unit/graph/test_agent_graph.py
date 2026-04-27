@@ -31,6 +31,10 @@ class _FakeProvider:
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
         del kwargs
         self.complete_messages.append(messages)
+        if _is_intent_router_call(messages):
+            if self._responses and _is_intent_router_response(self._responses[0]):
+                return self._responses.pop(0)
+            return _router_response("COMMAND_PLAN")
         if self._responses:
             return self._responses.pop(0)
         return "analysis ok"
@@ -101,6 +105,26 @@ def _graph(
 
 def _runbook_engine() -> RunbookEngine:
     return RunbookEngine(load_runbooks(Path(__file__).resolve().parents[3] / "runbooks"))
+
+
+def _router_response(mode: str, answer: str = "", reason: str = "test route") -> str:
+    return json.dumps({"mode": mode, "answer": answer, "reason": reason}, ensure_ascii=False)
+
+
+def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
+    return bool(messages) and "intent router" in str(messages[0].content).casefold()
+
+
+def _is_intent_router_response(text: str) -> bool:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and payload.get("mode") in {
+        "DIRECT_ANSWER",
+        "COMMAND_PLAN",
+        "CLARIFY",
+    }
 
 
 def _command_plan_json_with_hosts(command: str, hosts: list[str]) -> str:
@@ -287,7 +311,10 @@ async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> N
 
 
 async def test_graph_answers_capability_question_without_command(tmp_path) -> None:
-    graph, provider = _graph(tmp_path, ["dynamic capability answer"])
+    graph, provider = _graph(
+        tmp_path,
+        [_router_response("DIRECT_ANSWER", "dynamic capability answer")],
+    )
     config = {"configurable": {"thread_id": "capabilities"}}
 
     result = await graph.ainvoke(
@@ -299,8 +326,72 @@ async def test_graph_answers_capability_question_without_command(tmp_path) -> No
     assert provider.tool_calls == 0
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
-    assert snapshot.values["pending_command"] is None
+    assert snapshot.values.get("pending_command") is None
     assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [_router_response("DIRECT_ANSWER", "router supplied direct answer")],
+    )
+    config = {"configurable": {"thread_id": "daily-chat"}}
+
+    result = await graph.ainvoke(
+        initial_state("一个概念问题", source=CommandSource.USER), config=config
+    )
+
+    assert "router supplied direct answer" in str(result["messages"][-1].content)
+    assert len(provider.complete_messages) == 1
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_answers_howto_without_command_panel(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [_router_response("DIRECT_ANSWER", "router supplied how-to answer")],
+    )
+    config = {"configurable": {"thread_id": "howto-chat"}}
+
+    result = await graph.ainvoke(
+        initial_state("请问这个操作应该怎么做？", source=CommandSource.USER),
+        config=config,
+    )
+
+    assert "router supplied how-to answer" in str(result["messages"][-1].content)
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_keeps_operator_request_on_command_plan_path(tmp_path) -> None:
+    graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo mutate")])
+    config = {"configurable": {"thread_id": "operator-command"}}
+
+    await graph.ainvoke(
+        initial_state("请执行这个运维变更", source=CommandSource.USER), config=config
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.tasks[0].interrupts[0].value["command"] == "/bin/echo mutate"
+    assert snapshot.values["direct_response"] is False
+
+
+async def test_graph_keeps_current_state_query_on_command_plan_path(tmp_path) -> None:
+    graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo databases")])
+    config = {"configurable": {"thread_id": "current-state-query"}}
+
+    await graph.ainvoke(
+        initial_state("inspect the current live state", source=CommandSource.USER), config=config
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.tasks[0].interrupts[0].value["command"] == "/bin/echo databases"
+    assert snapshot.values["direct_response"] is False
 
 
 async def test_graph_retries_json_plan_without_tools_after_tool_plaintext(tmp_path) -> None:
@@ -323,7 +414,7 @@ async def test_graph_retries_json_plan_without_tools_after_tool_plaintext(tmp_pa
 
     snapshot = await graph.aget_state(config)
     assert provider.tool_calls == 1
-    assert len(provider.complete_messages) == 2
+    assert len(provider.complete_messages) == 3
     assert snapshot.values["pending_command"] == "/bin/echo hi"
 
 
@@ -388,7 +479,7 @@ async def test_graph_prefers_matching_runbook_before_llm(tmp_path) -> None:
 
     snapshot = await graph.aget_state(config)
     interrupt_payload = snapshot.tasks[0].interrupts[0].value
-    assert provider.complete_messages == []
+    assert len(provider.complete_messages) == 1
     assert snapshot.values["pending_command"] == "df -h"
     assert snapshot.values["selected_runbook"].id == "disk.full"
     assert interrupt_payload["runbook_id"] == "disk.full"
@@ -410,7 +501,7 @@ async def test_graph_matches_server_status_runbook_before_tools(tmp_path) -> Non
     )
 
     snapshot = await graph.aget_state(config)
-    assert provider.complete_messages == []
+    assert len(provider.complete_messages) == 1
     assert snapshot.values["pending_command"] == "uptime"
     assert snapshot.values["selected_runbook"].id == "system.health"
 
@@ -428,7 +519,7 @@ async def test_graph_matches_installed_packages_runbook_before_tools(tmp_path) -
     )
 
     snapshot = await graph.aget_state(config)
-    assert provider.complete_messages == []
+    assert len(provider.complete_messages) == 1
     assert snapshot.values["pending_command"] == "rpm -qa --last"
     assert snapshot.values["selected_runbook"].id == "package.inventory"
 
@@ -444,7 +535,7 @@ async def test_graph_matches_os_runbook_before_tools(tmp_path) -> None:
     await graph.ainvoke(initial_state("我是什么操作系统", source=CommandSource.USER), config=config)
 
     snapshot = await graph.aget_state(config)
-    assert provider.complete_messages == []
+    assert len(provider.complete_messages) == 1
     assert snapshot.values["pending_command"] == "cat /etc/os-release"
     assert snapshot.values["selected_runbook"].id == "system.os"
 
@@ -503,6 +594,59 @@ async def test_graph_continues_multi_command_llm_plan_after_confirmation(tmp_pat
     assert "Command step results" in analysis_prompt
     assert "/bin/echo install" in analysis_prompt
     assert "/bin/echo verify" in analysis_prompt
+
+
+async def test_graph_continues_multi_command_plan_after_failed_step(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [_multi_command_plan_json(["/bin/false", "/bin/echo configure"]), "analysis ok"],
+    )
+    config = {"configurable": {"thread_id": "llm-plan-continues-after-failure"}}
+
+    await graph.ainvoke(
+        initial_state("install and configure demo", source=CommandSource.USER), config=config
+    )
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+    snapshot = await graph.aget_state(config)
+
+    assert snapshot.tasks[0].interrupts[0].value["command"] == "/bin/echo configure"
+    assert snapshot.values["runbook_results"][0].command == "/bin/false"
+    assert snapshot.values["runbook_results"][0].exit_code != 0
+
+
+async def test_graph_replans_after_exhausted_failed_plan(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [
+            _multi_command_plan_json(["/bin/false"]),
+            _multi_command_plan_json(["/bin/echo repaired"]),
+            "analysis ok",
+        ],
+    )
+    config = {"configurable": {"thread_id": "llm-plan-repair"}}
+
+    await graph.ainvoke(
+        initial_state("install configure and verify demo", source=CommandSource.USER),
+        config=config,
+    )
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+    snapshot = await graph.aget_state(config)
+
+    assert snapshot.tasks[0].interrupts[0].value["command"] == "/bin/echo repaired"
+    assert snapshot.values["command_plan"].primary.command == "/bin/echo repaired"
+    assert snapshot.values["plan_result_start_index"] == 1
+
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+    snapshot = await graph.aget_state(config)
+
+    assert not snapshot.tasks
+    assert [result.command for result in snapshot.values["runbook_results"]] == [
+        "/bin/false",
+        "/bin/echo repaired",
+    ]
+    assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
 async def test_graph_rechecks_policy_for_later_runbook_steps(tmp_path) -> None:

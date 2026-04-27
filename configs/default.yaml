@@ -62,3 +62,9 @@ intelligence:
   enabled: true
   context_window: 50
   embedding_model: text-embedding-3-small
+  default_command_candidates:
+    - ls -la
+    - df -h
+    - du -sh /var/log
+    - systemctl status ssh
+    - journalctl -u ssh --no-pager -n 100

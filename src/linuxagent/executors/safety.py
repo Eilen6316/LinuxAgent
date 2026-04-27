@@ -12,29 +12,25 @@ from ..policy.engine import is_interactive_tokens as _policy_is_interactive
 from ..policy.engine import validate_input as _policy_validate_input
 
 DESTRUCTIVE_COMMANDS: frozenset[str] = frozenset(
-    {
-        "rm",
-        "rmdir",
-        "mkfs",
-        "dd",
-        "shred",
-        "fdisk",
-        "parted",
-        "wipefs",
-        "mkswap",
-    }
+    command
+    for rule in DEFAULT_POLICY_ENGINE.config.rules
+    if rule.never_whitelist
+    for command in rule.match.command
 )
-DESTRUCTIVE_ARG_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"^-[rRfF]*[rRfF][rRfF]+[rRfF]*$"),
-    re.compile(r"^--no-preserve-root$"),
-    re.compile(r"^--force$"),
+DESTRUCTIVE_ARG_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for rule in DEFAULT_POLICY_ENGINE.config.rules
+    if rule.never_whitelist
+    for pattern in rule.match.args_regex
 )
-DESTRUCTIVE_SUBCOMMAND_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("systemctl", re.compile(r"^(stop|disable|mask|kill|poweroff|reboot|halt|restart|reload|enable)$")),
-    ("kubectl", re.compile(r"^(delete|drain|cordon|replace|apply|patch|scale|rollout)$")),
-    ("docker", re.compile(r"^(rm|rmi|kill|prune|system|stop|restart|compose|volume|network)$")),
-    ("git", re.compile(r"^(push|reset|clean|checkout|rebase)$")),
-    ("helm", re.compile(r"^(uninstall|delete|rollback|upgrade|install)$")),
+DESTRUCTIVE_SUBCOMMAND_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+    (command, re.compile(f"^({'|'.join(map(re.escape, rule.match.subcommand_any))})$"))
+    for rule in DEFAULT_POLICY_ENGINE.config.rules
+    if rule.never_whitelist and rule.match.subcommand_any
+    for command in rule.match.command
+)
+_NEVER_WHITELIST_RULES: frozenset[str] = frozenset(
+    rule.legacy_rule for rule in DEFAULT_POLICY_ENGINE.config.rules if rule.never_whitelist
 )
 
 
@@ -60,20 +56,7 @@ def is_destructive(command: str) -> bool:
     decision = DEFAULT_POLICY_ENGINE.evaluate(command, source=CommandSource.USER)
     if decision.level is SafetyLevel.BLOCK:
         return True
-    destructive_prefixes = (
-        "filesystem.delete",
-        "filesystem.truncate",
-        "block_device.",
-        "service.mutate",
-        "package.remove",
-        "container.mutate",
-        "kubernetes.",
-        "network.firewall",
-        "identity.mutate",
-        "cron.mutate",
-        "privilege.sudo",
-    )
-    return any(capability.startswith(destructive_prefixes) for capability in decision.capabilities)
+    return any(rule in _NEVER_WHITELIST_RULES for rule in decision.matched_rules)
 
 
 def is_safe(

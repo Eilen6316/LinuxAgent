@@ -51,3 +51,11 @@ object with this exact shape, with no markdown and no prose:
 
 Do not mark mutation commands as read-only. Do not rely on your own risk
 labels for execution approval; every command will be re-evaluated by policy.
+For multi-part requests, the commands array must cover every requested outcome
+before the turn can be considered complete. Do not stop at package download or
+installation when the user also asked for configuration, password changes,
+service startup, or verification. Prefer non-interactive package-manager flags
+and non-interactive administration commands over terminal clients.
+Each command string is executed without a shell. Do not use OS command chaining,
+pipes, redirects, command substitution, or fallback operators such as `||`;
+represent each fallback as a separate command in the commands array.

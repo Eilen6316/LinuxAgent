@@ -8,6 +8,7 @@ from linuxagent.prompts_loader import (
     build_analysis_prompt,
     build_chat_prompt,
     build_direct_answer_prompt,
+    build_intent_router_prompt,
     find_prompts_dir,
     load_system_prompt,
 )
@@ -18,6 +19,7 @@ def test_find_prompts_dir_resolves_for_editable_install() -> None:
     assert (path / "system.md").is_file()
     assert (path / "analysis.md").is_file()
     assert (path / "direct_answer.md").is_file()
+    assert (path / "intent_router.md").is_file()
 
 
 def test_load_system_prompt_is_non_empty() -> None:
@@ -34,6 +36,12 @@ def test_build_chat_prompt_has_user_input_variable() -> None:
 
 def test_build_direct_answer_prompt_has_user_input_variable() -> None:
     tmpl = build_direct_answer_prompt()
+    assert isinstance(tmpl, ChatPromptTemplate)
+    assert "user_input" in tmpl.input_variables
+
+
+def test_build_intent_router_prompt_has_user_input_variable() -> None:
+    tmpl = build_intent_router_prompt()
     assert isinstance(tmpl, ChatPromptTemplate)
     assert "user_input" in tmpl.input_variables
 

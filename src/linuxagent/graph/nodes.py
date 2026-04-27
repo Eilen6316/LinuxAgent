@@ -141,9 +141,7 @@ def make_execute_node(
             )
         update: AgentState = {"trace_id": current_trace_id, "execution_result": result}
         plan = state.get("command_plan")
-        if state.get("selected_runbook") is not None or (
-            plan is not None and len(plan.commands) > 1
-        ):
+        if plan is not None:
             update["runbook_results"] = (*state.get("runbook_results", ()), result)
         return update
 

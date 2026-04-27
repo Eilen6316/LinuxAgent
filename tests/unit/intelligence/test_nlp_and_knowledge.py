@@ -63,7 +63,7 @@ async def test_recommendation_engine_uses_stats_and_similarity() -> None:
     learner.record("ps aux", ExecutionResult("ps aux", 0, "", "", 0.1))
     engine = RecommendationEngine(learner, NLPEnhancer(FakeEmbeddings()))
     result = await engine.recommend("disk full", limit=1)
-    assert result[0].command == "df"
+    assert result[0].command == "df -h"
 
 
 async def test_knowledge_base_searches_documents() -> None:

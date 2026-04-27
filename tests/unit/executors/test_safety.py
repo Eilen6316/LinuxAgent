@@ -121,6 +121,11 @@ def test_interactive_exact_match() -> None:
     assert is_interactive(["vim", "file.txt"]) is True
 
 
+def test_interactive_batch_flags_mark_client_noninteractive() -> None:
+    assert is_interactive(["mysql", "-uroot", "-e", "SELECT 1"]) is False
+    assert is_interactive(["mysql", "--batch", "--execute=SELECT 1"]) is False
+
+
 def test_interactive_does_not_match_inside_string() -> None:
     # 'echo "run python now"' shouldn't flag as interactive.
     assert is_interactive(["echo", "run python now"]) is False

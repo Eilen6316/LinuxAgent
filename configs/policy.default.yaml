@@ -1,13 +1,123 @@
 version: 1
+interactive_commands:
+  - vim
+  - vi
+  - nano
+  - emacs
+  - htop
+  - top
+  - less
+  - more
+  - man
+  - ssh
+  - python
+  - python3
+  - bash
+  - zsh
+  - sh
+  - ipython
+  - mysql
+  - psql
+  - redis-cli
+  - mongo
+noninteractive_flags:
+  - -e
+  - --execute
+  - -B
+  - --batch
+  - -N
+  - --skip-column-names
 rules:
+  - id: input.validation
+    legacy_rule: INPUT_VALIDATION
+    level: BLOCK
+    risk_score: 100
+    capabilities: [input.validation]
+    reason: command failed structural validation
+    match: {input_validation: true}
+
+  - id: shell.parse_error
+    legacy_rule: PARSE_ERROR
+    level: BLOCK
+    risk_score: 100
+    capabilities: [shell.parse]
+    reason: shell parse failed
+    match: {parse_error: true}
+
+  - id: shell.empty
+    legacy_rule: EMPTY
+    level: BLOCK
+    risk_score: 100
+    capabilities: [shell.empty]
+    reason: empty command
+    match: {empty: true}
+
+  - id: embedded.danger
+    legacy_rule: EMBEDDED_DANGER
+    level: BLOCK
+    risk_score: 100
+    capabilities: [shell.injection, filesystem.delete]
+    reason: embedded danger pattern
+    never_whitelist: true
+    match:
+      embedded_regex:
+        - '\brm\s+-[rRfF]{2,}\s+/(?!\w)'
+        - '\bmkfs(\.[a-z0-9]+)?\b'
+        - '\bdd\s+if='
+        - '>\s*/dev/(sd[a-z]|nvme\d)'
+        - ':\s*\(\s*\)\s*\{.*:\s*\|\s*:.*;\s*:'
+        - '\$\('
+        - '`[^`]+`'
+
+  - id: filesystem.root_mutation
+    legacy_rule: ROOT_PATH
+    level: BLOCK
+    risk_score: 100
+    capabilities: [filesystem.delete]
+    reason: destructive command targeting root filesystem
+    never_whitelist: true
+    match:
+      command: [rm, rmdir, shred, dd, mkfs, wipefs]
+      args_regex: ['^/+$']
+
+  - id: filesystem.sensitive_path
+    legacy_rule: SENSITIVE_PATH
+    level: BLOCK
+    risk_score: 100
+    capabilities: [filesystem.sensitive_read]
+    reason: sensitive path access
+    match:
+      path_regex:
+        - '^/etc/shadow(/|$)'
+        - '^/etc/gshadow(/|$)'
+        - '^/etc/sudoers(/|$)'
+        - '^/boot(/|$)'
+        - '^/dev/[sh]d[a-z]'
+        - '^/dev/nvme\d'
+        - '^/proc/(?!self/status|cpuinfo|meminfo|version|loadavg|uptime)'
+        - '^/sys/(?!class/net|devices/system/cpu)'
+
   - id: filesystem.delete
     legacy_rule: DESTRUCTIVE
     level: CONFIRM
     risk_score: 85
     capabilities: [filesystem.delete]
     reason: destructive filesystem command
+    never_whitelist: true
     match:
       command: [rm, rmdir, shred, wipefs]
+
+  - id: filesystem.recursive_or_force
+    legacy_rule: DESTRUCTIVE_ARG
+    level: CONFIRM
+    risk_score: 75
+    capabilities: [filesystem.mutate]
+    reason: destructive filesystem argument
+    never_whitelist: true
+    match:
+      args_regex:
+        - '^-[rRfF]*[rRfF][rRfF]+[rRfF]*$'
+        - '^--force$'
 
   - id: filesystem.find_delete
     legacy_rule: DESTRUCTIVE
@@ -15,9 +125,52 @@ rules:
     risk_score: 85
     capabilities: [filesystem.delete]
     reason: find delete mutates filesystem
+    never_whitelist: true
     match:
       command: [find]
       args_any: [-delete]
+
+  - id: filesystem.truncate
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 70
+    capabilities: [filesystem.truncate]
+    reason: truncate mutates file contents
+    never_whitelist: true
+    match:
+      command: [truncate]
+
+  - id: filesystem.ownership_or_mode_recursive
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 75
+    capabilities: [filesystem.permission]
+    reason: recursive ownership or mode change
+    never_whitelist: true
+    match:
+      command: [chmod, chown]
+      args_regex: ['^-R$', '^--recursive$']
+
+  - id: filesystem.edit_system_config
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 80
+    capabilities: [filesystem.config_write]
+    reason: system configuration mutation
+    never_whitelist: true
+    match:
+      command: [tee, sed, cp, mv]
+      path_regex: ['^/etc/']
+
+  - id: block_device.mutate
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 95
+    capabilities: [block_device.mutate]
+    reason: block device mutation command
+    never_whitelist: true
+    match:
+      command: [mkfs, dd, fdisk, parted, mkswap]
 
   - id: service.mutate
     legacy_rule: DESTRUCTIVE
@@ -25,9 +178,21 @@ rules:
     risk_score: 70
     capabilities: [service.mutate]
     reason: service state mutation
+    never_whitelist: true
     match:
-      command: [systemctl, service]
+      command: [systemctl]
       subcommand_any: [stop, disable, mask, kill, poweroff, reboot, halt, restart, reload, enable]
+
+  - id: service.legacy_mutate
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 70
+    capabilities: [service.mutate]
+    reason: service state mutation
+    never_whitelist: true
+    match:
+      command: [service]
+      args_any: [stop, restart, reload]
 
   - id: package.remove
     legacy_rule: DESTRUCTIVE
@@ -35,6 +200,7 @@ rules:
     risk_score: 75
     capabilities: [package.remove]
     reason: package removal
+    never_whitelist: true
     match:
       command: [apt, apt-get, yum, dnf, pacman]
       subcommand_any: [remove, purge, autoremove, erase, -R, -Rs, -Rns]
@@ -45,9 +211,10 @@ rules:
     risk_score: 75
     capabilities: [container.mutate]
     reason: container mutation
+    never_whitelist: true
     match:
       command: [docker]
-      subcommand_any: [rm, rmi, kill, prune, system, stop, restart]
+      subcommand_any: [rm, rmi, kill, prune, system, stop, restart, compose, volume, network]
 
   - id: kubernetes.mutate
     legacy_rule: DESTRUCTIVE
@@ -55,18 +222,32 @@ rules:
     risk_score: 80
     capabilities: [kubernetes.mutate]
     reason: kubernetes mutation
+    never_whitelist: true
     match:
       command: [kubectl]
-      subcommand_any: [delete, drain, cordon, replace, apply, patch, scale]
+      subcommand_any: [delete, drain, cordon, replace, apply, patch, scale, rollout]
 
-  - id: privilege.sudo
+  - id: helm.mutate
     legacy_rule: DESTRUCTIVE
     level: CONFIRM
-    risk_score: 60
-    capabilities: [privilege.sudo]
-    reason: privileged command
+    risk_score: 75
+    capabilities: [kubernetes.helm]
+    reason: helm release mutation
+    never_whitelist: true
     match:
-      command: [sudo]
+      command: [helm]
+      subcommand_any: [uninstall, delete, rollback, upgrade, install]
+
+  - id: git.history_mutate
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 65
+    capabilities: [git.mutate]
+    reason: git history or remote mutation
+    never_whitelist: true
+    match:
+      command: [git]
+      subcommand_any: [push, reset, clean, checkout, rebase]
 
   - id: network.firewall
     legacy_rule: DESTRUCTIVE
@@ -74,5 +255,66 @@ rules:
     risk_score: 80
     capabilities: [network.firewall]
     reason: firewall mutation
+    never_whitelist: true
     match:
       command: [iptables, nft, ufw, firewall-cmd]
+
+  - id: identity.delete_user_or_group
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 85
+    capabilities: [identity.mutate]
+    reason: user or group deletion
+    never_whitelist: true
+    match:
+      command: [userdel, groupdel]
+
+  - id: identity.delete_password
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 80
+    capabilities: [identity.mutate]
+    reason: password deletion
+    never_whitelist: true
+    match:
+      command: [passwd]
+      args_any: [-d, --delete]
+
+  - id: scheduled_tasks.remove
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 70
+    capabilities: [cron.mutate]
+    reason: crontab removal
+    never_whitelist: true
+    match:
+      command: [crontab]
+      args_any: [-r]
+
+  - id: privilege.sudo
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 60
+    capabilities: [privilege.sudo]
+    reason: privileged command
+    never_whitelist: true
+    match:
+      command: [sudo]
+
+  - id: interactive.command
+    legacy_rule: INTERACTIVE
+    level: CONFIRM
+    risk_score: 40
+    capabilities: [terminal.interactive]
+    reason: interactive command
+    match:
+      interactive: true
+
+  - id: llm.first_run
+    legacy_rule: LLM_FIRST_RUN
+    level: CONFIRM
+    risk_score: 30
+    capabilities: [llm.generated]
+    reason: LLM-generated command; first run requires approval
+    match:
+      llm_first_run: true

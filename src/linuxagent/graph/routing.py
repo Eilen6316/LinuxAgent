@@ -5,6 +5,7 @@ from __future__ import annotations
 from langchain_core.messages import AIMessage
 
 from ..interfaces import SafetyLevel
+from .replanning import should_repair_plan
 from .runbook_planning import has_next_plan_step
 from .state import AgentState
 
@@ -41,9 +42,8 @@ async def route_after_parse(state: AgentState) -> str:
 
 
 async def route_after_execute(state: AgentState) -> str:
-    result = state.get("execution_result")
-    if result is not None and result.exit_code != 0:
-        return "ANALYZE"
     if has_next_plan_step(state):
         return "CONTINUE_RUNBOOK"
+    if should_repair_plan(state):
+        return "REPAIR_PLAN"
     return "ANALYZE"

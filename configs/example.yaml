@@ -100,3 +100,10 @@ intelligence:
   # Embedding model used for semantic command/log search.
   # MUST be an API-hosted model — local pytorch models are banned.
   embedding_model: text-embedding-3-small
+  # Seed candidates used only before learner memory has successful commands.
+  default_command_candidates:
+    - ls -la
+    - df -h
+    - du -sh /var/log
+    - systemctl status ssh
+    - journalctl -u ssh --no-pager -n 100

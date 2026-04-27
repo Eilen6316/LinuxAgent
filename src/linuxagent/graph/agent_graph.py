@@ -16,6 +16,7 @@ from .nodes import (
     make_execute_node,
     make_safety_check_node,
 )
+from .replanning import make_repair_plan_node
 from .routing import (
     respond_block_node,
     respond_node,
@@ -63,6 +64,9 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     )
     graph.add_node("advance_runbook", _langgraph_node(make_advance_runbook_node()))
     graph.add_node(
+        "repair_plan", _langgraph_node(make_repair_plan_node(deps.provider, deps.telemetry))
+    )
+    graph.add_node(
         "analyze", _langgraph_node(make_analyze_result_node(deps.provider, deps.telemetry))
     )
     graph.add_node("respond", _langgraph_node(respond_node))
@@ -83,9 +87,14 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     graph.add_conditional_edges(
         "execute",
         route_after_execute,
-        {"CONTINUE_RUNBOOK": "advance_runbook", "ANALYZE": "analyze"},
+        {
+            "CONTINUE_RUNBOOK": "advance_runbook",
+            "REPAIR_PLAN": "repair_plan",
+            "ANALYZE": "analyze",
+        },
     )
     graph.add_edge("advance_runbook", "safety_check")
+    graph.add_edge("repair_plan", "safety_check")
     graph.add_edge("analyze", "respond")
     graph.add_edge("respond", END)
     graph.add_edge("respond_block", END)

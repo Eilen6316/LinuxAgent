@@ -9,7 +9,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from ..interfaces import CommandSource, SafetyLevel
-from .builtin_rules import INTERACTIVE_COMMANDS
 from .models import ApprovalMode, PolicyApproval, PolicyConfig, PolicyDecision, PolicyRule
 
 MAX_COMMAND_LENGTH = 2048
@@ -43,7 +42,12 @@ class CommandFacts:
 class PolicyEngine:
     def __init__(self, config: PolicyConfig) -> None:
         self._config = config
-        self._compiled = tuple((_CompiledRule(rule)) for rule in config.rules)
+        self._interactive_commands = frozenset(config.interactive_commands)
+        self._noninteractive_flags = tuple(config.noninteractive_flags)
+        self._compiled = tuple(
+            _CompiledRule(rule, self._interactive_commands, self._noninteractive_flags)
+            for rule in config.rules
+        )
 
     @property
     def config(self) -> PolicyConfig:
@@ -82,12 +86,33 @@ def command_facts(command: str, *, source: CommandSource) -> CommandFacts:
     try:
         tokens = tuple(shlex.split(command))
     except ValueError as exc:
-        return CommandFacts(command=command, source=source, parse_error=f"shell parse failed: {exc}")
+        return CommandFacts(
+            command=command, source=source, parse_error=f"shell parse failed: {exc}"
+        )
     return CommandFacts(command=command, source=source, tokens=tokens, empty=not tokens)
 
 
-def is_interactive_tokens(tokens: list[str] | tuple[str, ...]) -> bool:
-    return bool(tokens) and tokens[0] in INTERACTIVE_COMMANDS
+def is_interactive_tokens(
+    tokens: list[str] | tuple[str, ...],
+    *,
+    interactive_commands: frozenset[str] | None = None,
+    noninteractive_flags: tuple[str, ...] | None = None,
+) -> bool:
+    if interactive_commands is None or noninteractive_flags is None:
+        from .builtin_rules import builtin_policy_config
+
+        config = builtin_policy_config()
+        interactive_commands = frozenset(config.interactive_commands)
+        noninteractive_flags = config.noninteractive_flags
+    if not tokens or tokens[0] not in interactive_commands:
+        return False
+    return not _has_noninteractive_flag(tokens, noninteractive_flags)
+
+
+def _has_noninteractive_flag(tokens: list[str] | tuple[str, ...], flags: tuple[str, ...]) -> bool:
+    return any(
+        token == flag or token.startswith(f"{flag}=") for token in tokens[1:] for flag in flags
+    )
 
 
 def _decision_from_matches(matches: list[PolicyRule], source: CommandSource) -> PolicyDecision:
@@ -138,8 +163,15 @@ def _reason(first: PolicyRule, matches: list[PolicyRule]) -> str:
 
 
 class _CompiledRule:
-    def __init__(self, rule: PolicyRule) -> None:
+    def __init__(
+        self,
+        rule: PolicyRule,
+        interactive_commands: frozenset[str],
+        noninteractive_flags: tuple[str, ...],
+    ) -> None:
         self.rule = rule
+        self._interactive_commands = interactive_commands
+        self._noninteractive_flags = noninteractive_flags
         self._args_regex = tuple(re.compile(pattern) for pattern in rule.match.args_regex)
         self._path_regex = tuple(re.compile(pattern) for pattern in rule.match.path_regex)
         self._embedded_regex = tuple(re.compile(pattern) for pattern in rule.match.embedded_regex)
@@ -160,9 +192,15 @@ class _CompiledRule:
             return False
         if match.llm_first_run:
             return facts.source is CommandSource.LLM
-        if match.interactive and is_interactive_tokens(facts.tokens):
+        if match.interactive and is_interactive_tokens(
+            facts.tokens,
+            interactive_commands=self._interactive_commands,
+            noninteractive_flags=self._noninteractive_flags,
+        ):
             return True
-        if self._embedded_regex and any(pattern.search(facts.command) for pattern in self._embedded_regex):
+        if self._embedded_regex and any(
+            pattern.search(facts.command) for pattern in self._embedded_regex
+        ):
             return True
         if match.command and facts.head not in match.command:
             return False

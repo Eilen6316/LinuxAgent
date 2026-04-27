@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from ..interfaces import ExecutionResult
+from ..security import redact_text
 
 
 @dataclass
@@ -70,4 +72,34 @@ class CommandLearner:
 
     @staticmethod
     def normalize(command: str) -> str:
-        return command.strip().split(maxsplit=1)[0] if command.strip() else ""
+        stripped = command.strip()
+        if not stripped:
+            return ""
+        try:
+            normalized = shlex.join(_redact_sensitive_tokens(shlex.split(stripped)))
+        except ValueError:
+            normalized = stripped
+        return redact_text(normalized).text
+
+
+def _redact_sensitive_tokens(tokens: list[str]) -> list[str]:
+    redacted: list[str] = []
+    redact_next = False
+    for token in tokens:
+        if redact_next:
+            redacted.append("***redacted***")
+            redact_next = False
+            continue
+        lowered = token.lower()
+        if lowered in {"-p", "--password", "--password1", "--password2", "--password3"}:
+            redacted.append(token)
+            redact_next = True
+        elif lowered.startswith(
+            ("-p", "--password=", "--password1=", "--password2=", "--password3=")
+        ):
+            prefix = token.split("=", 1)[0] if "=" in token else token[:2]
+            separator = "=" if "=" in token else ""
+            redacted.append(f"{prefix}{separator}***redacted***")
+        else:
+            redacted.append(token)
+    return redacted

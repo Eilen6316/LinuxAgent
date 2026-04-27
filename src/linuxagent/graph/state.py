@@ -30,6 +30,7 @@ class AgentState(TypedDict, total=False):
     selected_runbook: Runbook | None
     runbook_step_index: int
     runbook_results: tuple[ExecutionResult, ...]
+    plan_result_start_index: int
     plan_error: str | None
     command_source: CommandSource | None
     selected_hosts: tuple[str, ...]
@@ -68,6 +69,7 @@ def initial_state(
         selected_runbook=None,
         runbook_step_index=0,
         runbook_results=(),
+        plan_result_start_index=0,
         plan_error=None,
         command_source=source,
         selected_hosts=(),

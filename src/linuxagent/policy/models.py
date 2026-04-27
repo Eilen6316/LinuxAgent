@@ -67,12 +67,15 @@ class PolicyRule(BaseModel):
     capabilities: tuple[str, ...] = ()
     reason: str
     match: PolicyMatch
+    never_whitelist: bool = False
 
 
 class PolicyConfig(BaseModel):
     model_config = _FROZEN
 
     version: int = 1
+    interactive_commands: tuple[str, ...] = ()
+    noninteractive_flags: tuple[str, ...] = ()
     rules: tuple[PolicyRule, ...]
 
     @field_validator("rules")
