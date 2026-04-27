@@ -54,7 +54,7 @@ v4 默认拒绝未知 host key。
 
 ```bash
 linuxagent check
-linuxagent chat
+linuxagent
 ```
 
 ## 操作员会感知到的行为变化

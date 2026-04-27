@@ -28,11 +28,18 @@ def test_verbose_to_level_mapping() -> None:
     assert cli._verbose_to_level(99) == logging.DEBUG
 
 
-def test_main_without_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_without_command_defaults_to_chat(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: list[str | None] = []
+
+    def fake_chat(args: argparse.Namespace) -> int:
+        called.append(args.command)
+        return 23
+
+    monkeypatch.setitem(cli._COMMANDS, "chat", fake_chat)
+
     code = cli.main([])
-    captured = capsys.readouterr()
-    assert code == 0
-    assert "usage: linuxagent" in captured.out
+    assert code == 23
+    assert called == ["chat"]
 
 
 def test_check_command_success(

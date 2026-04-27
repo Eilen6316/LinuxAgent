@@ -59,7 +59,7 @@ Run:
 
 ```bash
 linuxagent check
-linuxagent chat
+linuxagent
 ```
 
 `config.yaml` must be owned by the current user and `chmod 600`; secrets are not loaded from `.env`.

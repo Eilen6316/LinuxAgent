@@ -345,8 +345,10 @@ linuxagent check
 ### 启动对话
 
 ```bash
-linuxagent chat
+linuxagent
 ```
+
+`linuxagent chat` 仍可作为显式等价命令使用。
 
 启动后终端会展示一个欢迎面板，然后进入 prompt：
 

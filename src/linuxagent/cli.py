@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="linuxagent",
         description=(
             "LLM-driven Linux operations assistant with Human-in-the-Loop safety. "
-            "Run `linuxagent check` to validate your configuration."
+            "Run `linuxagent` to start chat or `linuxagent check` to validate your configuration."
         ),
     )
     parser.add_argument(
@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser(
         "chat",
-        help="Start an interactive chat session.",
+        help="Start an interactive chat session (default).",
     )
     audit_parser = subparsers.add_parser(
         "audit",
@@ -161,8 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:
-        parser.print_help()
-        return 0
+        args.command = "chat"
     handler = _COMMANDS.get(args.command)
     if handler is None:
         parser.error(f"unknown command: {args.command}")

@@ -34,7 +34,7 @@ linuxagent check
 ## 4. Start The CLI
 
 ```bash
-linuxagent chat
+linuxagent
 ```
 
 ## 5. Useful Dev Commands

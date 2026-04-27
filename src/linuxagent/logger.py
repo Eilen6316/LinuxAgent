@@ -14,7 +14,7 @@ import json
 import logging
 import sys
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from rich.logging import RichHandler
 
@@ -105,10 +105,13 @@ def _build_handler(fmt: LogFormat, level: int) -> logging.Handler:
         stream: logging.Handler = logging.StreamHandler(sys.stderr)
         stream.setFormatter(JSONFormatter())
         return stream
-    return RichHandler(
-        level=level,
-        show_path=False,
-        rich_tracebacks=True,
-        markup=False,
-        log_time_format="%H:%M:%S",
+    return cast(
+        logging.Handler,
+        RichHandler(
+            level=level,
+            show_path=False,
+            rich_tracebacks=True,
+            markup=False,
+            log_time_format="%H:%M:%S",
+        ),
     )

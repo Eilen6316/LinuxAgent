@@ -56,7 +56,7 @@ v4 rejects unknown host keys by default.
 
 ```bash
 linuxagent check
-linuxagent chat
+linuxagent
 ```
 
 ## Behavior Changes Operators Will Notice

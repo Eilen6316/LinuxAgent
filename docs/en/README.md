@@ -346,8 +346,10 @@ Full example: [`configs/example.yaml`](../../configs/example.yaml).
 ### Start the CLI
 
 ```bash
-linuxagent chat
+linuxagent
 ```
+
+`linuxagent chat` remains available as an explicit equivalent.
 
 You'll see a welcome panel followed by the prompt:
 
