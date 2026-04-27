@@ -14,7 +14,11 @@ from langgraph.types import Command
 
 from ..interfaces import CommandSource, LLMProvider
 from ..plans import CommandPlan, CommandPlanParseError, parse_command_plan
-from ..prompts_loader import build_chat_prompt, build_intent_router_prompt
+from ..prompts_loader import (
+    build_chat_prompt,
+    build_direct_answer_prompt,
+    build_intent_router_prompt,
+)
 from ..providers.errors import ProviderError
 from ..runbooks import RunbookEngine
 from ..services import ClusterService
@@ -48,6 +52,7 @@ def make_parse_intent_node(
     runbook_engine: RunbookEngine | None = None,
 ) -> Node:
     prompt = build_chat_prompt()
+    direct_answer_prompt = build_direct_answer_prompt()
     intent_router_prompt = build_intent_router_prompt()
 
     async def parse_intent_node(state: AgentState) -> AgentState:
@@ -112,12 +117,32 @@ def make_parse_intent_node(
             try:
                 plan = parse_command_plan(proposed)
             except CommandPlanParseError as exc:
+                if _should_fallback_to_direct_answer(str(exc)):
+                    return await _fallback_direct_answer(
+                        provider,
+                        direct_answer_prompt,
+                        messages,
+                        user_text,
+                        current_trace_id,
+                        str(exc),
+                        telemetry,
+                    )
                 if not tools:
                     return _parse_error_update(current_trace_id, str(exc))
                 retry_plan = await _retry_command_plan(
                     provider, prompt, messages, user_text, current_trace_id, str(exc), telemetry
                 )
                 if isinstance(retry_plan, str):
+                    if _should_fallback_to_direct_answer(retry_plan):
+                        return await _fallback_direct_answer(
+                            provider,
+                            direct_answer_prompt,
+                            messages,
+                            user_text,
+                            current_trace_id,
+                            retry_plan,
+                            telemetry,
+                        )
                     return _parse_error_update(current_trace_id, retry_plan)
                 plan = retry_plan
         command = plan.primary.command
@@ -159,6 +184,40 @@ async def _route_intent(
     ):
         raw = (await provider.complete(router_messages)).strip()
     return _parse_intent_decision(raw)
+
+
+async def _fallback_direct_answer(
+    provider: LLMProvider,
+    direct_answer_prompt: Any,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    planning_error: str,
+    telemetry: TelemetryRecorder | None,
+) -> AgentState:
+    prompt_messages = direct_answer_prompt.format_messages(
+        chat_history=messages[:-1],
+        user_input=(
+            f"{user_text}\n\n"
+            "The previous planner produced no executable command for this user message. "
+            f"Planning validation error: {planning_error}. "
+            "Answer conversationally in the user's language or ask one concise clarifying "
+            "question. Do not produce a command or JSON."
+        ),
+    )
+    with span(
+        telemetry,
+        "llm.complete",
+        current_trace_id,
+        {"node": "parse_intent", "fallback": "direct_answer"},
+    ):
+        answer = (await provider.complete(prompt_messages)).strip()
+    return _direct_response_update(current_trace_id, answer)
+
+
+def _should_fallback_to_direct_answer(error: str) -> bool:
+    normalized = error.casefold()
+    return "commands" in normalized and "at least 1 item" in normalized
 
 
 def _parse_intent_decision(raw: str) -> IntentDecision:

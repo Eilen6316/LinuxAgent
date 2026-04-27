@@ -7,6 +7,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 from . import __version__
 from .audit import verify_audit_log
@@ -117,7 +118,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     chat_service = container.chat_service()
     chat_service.load()
     try:
-        asyncio.run(container.build_agent().run(thread_id="cli"))
+        asyncio.run(container.build_agent().run(thread_id=f"cli-{uuid4().hex}"))
     except ProviderError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

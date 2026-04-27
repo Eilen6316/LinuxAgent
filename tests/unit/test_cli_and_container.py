@@ -318,7 +318,7 @@ def test_chat_command_runs_agent(
 ) -> None:
     class _FakeAgent:
         async def run(self, *, thread_id: str = "default") -> None:
-            assert thread_id == "cli"
+            assert thread_id.startswith("cli-")
 
     class _FakeChatService:
         def __init__(self) -> None:

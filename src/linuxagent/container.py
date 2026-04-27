@@ -64,6 +64,7 @@ class Container:
             context_manager=self.context_manager(),
             monitoring_service=self.monitoring_service(),
             cluster_service=self.cluster_service(),
+            tool_names=tuple(tool.name for tool in self.tools()),
         )
 
     def audit_log(self) -> AuditLog:

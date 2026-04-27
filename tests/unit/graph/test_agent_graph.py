@@ -467,6 +467,33 @@ async def test_graph_blocks_non_json_command_plan(tmp_path) -> None:
     assert "JSON CommandPlan" in str(result["messages"][-1].content)
 
 
+async def test_graph_falls_back_to_direct_answer_for_empty_command_plan(tmp_path) -> None:
+    empty_plan = json.dumps(
+        {
+            "goal": "meta question",
+            "commands": [],
+            "risk_summary": "",
+            "preflight_checks": [],
+            "verification_commands": [],
+            "rollback_commands": [],
+            "requires_root": False,
+            "expected_side_effects": [],
+        }
+    )
+    graph, provider = _graph(tmp_path, [empty_plan, "LinuxAgent contributors"])
+    config = {"configurable": {"thread_id": "empty-plan-fallback"}}
+
+    result = await graph.ainvoke(
+        initial_state("你的作者是谁", source=CommandSource.USER), config=config
+    )
+
+    assert "LinuxAgent contributors" in str(result["messages"][-1].content)
+    assert len(provider.complete_messages) == 3
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+
+
 async def test_graph_prefers_matching_runbook_before_llm(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,

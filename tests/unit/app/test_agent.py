@@ -43,9 +43,15 @@ class _FakeClusterService:
 
 
 class _FakeUI:
-    def __init__(self, *, inputs: list[str] | None = None, interrupt_response: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self, *, inputs: list[str] | None = None, interrupt_response: dict[str, Any] | None = None
+    ) -> None:
         self._inputs = [] if inputs is None else list(inputs)
-        self._interrupt_response = {"decision": "yes", "latency_ms": 1} if interrupt_response is None else interrupt_response
+        self._interrupt_response = (
+            {"decision": "yes", "latency_ms": 1}
+            if interrupt_response is None
+            else interrupt_response
+        )
         self.printed: list[str] = []
         self.interrupts: list[dict[str, Any]] = []
 
@@ -117,15 +123,10 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
     result = await agent.run_turn("now", thread_id="t1")
 
     assert str(result["messages"][-1].content) == "done"
-    assert [message.content for message in chat_service.snapshot()] == [
-        "prev user",
-        "prev ai",
-        "now",
-        "done",
-    ]
     assert ui.printed == ["done"]
     first_call = graph.calls[0]
     assert first_call["command_source"] is CommandSource.USER
+    assert [message.content for message in first_call["messages"]] == ["now"]
     assert [message.content for message in chat_service.snapshot()] == [
         "prev user",
         "prev ai",
@@ -139,7 +140,11 @@ async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
     chat_service = ChatService(history_path, max_messages=10)
     graph = _FakeGraph(
         [
-            {"__interrupt__": [Interrupt(value={"type": "confirm_command"}, resumable=True, ns=["n"])]},
+            {
+                "__interrupt__": [
+                    Interrupt(value={"type": "confirm_command"}, resumable=True, ns=["n"])
+                ]
+            },
             {"messages": [HumanMessage(content="run"), AIMessage(content="ok")]},
         ]
     )
@@ -180,13 +185,99 @@ async def test_run_starts_and_stops_services(tmp_path) -> None:
     assert cluster.closed is True
 
 
+async def test_run_slash_history_lists_without_graph_call(tmp_path) -> None:
+    history_path = tmp_path / "history.json"
+    chat_service = ChatService(history_path, max_messages=10)
+    chat_service.add([HumanMessage(content="old question"), AIMessage(content="old answer")])
+    monitoring = _FakeMonitoringService()
+    graph = _FakeGraph([])
+    agent = LinuxAgent(
+        graph=graph,  # type: ignore[arg-type]
+        ui=_FakeUI(inputs=["/history", "/exit"]),
+        chat_service=chat_service,
+        context_manager=ContextManager(10),
+        monitoring_service=monitoring,  # type: ignore[arg-type]
+    )
+
+    await agent.run(thread_id="cli")
+
+    assert graph.calls == []
+    assert "old question" in "\n".join(agent.ui.printed)  # type: ignore[attr-defined]
+
+
+async def test_history_load_explicitly_injects_context(tmp_path) -> None:
+    history_path = tmp_path / "history.json"
+    chat_service = ChatService(history_path, max_messages=10)
+    chat_service.add(
+        [
+            HumanMessage(content="first question"),
+            AIMessage(content="first answer"),
+            HumanMessage(content="second question"),
+            AIMessage(content="second answer"),
+        ]
+    )
+    graph = _FakeGraph(
+        [
+            {
+                "messages": [
+                    HumanMessage(content="second question"),
+                    AIMessage(content="second answer"),
+                    HumanMessage(content="continue"),
+                    AIMessage(content="done"),
+                ]
+            }
+        ]
+    )
+    agent = LinuxAgent(
+        graph=graph,  # type: ignore[arg-type]
+        ui=_FakeUI(inputs=["/history", "1", "continue"]),
+        chat_service=chat_service,
+        context_manager=ContextManager(10),
+        monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
+    )
+
+    await agent.run(thread_id="cli")
+
+    assert [message.content for message in graph.calls[0]["messages"]] == [
+        "second question",
+        "second answer",
+        "continue",
+    ]
+
+
+async def test_new_slash_command_resets_active_context(tmp_path) -> None:
+    history_path = tmp_path / "history.json"
+    chat_service = ChatService(history_path, max_messages=10)
+    chat_service.add([HumanMessage(content="old question"), AIMessage(content="old answer")])
+    graph = _FakeGraph([{"messages": [HumanMessage(content="fresh"), AIMessage(content="done")]}])
+    agent = LinuxAgent(
+        graph=graph,  # type: ignore[arg-type]
+        ui=_FakeUI(inputs=["/history", "1", "/new", "fresh"]),
+        chat_service=chat_service,
+        context_manager=ContextManager(10),
+        monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
+    )
+
+    await agent.run(thread_id="cli")
+
+    assert [message.content for message in graph.calls[0]["messages"]] == ["fresh"]
+
+
 async def test_run_turn_prefers_checkpoint_history(tmp_path) -> None:
     history_path = tmp_path / "history.json"
     chat_service = ChatService(history_path, max_messages=10)
     chat_service.add([HumanMessage(content="disk history")])
     checkpoint_messages = [HumanMessage(content="checkpoint history")]
     graph = _FakeGraph(
-        [{"messages": [*checkpoint_messages, HumanMessage(content="current"), AIMessage(content="done")]}],
+        [
+            {
+                "messages": [
+                    *checkpoint_messages,
+                    HumanMessage(content="current"),
+                    AIMessage(content="done"),
+                ]
+            }
+        ],
         snapshot_values={"messages": checkpoint_messages},
     )
     agent = LinuxAgent(
