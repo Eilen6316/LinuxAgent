@@ -30,6 +30,7 @@ _SLASH_COMMANDS: tuple[tuple[str, str], ...] = (
     ("/tools", "Show enabled local/LLM tool entry points"),
     ("/exit", "Exit LinuxAgent"),
     ("/quit", "Alias for /exit"),
+    ("!", "Run a shell command directly and add output to context"),
 )
 
 
@@ -75,6 +76,10 @@ class ConsoleUI(UserInterface):
 
     async def print(self, text: str) -> None:
         self._console.print(Panel(Text(text), border_style=self._panel_style()))
+
+    async def print_raw(self, text: str, *, stderr: bool = False) -> None:
+        rendered = Text(text, style="red") if stderr else Text(text)
+        self._console.print(rendered, end="")
 
     def _print_hero(self) -> None:
         hero = Text()
@@ -184,3 +189,9 @@ class SlashCommandCompleter:
                     display=command,
                     display_meta=description,
                 )
+
+    async def get_completions_async(
+        self, document: Document, complete_event: CompleteEvent
+    ) -> AsyncGenerator[Completion, None]:
+        for completion in self.get_completions(document, complete_event):
+            yield completion

@@ -370,6 +370,18 @@ through explicit slash commands. Typing `/` opens the command completion menu:
 | `/help` | Show slash command help |
 | `/exit` or `/quit` | Exit the CLI |
 
+Prefix input with `!` to run an operator-authored command directly:
+
+```
+linuxagent ❯ !git status
+linuxagent ❯ !npm test
+linuxagent ❯ !ls -la
+```
+
+For `!` turns, LinuxAgent does not ask the LLM to explain or generate a command.
+It executes the command, streams output as it arrives, and adds both the
+`!<command>` input and the system result to the current conversation context.
+
 ### Scenario 1: safe command (SAFE path)
 
 ```

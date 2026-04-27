@@ -24,6 +24,7 @@ from ..interfaces import (
     CommandExecutor,
     CommandSource,
     ExecutionResult,
+    OutputCallback,
     SafetyLevel,
     SafetyResult,
 )
@@ -171,6 +172,51 @@ class LinuxCommandExecutor(CommandExecutor):
             duration=time.monotonic() - start,
         )
 
+    async def execute_streaming(
+        self,
+        command: str,
+        *,
+        on_stdout: OutputCallback,
+        on_stderr: OutputCallback,
+    ) -> ExecutionResult:
+        """Run ``command`` while streaming stdout/stderr chunks."""
+        payload = self._prepare(command)
+        start = time.monotonic()
+        process = await asyncio.create_subprocess_exec(
+            *payload.argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        assert process.stdout is not None
+        assert process.stderr is not None
+        stdout_parts: list[str] = []
+        stderr_parts: list[str] = []
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    _stream_pipe(process.stdout, on_stdout, stdout_parts),
+                    _stream_pipe(process.stderr, on_stderr, stderr_parts),
+                    process.wait(),
+                ),
+                timeout=payload.timeout,
+            )
+        except TimeoutError as exc:
+            process.kill()
+            try:
+                await process.wait()
+            except Exception:  # noqa: BLE001 - best-effort cleanup after timeout
+                logger.debug("streaming wait cleanup failed for %s", payload.argv)
+            raise CommandTimeoutError(
+                f"command timed out after {payload.timeout}s: {command!r}"
+            ) from exc
+        return ExecutionResult(
+            command=command,
+            exit_code=process.returncode if process.returncode is not None else -1,
+            stdout="".join(stdout_parts),
+            stderr="".join(stderr_parts),
+            duration=time.monotonic() - start,
+        )
+
     # -- Helpers ----------------------------------------------------------
 
     def _prepare(self, command: str) -> _SpawnPayload:
@@ -215,6 +261,17 @@ def _safety_result(decision: PolicyDecision) -> SafetyResult:
         risk_score=decision.risk_score,
         capabilities=decision.capabilities,
     )
+
+
+async def _stream_pipe(
+    pipe: asyncio.StreamReader,
+    callback: OutputCallback,
+    parts: list[str],
+) -> None:
+    while chunk := await pipe.read(4096):
+        text = chunk.decode("utf-8", errors="replace")
+        parts.append(text)
+        await callback(text)
 
 
 def _has_destructive_capability(capabilities: tuple[str, ...]) -> bool:

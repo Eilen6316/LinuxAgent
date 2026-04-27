@@ -61,6 +61,8 @@ class Container:
             graph=self.graph(),
             ui=self.ui(),
             chat_service=self.chat_service(),
+            command_service=self.command_service(),
+            audit=self.audit_log(),
             context_manager=self.context_manager(),
             monitoring_service=self.monitoring_service(),
             cluster_service=self.cluster_service(),

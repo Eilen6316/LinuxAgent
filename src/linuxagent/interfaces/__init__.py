@@ -6,6 +6,7 @@ from .executor import (
     CommandExecutor,
     CommandSource,
     ExecutionResult,
+    OutputCallback,
     SafetyLevel,
     SafetyResult,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "CommandSource",
     "ExecutionResult",
     "LLMProvider",
+    "OutputCallback",
     "SafetyLevel",
     "SafetyResult",
     "UserInterface",

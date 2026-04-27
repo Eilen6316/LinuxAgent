@@ -10,11 +10,13 @@ from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
+from ..audit import AuditLog
 from ..graph import initial_state
 from ..graph.agent_graph import AgentGraph
 from ..intelligence import ContextManager
 from ..interfaces import CommandSource, UserInterface
-from ..services import ChatService, ClusterService, MonitoringService
+from ..services import ChatService, ClusterService, CommandService, MonitoringService
+from .direct_command import DirectCommandRunner
 
 
 @dataclass
@@ -22,6 +24,8 @@ class LinuxAgent:
     graph: AgentGraph
     ui: UserInterface
     chat_service: ChatService
+    command_service: CommandService
+    audit: AuditLog
     context_manager: ContextManager
     monitoring_service: MonitoringService
     cluster_service: ClusterService | None = None
@@ -31,6 +35,14 @@ class LinuxAgent:
         self._archive_messages: list[Any] = self.chat_service.snapshot()
         self._history_threads: set[str] = set()
         self._pending_history_thread_id: str | None = None
+        self._direct_commands = DirectCommandRunner(
+            ui=self.ui,
+            command_service=self.command_service,
+            audit=self.audit,
+            context_manager=self.context_manager,
+            history_threads=self._history_threads,
+            persist_history=self._persist_active_history,
+        )
 
     async def run(self, *, thread_id: str = "default") -> None:
         await self.monitoring_service.start()
@@ -46,6 +58,9 @@ class LinuxAgent:
                     continue
                 if line == "history":
                     line = "/history"
+                if line.startswith("!"):
+                    await self._direct_commands.run(line[1:].strip(), active_thread_id)
+                    continue
                 slash_result = await self._handle_slash(line, active_thread_id)
                 if slash_result == "exit":
                     return

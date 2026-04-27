@@ -66,6 +66,14 @@ def test_slash_command_completer_suggests_commands() -> None:
     assert all(item.display_meta_text for item in completions)
 
 
+async def test_slash_command_completer_supports_async_completion() -> None:
+    completer = SlashCommandCompleter()
+
+    completions = [item async for item in completer.get_completions_async(Document("/t"), object())]
+
+    assert [item.text for item in completions] == ["/tools"]
+
+
 def test_slash_command_completer_ignores_plain_text() -> None:
     completer = SlashCommandCompleter()
 

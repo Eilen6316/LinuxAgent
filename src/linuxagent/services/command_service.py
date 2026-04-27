@@ -5,7 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..intelligence import CommandLearner
-from ..interfaces import CommandExecutor, CommandSource, ExecutionResult, SafetyLevel, SafetyResult
+from ..interfaces import (
+    CommandExecutor,
+    CommandSource,
+    ExecutionResult,
+    OutputCallback,
+    SafetyLevel,
+    SafetyResult,
+)
 
 
 @dataclass(frozen=True)
@@ -52,6 +59,21 @@ class CommandService:
 
     async def run_interactive(self, command: str) -> ExecutionResult:
         result = await self._executor.execute_interactive(command)
+        self._record(command, result)
+        return result
+
+    async def run_streaming(
+        self,
+        command: str,
+        *,
+        on_stdout: OutputCallback,
+        on_stderr: OutputCallback,
+    ) -> ExecutionResult:
+        result = await self._executor.execute_streaming(
+            command,
+            on_stdout=on_stdout,
+            on_stderr=on_stderr,
+        )
         self._record(command, result)
         return result
 

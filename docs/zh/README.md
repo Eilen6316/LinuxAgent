@@ -365,6 +365,17 @@ linuxagent ❯
 | `/help` | 显示 slash 命令帮助 |
 | `/exit` 或 `/quit` | 退出 CLI |
 
+输入以 `!` 开头时会进入直接命令模式：
+
+```
+linuxagent ❯ !git status
+linuxagent ❯ !npm test
+linuxagent ❯ !ls -la
+```
+
+这类回合不会让 AI 解释问题或生成命令。LinuxAgent 会直接执行操作员输入的命令，
+实时显示 stdout/stderr，并把 `!<command>` 和系统返回结果加入当前对话上下文。
+
 ### 场景 1：安全命令（SAFE 路径）
 
 ```

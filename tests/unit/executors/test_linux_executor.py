@@ -118,6 +118,23 @@ async def test_execute_nonzero_exit_code() -> None:
     assert result.exit_code != 0
 
 
+async def test_execute_streaming_emits_output_chunks() -> None:
+    ex = _make()
+    stdout: list[str] = []
+    stderr: list[str] = []
+
+    result = await ex.execute_streaming(
+        "/bin/echo hello",
+        on_stdout=lambda text: _append(stdout, text),
+        on_stderr=lambda text: _append(stderr, text),
+    )
+
+    assert result.exit_code == 0
+    assert stdout == ["hello\n"]
+    assert stderr == []
+    assert result.stdout == "hello\n"
+
+
 async def test_execute_blocked_command_raises() -> None:
     ex = _make()
     with pytest.raises(CommandBlockedError) as info:
@@ -169,3 +186,7 @@ async def test_shell_metachars_are_literal_args_not_evaluated(tmp_path: Path) ->
     assert result.exit_code == 0
     assert f"> {sentinel}" in result.stdout
     assert not sentinel.exists()
+
+
+async def _append(items: list[str], text: str) -> None:
+    items.append(text)

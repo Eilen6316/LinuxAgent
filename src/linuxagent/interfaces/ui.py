@@ -34,3 +34,8 @@ class UserInterface(ABC):
     @abstractmethod
     async def print(self, text: str) -> None:
         """Display ``text`` to the user."""
+
+    async def print_raw(self, text: str, *, stderr: bool = False) -> None:
+        """Display raw command output without extra decoration."""
+        del stderr
+        await self.print(text)

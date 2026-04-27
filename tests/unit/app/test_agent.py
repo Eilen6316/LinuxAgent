@@ -10,9 +10,10 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Interrupt
 
 from linuxagent.app import LinuxAgent
+from linuxagent.audit import AuditLog
 from linuxagent.intelligence import ContextManager
-from linuxagent.interfaces import CommandSource
-from linuxagent.services import ChatService
+from linuxagent.interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
+from linuxagent.services import ChatService, CommandService
 
 
 def test_agent_file_stays_under_300_lines() -> None:
@@ -53,6 +54,7 @@ class _FakeUI:
             else interrupt_response
         )
         self.printed: list[str] = []
+        self.raw_printed: list[tuple[str, bool]] = []
         self.interrupts: list[dict[str, Any]] = []
 
     async def input_stream(self):
@@ -65,6 +67,9 @@ class _FakeUI:
 
     async def print(self, text: str) -> None:
         self.printed.append(text)
+
+    async def print_raw(self, text: str, *, stderr: bool = False) -> None:
+        self.raw_printed.append((text, stderr))
 
 
 class _FakeGraph:
@@ -96,6 +101,65 @@ class _FakeGraph:
         )
 
 
+class _FakeExecutor:
+    def __init__(
+        self,
+        safety: SafetyResult | None = None,
+        result: ExecutionResult | None = None,
+    ) -> None:
+        self._safety = safety or SafetyResult(level=SafetyLevel.SAFE)
+        self._result = result
+        self.commands: list[str] = []
+
+    async def execute(self, command: str) -> ExecutionResult:
+        self.commands.append(command)
+        return self._result or ExecutionResult(command, 0, "ok\n", "", 0.1)
+
+    async def execute_streaming(self, command, *, on_stdout, on_stderr):
+        del on_stderr
+        self.commands.append(command)
+        result = self._result or ExecutionResult(command, 0, "ok\n", "", 0.1)
+        if result.stdout:
+            await on_stdout(result.stdout)
+        return result
+
+    def is_safe(self, command: str, *, source=CommandSource.USER):
+        del command, source
+        return self._safety
+
+    def is_destructive(self, command: str) -> bool:
+        del command
+        return False
+
+
+def _command_service(
+    *,
+    safety: SafetyResult | None = None,
+    result: ExecutionResult | None = None,
+) -> CommandService:
+    return CommandService(_FakeExecutor(safety=safety, result=result))  # type: ignore[arg-type]
+
+
+def _agent(
+    tmp_path,
+    *,
+    graph: _FakeGraph | None = None,
+    ui: _FakeUI | None = None,
+    chat_service: ChatService | None = None,
+    context_manager: ContextManager | None = None,
+    command_service: CommandService | None = None,
+):
+    return LinuxAgent(
+        graph=graph or _FakeGraph([]),  # type: ignore[arg-type]
+        ui=ui or _FakeUI(),
+        chat_service=chat_service or ChatService(tmp_path / "history.json", max_messages=10),
+        command_service=command_service or _command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
+        context_manager=context_manager or ContextManager(10),
+        monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
+    )
+
+
 async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
     history_path = tmp_path / "history.json"
     chat_service = ChatService(history_path, max_messages=10)
@@ -116,6 +180,8 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
         graph=graph,  # type: ignore[arg-type]
         ui=ui,
         chat_service=chat_service,
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
         context_manager=ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
     )
@@ -153,6 +219,8 @@ async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
         graph=graph,  # type: ignore[arg-type]
         ui=ui,
         chat_service=chat_service,
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
         context_manager=ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
     )
@@ -173,6 +241,8 @@ async def test_run_starts_and_stops_services(tmp_path) -> None:
         graph=graph,  # type: ignore[arg-type]
         ui=ui,
         chat_service=ChatService(history_path, max_messages=10),
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
         context_manager=ContextManager(10),
         monitoring_service=monitoring,  # type: ignore[arg-type]
         cluster_service=cluster,  # type: ignore[arg-type]
@@ -195,6 +265,8 @@ async def test_run_slash_history_lists_without_graph_call(tmp_path) -> None:
         graph=graph,  # type: ignore[arg-type]
         ui=_FakeUI(inputs=["/history", "/exit"]),
         chat_service=chat_service,
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
         context_manager=ContextManager(10),
         monitoring_service=monitoring,  # type: ignore[arg-type]
     )
@@ -232,6 +304,8 @@ async def test_history_load_explicitly_injects_context(tmp_path) -> None:
         graph=graph,  # type: ignore[arg-type]
         ui=_FakeUI(inputs=["/history", "1", "continue"]),
         chat_service=chat_service,
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
         context_manager=ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
     )
@@ -258,6 +332,8 @@ async def test_new_slash_command_resets_active_context(tmp_path) -> None:
         graph=graph,  # type: ignore[arg-type]
         ui=_FakeUI(inputs=["/history", "1", "/new", "fresh"]),
         chat_service=chat_service,
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
         context_manager=ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
     )
@@ -265,6 +341,66 @@ async def test_new_slash_command_resets_active_context(tmp_path) -> None:
     await agent.run(thread_id="cli")
 
     assert [message.content for message in graph.calls[0]["messages"]] == ["fresh"]
+
+
+async def test_bang_command_runs_without_graph_and_adds_context(tmp_path) -> None:
+    graph = _FakeGraph([])
+    ui = _FakeUI(inputs=["!/bin/echo hello", "/exit"])
+    command_service = _command_service(
+        result=ExecutionResult("/bin/echo hello", 0, "hello\n", "", 0.1)
+    )
+    chat_service = ChatService(tmp_path / "history.json", max_messages=10)
+    agent = _agent(
+        tmp_path,
+        graph=graph,
+        ui=ui,
+        chat_service=chat_service,
+        command_service=command_service,
+    )
+
+    await agent.run(thread_id="cli")
+
+    assert graph.calls == []
+    assert ("$ /bin/echo hello\n", False) in ui.raw_printed
+    assert ("hello\n", False) in ui.raw_printed
+    assert [message.content for message in chat_service.snapshot()] == [
+        "!/bin/echo hello",
+        "Shell command exited with code 0.\n\nstdout:\nhello",
+    ]
+
+
+async def test_bang_command_output_is_used_as_next_turn_context(tmp_path) -> None:
+    graph = _FakeGraph(
+        [{"messages": [HumanMessage(content="what happened"), AIMessage(content="done")]}]
+    )
+    ui = _FakeUI(inputs=["!/bin/echo hello", "what happened"])
+    command_service = _command_service(
+        result=ExecutionResult("/bin/echo hello", 0, "hello\n", "", 0.1)
+    )
+    agent = _agent(tmp_path, graph=graph, ui=ui, command_service=command_service)
+
+    await agent.run(thread_id="cli")
+
+    assert [message.content for message in graph.calls[0]["messages"]] == [
+        "!/bin/echo hello",
+        "Shell command exited with code 0.\n\nstdout:\nhello",
+        "what happened",
+    ]
+
+
+async def test_bang_command_requires_confirmation_for_confirm_policy(tmp_path) -> None:
+    ui = _FakeUI(inputs=["!python script.py", "/exit"])
+    command_service = _command_service(
+        safety=SafetyResult(level=SafetyLevel.CONFIRM, matched_rule="INTERACTIVE"),
+        result=ExecutionResult("python script.py", 0, "ran\n", "", 0.1),
+    )
+    agent = _agent(tmp_path, ui=ui, command_service=command_service)
+
+    await agent.run(thread_id="cli")
+
+    assert ui.interrupts
+    assert ui.interrupts[0]["command"] == "python script.py"
+    assert ("ran\n", False) in ui.raw_printed
 
 
 async def test_run_turn_prefers_checkpoint_history(tmp_path) -> None:
@@ -288,6 +424,8 @@ async def test_run_turn_prefers_checkpoint_history(tmp_path) -> None:
         graph=graph,  # type: ignore[arg-type]
         ui=_FakeUI(),
         chat_service=chat_service,
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
         context_manager=ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
     )
@@ -318,6 +456,8 @@ async def test_run_turn_persists_compressed_checkpoint_history(tmp_path) -> None
         graph=graph,  # type: ignore[arg-type]
         ui=_FakeUI(),
         chat_service=chat_service,
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
         context_manager=ContextManager(3),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
     )

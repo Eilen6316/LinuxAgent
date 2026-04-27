@@ -230,6 +230,8 @@ def _agent(
         graph=graph,
         ui=ui,  # type: ignore[arg-type]
         chat_service=ChatService(tmp_path / "history.json", max_messages=20),
+        command_service=command_service,
+        audit=AuditLog(tmp_path / "agent-audit.log"),
         context_manager=ContextManager(20),
         monitoring_service=_Monitoring(),  # type: ignore[arg-type]
         cluster_service=cluster_service,

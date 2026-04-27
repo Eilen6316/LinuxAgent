@@ -90,6 +90,10 @@ available only when the operator asks for it with `/history`; then enter the
 shown number to recall that conversation into the current turn. Use `/new` to
 reset context inside a running CLI session and `/tools` to see available
 slash/tool entry points. Typing `/` opens the slash-command completion menu.
+Input beginning with `!` is direct command mode: LinuxAgent executes the
+operator-authored command, streams stdout/stderr live, and records both
+`!<command>` and the system result into the active conversation context. It does
+not ask the LLM to explain or generate a reply for that turn.
 
 ## Core Capabilities
 
@@ -100,6 +104,7 @@ slash/tool entry points. Typing `/` opens the slash-command completion menu.
 | Structured `CommandPlan` | LLM output must validate as JSON before any policy or execution path |
 | AI-owned intent routing | Conversation vs operation vs clarification is decided by `prompts/intent_router.md`, not Python keyword rules |
 | Explicit history control | New sessions do not inherit previous chats unless `/history` is used |
+| Direct `!` command mode | Runs operator-authored commands without an AI reply and adds command/output to current context |
 | YAML runbooks | Common ops scenarios can be matched before free-form command generation |
 | Learner memory | Successful command patterns are persisted locally after secret redaction |
 | LangGraph HITL | Confirmation uses `interrupt()` and checkpointing rather than inline `input()` |

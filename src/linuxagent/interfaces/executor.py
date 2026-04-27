@@ -8,8 +8,11 @@ via token-level analysis using ``shlex`` (R-SEC-02).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
+
+OutputCallback = Callable[[str], Awaitable[None]]
 
 
 class SafetyLevel(StrEnum):
@@ -56,6 +59,21 @@ class CommandExecutor(ABC):
     async def execute_interactive(self, command: str) -> ExecutionResult:
         """Run an interactive command attached to the current terminal."""
         raise NotImplementedError
+
+    async def execute_streaming(
+        self,
+        command: str,
+        *,
+        on_stdout: OutputCallback,
+        on_stderr: OutputCallback,
+    ) -> ExecutionResult:
+        """Run a command while streaming stdout/stderr to callbacks."""
+        result = await self.execute(command)
+        if result.stdout:
+            await on_stdout(result.stdout)
+        if result.stderr:
+            await on_stderr(result.stderr)
+        return result
 
     @abstractmethod
     def is_safe(
