@@ -21,6 +21,16 @@ policy:
   path:                         # optional user policy YAML path
   include_builtin: true          # true = built-ins + user overrides; false = user rules only
 
+file_patch:
+  allow_roots:
+    - .
+    - /tmp
+  high_risk_roots:
+    - /etc
+    - /root/.ssh
+    - /home/*/.ssh
+  allow_permission_changes: true
+
 cluster:
   batch_confirm_threshold: 2
   timeout: 60.0

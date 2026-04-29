@@ -12,7 +12,7 @@ from langgraph.types import Command
 
 from linuxagent.audit import AuditLog
 from linuxagent.cluster.remote_command import RemoteCommandError, validate_remote_command
-from linuxagent.config.models import ClusterConfig, ClusterHost, SecurityConfig
+from linuxagent.config.models import ClusterConfig, ClusterHost, FilePatchConfig, SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.interfaces import CommandSource, ExecutionResult
@@ -88,6 +88,7 @@ def _graph(
     *,
     cluster_service: ClusterService | None = None,
     runbook_engine: RunbookEngine | None = None,
+    file_patch_config: FilePatchConfig | None = None,
 ):
     provider = _FakeProvider(responses)
     executor = LinuxCommandExecutor(
@@ -99,6 +100,7 @@ def _graph(
         audit=AuditLog(tmp_path / "audit.log"),
         cluster_service=cluster_service,
         runbook_engine=runbook_engine,
+        file_patch_config=file_patch_config or FilePatchConfig(),
     )
     return build_agent_graph(deps), provider
 
@@ -221,6 +223,48 @@ async def test_graph_refuses_file_patch_without_writing(tmp_path) -> None:
 
     assert not target.exists()
     assert "已拒绝执行" in str(resumed["messages"][-1].content)
+
+
+async def test_graph_blocks_file_patch_outside_allow_roots(tmp_path) -> None:
+    target = tmp_path / "blocked" / "demo.sh"
+    graph, _provider = _graph(
+        tmp_path,
+        [file_patch_plan_json(str(target), "#!/bin/sh\necho disk\n")],
+        file_patch_config=FilePatchConfig(allow_roots=(tmp_path / "allowed",)),
+    )
+    config = {"configurable": {"thread_id": "file-patch-blocked-path"}}
+
+    result = await graph.ainvoke(
+        initial_state("create a disk info shell script", source=CommandSource.USER),
+        config=config,
+    )
+
+    assert not target.exists()
+    assert "已阻止执行" in str(result["messages"][-1].content)
+    assert "allow_roots" in str(result["messages"][-1].content)
+
+
+async def test_graph_marks_high_risk_file_patch_confirmation(tmp_path) -> None:
+    target = tmp_path / "etc" / "demo.conf"
+    graph, _provider = _graph(
+        tmp_path,
+        [file_patch_plan_json(str(target), "enabled=true\n")],
+        file_patch_config=FilePatchConfig(
+            allow_roots=(tmp_path,),
+            high_risk_roots=(tmp_path / "etc",),
+        ),
+    )
+    config = {"configurable": {"thread_id": "file-patch-high-risk"}}
+
+    await graph.ainvoke(
+        initial_state("edit a high risk config", source=CommandSource.USER),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+
+    assert payload["risk_level"] == "high"
+    assert str(target) in payload["high_risk_paths"]
 
 
 async def test_graph_non_tty_deny_goes_to_refused(tmp_path) -> None:

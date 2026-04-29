@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.messages import AIMessage
@@ -11,6 +11,7 @@ from langchain_core.tools import BaseTool
 from langgraph.types import Command, interrupt
 
 from ..audit import AuditLog
+from ..config.models import FilePatchConfig
 from ..interfaces import CommandSource, LLMProvider
 from ..prompts_loader import build_analysis_prompt
 from ..runbooks import RunbookEngine
@@ -47,6 +48,7 @@ class GraphDependencies:
     tools: tuple[BaseTool, ...] = ()
     telemetry: TelemetryRecorder | None = None
     runbook_engine: RunbookEngine | None = None
+    file_patch_config: FilePatchConfig = field(default_factory=FilePatchConfig)
 
 
 def make_confirm_node(

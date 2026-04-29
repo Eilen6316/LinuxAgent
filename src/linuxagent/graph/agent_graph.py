@@ -63,11 +63,11 @@ def _add_graph_nodes(graph: Any, deps: GraphDependencies) -> None:
     )
     graph.add_node(
         "file_patch_confirm",
-        _langgraph_node(make_file_patch_confirm_node(deps.audit)),
+        _langgraph_node(make_file_patch_confirm_node(deps.audit, deps.file_patch_config)),
     )
     graph.add_node(
         "apply_file_patch",
-        _langgraph_node(make_apply_file_patch_node(deps.audit)),
+        _langgraph_node(make_apply_file_patch_node(deps.audit, deps.file_patch_config)),
     )
     graph.add_node(
         "execute",

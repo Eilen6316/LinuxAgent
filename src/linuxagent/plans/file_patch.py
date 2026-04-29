@@ -5,13 +5,17 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from ..config.models import FilePatchConfig
+
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 _HUNK_RE = re.compile(r"^@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@")
+_MODE_RE = re.compile(r"^0?[0-7]{3,4}$")
 
 
 class FilePatchPlanParseError(ValueError):
@@ -20,6 +24,44 @@ class FilePatchPlanParseError(ValueError):
 
 class FilePatchApplyError(ValueError):
     """Raised when a unified diff cannot be applied."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        path: Path | None = None,
+        hunk_index: int | None = None,
+        expected: str | None = None,
+        actual: str | None = None,
+    ) -> None:
+        super().__init__(_patch_error_message(message, path, hunk_index, expected, actual))
+        self.path = path
+        self.hunk_index = hunk_index
+        self.expected = expected
+        self.actual = actual
+
+
+class FilePatchPermissionChange(BaseModel):
+    model_config = _FROZEN
+
+    path: str = Field(min_length=1)
+    mode: str = Field(min_length=3)
+    reason: str = ""
+
+    @field_validator("path", "mode", "reason")
+    @classmethod
+    def _strip_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if value and not stripped:
+            raise ValueError("value cannot be blank")
+        return stripped
+
+    @field_validator("mode")
+    @classmethod
+    def _mode_is_octal(cls, value: str) -> str:
+        if not _MODE_RE.fullmatch(value):
+            raise ValueError("mode must be an octal string such as 0644 or 0755")
+        return value
 
 
 class FilePatchPlan(BaseModel):
@@ -31,6 +73,7 @@ class FilePatchPlan(BaseModel):
     unified_diff: str = Field(min_length=1)
     risk_summary: str = ""
     verification_commands: tuple[str, ...] = ()
+    permission_changes: tuple[FilePatchPermissionChange, ...] = ()
     rollback_diff: str = ""
     expected_side_effects: tuple[str, ...] = ()
 
@@ -43,6 +86,25 @@ class FilePatchPlan(BaseModel):
 @dataclass(frozen=True)
 class PatchApplyResult:
     files_changed: tuple[Path, ...]
+    permissions_changed: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True)
+class FilePatchSafetyReport:
+    allowed: bool
+    risk_level: Literal["normal", "high", "blocked"]
+    paths: tuple[Path, ...]
+    blocked_paths: tuple[Path, ...] = ()
+    high_risk_paths: tuple[Path, ...] = ()
+    reasons: tuple[str, ...] = ()
+
+    @property
+    def matched_rule(self) -> str:
+        if self.risk_level == "blocked":
+            return "FILE_PATCH_PATH_BLOCK"
+        if self.risk_level == "high":
+            return "FILE_PATCH_HIGH_RISK"
+        return "FILE_PATCH"
 
 
 def parse_file_patch_plan(text: str) -> FilePatchPlan:
@@ -61,12 +123,49 @@ def parse_file_patch_plan(text: str) -> FilePatchPlan:
         raise FilePatchPlanParseError(_format_validation_error(exc)) from exc
 
 
-def apply_unified_diff(diff_text: str) -> PatchApplyResult:
+def apply_unified_diff(
+    diff_text: str,
+    *,
+    config: FilePatchConfig | None = None,
+    permission_changes: tuple[FilePatchPermissionChange, ...] = (),
+    cwd: Path | None = None,
+) -> PatchApplyResult:
     patches = _parse_file_patches(diff_text)
-    changed: list[Path] = []
-    for patch in patches:
-        changed.append(_apply_file_patch(patch))
-    return PatchApplyResult(files_changed=tuple(changed))
+    planned = _dry_run_file_updates(patches)
+    safety = _evaluate_paths(_patch_paths(patches, permission_changes), config, cwd)
+    safety = _with_permission_policy(safety, permission_changes, config)
+    if not safety.allowed:
+        raise FilePatchApplyError("; ".join(safety.reasons))
+    _validate_permission_targets(planned, permission_changes, cwd)
+    changed = _apply_file_updates(planned)
+    permissions = _apply_permission_changes(permission_changes, config, cwd)
+    return PatchApplyResult(files_changed=changed, permissions_changed=permissions)
+
+
+def apply_file_patch_plan(
+    plan: FilePatchPlan,
+    config: FilePatchConfig,
+    *,
+    cwd: Path | None = None,
+) -> PatchApplyResult:
+    return apply_unified_diff(
+        plan.unified_diff,
+        config=config,
+        permission_changes=plan.permission_changes,
+        cwd=cwd,
+    )
+
+
+def evaluate_file_patch_plan(
+    plan: FilePatchPlan,
+    config: FilePatchConfig,
+    *,
+    cwd: Path | None = None,
+) -> FilePatchSafetyReport:
+    patches = _parse_file_patches(plan.unified_diff)
+    _dry_run_file_updates(patches)
+    safety = _evaluate_paths(_patch_paths(patches, plan.permission_changes), config, cwd)
+    return _with_permission_policy(safety, plan.permission_changes, config)
 
 
 @dataclass(frozen=True)
@@ -74,6 +173,13 @@ class _FilePatch:
     old_path: str
     new_path: str
     hunks: tuple[list[str], ...]
+
+
+@dataclass(frozen=True)
+class _PlannedFileUpdate:
+    target: Path
+    new_lines: tuple[str, ...]
+    delete: bool = False
 
 
 def _parse_file_patches(diff_text: str) -> tuple[_FilePatch, ...]:
@@ -107,60 +213,220 @@ def _parse_file_patches(diff_text: str) -> tuple[_FilePatch, ...]:
     return tuple(patches)
 
 
-def _apply_file_patch(patch: _FilePatch) -> Path:
+def _dry_run_file_updates(patches: tuple[_FilePatch, ...]) -> tuple[_PlannedFileUpdate, ...]:
+    return tuple(_planned_file_update(patch) for patch in patches)
+
+
+def _planned_file_update(patch: _FilePatch) -> _PlannedFileUpdate:
     target = _target_path(patch)
     old_lines = _read_lines(target)
-    new_lines = _patched_lines(old_lines, patch.hunks)
-    if patch.new_path == "/dev/null":
-        target.unlink(missing_ok=True)
-        return target
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(_join_lines(new_lines), encoding="utf-8")
+    new_lines = _patched_lines(target, old_lines, patch.hunks)
+    return _PlannedFileUpdate(target, tuple(new_lines), patch.new_path == "/dev/null")
+
+
+def _apply_file_updates(updates: tuple[_PlannedFileUpdate, ...]) -> tuple[Path, ...]:
+    changed: list[Path] = []
+    for update in updates:
+        changed.append(_apply_file_update(update))
+    return tuple(changed)
+
+
+def _apply_file_update(update: _PlannedFileUpdate) -> Path:
+    if update.delete:
+        update.target.unlink(missing_ok=True)
+        return update.target
+    update.target.parent.mkdir(parents=True, exist_ok=True)
+    update.target.write_text(_join_lines(list(update.new_lines)), encoding="utf-8")
+    return update.target
+
+
+def _apply_permission_changes(
+    changes: tuple[FilePatchPermissionChange, ...],
+    config: FilePatchConfig | None,
+    cwd: Path | None,
+) -> tuple[Path, ...]:
+    if not changes:
+        return ()
+    if config is not None and not config.allow_permission_changes:
+        raise FilePatchApplyError("permission changes are disabled by file_patch config")
+    return tuple(_apply_permission_change(change, cwd) for change in changes)
+
+
+def _validate_permission_targets(
+    updates: tuple[_PlannedFileUpdate, ...],
+    changes: tuple[FilePatchPermissionChange, ...],
+    cwd: Path | None,
+) -> None:
+    created_or_updated = {
+        _resolve_user_path(update.target, cwd) for update in updates if not update.delete
+    }
+    for change in changes:
+        target = _resolve_user_path(Path(change.path), cwd)
+        if target not in created_or_updated and not target.exists():
+            raise FilePatchApplyError("permission target does not exist", path=target)
+
+
+def _apply_permission_change(change: FilePatchPermissionChange, cwd: Path | None) -> Path:
+    target = _resolve_user_path(Path(change.path), cwd)
+    target.chmod(int(change.mode, 8))
     return target
 
 
-def _patched_lines(old_lines: list[str], hunks: tuple[list[str], ...]) -> list[str]:
+def _patch_paths(
+    patches: tuple[_FilePatch, ...],
+    permission_changes: tuple[FilePatchPermissionChange, ...],
+) -> tuple[Path, ...]:
+    paths = [_target_path(patch) for patch in patches]
+    paths.extend(Path(change.path) for change in permission_changes)
+    return tuple(paths)
+
+
+def _evaluate_paths(
+    paths: tuple[Path, ...],
+    config: FilePatchConfig | None,
+    cwd: Path | None,
+) -> FilePatchSafetyReport:
+    resolved = tuple(_resolve_user_path(path, cwd) for path in paths)
+    if config is None:
+        return FilePatchSafetyReport(True, "normal", resolved)
+    blocked = tuple(path for path in resolved if not _is_allowed_path(path, config, cwd))
+    high_risk = tuple(path for path in resolved if _is_high_risk_path(path, config, cwd))
+    reasons = _path_safety_reasons(blocked, high_risk)
+    if blocked:
+        return FilePatchSafetyReport(False, "blocked", resolved, blocked, high_risk, reasons)
+    level: Literal["normal", "high"] = "high" if high_risk else "normal"
+    return FilePatchSafetyReport(True, level, resolved, (), high_risk, reasons)
+
+
+def _with_permission_policy(
+    report: FilePatchSafetyReport,
+    changes: tuple[FilePatchPermissionChange, ...],
+    config: FilePatchConfig | None,
+) -> FilePatchSafetyReport:
+    if config is None or config.allow_permission_changes or not changes:
+        return report
+    reasons = (*report.reasons, "permission changes are disabled by file_patch config")
+    return FilePatchSafetyReport(
+        allowed=False,
+        risk_level="blocked",
+        paths=report.paths,
+        blocked_paths=report.blocked_paths,
+        high_risk_paths=report.high_risk_paths,
+        reasons=reasons,
+    )
+
+
+def _path_safety_reasons(blocked: tuple[Path, ...], high_risk: tuple[Path, ...]) -> tuple[str, ...]:
+    reasons: list[str] = []
+    if blocked:
+        reasons.append("path outside configured file_patch.allow_roots: " + _join_paths(blocked))
+    if high_risk:
+        reasons.append(
+            "path matches configured file_patch.high_risk_roots: " + _join_paths(high_risk)
+        )
+    return tuple(reasons)
+
+
+def _is_allowed_path(path: Path, config: FilePatchConfig, cwd: Path | None) -> bool:
+    roots = tuple(_resolve_user_path(root, cwd) for root in config.allow_roots)
+    return any(_matches_root(path, root) for root in roots)
+
+
+def _is_high_risk_path(path: Path, config: FilePatchConfig, cwd: Path | None) -> bool:
+    roots = tuple(_resolve_user_path(root, cwd) for root in config.high_risk_roots)
+    return any(_matches_root(path, root) for root in roots)
+
+
+def _matches_root(path: Path, root: Path) -> bool:
+    path_text = path.as_posix()
+    root_text = root.as_posix()
+    if "*" in root_text or "?" in root_text:
+        return fnmatch(path_text, root_text) or fnmatch(path_text, f"{root_text}/*")
+    return path == root or root in path.parents
+
+
+def _resolve_user_path(path: Path, cwd: Path | None) -> Path:
+    candidate = path.expanduser()
+    if not candidate.is_absolute():
+        candidate = (cwd or Path.cwd()) / candidate
+    return candidate.resolve(strict=False)
+
+
+def _join_paths(paths: tuple[Path, ...]) -> str:
+    return ", ".join(str(path) for path in paths)
+
+
+def _patched_lines(path: Path, old_lines: list[str], hunks: tuple[list[str], ...]) -> list[str]:
     output: list[str] = []
     cursor = 0
-    for hunk in hunks:
-        start = _hunk_old_start(hunk[0])
+    for hunk_index, hunk in enumerate(hunks, start=1):
+        start = _hunk_old_start(hunk[0], path, hunk_index)
         hunk_start = max(start - 1, 0)
         output.extend(old_lines[cursor:hunk_start])
-        cursor = hunk_start
-        cursor = _apply_hunk_lines(hunk[1:], old_lines, output, cursor)
+        cursor = _apply_hunk_lines(hunk[1:], old_lines, output, hunk_start, path, hunk_index)
     output.extend(old_lines[cursor:])
     return output
 
 
 def _apply_hunk_lines(
-    hunk_lines: list[str], old_lines: list[str], output: list[str], cursor: int
+    hunk_lines: list[str],
+    old_lines: list[str],
+    output: list[str],
+    cursor: int,
+    path: Path,
+    hunk_index: int,
 ) -> int:
     for line in hunk_lines:
-        if not line:
-            raise FilePatchApplyError("invalid empty hunk line")
-        marker = line[0]
-        content = line[1:]
-        if marker == "\\":
-            continue
-        if marker in {" ", "-"}:
-            _assert_old_line(old_lines, cursor, content)
-            cursor += 1
-        if marker in {" ", "+"}:
-            output.append(content)
-        if marker not in {" ", "-", "+", "\\"}:
-            raise FilePatchApplyError(f"invalid hunk marker {marker!r}")
+        cursor = _apply_hunk_line(line, old_lines, output, cursor, path, hunk_index)
     return cursor
 
 
-def _assert_old_line(old_lines: list[str], cursor: int, expected: str) -> None:
-    if cursor >= len(old_lines) or old_lines[cursor] != expected:
-        raise FilePatchApplyError("unified diff context does not match target file")
+def _apply_hunk_line(
+    line: str,
+    old_lines: list[str],
+    output: list[str],
+    cursor: int,
+    path: Path,
+    hunk_index: int,
+) -> int:
+    if not line:
+        raise FilePatchApplyError("invalid empty hunk line", path=path, hunk_index=hunk_index)
+    marker = line[0]
+    content = line[1:]
+    if marker == "\\":
+        return cursor
+    if marker in {" ", "-"}:
+        _assert_old_line(old_lines, cursor, content, path, hunk_index)
+        cursor += 1
+    if marker in {" ", "+"}:
+        output.append(content)
+    if marker not in {" ", "-", "+", "\\"}:
+        raise FilePatchApplyError(
+            f"invalid hunk marker {marker!r}", path=path, hunk_index=hunk_index
+        )
+    return cursor
 
 
-def _hunk_old_start(header: str) -> int:
+def _assert_old_line(
+    old_lines: list[str], cursor: int, expected: str, path: Path, hunk_index: int
+) -> None:
+    actual = old_lines[cursor] if cursor < len(old_lines) else "<EOF>"
+    if actual != expected:
+        raise FilePatchApplyError(
+            "unified diff context does not match target file",
+            path=path,
+            hunk_index=hunk_index,
+            expected=expected,
+            actual=actual,
+        )
+
+
+def _hunk_old_start(header: str, path: Path, hunk_index: int) -> int:
     match = _HUNK_RE.match(header)
     if match is None:
-        raise FilePatchApplyError(f"invalid hunk header: {header}")
+        raise FilePatchApplyError(
+            f"invalid hunk header: {header}", path=path, hunk_index=hunk_index
+        )
     return int(match.group("old"))
 
 
@@ -188,6 +454,25 @@ def _clean_diff_path(raw: str) -> str:
     if path.startswith(("a/", "b/")):
         return path[2:]
     return path
+
+
+def _patch_error_message(
+    message: str,
+    path: Path | None,
+    hunk_index: int | None,
+    expected: str | None,
+    actual: str | None,
+) -> str:
+    details = [message]
+    if path is not None:
+        details.append(f"file={path}")
+    if hunk_index is not None:
+        details.append(f"hunk={hunk_index}")
+    if expected is not None:
+        details.append(f"expected={expected!r}")
+    if actual is not None:
+        details.append(f"actual={actual!r}")
+    return "; ".join(details)
 
 
 def _extract_json_payload(text: str) -> str:
@@ -219,6 +504,7 @@ def file_patch_plan_json(path: str, body: str, *, goal: str = "Apply file patch"
         "unified_diff": "\n".join(diff_lines) + "\n",
         "risk_summary": "Creates or updates local files after confirmation.",
         "verification_commands": [],
+        "permission_changes": [],
         "rollback_diff": "",
         "expected_side_effects": ["filesystem.write"],
     }

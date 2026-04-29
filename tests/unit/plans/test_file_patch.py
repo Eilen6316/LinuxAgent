@@ -7,9 +7,12 @@ from pathlib import Path
 
 import pytest
 
+from linuxagent.config.models import FilePatchConfig
 from linuxagent.plans import (
     FilePatchApplyError,
+    apply_file_patch_plan,
     apply_unified_diff,
+    evaluate_file_patch_plan,
     file_patch_plan_json,
     parse_file_patch_plan,
 )
@@ -62,6 +65,104 @@ def test_apply_unified_diff_rejects_context_mismatch(tmp_path: Path) -> None:
 
     with pytest.raises(FilePatchApplyError, match="context"):
         apply_unified_diff(diff)
+
+
+def test_apply_unified_diff_rejects_paths_outside_allow_roots(tmp_path: Path) -> None:
+    allowed = tmp_path / "allowed"
+    target = tmp_path / "outside" / "blocked.sh"
+    plan = parse_file_patch_plan(file_patch_plan_json(str(target), "#!/bin/sh\n"))
+    config = FilePatchConfig(allow_roots=(allowed,), high_risk_roots=())
+
+    with pytest.raises(FilePatchApplyError, match="allow_roots"):
+        apply_file_patch_plan(plan, config)
+
+    assert not target.exists()
+
+
+def test_apply_unified_diff_rejects_relative_path_traversal(tmp_path: Path) -> None:
+    diff = "\n".join(["--- /dev/null", "+++ ../outside.txt", "@@ -0,0 +1 @@", "+blocked", ""])
+    config = FilePatchConfig(allow_roots=(tmp_path / "workspace",))
+
+    with pytest.raises(FilePatchApplyError, match="allow_roots"):
+        apply_unified_diff(diff, config=config, cwd=tmp_path / "workspace")
+
+    assert not (tmp_path / "outside.txt").exists()
+
+
+def test_evaluate_file_patch_plan_marks_allowed_high_risk_path(tmp_path: Path) -> None:
+    target = tmp_path / "etc" / "demo.conf"
+    plan = parse_file_patch_plan(file_patch_plan_json(str(target), "enabled=true\n"))
+    config = FilePatchConfig(allow_roots=(tmp_path,), high_risk_roots=(tmp_path / "etc",))
+
+    report = evaluate_file_patch_plan(plan, config)
+
+    assert report.allowed is True
+    assert report.risk_level == "high"
+    assert report.high_risk_paths == (target,)
+
+
+def test_apply_file_patch_plan_applies_permission_changes(tmp_path: Path) -> None:
+    target = tmp_path / "hello.sh"
+    payload = json.loads(file_patch_plan_json(str(target), "#!/bin/sh\necho hi\n"))
+    payload["permission_changes"] = [
+        {"path": str(target), "mode": "0755", "reason": "make script executable"}
+    ]
+    plan = parse_file_patch_plan(json.dumps(payload))
+
+    result = apply_file_patch_plan(plan, FilePatchConfig(allow_roots=(tmp_path,)))
+
+    assert result.permissions_changed == (target,)
+    assert target.stat().st_mode & 0o777 == 0o755
+
+
+def test_permission_changes_disabled_block_before_writing(tmp_path: Path) -> None:
+    target = tmp_path / "hello.sh"
+    payload = json.loads(file_patch_plan_json(str(target), "#!/bin/sh\necho hi\n"))
+    payload["permission_changes"] = [{"path": str(target), "mode": "0755"}]
+    plan = parse_file_patch_plan(json.dumps(payload))
+    config = FilePatchConfig(allow_roots=(tmp_path,), allow_permission_changes=False)
+
+    with pytest.raises(FilePatchApplyError, match="permission changes are disabled"):
+        apply_file_patch_plan(plan, config)
+
+    assert not target.exists()
+
+
+def test_missing_permission_target_blocks_before_writing(tmp_path: Path) -> None:
+    target = tmp_path / "hello.sh"
+    missing = tmp_path / "missing.sh"
+    payload = json.loads(file_patch_plan_json(str(target), "#!/bin/sh\necho hi\n"))
+    payload["permission_changes"] = [{"path": str(missing), "mode": "0755"}]
+    plan = parse_file_patch_plan(json.dumps(payload))
+
+    with pytest.raises(FilePatchApplyError, match="permission target does not exist"):
+        apply_file_patch_plan(plan, FilePatchConfig(allow_roots=(tmp_path,)))
+
+    assert not target.exists()
+
+
+def test_file_patch_plan_rejects_invalid_permission_mode(tmp_path: Path) -> None:
+    target = tmp_path / "hello.sh"
+    payload = json.loads(file_patch_plan_json(str(target), "#!/bin/sh\n"))
+    payload["permission_changes"] = [{"path": str(target), "mode": "bad"}]
+
+    with pytest.raises(ValueError, match="mode"):
+        parse_file_patch_plan(json.dumps(payload))
+
+
+def test_apply_unified_diff_reports_failed_file_hunk_and_lines(tmp_path: Path) -> None:
+    path = tmp_path / "config.txt"
+    path.write_text("actual=true\n", encoding="utf-8")
+    diff = "\n".join([f"--- {path}", f"+++ {path}", "@@ -1,1 +1,1 @@", "-old=true", "+new=true"])
+
+    with pytest.raises(FilePatchApplyError) as exc_info:
+        apply_unified_diff(diff)
+
+    message = str(exc_info.value)
+    assert f"file={path}" in message
+    assert "hunk=1" in message
+    assert "expected='old=true'" in message
+    assert "actual='actual=true'" in message
 
 
 def test_parse_file_patch_plan_rejects_command_plan_shape() -> None:

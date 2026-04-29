@@ -75,6 +75,21 @@ class PolicyRuntimeConfig(BaseModel):
     include_builtin: bool = True
 
 
+class FilePatchConfig(BaseModel):
+    model_config = _FROZEN
+
+    allow_roots: UserPathTuple = (
+        Path("."),
+        Path("/tmp"),  # noqa: S108  # nosec B108 - explicit patch sandbox
+    )
+    high_risk_roots: UserPathTuple = (
+        Path("/etc"),
+        Path("/root/.ssh"),
+        Path("/home/*/.ssh"),
+    )
+    allow_permission_changes: bool = True
+
+
 class ClusterHost(BaseModel):
     model_config = _FROZEN
 
@@ -187,6 +202,7 @@ class AppConfig(BaseModel):
     api: APIConfig = Field(default_factory=APIConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     policy: PolicyRuntimeConfig = Field(default_factory=PolicyRuntimeConfig)
+    file_patch: FilePatchConfig = Field(default_factory=FilePatchConfig)
     cluster: ClusterConfig = Field(default_factory=ClusterConfig)
     audit: AuditConfig = Field(default_factory=AuditConfig)
     ui: UIConfig = Field(default_factory=UIConfig)

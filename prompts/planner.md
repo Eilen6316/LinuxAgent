@@ -83,6 +83,13 @@ shown to the user before any file is changed. Return only this JSON object:
   "unified_diff": "--- old/path\n+++ new/path\n@@ -1,1 +1,1 @@\n-old line\n+new line\n",
   "risk_summary": "short risk summary",
   "verification_commands": ["string command only"],
+  "permission_changes": [
+    {{
+      "path": "path/to/script.sh",
+      "mode": "0755",
+      "reason": "make generated shell script executable"
+    }}
+  ],
   "rollback_diff": "",
   "expected_side_effects": ["filesystem.write"]
 }}
@@ -90,4 +97,5 @@ shown to the user before any file is changed. Return only this JSON object:
 
 For new files, use `--- /dev/null` and `+++ /absolute/or/relative/path` in the
 unified diff. Do not apply the patch through shell commands; the graph applies
-FilePatchPlan after human confirmation.
+FilePatchPlan after human confirmation. If a generated script needs executable
+permissions, use `permission_changes`; do not emit `chmod` as a shell command.

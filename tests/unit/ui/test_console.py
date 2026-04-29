@@ -130,6 +130,12 @@ def test_render_file_patch_confirm_shows_planned_diff() -> None:
             "goal": "Edit demo",
             "files_changed": ["demo.sh"],
             "risk_summary": "writes one file",
+            "risk_level": "high",
+            "risk_reasons": ["path matches configured file_patch.high_risk_roots: demo.sh"],
+            "high_risk_paths": ["demo.sh"],
+            "permission_changes": [
+                {"path": "demo.sh", "mode": "0755", "reason": "make executable"}
+            ],
             "verification_commands": ["sh demo.sh"],
             "unified_diff": "--- demo.sh\n+++ demo.sh\n@@ -1,1 +1,1 @@\n-old\n+new\n",
         }
@@ -138,6 +144,8 @@ def test_render_file_patch_confirm_shows_planned_diff() -> None:
     rendered = console.export_text()
     assert "Planned diff" in rendered
     assert "1 file, +1 -1" in rendered
+    assert "Elevated risk" in rendered
+    assert "demo.sh -> 0755" in rendered
     assert "demo.sh" in rendered
     assert "-old" in rendered
     assert "+new" in rendered

@@ -131,6 +131,7 @@ class Container:
                     tools=tuple(self.tools()),
                     telemetry=self.telemetry(),
                     runbook_engine=self.runbook_engine(),
+                    file_patch_config=self._config.file_patch,
                 )
             ),
         )

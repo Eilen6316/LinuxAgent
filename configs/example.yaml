@@ -44,6 +44,21 @@ policy:
   # full policy set with user rules.
   include_builtin: true
 
+file_patch:
+  # FilePatchPlan can only write below these roots. Relative paths resolve from
+  # the current working directory when LinuxAgent starts.
+  allow_roots:
+    - .
+    - /tmp
+  # If a path is both allowed and high-risk, LinuxAgent shows a red elevated
+  # confirmation instead of a normal yellow confirmation.
+  high_risk_roots:
+    - /etc
+    - /root/.ssh
+    - /home/*/.ssh
+  # Permission changes are applied by Python after confirmation, never by shell.
+  allow_permission_changes: true
+
 cluster:
   # Any command sent to >= this many hosts triggers R-HITL-02 batch confirm.
   # The default of 2 catches even a tiny dev+prod pair by design.

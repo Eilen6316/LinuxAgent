@@ -62,8 +62,17 @@ class ConfirmationRenderer:
         table.add_row("Goal", str(payload.get("goal") or ""))
         table.add_row("Files", "\n".join(str(item) for item in payload.get("files_changed", ())))
         self._add_optional_rows(table, payload, ("risk_summary",))
+        self._add_patch_risk_rows(table, payload)
         self._add_list_rows(table, payload, (("Verify", "verification_commands"),))
-        self._console.print(self._panel(table, title="File patch confirmation required"))
+        self._add_permission_rows(table, payload)
+        self._console.print(
+            self._panel(
+                table,
+                title="File patch confirmation required",
+                border_style=_patch_border_style(payload),
+                title_style=_patch_title_style(payload),
+            )
+        )
         self._console.print(
             Panel(
                 self._diff_renderer.render(str(payload.get("unified_diff") or "")),
@@ -79,11 +88,18 @@ class ConfirmationRenderer:
         table.add_column(style="white")
         return table
 
-    def _panel(self, renderable: Any, *, title: str) -> Panel:
+    def _panel(
+        self,
+        renderable: Any,
+        *,
+        title: str,
+        border_style: str = "bright_yellow",
+        title_style: str = "bright_yellow",
+    ) -> Panel:
         return Panel(
             renderable,
-            title=f"[bold bright_yellow]{title}[/]",
-            border_style="bright_yellow",
+            title=f"[bold {title_style}]{title}[/]",
+            border_style=border_style,
             padding=(1, 2),
         )
 
@@ -124,7 +140,38 @@ class ConfirmationRenderer:
         if hosts:
             table.add_row("Batch hosts", ", ".join(str(host) for host in hosts))
 
+    def _add_patch_risk_rows(self, table: Table, payload: dict[str, Any]) -> None:
+        if payload.get("risk_level") == "high":
+            table.add_row("Elevated risk", "yes - high-risk path requires explicit review")
+        self._add_list_rows(
+            table,
+            payload,
+            (("Risk reasons", "risk_reasons"), ("High-risk paths", "high_risk_paths")),
+        )
+
+    def _add_permission_rows(self, table: Table, payload: dict[str, Any]) -> None:
+        changes = payload.get("permission_changes") or []
+        rendered = [
+            f"{item.get('path')} -> {item.get('mode')} ({item.get('reason') or 'no reason'})"
+            for item in changes
+            if isinstance(item, dict)
+        ]
+        if rendered:
+            table.add_row("Permissions", "\n".join(rendered))
+
     def _accent_style(self) -> str:
         if self._theme == "light":
             return "blue"
         return "bright_cyan"
+
+
+def _patch_border_style(payload: dict[str, Any]) -> str:
+    if payload.get("risk_level") == "high":
+        return "bright_red"
+    return "bright_yellow"
+
+
+def _patch_title_style(payload: dict[str, Any]) -> str:
+    if payload.get("risk_level") == "high":
+        return "bright_red"
+    return "bright_yellow"
