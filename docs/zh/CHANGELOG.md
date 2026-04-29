@@ -34,7 +34,7 @@ LinuxAgent v4.0.0 是重写后的第一个正式版本。它用基于 LangGraph 
 - 能力驱动策略引擎，输出 `SAFE`、`CONFIRM`、`BLOCK`、risk score、
   capabilities、matched rules，并支持 runtime YAML policy override。
 - 策略评估前校验结构化 JSON `CommandPlan`。
-- 8 个 YAML runbook，覆盖常见运维诊断；支持多步骤编排和逐步策略检查。
+- 11 个 YAML runbook，作为 planner guidance 覆盖常见运维诊断；支持多步骤计划和逐步策略检查。
 - SSH 集群执行，包含批量确认、host-key 验证和远程 shell 语法防护。
 - `~/.linuxagent/audit.log` hash-chained JSONL 审计日志，以及
   `linuxagent audit verify`。

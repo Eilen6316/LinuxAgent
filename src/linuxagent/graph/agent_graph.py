@@ -44,6 +44,13 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
 
 
 def _add_graph_nodes(graph: Any, deps: GraphDependencies) -> None:
+    _add_planning_nodes(graph, deps)
+    _add_file_patch_nodes(graph, deps)
+    _add_execution_nodes(graph, deps)
+    _add_response_nodes(graph)
+
+
+def _add_planning_nodes(graph: Any, deps: GraphDependencies) -> None:
     graph.add_node(
         "parse_intent",
         _langgraph_node(
@@ -67,6 +74,9 @@ def _add_graph_nodes(graph: Any, deps: GraphDependencies) -> None:
         "confirm",
         _langgraph_node(make_confirm_node(deps.audit, deps.command_service, deps.telemetry)),
     )
+
+
+def _add_file_patch_nodes(graph: Any, deps: GraphDependencies) -> None:
     graph.add_node(
         "file_patch_confirm",
         _langgraph_node(make_file_patch_confirm_node(deps.audit, deps.file_patch_config)),
@@ -87,6 +97,9 @@ def _add_graph_nodes(graph: Any, deps: GraphDependencies) -> None:
             )
         ),
     )
+
+
+def _add_execution_nodes(graph: Any, deps: GraphDependencies) -> None:
     graph.add_node(
         "execute",
         _langgraph_node(
@@ -102,6 +115,9 @@ def _add_graph_nodes(graph: Any, deps: GraphDependencies) -> None:
     graph.add_node(
         "analyze", _langgraph_node(make_analyze_result_node(deps.provider, deps.telemetry))
     )
+
+
+def _add_response_nodes(graph: Any) -> None:
     graph.add_node("respond", _langgraph_node(respond_node))
     graph.add_node("respond_block", _langgraph_node(respond_block_node))
     graph.add_node("respond_refused", _langgraph_node(respond_refused_node))

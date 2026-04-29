@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
@@ -26,13 +27,15 @@ from ..plans import (
 from ..prompts_loader import build_file_patch_repair_prompt
 from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
-from .common import trace_id
+from .common import span, trace_id
 from .execution import synthetic_result
 from .intent import ToolEventObserver, tool_event_observer
 from .payloads import decision, latency_ms
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
+MAX_PATCH_CONTEXT_LINES = 120
+MAX_PATCH_CONTEXT_CHARS = 20_000
 
 
 def make_file_patch_confirm_node(audit: AuditLog, config: FilePatchConfig) -> Node:
@@ -124,13 +127,21 @@ def make_repair_file_patch_node(
             runbook_guidance="No runbook guidance is available for file patch repair.",
             original_request=_last_human_text(state.get("messages", [])),
             previous_plan=_previous_plan_json(state),
-            failure_context=_patch_failure_context(state),
+            failure_context=_patch_failure_context(state, config),
         )
         try:
             proposed = await _complete_repair_plan(
                 provider, prompt_messages, tools, telemetry, tool_observer, current_trace_id
             )
-            plan = parse_file_patch_plan(proposed)
+            plan = await _parse_or_retry_repair_plan(
+                provider,
+                prompt,
+                state,
+                config,
+                current_trace_id,
+                proposed,
+                telemetry,
+            )
             evaluate_file_patch_plan(plan, config)
         except (FilePatchApplyError, FilePatchPlanParseError, ProviderError) as exc:
             return Command(
@@ -142,6 +153,44 @@ def make_repair_file_patch_node(
         )
 
     return repair_file_patch_node
+
+
+async def _parse_or_retry_repair_plan(
+    provider: LLMProvider,
+    prompt: Any,
+    state: AgentState,
+    config: FilePatchConfig,
+    current_trace_id: str,
+    proposed: str,
+    telemetry: TelemetryRecorder | None,
+) -> FilePatchPlan:
+    try:
+        return parse_file_patch_plan(proposed)
+    except FilePatchPlanParseError as exc:
+        retry = await _retry_repair_plan_json(
+            provider, prompt, state, config, current_trace_id, proposed, str(exc), telemetry
+        )
+        return parse_file_patch_plan(retry)
+
+
+async def _retry_repair_plan_json(
+    provider: LLMProvider,
+    prompt: Any,
+    state: AgentState,
+    config: FilePatchConfig,
+    current_trace_id: str,
+    proposed: str,
+    error: str,
+    telemetry: TelemetryRecorder | None,
+) -> str:
+    prompt_messages = prompt.format_messages(
+        runbook_guidance="No runbook guidance is available for file patch repair.",
+        original_request=_last_human_text(state.get("messages", [])),
+        previous_plan=_previous_plan_json(state),
+        failure_context=_retry_failure_context(state, config, proposed, error),
+    )
+    with span(telemetry, "llm.complete", current_trace_id, {"node": "repair_file_patch"}):
+        return (await provider.complete(prompt_messages)).strip()
 
 
 async def _complete_repair_plan(
@@ -311,11 +360,75 @@ def _repair_update(state: AgentState, current_trace_id: str, plan: FilePatchPlan
     }
 
 
-def _patch_failure_context(state: AgentState) -> str:
+def _patch_failure_context(state: AgentState, config: FilePatchConfig) -> str:
     result = state.get("execution_result")
     if result is None:
-        return state.get("safety_reason") or state.get("plan_error") or ""
-    return f"exit_code={result.exit_code}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        failure = state.get("safety_reason") or state.get("plan_error") or ""
+    else:
+        failure = (
+            f"exit_code={result.exit_code}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+    snapshots = _target_file_snapshots(state, config)
+    if not snapshots:
+        return failure
+    return f"{failure}\n\nCurrent target file snapshots:\n{snapshots}"
+
+
+def _retry_failure_context(
+    state: AgentState, config: FilePatchConfig, proposed: str, error: str
+) -> str:
+    return (
+        f"{_patch_failure_context(state, config)}\n\n"
+        f"Previous repair response validation error:\n{error}\n\n"
+        f"Previous repair response:\n{_truncate(proposed, MAX_PATCH_CONTEXT_CHARS)}"
+    )
+
+
+def _target_file_snapshots(state: AgentState, config: FilePatchConfig) -> str:
+    snapshots = [_snapshot_file(path, config) for path in _current_patch_files(state)]
+    return "\n\n".join(snapshot for snapshot in snapshots if snapshot)
+
+
+def _snapshot_file(raw_path: str, config: FilePatchConfig) -> str:
+    path = _resolve_snapshot_path(Path(raw_path))
+    if not _path_allowed_for_snapshot(path, config):
+        return f"{path}: outside configured file_patch.allow_roots"
+    if not path.exists():
+        return f"{path}: <missing>"
+    if path.is_dir():
+        return f"{path}: <directory>"
+    if not path.is_file():
+        return f"{path}: <not a regular file>"
+    return _read_snapshot(path)
+
+
+def _read_snapshot(path: Path) -> str:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        return f"{path}: <unreadable: {exc}>"
+    window = lines[:MAX_PATCH_CONTEXT_LINES]
+    numbered = "\n".join(f"{index}:{line}" for index, line in enumerate(window, start=1))
+    suffix = "\n..." if len(lines) > MAX_PATCH_CONTEXT_LINES else ""
+    return _truncate(f"{path}:\n{numbered}{suffix}", MAX_PATCH_CONTEXT_CHARS)
+
+
+def _resolve_snapshot_path(path: Path) -> Path:
+    expanded = path.expanduser()
+    if not expanded.is_absolute():
+        expanded = Path.cwd() / expanded
+    return expanded.resolve(strict=False)
+
+
+def _path_allowed_for_snapshot(path: Path, config: FilePatchConfig) -> bool:
+    roots = tuple(_resolve_snapshot_path(root) for root in config.allow_roots)
+    return any(path == root or root in path.parents for root in roots)
+
+
+def _truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n<truncated>"
 
 
 def _previous_plan_json(state: AgentState) -> str:

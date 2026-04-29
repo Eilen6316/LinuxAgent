@@ -6,7 +6,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-89.72%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-88.66%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -105,7 +105,7 @@ not ask the LLM to explain or generate a reply for that turn.
 | AI-owned intent routing | Conversation vs operation vs clarification is decided by `prompts/intent_router.md`, not Python keyword rules |
 | Explicit history control | New sessions do not inherit previous chats unless `/history` is used |
 | Direct `!` command mode | Runs operator-authored commands without an AI reply and adds command/output to current context |
-| YAML runbooks | Common ops scenarios can be matched before free-form command generation |
+| YAML runbooks | Common ops procedures are injected as planner guidance, not pre-LLM hard routes |
 | Learner memory | Successful command patterns are persisted locally after secret redaction |
 | LangGraph HITL | Confirmation uses `interrupt()` and checkpointing rather than inline `input()` |
 | SSH cluster guard | Batch confirmation plus remote shell metacharacter blocking |
@@ -139,7 +139,11 @@ LinuxAgent v4 ships with eleven YAML runbooks for common diagnostics:
 | System health, OS, load, and memory | overall host health, OS release, CPU pressure, memory pressure, OOM clues |
 | Containers, packages, and certificates | container status, installed packages, certificate expiry |
 
-Safe follow-up steps can continue automatically after approval; every step still goes through policy evaluation.
+Runbooks no longer perform natural-language hard matching before LLM planning.
+They are loaded, policy-validated, and supplied to the planner as advisory
+examples. The planner may use, adapt, or ignore that guidance based on the
+actual request. If it produces a multi-step plan inspired by a runbook, every
+step still goes through normal policy, HITL, audit, and analysis flow.
 
 ## Quality Gate
 
@@ -147,12 +151,12 @@ The current `v4.0.0` baseline:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 302 passing |
+| Unit tests | 367 passing |
 | Optional Anthropic compatibility | 4 passing |
 | Harness scenarios | 12 HITL / runbook / cluster scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 89.72% |
-| Static checks | `ruff`, `mypy --strict`, `bandit` |
+| Coverage | 88.66% |
+| Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 
 Useful commands:

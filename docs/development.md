@@ -118,14 +118,24 @@ The graph no longer accepts a raw shell string from the LLM. Provider output is
 parsed as strict JSON `CommandPlan`; invalid JSON or schema errors are treated
 as `BLOCK` and no command is executed.
 
-Built-in runbooks live under `runbooks/`. Each runbook is YAML, has at least
-three scenario phrases, and every step is policy-evaluated by
-`RunbookEngine.evaluate_steps()` before it is considered usable.
+Built-in runbooks live under `runbooks/`. Each runbook is YAML guidance for
+diagnostic procedures. Runbooks do not own fixed natural-language triggers or
+scenario phrases, and the graph does not run a matcher before LLM planning.
+Every packaged runbook step is policy-evaluated by
+`RunbookEngine.evaluate_steps()` during engine construction before the guidance
+is considered usable.
 
-The graph tries `RunbookEngine.match()` before calling the LLM for a command
-plan. A match is converted into a normal `CommandPlan`, so policy, HITL,
-execution, audit, and analysis continue through the same path as LLM-generated
-plans.
+The graph injects runbook summaries into the planner prompt as advisory context.
+The planner may use, adapt, combine, or ignore that guidance. The output is
+still a normal validated `CommandPlan` or `FilePatchPlan`, so policy, HITL,
+execution or patch confirmation, audit, and analysis continue through the same
+path as other LLM-generated plans.
+
+Project-specific code rules are enforced by `make security` and CI through
+`scripts/check_code_rules.py`. Module-top `TYPE_CHECKING` imports are allowed;
+imports inside functions or methods are not. Optional dependency handling should
+stay at module/provider boundaries and raise explicit provider errors when the
+extra is not installed.
 
 ## Observability And Audit
 

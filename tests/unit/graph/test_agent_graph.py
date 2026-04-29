@@ -333,6 +333,51 @@ async def test_graph_repairs_create_patch_when_target_exists(tmp_path) -> None:
     assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
+async def test_graph_retries_file_patch_repair_when_response_is_not_json(
+    tmp_path,
+) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("existing\n", encoding="utf-8")
+    repaired_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,1 +1,2 @@",
+            " existing",
+            "+echo disk",
+        ],
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        [
+            file_patch_plan_json(str(target), "#!/bin/sh\necho disk\n"),
+            "I need to inspect the file first.",
+            repaired_plan,
+            "analysis ok",
+        ],
+    )
+    config = {"configurable": {"thread_id": "file-patch-repair-invalid-json"}}
+
+    await graph.ainvoke(
+        initial_state("create a disk info shell script", source=CommandSource.USER),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+    interrupts = snapshot.tasks[0].interrupts
+
+    assert interrupts[0].value["type"] == "confirm_file_patch"
+    assert interrupts[0].value["repair_attempt"] == 1
+    assert "+echo disk" in interrupts[0].value["unified_diff"]
+
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+
+    assert target.read_text(encoding="utf-8") == "existing\necho disk\n"
+    assert "analysis ok" in str(resumed["messages"][-1].content)
+
+
 async def test_graph_repairs_failed_file_patch_and_reconfirms(tmp_path) -> None:
     target = tmp_path / "disk_info.sh"
     target.write_text("#!/bin/sh\necho disk\n", encoding="utf-8")
