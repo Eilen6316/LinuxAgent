@@ -22,6 +22,7 @@ from .config.models import LLMProviderName
 from .executors import LinuxCommandExecutor
 from .graph import GraphDependencies, build_agent_graph
 from .graph.agent_graph import AgentGraph
+from .graph.checkpoint import PersistentMemorySaver
 from .intelligence import (
     CommandLearner,
     ContextManager,
@@ -127,6 +128,7 @@ class Container:
                     provider=self.provider(),
                     command_service=self.command_service(),
                     audit=self.audit_log(),
+                    checkpointer=self.checkpointer(),
                     cluster_service=self.cluster_service(),
                     tools=tuple(self.tools()),
                     telemetry=self.telemetry(),
@@ -135,6 +137,12 @@ class Container:
                     tool_observer=self._tool_event_observer(),
                 )
             ),
+        )
+
+    def checkpointer(self) -> PersistentMemorySaver:
+        return self._cached(
+            "checkpointer",
+            lambda: PersistentMemorySaver(self._config.ui.checkpoint_path),
         )
 
     def learner(self) -> CommandLearner:

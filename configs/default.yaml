@@ -42,6 +42,7 @@ audit:
 ui:
   theme: auto
   max_chat_history: 20
+  checkpoint_path: ~/.linuxagent/checkpoints.json
   prompt_symbol: "❯"
 
 logging:

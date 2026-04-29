@@ -40,7 +40,7 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     graph = StateGraph(AgentState)
     _add_graph_nodes(graph, deps)
     _add_graph_edges(graph)
-    return graph.compile(checkpointer=MemorySaver())
+    return graph.compile(checkpointer=deps.checkpointer or MemorySaver())
 
 
 def _add_graph_nodes(graph: Any, deps: GraphDependencies) -> None:

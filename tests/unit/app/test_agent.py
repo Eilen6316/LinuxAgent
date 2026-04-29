@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.types import Interrupt
+from langgraph.types import Command, Interrupt
 
 from linuxagent.app import LinuxAgent
 from linuxagent.audit import AuditLog
@@ -122,6 +122,14 @@ class _SlowGraph(_FakeGraph):
         del state, config
         await asyncio.sleep(10)
         return {}
+
+
+class _ResumeGraph(_FakeGraph):
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        result = await super().ainvoke(state, config)
+        if isinstance(state, Command):
+            self._snapshot_interrupts = []
+        return result
 
 
 class _FakeExecutor:
@@ -401,6 +409,31 @@ async def test_resume_uses_interactive_selector_when_available(tmp_path) -> None
         "continue",
     ]
     assert "可恢复会话" not in "\n".join(ui.printed)
+
+
+async def test_resume_continues_pending_interrupt(tmp_path) -> None:
+    history_path = tmp_path / "history.json"
+    chat_service = ChatService(history_path, max_messages=10)
+    chat_service.replace_session(
+        "saved-thread",
+        [HumanMessage(content="pending question"), AIMessage(content="pending answer")],
+    )
+    ui = _FakeUI(inputs=["/resume"])
+    ui.resume_selector_enabled = True
+    ui.resume_choice = "saved-thread"
+    graph = _ResumeGraph(
+        [{"messages": [HumanMessage(content="pending question"), AIMessage(content="done")]}],
+        snapshot_interrupts=[
+            Interrupt(value={"type": "confirm_command", "command": "ls"}, resumable=True, ns=["n"])
+        ],
+    )
+    agent = _agent(tmp_path, graph=graph, ui=ui, chat_service=chat_service)
+
+    await agent.run(thread_id="cli")
+
+    assert ui.interrupts == [{"type": "confirm_command", "command": "ls"}]
+    assert isinstance(graph.calls[0], Command)
+    assert "done" in "\n".join(ui.printed)
 
 
 async def test_new_slash_command_resets_active_context(tmp_path) -> None:

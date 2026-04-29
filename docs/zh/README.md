@@ -118,9 +118,9 @@
 
 | 维度 | 旧实现 | 当前 `v4` |
 |---|---|---|
-| 主 Agent 类 | 单个 4710 行 God Object，内含意图解析、执行、UI、SSH、监控 | `app/agent.py` **72 行**的瘦协调器，仅拼装 graph / ui / services |
+| 主 Agent 类 | 单个 4710 行 God Object，内含意图解析、执行、UI、SSH、监控 | `app/agent.py` 保持在 **300 行以内**的瘦协调器，仅拼装 graph / ui / services |
 | 流程控制 | `process_user_input` 内部递归 + 嵌套 `if/else` | LangGraph `StateGraph`，graph 按 intent / safety / routing / node factory 拆分 |
-| 状态持久化 | 手写 JSON 文件读写，文件权限不校验 | 已保存会话历史 + 进程内 LangGraph checkpoint |
+| 状态持久化 | 手写 JSON 文件读写，文件权限不校验 | 已保存会话历史 + 本地持久化 LangGraph checkpoint |
 | UI 耦合 | UI 逻辑直接嵌在业务类里 | `ConsoleUI` 独立实现 `UserInterface` 接口，Rich + prompt_toolkit |
 | 依赖注入 | 模块级单例 / 全局变量 | `Container` 手写工厂，懒加载 + 显式传递 |
 | 打包布局 | 平铺 `src/` + `setup.py` | `src/linuxagent/` src-layout + `pyproject.toml` (PEP 517/621) |
@@ -325,6 +325,7 @@ linuxagent check
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | 本地 telemetry 路径 |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
 | `ui` | `max_chat_history` | `20` | 每个已保存会话最多保留的消息数；新会话不会自动加载 |
+| `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | 本地 LangGraph checkpoint 文件，用于恢复未完成的 HITL 确认 |
 | `logging` | `level` | `INFO` | `DEBUG` / `INFO` / `WARNING` / ... |
 | `logging` | `format` | `console` | `console`（Rich 彩色） / `json`（生产） |
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | 语义检索模型；**禁止本地 PyTorch 模型** |
@@ -359,7 +360,7 @@ linuxagent ❯
 
 | Slash 命令 | 作用 |
 |---|---|
-| `/resume` | 用上下键 / 鼠标选择本机保存的会话；非交互 fallback 下可输入编号恢复 |
+| `/resume` | 用上下键 / 鼠标选择本机保存的会话；非交互 fallback 下可输入编号恢复；未完成的 HITL 确认会立即接续 |
 | `/new` 或 `/clear` | 在当前 CLI 中开启空上下文新对话 |
 | `/tools` | 查看当前可用的 slash / tool 入口 |
 | `/help` | 显示 slash 命令帮助 |
@@ -482,7 +483,9 @@ Allow this operation? [y/N]: y
 
 ### 场景 5：中断与恢复
 
-在 `confirm` 节点按 `Ctrl-C`，当前对话状态被 `MemorySaver` 保留在内存中；同一进程内再次触发同一 `thread_id` 时可从断点继续。具体使用方式见 [开发指南](../development.md)。
+未完成的 `confirm` 节点会以 `0o600` 权限写入 `ui.checkpoint_path`。
+重启 CLI 后输入 `/resume`，选择对应会话，LinuxAgent 会按原 `thread_id`
+重新打开未完成的确认流程。
 
 ### 示例自然语言输入
 

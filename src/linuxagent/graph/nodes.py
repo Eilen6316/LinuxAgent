@@ -45,6 +45,7 @@ class GraphDependencies:
     provider: LLMProvider
     command_service: CommandService
     audit: AuditLog
+    checkpointer: Any | None = None
     cluster_service: ClusterService | None = None
     tools: tuple[BaseTool, ...] = ()
     telemetry: TelemetryRecorder | None = None

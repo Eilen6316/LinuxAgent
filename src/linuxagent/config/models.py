@@ -134,6 +134,9 @@ class UIConfig(BaseModel):
     history_path: UserPath = Field(
         default_factory=lambda: Path.home() / ".linuxagent" / "history.json"
     )
+    checkpoint_path: UserPath = Field(
+        default_factory=lambda: Path.home() / ".linuxagent" / "checkpoints.json"
+    )
     prompt_symbol: str = "❯"
 
 

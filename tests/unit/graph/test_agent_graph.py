@@ -15,6 +15,7 @@ from linuxagent.cluster.remote_command import RemoteCommandError, validate_remot
 from linuxagent.config.models import ClusterConfig, ClusterHost, FilePatchConfig, SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
+from linuxagent.graph.checkpoint import PersistentMemorySaver
 from linuxagent.interfaces import CommandSource, ExecutionResult
 from linuxagent.plans import command_plan_json, file_patch_plan_json
 from linuxagent.providers.errors import ProviderError
@@ -91,6 +92,7 @@ def _graph(
     file_patch_config: FilePatchConfig | None = None,
     tools: tuple[Any, ...] = (),
     tool_observer: Any | None = None,
+    checkpointer: Any | None = None,
 ):
     provider = _FakeProvider(responses)
     executor = LinuxCommandExecutor(
@@ -100,6 +102,7 @@ def _graph(
         provider=provider,  # type: ignore[arg-type]
         command_service=CommandService(executor),
         audit=AuditLog(tmp_path / "audit.log"),
+        checkpointer=checkpointer,
         cluster_service=cluster_service,
         tools=tools,  # type: ignore[arg-type]
         runbook_engine=runbook_engine,
@@ -188,6 +191,31 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     trace_ids = {record["trace_id"] for record in audit_records}
     assert len(trace_ids) == 1
     assert None not in trace_ids
+
+
+async def test_graph_pending_interrupt_survives_restart(tmp_path) -> None:
+    checkpoint_path = tmp_path / "checkpoints.json"
+    first_graph, _first_provider = _graph(
+        tmp_path,
+        [command_plan_json("/bin/echo hi")],
+        checkpointer=PersistentMemorySaver(checkpoint_path),
+    )
+    config = {"configurable": {"thread_id": "persisted"}}
+
+    await first_graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
+
+    assert checkpoint_path.stat().st_mode & 0o777 == 0o600
+    second_graph, _second_provider = _graph(
+        tmp_path,
+        ["analysis ok"],
+        checkpointer=PersistentMemorySaver(checkpoint_path),
+    )
+    snapshot = await second_graph.aget_state(config)
+    assert snapshot.tasks[0].interrupts[0].value["type"] == "confirm_command"
+    resumed = await second_graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+    assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
 async def test_graph_confirms_and_applies_file_patch_plan(tmp_path) -> None:

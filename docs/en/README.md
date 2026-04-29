@@ -120,9 +120,9 @@ The earlier incarnation was a monolithic agent script. To make it production-fit
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Agent class | One 4710-line God Object covering parsing, execution, UI, SSH, monitoring | `app/agent.py` at **72 lines**, pure coordinator wiring graph / ui / services |
+| Agent class | One 4710-line God Object covering parsing, execution, UI, SSH, monitoring | `app/agent.py` kept below **300 lines**, pure coordinator wiring graph / ui / services |
 | Flow control | Recursive `process_user_input` with nested `if/else` | LangGraph `StateGraph`, split into intent / safety / routing / node-factory modules |
-| State persistence | Hand-written JSON files, permissions not enforced | Saved session history plus in-process LangGraph checkpointing |
+| State persistence | Hand-written JSON files, permissions not enforced | Saved session history plus disk-backed LangGraph checkpoints |
 | UI coupling | UI logic directly embedded in the agent class | `ConsoleUI` implementing `UserInterface`, Rich + prompt_toolkit |
 | DI | Module-level singletons / globals | Hand-written `Container` with lazy factories + explicit injection |
 | Package layout | Flat `src/` + `setup.py` | `src/linuxagent/` src-layout + `pyproject.toml` (PEP 517/621) |
@@ -329,6 +329,7 @@ linuxagent check
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | Local telemetry path |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
 | `ui` | `max_chat_history` | `20` | Max retained messages per saved session; new sessions do not load them automatically |
+| `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | Local LangGraph checkpoint store for pending HITL resume |
 | `logging` | `level` | `INFO` | `DEBUG` / `INFO` / `WARNING` / ... |
 | `logging` | `format` | `console` | `console` (Rich colour) / `json` (production) |
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | Semantic search model; **local PyTorch models are disallowed** |
@@ -365,7 +366,7 @@ menu:
 
 | Slash command | Effect |
 |---|---|
-| `/resume` | Choose a locally saved session with arrow keys / mouse, or enter a number in non-interactive fallbacks |
+| `/resume` | Choose a locally saved session with arrow keys / mouse, or enter a number in non-interactive fallbacks; pending HITL confirmations resume immediately |
 | `/new` or `/clear` | Start a fresh empty-context conversation in the same CLI |
 | `/tools` | Show slash/tool entry points currently available |
 | `/help` | Show slash command help |
@@ -489,7 +490,9 @@ Allow this operation? [y/N]: y
 
 ### Scenario 5: interrupt and resume
 
-Pressing `Ctrl-C` at a `confirm` node leaves the current state in `MemorySaver`. Within the same process, invoking the graph again with the same `thread_id` resumes from the checkpoint. See [Development Guide](../development.md) for programmatic resume.
+Pending `confirm` nodes are mirrored to `ui.checkpoint_path` with `0o600`
+permissions. After restarting the CLI, run `/resume`, choose the saved session,
+and LinuxAgent reopens the pending confirmation for that `thread_id`.
 
 ### Example prompts
 

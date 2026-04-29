@@ -180,7 +180,7 @@ class LinuxAgent:
         if self.ui.supports_resume_selector():
             selected_thread_id = await self.ui.choose_resume_session(sessions)
             if selected_thread_id is not None:
-                return await self._resume_session(selected_thread_id)
+                return await self._resume_and_continue(selected_thread_id)
             return None
         await self.ui.print(resume_list(sessions))
         self._pending_resume_thread_id = ""
@@ -202,7 +202,7 @@ class LinuxAgent:
             await self.ui.print("会话编号不存在。输入 /resume 重新查看。")
             return None
         selected = sessions[index - 1]
-        return await self._resume_session(selected.thread_id)
+        return await self._resume_and_continue(selected.thread_id)
 
     async def _resume_session(self, thread_id: str) -> str | None:
         selected = self.chat_service.get_session(thread_id)
@@ -213,6 +213,37 @@ class LinuxAgent:
         self._history_threads.add(selected.thread_id)
         await self.ui.print(render_resumed_session(selected))
         return selected.thread_id
+
+    async def _resume_and_continue(self, thread_id: str) -> str | None:
+        selected_thread_id = await self._resume_session(thread_id)
+        if selected_thread_id is not None:
+            await self._resume_pending_work(selected_thread_id)
+        return selected_thread_id
+
+    async def _resume_pending_work(self, thread_id: str) -> None:
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+        state: Any = {}
+        while True:
+            interrupts = await self._interrupts(state, config)
+            if not interrupts:
+                return
+            response = await self.ui.handle_interrupt(interrupts[0].value)
+            result = await self._ainvoke_with_cancel(Command(resume=response), config)
+            if result is None:
+                return
+            if not await self._complete_if_no_interrupts(result, config, thread_id):
+                state = result
+
+    async def _complete_if_no_interrupts(
+        self, result: dict[str, Any], config: RunnableConfig, thread_id: str
+    ) -> bool:
+        if await self._interrupts(result, config):
+            return False
+        if result.get("messages"):
+            self.context_manager.replace(await self._history(config))
+            self._persist_active_history(thread_id)
+            await self.ui.print(str(result["messages"][-1].content))
+        return True
 
     def _persist_active_history(self, thread_id: str) -> None:
         active = self.context_manager.snapshot()
