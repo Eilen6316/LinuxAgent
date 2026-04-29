@@ -269,6 +269,48 @@ async def test_graph_named_host_request_selects_only_matched_hosts(tmp_path) -> 
     assert tuple(snapshot.values["batch_hosts"]) == ()
 
 
+async def test_graph_chinese_remote_request_selects_configured_host(tmp_path) -> None:
+    cfg = ClusterConfig(
+        batch_confirm_threshold=2,
+        hosts=(ClusterHost(name="web1", hostname="192.0.2.52", username="ops"),),
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        [command_plan_json("free -m")],
+        cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
+    )
+    config = {"configurable": {"thread_id": "chinese-remote-host"}}
+
+    await graph.ainvoke(
+        initial_state("对web1服务器执行free -m", source=CommandSource.USER),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert tuple(snapshot.values["selected_hosts"]) == ("web1",)
+
+
+async def test_graph_command_plan_hostname_target_resolves_to_host_name(tmp_path) -> None:
+    cfg = ClusterConfig(
+        batch_confirm_threshold=2,
+        hosts=(ClusterHost(name="web1", hostname="192.0.2.52", username="ops"),),
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        [_command_plan_json_with_hosts("free -m", ["192.0.2.52"])],
+        cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
+    )
+    config = {"configurable": {"thread_id": "hostname-target"}}
+
+    await graph.ainvoke(
+        initial_state("对192.0.2.52服务器执行free -m", source=CommandSource.USER),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert tuple(snapshot.values["selected_hosts"]) == ("web1",)
+
+
 async def test_graph_treats_localhost_target_as_local_execution(tmp_path) -> None:
     cfg = ClusterConfig(
         batch_confirm_threshold=2,

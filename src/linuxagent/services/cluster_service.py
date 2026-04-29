@@ -51,19 +51,19 @@ class ClusterService:
     def resolve_host_names(self, names: tuple[str, ...]) -> tuple[ClusterHost, ...]:
         if not names:
             return ()
-        wanted = set(names)
-        return tuple(host for host in self.hosts if host.name in wanted)
+        wanted = {name.casefold() for name in names}
+        return tuple(host for host in self.hosts if wanted.intersection(_aliases(host)))
 
     async def close(self) -> None:
         await self.ssh.close()
 
 
 def _aliases(host: ClusterHost) -> tuple[str, ...]:
-    return (host.name.lower(), host.hostname.lower())
+    return (host.name.casefold(), host.hostname.casefold())
 
 
 def _contains_alias(text: str, alias: str) -> bool:
-    return re.search(rf"(?<![\w.-]){re.escape(alias)}(?![\w.-])", text) is not None
+    return re.search(rf"(?<![A-Za-z0-9_.-]){re.escape(alias)}(?![A-Za-z0-9_.-])", text) is not None
 
 
 def _targets_all_hosts(text: str) -> bool:

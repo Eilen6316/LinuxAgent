@@ -105,6 +105,23 @@ async def test_cluster_service_selects_named_hosts() -> None:
     assert tuple(host.name for host in selected) == ("web-1", "db-1")
 
 
+async def test_cluster_service_selects_hosts_next_to_chinese_text() -> None:
+    cfg = ClusterConfig(
+        batch_confirm_threshold=2,
+        hosts=(
+            ClusterHost(name="web1", hostname="192.0.2.52", username="ops"),
+            ClusterHost(name="db1", hostname="192.0.2.53", username="ops"),
+        ),
+    )
+    service = ClusterService(cfg, _FakeSSH())  # type: ignore[arg-type]
+
+    selected_by_name = service.select_hosts("对web1服务器执行free -m")
+    selected_by_ip = service.select_hosts("对192.0.2.52服务器执行free -m")
+
+    assert tuple(host.name for host in selected_by_name) == ("web1",)
+    assert tuple(host.name for host in selected_by_ip) == ("web1",)
+
+
 async def test_cluster_service_runs_selected_hosts_only() -> None:
     cfg = ClusterConfig(
         batch_confirm_threshold=2,
@@ -117,6 +134,18 @@ async def test_cluster_service_runs_selected_hosts_only() -> None:
     selected = service.resolve_host_names(("web-1",))
     results = await service.run_on_hosts("uptime", selected)
     assert set(results) == {"web-1"}
+
+
+async def test_cluster_service_resolves_hostname_targets() -> None:
+    cfg = ClusterConfig(
+        batch_confirm_threshold=2,
+        hosts=(ClusterHost(name="web1", hostname="192.0.2.52", username="ops"),),
+    )
+    service = ClusterService(cfg, _FakeSSH())  # type: ignore[arg-type]
+
+    selected = service.resolve_host_names(("192.0.2.52",))
+
+    assert tuple(host.name for host in selected) == ("web1",)
 
 
 class _FakeExecutor:
