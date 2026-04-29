@@ -11,7 +11,7 @@ from prompt_toolkit.document import Document
 from rich.console import Console
 
 from linuxagent.ui import ConsoleUI
-from linuxagent.ui.console import SlashCommandCompleter, parse_file_selection
+from linuxagent.ui.console import SlashCommandCompleter
 
 
 async def test_console_ui_non_tty_auto_denies(monkeypatch) -> None:
@@ -71,17 +71,6 @@ def test_console_prompt_turns_magenta_for_direct_shell_prefix() -> None:
     assert ("bold ansibrightmagenta", "linuxagent") not in normal
     assert ("bold ansibrightmagenta", "linuxagent") in direct
     assert ("ansibrightmagenta", ">") in direct
-
-
-def test_parse_file_selection_accepts_indexes_ranges_and_paths() -> None:
-    files = ("one.py", "two.py", "three.py")
-
-    assert parse_file_selection("1, 3 two.py 2-3 missing.py", files) == (
-        "one.py",
-        "three.py",
-        "two.py",
-    )
-    assert parse_file_selection("4 9 missing.py", files) == ()
 
 
 def test_slash_command_completer_suggests_commands() -> None:
@@ -164,6 +153,52 @@ def test_render_file_patch_confirm_shows_planned_diff() -> None:
     assert "demo.sh" in rendered
     assert "-old" in rendered
     assert "+new" in rendered
+
+
+def test_file_patch_approval_asks_each_file(monkeypatch) -> None:
+    decisions = iter([True, False, True])
+    asked: list[str] = []
+
+    def fake_confirm(message: str, *, default: bool) -> bool:
+        del default
+        asked.append(message)
+        return next(decisions)
+
+    monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", fake_confirm)
+    ui = ConsoleUI()
+
+    response = ui._approval_response(
+        {"type": "confirm_file_patch", "files_changed": ["one.py", "two.py", "three.py"]}
+    )
+
+    assert response == {"decision": "yes", "selected_files": ["one.py", "three.py"]}
+    assert asked == [
+        "[bold]Apply one.py?[/]",
+        "[bold]Apply two.py?[/]",
+        "[bold]Apply three.py?[/]",
+    ]
+
+
+def test_file_patch_approval_applies_all_when_all_files_confirmed(monkeypatch) -> None:
+    monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", lambda message, *, default: True)
+    ui = ConsoleUI()
+
+    response = ui._approval_response(
+        {"type": "confirm_file_patch", "files_changed": ["one.py", "two.py"]}
+    )
+
+    assert response == {"decision": "yes"}
+
+
+def test_file_patch_approval_refuses_when_no_files_confirmed(monkeypatch) -> None:
+    monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", lambda message, *, default: False)
+    ui = ConsoleUI()
+
+    response = ui._approval_response(
+        {"type": "confirm_file_patch", "files_changed": ["one.py", "two.py"]}
+    )
+
+    assert response == {"decision": "no"}
 
 
 def test_render_confirm_shows_only_remaining_runbook_steps() -> None:

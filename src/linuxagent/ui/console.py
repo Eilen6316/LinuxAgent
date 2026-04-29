@@ -15,7 +15,7 @@ from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm
 from rich.text import Text
 
 from ..interfaces import UserInterface
@@ -126,56 +126,12 @@ _diff_line_style = diff_line_style
 
 
 def _file_patch_approval_response(files: tuple[str, ...]) -> dict[str, Any]:
-    if Confirm.ask("[bold]Apply all changed files?[/]", default=True):
-        return {"decision": "yes"}
-    if not Confirm.ask("[bold]Apply only selected files?[/]", default=False):
-        return {"decision": "no"}
-    selected = _prompt_selected_files(files)
+    selected = tuple(file for file in files if Confirm.ask(f"[bold]Apply {file}?[/]", default=True))
     if not selected:
         return {"decision": "no"}
+    if selected == files:
+        return {"decision": "yes"}
     return {"decision": "yes", "selected_files": list(selected)}
-
-
-def _prompt_selected_files(files: tuple[str, ...]) -> tuple[str, ...]:
-    selection = Prompt.ask("[bold]Files to apply[/] (numbers, ranges, or paths)")
-    return parse_file_selection(selection, files)
-
-
-def parse_file_selection(selection: str, files: tuple[str, ...]) -> tuple[str, ...]:
-    selected: list[str] = []
-    for token in _selection_tokens(selection):
-        selected.extend(_selected_files_for_token(token, files))
-    return tuple(dict.fromkeys(selected))
-
-
-def _selection_tokens(selection: str) -> tuple[str, ...]:
-    return tuple(token.strip() for token in selection.replace(",", " ").split() if token.strip())
-
-
-def _selected_files_for_token(token: str, files: tuple[str, ...]) -> tuple[str, ...]:
-    if "-" in token and token.replace("-", "").isdigit():
-        return _range_selection(token, files)
-    if token.isdigit():
-        return _index_selection(token, files)
-    return (token,) if token in files else ()
-
-
-def _index_selection(token: str, files: tuple[str, ...]) -> tuple[str, ...]:
-    index = int(token) - 1
-    if 0 <= index < len(files):
-        return (files[index],)
-    return ()
-
-
-def _range_selection(token: str, files: tuple[str, ...]) -> tuple[str, ...]:
-    start_raw, _, end_raw = token.partition("-")
-    if not start_raw or not end_raw:
-        return ()
-    start = max(int(start_raw), 1)
-    end = min(int(end_raw), len(files))
-    if start > end:
-        return ()
-    return files[start - 1 : end]
 
 
 async def _wait_for_escape() -> str:
