@@ -54,7 +54,7 @@ pip install -c constraints.txt -e ".[dev]"
 完整门禁通过后重新生成：
 
 ```bash
-pip-compile pyproject.toml --extra dev --extra anthropic --extra pyinstaller --strip-extras --index-url https://pypi.org/simple --output-file constraints.txt
+pip-compile pyproject.toml --extra dev --extra anthropic --extra pyinstaller --strip-extras --no-emit-trusted-host --index-url https://pypi.org/simple --output-file constraints.txt
 ```
 
 ## 预期产物

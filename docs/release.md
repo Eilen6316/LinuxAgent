@@ -57,7 +57,7 @@ pip install -c constraints.txt -e ".[dev]"
 Regenerate before a release after the full gate passes:
 
 ```bash
-pip-compile pyproject.toml --extra dev --extra anthropic --extra pyinstaller --strip-extras --index-url https://pypi.org/simple --output-file constraints.txt
+pip-compile pyproject.toml --extra dev --extra anthropic --extra pyinstaller --strip-extras --no-emit-trusted-host --index-url https://pypi.org/simple --output-file constraints.txt
 ```
 
 ## Expected Artifacts
