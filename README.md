@@ -104,6 +104,8 @@ not ask the LLM to explain or generate a reply for that turn.
 | Capability-based policy engine | Produces `SAFE` / `CONFIRM` / `BLOCK`, risk scores, capabilities, and matched rules |
 | YAML policy defaults | Command policy data is loaded from `configs/policy.default.yaml`, not Python rule tables |
 | Structured `CommandPlan` | LLM output must validate as JSON before any policy or execution path |
+| Structured file patches | Script/code/config edits use `FilePatchPlan`, unified-diff validation, path policy, and HITL review |
+| Read-only workspace tools | Planner can inspect allowed files with `read_file`, `list_dir`, and `search_files` before proposing patches |
 | AI-owned intent routing | Conversation vs operation vs clarification is decided by `prompts/intent_router.md`, not Python keyword rules |
 | Explicit resume control | New sessions do not inherit previous chats unless `/resume` is used; pending HITL checkpoints resume there too |
 | Direct `!` command mode | Runs operator-authored commands without an AI reply and adds command/output to current context |
@@ -114,6 +116,33 @@ not ask the LLM to explain or generate a reply for that turn.
 | Output protection | Command results are redacted and bounded before model-facing analysis |
 | Hash-chained audit | `linuxagent audit verify` detects local audit-log tampering |
 | Reproducible release | `constraints.txt`, wheel verification, and packaged config/prompt/runbook checks |
+
+## File Changes
+
+Requests such as "create a shell script", "update this Python file", or "edit
+this config" do not bypass the safety model. LinuxAgent asks the planner for a
+structured `FilePatchPlan`, then validates and previews the unified diff before
+writing anything.
+
+The planner can first inspect the environment with read-only tools:
+
+- `read_file(path, offset, limit)` reads a bounded window from an allowed file.
+- `list_dir(path)` lists an allowed directory.
+- `search_files(pattern, root)` searches text files under an allowed root.
+- `get_system_info`, `search_logs`, and safety-gated `execute_command` provide
+  system context when needed.
+
+The terminal shows observable tool activity such as `LinuxAgent is reading
+...` / `LinuxAgent is listing ...`. Patch confirmation shows per-file stats,
+compact `+` / `-` diff snippets, high-risk path warnings, permission changes,
+large-diff pagination, and per-file acceptance for multi-file patches. Full
+diffs are not shown twice; extra review prompts appear only when hidden pages
+exist.
+
+By default, file patch reads and writes are limited to the current workspace and
+`/tmp` through `file_patch.allow_roots`. Sensitive roots such as `/etc` and SSH
+key directories are highlighted as high risk, and permission changes such as
+`0755` for generated scripts appear explicitly in the confirmation panel.
 
 ## Safety Model
 

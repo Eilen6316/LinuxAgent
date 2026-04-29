@@ -56,6 +56,8 @@
 |---|---|
 | 自然语言 → 命令 | 基于 Prompt + Tool Calling，支持 OpenAI / DeepSeek / Anthropic Claude |
 | 结构化计划 | LLM 输出必须先通过 JSON `CommandPlan` 校验，再进入策略判断和执行 |
+| 文件修改计划 | 脚本、代码、配置文件等修改使用结构化 `FilePatchPlan`，先展示 unified diff，再经人工确认写入 |
+| 只读工作区工具 | planner 可先通过 `read_file` / `list_dir` / `search_files` 读取允许目录下的真实文件内容 |
 | 策略引擎 | `SAFE` / `CONFIRM` / `BLOCK`，并输出 `risk_score`、`capabilities`、审计用 `matched_rule` |
 | Runbook | 内置 11 个 YAML Runbook，作为 planner guidance 注入，不再在 LLM 规划前硬路由 |
 | Human-in-the-Loop | LangGraph `interrupt()` + 会话恢复，服务受控的人机协同工作流 |
@@ -318,6 +320,9 @@ linuxagent check
 | `security` | `command_timeout` | `30.0` | 本地命令最长执行时间 |
 | `security` | `max_command_length` | `2048` | 单条命令字符上限 |
 | `security` | `session_whitelist_enabled` | `true` | 会话白名单开关 |
+| `file_patch` | `allow_roots` | `[".", "/tmp"]` | 文件 patch 允许读写的根目录 |
+| `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | 命中后以高风险 diff 确认展示 |
+| `file_patch` | `allow_permission_changes` | `true` | 是否允许 patch 计划声明权限位变更 |
 | `cluster` | `batch_confirm_threshold` | `2` | 批量确认阈值（主机数） |
 | `cluster` | `hosts` | `[]` | 集群主机列表 |
 | `audit` | `path` | `~/.linuxagent/audit.log` | 审计日志位置；**审计无法关闭** |
@@ -376,6 +381,27 @@ linuxagent ❯ !ls -la
 
 这类回合不会让 AI 解释问题或生成命令。LinuxAgent 会直接执行操作员输入的命令，
 实时显示 stdout/stderr，并把 `!<command>` 和系统返回结果加入当前对话上下文。
+
+### 文件生成与修改
+
+当你要求“新建脚本”“写一个 Python/Go 程序”“修改配置文件”或“在已有文件里补功能”时，
+LinuxAgent 不会直接让模型拼 shell 命令覆盖文件，而是进入文件 patch 流程：
+
+1. planner 可先调用只读工具探测环境和文件内容：`get_system_info`、`list_dir`、
+   `read_file(path, offset, limit)`、`search_files(pattern, root)`、`search_logs`。
+2. 终端会显示可观测状态，例如 `LinuxAgent 正在读取文件 /tmp/disk_info.sh`；
+   工具失败也会显示清晰原因。
+3. 模型必须返回结构化 `FilePatchPlan`，包含目标文件、unified diff、风险说明、
+   验证命令和可选权限变更。
+4. 写入前会弹出 diff 确认面板，显示每个文件的 `+N / -M` 统计、紧凑代码片段、
+   高风险路径、权限位变更和验证命令。
+5. 小 diff 已完整显示时不会再次询问展开；大 diff 会分页，只在存在隐藏页时询问是否继续查看。
+6. 多文件 patch 支持逐文件确认，用户可以只接受部分文件。
+
+默认只允许 patch 当前工作区和 `/tmp`，由 `file_patch.allow_roots` 控制。`/etc`、
+`/root/.ssh`、`/home/*/.ssh` 等路径会以高风险方式提示。若用户语义是“新建”，
+但目标文件已存在，planner 应选择新文件名、说明无需修改，或转为明确的冲突确认；
+已有功能已实现时应返回无需修改，而不是重写无关代码。
 
 ### 场景 1：安全命令（SAFE 路径）
 

@@ -56,6 +56,8 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 |---|---|
 | Natural language → command | Prompt + tool calling over OpenAI / DeepSeek / Anthropic Claude |
 | Structured planning | LLM output is validated as JSON `CommandPlan` before any policy check or execution |
+| File patch planning | Script, code, and config edits use structured `FilePatchPlan` output, unified-diff preview, and HITL approval |
+| Read-only workspace tools | The planner can inspect real files through `read_file`, `list_dir`, and `search_files` before proposing a patch |
 | Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
 | Runbooks | 11 YAML runbooks supplied as planner guidance, not pre-LLM hard routes |
 | Human-in-the-Loop | LangGraph `interrupt()` + session resume for controlled operator workflows |
@@ -322,6 +324,9 @@ linuxagent check
 | `security` | `command_timeout` | `30.0` | Max local command runtime |
 | `security` | `max_command_length` | `2048` | Per-command character cap |
 | `security` | `session_whitelist_enabled` | `true` | Toggle the session whitelist |
+| `file_patch` | `allow_roots` | `[".", "/tmp"]` | Roots where file patch tools may read and write |
+| `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | Matching paths are shown as elevated-risk patch confirmations |
+| `file_patch` | `allow_permission_changes` | `true` | Allows patch plans to declare chmod-style permission changes |
 | `cluster` | `batch_confirm_threshold` | `2` | Host count that triggers batch confirm |
 | `cluster` | `hosts` | `[]` | Cluster host list |
 | `audit` | `path` | `~/.linuxagent/audit.log` | Audit log location; **audit cannot be disabled** |
@@ -383,6 +388,36 @@ linuxagent ❯ !ls -la
 For `!` turns, LinuxAgent does not ask the LLM to explain or generate a command.
 It executes the command, streams output as it arrives, and adds both the
 `!<command>` input and the system result to the current conversation context.
+
+### File creation and editing
+
+When you ask LinuxAgent to "create a shell script", "write a Python/Go program",
+"edit a config file", or "add a feature to this existing file", it uses the file
+patch workflow instead of asking the model to overwrite files through shell
+redirection.
+
+1. The planner can first inspect real context with read-only tools:
+   `get_system_info`, `list_dir`, `read_file(path, offset, limit)`,
+   `search_files(pattern, root)`, and `search_logs`.
+2. The terminal shows observable tool activity such as `LinuxAgent is reading
+   /tmp/disk_info.sh`; tool failures are surfaced clearly.
+3. The model must return a structured `FilePatchPlan` with target files,
+   unified diff, risk summary, verification commands, and optional permission
+   changes.
+4. Before writing, LinuxAgent shows a diff confirmation panel with per-file
+   `+N / -M` stats, compact code snippets, elevated-risk paths, permission
+   changes, and verification commands.
+5. Small diffs are not shown twice. Large diffs are paged, and extra review is
+   requested only when hidden pages exist.
+6. Multi-file patches can be accepted per file, so the operator can apply only
+   the files they approve.
+
+By default, patch reads and writes are limited to the current workspace and
+`/tmp` through `file_patch.allow_roots`. Paths such as `/etc`, `/root/.ssh`, and
+`/home/*/.ssh` are elevated risk. For "create" requests, if the intended target
+already exists, the planner should choose a new filename, explain that no change
+is needed, or ask for an explicit conflict confirmation; if the existing file
+already implements the requested behavior, it should avoid unrelated rewrites.
 
 ### Scenario 1: safe command (SAFE path)
 

@@ -131,6 +131,32 @@ still a normal validated `CommandPlan` or `FilePatchPlan`, so policy, HITL,
 execution or patch confirmation, audit, and analysis continue through the same
 path as other LLM-generated plans.
 
+## File Patches And Workspace Tools
+
+Artifact and mutation requests are represented as `FilePatchPlan`, not shell
+redirection. The planner can inspect real state before producing a patch through
+bounded read-only tools:
+
+- `read_file(path, offset, limit)`
+- `list_dir(path)`
+- `search_files(pattern, root)`
+- `search_logs(pattern, log_file, max_matches)`
+- `get_system_info()`
+
+All workspace file reads reuse `file_patch.allow_roots`; the default roots are
+the current workspace and `/tmp`. Patch application dry-runs unified diffs,
+checks allow/high-risk roots, validates optional permission changes, and can
+relocate hunks when the line number is stale but the old context matches
+exactly. Confirmation rendering shows compact per-file diffs, `+N / -M` stats,
+large-diff pagination, high-risk path warnings, permission changes, and
+per-file acceptance for multi-file patches.
+
+The planner prompt should preserve existing file style and behavior. If a
+requested feature already exists, it should return a no-change answer. If a
+request says "create" but the intended target path already exists, the planner
+should avoid silently overwriting it by choosing a new filename, returning
+no-change, or asking for an explicit conflict decision.
+
 Project-specific code rules are enforced by `make security` and CI through
 `scripts/check_code_rules.py`. Module-top `TYPE_CHECKING` imports are allowed;
 imports inside functions or methods are not. Optional dependency handling should
