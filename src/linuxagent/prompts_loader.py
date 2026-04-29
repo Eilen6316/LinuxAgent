@@ -52,6 +52,27 @@ def build_chat_prompt() -> ChatPromptTemplate:
     )
 
 
+def build_planner_prompt() -> ChatPromptTemplate:
+    """Build a prompt for structured command planning."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", load_prompt("planner.md")),
+            MessagesPlaceholder("chat_history", optional=True),
+            ("human", "{user_input}"),
+        ]
+    )
+
+
+def build_repair_prompt() -> ChatPromptTemplate:
+    """Build a prompt for structured recovery planning."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", load_prompt("planner.md")),
+            ("human", load_prompt("repair.md")),
+        ]
+    )
+
+
 def build_direct_answer_prompt() -> ChatPromptTemplate:
     """Build a prompt for non-execution conversational answers."""
     return ChatPromptTemplate.from_messages(

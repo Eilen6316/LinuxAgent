@@ -15,9 +15,9 @@ from langgraph.types import Command
 from ..interfaces import CommandSource, LLMProvider
 from ..plans import CommandPlan, CommandPlanParseError, parse_command_plan
 from ..prompts_loader import (
-    build_chat_prompt,
     build_direct_answer_prompt,
     build_intent_router_prompt,
+    build_planner_prompt,
 )
 from ..providers.errors import ProviderError
 from ..runbooks import RunbookEngine
@@ -51,7 +51,7 @@ def make_parse_intent_node(
     telemetry: TelemetryRecorder | None = None,
     runbook_engine: RunbookEngine | None = None,
 ) -> Node:
-    prompt = build_chat_prompt()
+    prompt = build_planner_prompt()
     direct_answer_prompt = build_direct_answer_prompt()
     intent_router_prompt = build_intent_router_prompt()
     runbook_guidance = build_runbook_guidance(runbook_engine)
@@ -72,7 +72,8 @@ def make_parse_intent_node(
             return _direct_response_update(current_trace_id, intent.answer)
         prompt_messages = prompt.format_messages(
             chat_history=messages[:-1],
-            user_input=_intent_prompt(user_text, runbook_guidance),
+            runbook_guidance=runbook_guidance,
+            user_input=user_text,
         )
         with span(telemetry, "llm.complete", current_trace_id, {"node": "parse_intent"}):
             if tools:
@@ -272,40 +273,9 @@ def _last_message_text(messages: list[BaseMessage]) -> str:
     return str(messages[-1].content)
 
 
-def _intent_prompt(user_text: str, runbook_guidance: str) -> str:
+def _retry_intent_prompt(user_text: str, error: str) -> str:
     return (
         f"{user_text}\n\n"
-        f"{runbook_guidance}\n\n"
-        "Return only a JSON CommandPlan object with this schema: "
-        '{"goal": str, "commands": [{"command": str, "purpose": str, '
-        '"read_only": bool, "target_hosts": [str]}], "risk_summary": str, '
-        '"preflight_checks": [str], "verification_commands": [str], '
-        '"rollback_commands": [str], "requires_root": bool, '
-        '"expected_side_effects": [str]}. '
-        "If the user asks for an outcome that needs multiple operations, include the full "
-        "ordered workflow in commands, including service start/configuration and verification steps. "
-        "Do not stop after installation when the requested outcome also requires configuration, "
-        "password changes, service startup, or verification. "
-        "Prefer non-interactive package-manager flags and non-interactive administration commands. "
-        "Each command is executed without a shell: do not use OS command chaining, pipes, "
-        "redirects, command substitution, or fallback operators such as ||. "
-        "Runbooks are advisory examples, not routing rules; use, adapt, combine, or ignore "
-        "them according to the user's actual goal. If the user asks to write a shell, Python, "
-        "Go, Ansible, YAML, systemd, nginx, cron, or other artifact, create an artifact plan "
-        "instead of running diagnostic runbook commands only because words overlap. "
-        "For artifact generation that depends on a runtime or toolchain, include a minimal "
-        "read-only version/environment probe before creating the file when the version is "
-        "not already known, then use conservative compatible code and validation commands. "
-        "Because commands run without a shell, write files using argv-safe tools such as "
-        "python3 -c with pathlib rather than redirection or heredocs. "
-        "If useful, call tools before deciding. "
-        "Do not include markdown or prose."
-    )
-
-
-def _retry_intent_prompt(user_text: str, runbook_guidance: str, error: str) -> str:
-    return (
-        f"{_intent_prompt(user_text, runbook_guidance)}\n\n"
         f"The previous planning response was rejected: {error}. "
         "Retry once without tools. Output exactly one valid JSON object and nothing else."
     )
@@ -323,7 +293,8 @@ async def _retry_command_plan(
 ) -> CommandPlan | str:
     retry_messages = prompt.format_messages(
         chat_history=messages[:-1],
-        user_input=_retry_intent_prompt(user_text, runbook_guidance, error),
+        runbook_guidance=runbook_guidance,
+        user_input=_retry_intent_prompt(user_text, error),
     )
     with span(
         telemetry,

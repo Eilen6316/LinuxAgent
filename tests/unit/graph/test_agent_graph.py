@@ -552,7 +552,7 @@ async def test_graph_provides_runbook_guidance_without_hard_routing(tmp_path) ->
     assert snapshot.values["pending_command"] == "df -h"
     assert snapshot.values.get("selected_runbook") is None
     assert "runbook_id" not in interrupt_payload
-    planning_prompt = str(provider.complete_messages[1][-1].content)
+    planning_prompt = "\n".join(str(message.content) for message in provider.complete_messages[1])
     assert "Runbook guidance library" in planning_prompt
     assert "advisory only" in planning_prompt
     assert "disk.full" in planning_prompt
@@ -575,7 +575,7 @@ async def test_graph_artifact_requests_are_not_captured_by_runbook_guidance(tmp_
     snapshot = await graph.aget_state(config)
     assert snapshot.values.get("selected_runbook") is None
     assert snapshot.values["pending_command"] == "python3 --version"
-    planning_prompt = str(provider.complete_messages[1][-1].content)
+    planning_prompt = "\n".join(str(message.content) for message in provider.complete_messages[1])
     assert "For artifact generation" in planning_prompt
     assert "version/environment probe" in planning_prompt
 

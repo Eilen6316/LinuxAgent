@@ -10,7 +10,7 @@ from langgraph.types import Command
 
 from ..interfaces import CommandSource, LLMProvider
 from ..plans import CommandPlanParseError, parse_command_plan
-from ..prompts_loader import build_chat_prompt
+from ..prompts_loader import build_repair_prompt
 from ..security import guard_execution_result
 from ..telemetry import TelemetryRecorder
 from .common import span, trace_id
@@ -23,13 +23,15 @@ def make_repair_plan_node(
     provider: LLMProvider,
     telemetry: TelemetryRecorder | None = None,
 ) -> Node:
-    prompt = build_chat_prompt()
+    prompt = build_repair_prompt()
 
     async def repair_plan_node(state: AgentState) -> AgentState:
         current_trace_id = trace_id(state)
         prompt_messages = prompt.format_messages(
-            chat_history=[],
-            user_input=_repair_prompt(state),
+            runbook_guidance="No runbook guidance is available for repair planning.",
+            original_request=_last_human_text(state.get("messages", [])),
+            current_goal=_current_goal(state),
+            failure_context=_failure_context(state),
         )
         with span(telemetry, "llm.complete", current_trace_id, {"node": "repair_plan"}):
             proposed = (await provider.complete(prompt_messages)).strip()
@@ -74,20 +76,6 @@ def _current_plan_results(state: AgentState) -> tuple[Any, ...]:
         return results[start:]
     result = state.get("execution_result")
     return () if result is None else (result,)
-
-
-def _repair_prompt(state: AgentState) -> str:
-    return (
-        f"Original user request:\n{_last_human_text(state.get('messages', []))}\n\n"
-        f"Current goal:\n{_current_goal(state)}\n\n"
-        f"Failed command results:\n{_failure_context(state)}\n\n"
-        "The previous plan did not complete successfully. Return only a JSON CommandPlan "
-        "with the next recovery commands needed to finish the original request. Do not end "
-        "with analysis. Do not repeat failed commands unless you changed the command. "
-        "Do not chain OS commands with ||, &&, pipes, redirects, or command substitution; "
-        "put fallbacks in separate command steps. Prefer non-interactive administration "
-        "commands over terminal clients."
-    )
 
 
 def _failure_context(state: AgentState) -> str:

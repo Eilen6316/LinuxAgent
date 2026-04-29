@@ -233,14 +233,8 @@ rules:
         }
     )
     runtime = Container(cfg)
-    runbook = next(
-        item
-        for item in runtime.runbook_engine().runbooks
-        if any(step.command == "df -h" for step in item.steps)
-    )
-
     with pytest.raises(ValueError, match="CUSTOM_DF|BLOCK|read-only"):
-        runtime.runbook_engine().evaluate_steps(runbook)
+        runtime.runbook_engine()
 
 
 def test_container_reports_invalid_policy_yaml(tmp_path: Path) -> None:

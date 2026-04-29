@@ -55,10 +55,9 @@ def test_runbook_read_only_mismatch_fails_policy_validation() -> None:
         title="bad",
         steps=(RunbookStep(command="rm -rf /tmp/foo", purpose="bad", read_only=True),),
     )
-    engine = RunbookEngine((runbook,))
 
     with pytest.raises(RunbookPolicyError, match="read-only"):
-        engine.evaluate_steps(runbook)
+        RunbookEngine((runbook,))
 
 
 def test_runbook_step_telemetry_span(tmp_path) -> None:

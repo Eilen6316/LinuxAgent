@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from langchain_core.messages import BaseMessage
 from langgraph.types import Command
@@ -20,7 +22,9 @@ class _Provider:
         self._responses = [command_plan_json("/bin/echo graph"), "集成流程完成"]
 
     async def complete(self, messages: list[BaseMessage], **kwargs) -> str:
-        del messages, kwargs
+        del kwargs
+        if _is_intent_router_call(messages):
+            return _router_response("COMMAND_PLAN")
         return self._responses.pop(0)
 
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs) -> str:
@@ -30,6 +34,14 @@ class _Provider:
     def stream(self, messages: list[BaseMessage], **kwargs):
         del messages, kwargs
         raise NotImplementedError
+
+
+def _router_response(mode: str, answer: str = "", reason: str = "test route") -> str:
+    return json.dumps({"mode": mode, "answer": answer, "reason": reason}, ensure_ascii=False)
+
+
+def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
+    return bool(messages) and "intent router" in str(messages[0].content).casefold()
 
 
 @pytest.mark.integration

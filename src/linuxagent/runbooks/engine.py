@@ -58,6 +58,8 @@ class RunbookEngine:
         self._runbooks = runbooks
         self._policy_engine = policy_engine
         self._telemetry = telemetry
+        for runbook in self._runbooks:
+            self.evaluate_steps(runbook)
 
     @property
     def runbooks(self) -> tuple[Runbook, ...]:

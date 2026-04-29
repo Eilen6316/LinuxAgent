@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from ..interfaces import CommandSource, SafetyLevel
+from .builtin_rules import builtin_policy_config
 from .models import ApprovalMode, PolicyApproval, PolicyConfig, PolicyDecision, PolicyRule
 
 MAX_COMMAND_LENGTH = 2048
@@ -99,8 +100,6 @@ def is_interactive_tokens(
     noninteractive_flags: tuple[str, ...] | None = None,
 ) -> bool:
     if interactive_commands is None or noninteractive_flags is None:
-        from .builtin_rules import builtin_policy_config
-
         config = builtin_policy_config()
         interactive_commands = frozenset(config.interactive_commands)
         noninteractive_flags = config.noninteractive_flags

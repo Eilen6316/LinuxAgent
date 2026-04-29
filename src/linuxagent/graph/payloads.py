@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..executors import is_destructive
 from ..interfaces import CommandSource
 from ..plans import CommandPlan
 from ..runbooks import Runbook
@@ -40,8 +41,6 @@ def _is_destructive(command: str, capabilities: tuple[str, ...]) -> bool:
         return True
     # Safety-related callers should populate capabilities. The fallback keeps
     # direct unit usage conservative for legacy payload construction.
-    from ..executors import is_destructive
-
     return is_destructive(command)
 
 
