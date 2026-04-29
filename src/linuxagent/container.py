@@ -286,21 +286,24 @@ def _tool_event_message(event: dict[str, Any]) -> str | None:
     if phase == "start":
         return _tool_start_message(tool_name, args)
     if phase == "error":
-        return f"AI 工具调用失败：{tool_name}: {event.get('output_preview') or 'unknown error'}"
+        return (
+            f"LinuxAgent 工具调用失败："
+            f"{tool_name}: {event.get('output_preview') or 'unknown error'}"
+        )
     return None
 
 
 def _tool_start_message(tool_name: str, args: dict[str, Any]) -> str:
     if tool_name == "read_file":
-        return f"AI 正在读取文件 {args.get('path') or ''}".strip()
+        return f"LinuxAgent 正在读取文件 {args.get('path') or ''}".strip()
     if tool_name == "list_dir":
-        return f"AI 正在列目录 {args.get('path') or '.'}"
+        return f"LinuxAgent 正在列目录 {args.get('path') or '.'}"
     if tool_name == "search_files":
         root = args.get("root") or "."
         pattern = args.get("pattern") or ""
-        return f"AI 正在搜索 {root}: {pattern}"
+        return f"LinuxAgent 正在搜索 {root}: {pattern}"
     if tool_name == "repair_file_patch":
         files = args.get("files") if isinstance(args.get("files"), list) else []
         suffix = f" {', '.join(str(item) for item in files)}" if files else ""
-        return f"AI 正在重新读取文件并修复 diff{suffix}"
-    return f"AI 正在调用工具 {tool_name}"
+        return f"LinuxAgent 正在重新读取文件并修复 diff{suffix}"
+    return f"LinuxAgent 正在调用工具 {tool_name}"

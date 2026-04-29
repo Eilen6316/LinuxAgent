@@ -328,12 +328,13 @@ def test_tool_event_message_formats_workspace_tools() -> None:
         container_module._tool_event_message(
             {"phase": "start", "tool_name": "read_file", "args": {"path": "README.md"}}
         )
-        == "AI 正在读取文件 README.md"
+        == "LinuxAgent 正在读取文件 README.md"
     )
-    assert "工具调用失败" in str(
+    assert (
         container_module._tool_event_message(
             {"phase": "error", "tool_name": "read_file", "output_preview": "denied"}
         )
+        == "LinuxAgent 工具调用失败：read_file: denied"
     )
     assert (
         container_module._tool_event_message(
@@ -343,7 +344,7 @@ def test_tool_event_message_formats_workspace_tools() -> None:
                 "args": {"files": ["demo.sh"]},
             }
         )
-        == "AI 正在重新读取文件并修复 diff demo.sh"
+        == "LinuxAgent 正在重新读取文件并修复 diff demo.sh"
     )
 
 
