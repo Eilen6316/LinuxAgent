@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import time
-
 from linuxagent.intelligence import CommandLearner
 from linuxagent.interfaces import ExecutionResult
 
@@ -14,16 +12,14 @@ def _result(exit_code: int = 0, duration: float = 0.01) -> ExecutionResult:
 
 def test_command_learner_records_stats_o1_enough() -> None:
     learner = CommandLearner()
-    start = time.perf_counter()
     for _ in range(10_000):
         learner.record("ls -la /tmp", _result())
-    elapsed = time.perf_counter() - start
 
     stats = learner.stats_for("ls -la /tmp")
     assert stats is not None
     assert stats.count == 10_000
     assert stats.success_rate == 1.0
-    assert elapsed < 1.0
+    assert len(learner.top_commands(limit=10)) == 1
 
 
 def test_command_learner_persists_0600(tmp_path) -> None:

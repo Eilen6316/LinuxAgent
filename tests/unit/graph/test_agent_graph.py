@@ -616,7 +616,10 @@ async def test_graph_issue_5_requests_follow_planner_not_runbook_keywords(tmp_pa
 async def test_graph_continues_runbook_guided_plan_after_first_confirmation(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
-        [_multi_command_plan_json(["df -h", "du -sh /var/log"]), "runbook-guided analysis"],
+        [
+            _multi_command_plan_json(["/bin/echo disk-check", "/bin/echo log-check"]),
+            "runbook-guided analysis",
+        ],
         runbook_engine=_runbook_engine(),
     )
     config = {"configurable": {"thread_id": "runbook-disk-continue"}}
@@ -626,8 +629,8 @@ async def test_graph_continues_runbook_guided_plan_after_first_confirmation(tmp_
 
     snapshot = await graph.aget_state(config)
     results = snapshot.values["runbook_results"]
-    assert snapshot.tasks[0].interrupts[0].value["command"] == "du -sh /var/log"
-    assert [result.command for result in results] == ["df -h"]
+    assert snapshot.tasks[0].interrupts[0].value["command"] == "/bin/echo log-check"
+    assert [result.command for result in results] == ["/bin/echo disk-check"]
     assert snapshot.values["runbook_step_index"] == 1
     assert snapshot.values["command_source"] is CommandSource.LLM
     resumed = await graph.ainvoke(
@@ -636,12 +639,15 @@ async def test_graph_continues_runbook_guided_plan_after_first_confirmation(tmp_
     snapshot = await graph.aget_state(config)
     results = snapshot.values["runbook_results"]
     assert not snapshot.tasks
-    assert [result.command for result in results] == ["df -h", "du -sh /var/log"]
+    assert [result.command for result in results] == [
+        "/bin/echo disk-check",
+        "/bin/echo log-check",
+    ]
     assert "runbook-guided analysis" in str(resumed["messages"][-1].content)
     analysis_prompt = str(provider.complete_messages[-1][-1].content)
     assert "Command step results" in analysis_prompt
-    assert "df -h" in analysis_prompt
-    assert "du -sh /var/log" in analysis_prompt
+    assert "/bin/echo disk-check" in analysis_prompt
+    assert "/bin/echo log-check" in analysis_prompt
 
 
 async def test_graph_continues_multi_command_llm_plan_after_confirmation(tmp_path) -> None:
