@@ -285,7 +285,14 @@ def _should_repair_patch_safety_failure(state: AgentState, safety: FilePatchSafe
         not safety.blocked_paths
         and not safety.high_risk_paths
         and state.get("file_patch_repair_attempts", 0) < 1
-        and "unified diff context does not match target file" in reasons
+        and _is_repairable_patch_error(reasons)
+    )
+
+
+def _is_repairable_patch_error(reasons: str) -> bool:
+    return (
+        "unified diff context does not match target file" in reasons
+        or "target already exists; use an update diff instead of a create diff" in reasons
     )
 
 
