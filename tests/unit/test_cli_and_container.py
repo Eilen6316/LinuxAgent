@@ -288,6 +288,7 @@ def test_container_adds_workspace_tools(monkeypatch: pytest.MonkeyPatch, tmp_pat
 def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_provider = SimpleNamespace(name="provider")
     fake_graph = SimpleNamespace(name="graph")
+    captured: dict[str, object] = {}
 
     class _FakeEmbeddings:
         def __init__(self, **kwargs) -> None:
@@ -299,7 +300,12 @@ def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> Non
             self.config = config
 
     monkeypatch.setattr(container_module, "provider_factory", lambda config: fake_provider)
-    monkeypatch.setattr(container_module, "build_agent_graph", lambda deps: fake_graph)
+
+    def fake_build_agent_graph(deps):
+        captured["tool_observer"] = deps.tool_observer
+        return fake_graph
+
+    monkeypatch.setattr(container_module, "build_agent_graph", fake_build_agent_graph)
     monkeypatch.setattr(container_module, "OpenAIEmbeddings", _FakeEmbeddings)
     monkeypatch.setattr(container_module, "SSHManager", _FakeSSHManager)
 
@@ -314,6 +320,21 @@ def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> Non
     assert container.tools()
     assert container.build_agent().graph is fake_graph
     assert container.build_agent().context_manager is container.context_manager()
+    assert captured["tool_observer"] is not None
+
+
+def test_tool_event_message_formats_workspace_tools() -> None:
+    assert (
+        container_module._tool_event_message(
+            {"phase": "start", "tool_name": "read_file", "args": {"path": "README.md"}}
+        )
+        == "AI 正在读取文件 README.md"
+    )
+    assert "工具调用失败" in str(
+        container_module._tool_event_message(
+            {"phase": "error", "tool_name": "read_file", "output_preview": "denied"}
+        )
+    )
 
 
 def test_container_disables_embedding_tools_for_deepseek_by_default(

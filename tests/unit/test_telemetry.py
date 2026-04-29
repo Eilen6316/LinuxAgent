@@ -28,15 +28,33 @@ def test_telemetry_writes_local_jsonl_with_0600(tmp_path) -> None:
 def test_telemetry_records_error_status(tmp_path) -> None:
     recorder = TelemetryRecorder(tmp_path / "telemetry.jsonl")
 
-    with pytest.raises(RuntimeError, match="boom"), recorder.span(
-        "command.execute",
-        trace_id="trace-1",
+    with (
+        pytest.raises(RuntimeError, match="boom"),
+        recorder.span(
+            "command.execute",
+            trace_id="trace-1",
+        ),
     ):
         raise RuntimeError("boom")
 
     record = json.loads((tmp_path / "telemetry.jsonl").read_text(encoding="utf-8"))
     assert record["status"] == "error"
     assert record["error"] == "boom"
+
+
+def test_telemetry_records_tool_event(tmp_path) -> None:
+    recorder = TelemetryRecorder(tmp_path / "telemetry.jsonl")
+
+    recorder.event(
+        "tool.call",
+        trace_id="trace-1",
+        attributes={"tool_name": "read_file", "args": {"path": "README.md"}},
+    )
+
+    record = json.loads((tmp_path / "telemetry.jsonl").read_text(encoding="utf-8"))
+    assert record["name"] == "tool.call"
+    assert record["attributes"]["tool_name"] == "read_file"
+    assert record["attributes"]["args"]["path"] == "README.md"
 
 
 def test_telemetry_disabled_does_not_create_file(tmp_path) -> None:

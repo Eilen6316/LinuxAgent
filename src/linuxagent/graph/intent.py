@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ from .runbook_planning import build_runbook_guidance
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
+ToolEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
 
 
 class IntentMode(StrEnum):
@@ -60,6 +62,7 @@ class IntentNodeContext:
     cluster_service: ClusterService | None
     tools: tuple[BaseTool, ...]
     telemetry: TelemetryRecorder | None
+    tool_observer: ToolEventObserver | None
 
 
 def make_parse_intent_node(
@@ -69,6 +72,7 @@ def make_parse_intent_node(
     tools: tuple[BaseTool, ...] = (),
     telemetry: TelemetryRecorder | None = None,
     runbook_engine: RunbookEngine | None = None,
+    tool_observer: ToolEventObserver | None = None,
 ) -> Node:
     context = IntentNodeContext(
         provider=provider,
@@ -79,6 +83,7 @@ def make_parse_intent_node(
         cluster_service=cluster_service,
         tools=tools,
         telemetry=telemetry,
+        tool_observer=tool_observer,
     )
 
     async def parse_intent_node(state: AgentState) -> AgentState:
@@ -156,11 +161,41 @@ async def _complete_plan_candidate(
             return (await context.provider.complete(prompt_messages)).strip(), None
         try:
             proposed = await context.provider.complete_with_tools(
-                prompt_messages, list(context.tools)
+                prompt_messages,
+                list(context.tools),
+                tool_observer=_tool_event_observer(context, current_trace_id),
             )
         except ProviderError as exc:
             return "", str(exc)
     return proposed.strip(), None
+
+
+def _tool_event_observer(context: IntentNodeContext, current_trace_id: str) -> ToolEventObserver:
+    async def observe(event: dict[str, Any]) -> None:
+        _record_tool_event(context.telemetry, current_trace_id, event)
+        if context.tool_observer is not None:
+            result = context.tool_observer(event)
+            if inspect.isawaitable(result):
+                await result
+
+    return observe
+
+
+def _record_tool_event(
+    telemetry: TelemetryRecorder | None, current_trace_id: str, event: dict[str, Any]
+) -> None:
+    if telemetry is None:
+        return
+    phase = str(event.get("phase") or "unknown")
+    status = "error" if phase == "error" else "ok"
+    error = str(event.get("output_preview")) if phase == "error" else None
+    telemetry.event(
+        "tool.call",
+        trace_id=current_trace_id,
+        status=status,
+        attributes=event,
+        error=error,
+    )
 
 
 async def _recover_plan_parse_error(

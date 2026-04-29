@@ -25,7 +25,9 @@ from .security import redact_record
 class TelemetryRecorder:
     path: Path
     enabled: bool = True
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False, compare=False)
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False, compare=False
+    )
 
     @contextmanager
     def span(
@@ -46,6 +48,18 @@ class TelemetryRecorder:
             raise
         else:
             self._append_span(name, trace_id, start, "ok", attributes, None)
+
+    def event(
+        self,
+        name: str,
+        *,
+        trace_id: str,
+        status: str = "ok",
+        attributes: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> None:
+        if self.enabled:
+            self._append_span(name, trace_id, time.monotonic(), status, attributes, error)
 
     def _append_span(
         self,

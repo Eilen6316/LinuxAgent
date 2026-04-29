@@ -86,7 +86,12 @@ async def test_complete_with_tools_resolves_tool_calls() -> None:
             AIMessage(
                 content="",
                 tool_calls=[
-                    {"name": "lookup_status", "args": {"service": "nginx"}, "id": "1", "type": "tool_call"}
+                    {
+                        "name": "lookup_status",
+                        "args": {"service": "nginx"},
+                        "id": "1",
+                        "type": "tool_call",
+                    }
                 ],
             ),
             AIMessage(content="systemctl status nginx"),
@@ -96,6 +101,44 @@ async def test_complete_with_tools_resolves_tool_calls() -> None:
     out = await provider.complete_with_tools([HumanMessage(content="check nginx")], [lookup_status])
     assert out == "systemctl status nginx"
     assert [tool.name for tool in model.bound_tools] == ["lookup_status"]
+
+
+async def test_complete_with_tools_emits_tool_observer_events() -> None:
+    events: list[dict[str, Any]] = []
+
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "lookup_status",
+                        "args": {"service": "nginx"},
+                        "id": "1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="systemctl status nginx"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="check nginx")],
+        [lookup_status],
+        tool_observer=events.append,
+    )
+
+    assert [event["phase"] for event in events] == ["start", "end"]
+    assert events[0]["tool_name"] == "lookup_status"
+    assert events[0]["args"] == {"service": "nginx"}
+    assert "nginx is active" in events[1]["output_preview"]
 
 
 class _RetryingToolModel(_ToolCallingModel):
@@ -244,8 +287,7 @@ async def test_stream_times_out() -> None:
     model = _SlowStreamModel(responses=["x"])
     provider = BaseLLMProvider(_cfg(stream_timeout=0.2), model)
     with pytest.raises(ProviderTimeoutError):
-        async for _ in provider.stream([HumanMessage(content="hi")]):
-            pass
+        await _drain_stream(provider)
 
 
 class _StreamConnectionLost(FakeListChatModel):
@@ -264,5 +306,9 @@ async def test_stream_maps_and_reraises_provider_error() -> None:
     model = _StreamConnectionLost(responses=["x"])
     provider = BaseLLMProvider(_cfg(), model)
     with pytest.raises(ProviderConnectionError):
-        async for _ in provider.stream([HumanMessage(content="hi")]):
-            pass
+        await _drain_stream(provider)
+
+
+async def _drain_stream(provider: BaseLLMProvider) -> None:
+    async for _ in provider.stream([HumanMessage(content="hi")]):
+        pass

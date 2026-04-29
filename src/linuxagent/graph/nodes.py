@@ -27,6 +27,7 @@ from .safety_nodes import make_safety_check_node
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
+ToolEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
 
 __all__ = [
     "GraphDependencies",
@@ -49,6 +50,7 @@ class GraphDependencies:
     telemetry: TelemetryRecorder | None = None
     runbook_engine: RunbookEngine | None = None
     file_patch_config: FilePatchConfig = field(default_factory=FilePatchConfig)
+    tool_observer: ToolEventObserver | None = None
 
 
 def make_confirm_node(

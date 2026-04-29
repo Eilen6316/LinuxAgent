@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from langchain_core.tools import BaseTool
 from langchain_openai import OpenAIEmbeddings
@@ -132,6 +132,7 @@ class Container:
                     telemetry=self.telemetry(),
                     runbook_engine=self.runbook_engine(),
                     file_patch_config=self._config.file_patch,
+                    tool_observer=self._tool_event_observer(),
                 )
             ),
         )
@@ -241,6 +242,14 @@ class Container:
             ],
         )
 
+    def _tool_event_observer(self) -> Callable[[dict[str, Any]], Any]:
+        async def observe(event: dict[str, Any]) -> None:
+            message = _tool_event_message(event)
+            if message:
+                await self.ui().print_raw(f"{message}\n")
+
+        return observe
+
     def ui(self) -> ConsoleUI:
         return self._cached(
             "ui",
@@ -267,3 +276,27 @@ class Container:
             value = factory()
             self._singletons[key] = value
         return cast(_T, value)
+
+
+def _tool_event_message(event: dict[str, Any]) -> str | None:
+    phase = str(event.get("phase") or "")
+    tool_name = str(event.get("tool_name") or "")
+    raw_args = event.get("args")
+    args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
+    if phase == "start":
+        return _tool_start_message(tool_name, args)
+    if phase == "error":
+        return f"AI 工具调用失败：{tool_name}: {event.get('output_preview') or 'unknown error'}"
+    return None
+
+
+def _tool_start_message(tool_name: str, args: dict[str, Any]) -> str:
+    if tool_name == "read_file":
+        return f"AI 正在读取文件 {args.get('path') or ''}".strip()
+    if tool_name == "list_dir":
+        return f"AI 正在列目录 {args.get('path') or '.'}"
+    if tool_name == "search_files":
+        root = args.get("root") or "."
+        pattern = args.get("pattern") or ""
+        return f"AI 正在搜索 {root}: {pattern}"
+    return f"AI 正在调用工具 {tool_name}"

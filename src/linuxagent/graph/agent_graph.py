@@ -48,6 +48,7 @@ def _add_graph_nodes(graph: Any, deps: GraphDependencies) -> None:
                 tools=deps.tools,
                 telemetry=deps.telemetry,
                 runbook_engine=deps.runbook_engine,
+                tool_observer=deps.tool_observer,
             )
         ),
     )
