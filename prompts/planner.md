@@ -99,6 +99,9 @@ shown to the user before any file is changed. Return only this JSON object:
 ```
 
 For new files, use `--- /dev/null` and `+++ /absolute/or/relative/path` in the
-unified diff. Do not apply the patch through shell commands; the graph applies
-FilePatchPlan after human confirmation. If a generated script needs executable
-permissions, use `permission_changes`; do not emit `chmod` as a shell command.
+unified diff. If read-only tools show the target file already exists, generate
+an update diff with the existing path in both headers; never use `/dev/null` for
+an existing target. Do not apply the patch through shell commands; the graph
+applies FilePatchPlan after human confirmation. If a generated script needs
+executable permissions, use `permission_changes`; do not emit `chmod` as a shell
+command.

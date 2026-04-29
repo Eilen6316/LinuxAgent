@@ -38,6 +38,17 @@ def test_apply_unified_diff_creates_file(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8") == "#!/bin/sh\necho hi\n"
 
 
+def test_create_diff_rejects_existing_file_before_writing(tmp_path: Path) -> None:
+    path = tmp_path / "hello.sh"
+    path.write_text("existing\n", encoding="utf-8")
+    plan = parse_file_patch_plan(file_patch_plan_json(str(path), "#!/bin/sh\necho hi\n"))
+
+    with pytest.raises(FilePatchApplyError, match="target already exists"):
+        apply_unified_diff(plan.unified_diff)
+
+    assert path.read_text(encoding="utf-8") == "existing\n"
+
+
 def test_apply_unified_diff_updates_existing_file(tmp_path: Path) -> None:
     path = tmp_path / "config.txt"
     path.write_text("old=true\nkeep=yes\n", encoding="utf-8")

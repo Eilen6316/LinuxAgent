@@ -149,6 +149,21 @@ def _multi_command_plan_json(commands: list[str]) -> str:
     return json.dumps(payload)
 
 
+def _file_patch_plan_from_diff(path: Path, diff_lines: list[str]) -> str:
+    payload = {
+        "plan_type": "file_patch",
+        "goal": "edit existing file",
+        "files_changed": [str(path)],
+        "unified_diff": "\n".join(diff_lines) + "\n",
+        "risk_summary": "test patch",
+        "verification_commands": [],
+        "permission_changes": [],
+        "rollback_diff": "",
+        "expected_side_effects": ["filesystem.write"],
+    }
+    return json.dumps(payload)
+
+
 async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo hi"), "analysis ok"])
     config = {"configurable": {"thread_id": "t1"}}
@@ -223,6 +238,77 @@ async def test_graph_refuses_file_patch_without_writing(tmp_path) -> None:
 
     assert not target.exists()
     assert "已拒绝执行" in str(resumed["messages"][-1].content)
+
+
+async def test_graph_blocks_create_patch_when_target_exists(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("existing\n", encoding="utf-8")
+    graph, _provider = _graph(
+        tmp_path,
+        [file_patch_plan_json(str(target), "#!/bin/sh\necho disk\n")],
+    )
+    config = {"configurable": {"thread_id": "file-patch-existing-target"}}
+
+    result = await graph.ainvoke(
+        initial_state("create a disk info shell script", source=CommandSource.USER),
+        config=config,
+    )
+
+    assert target.read_text(encoding="utf-8") == "existing\n"
+    assert "已阻止执行" in str(result["messages"][-1].content)
+    assert "target already exists" in str(result["messages"][-1].content)
+
+
+async def test_graph_repairs_failed_file_patch_and_reconfirms(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("#!/bin/sh\necho disk\n", encoding="utf-8")
+    stale_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,3 @@",
+            " #!/bin/sh",
+            " echo disk",
+            "+echo cpu",
+        ],
+    )
+    repaired_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,3 @@",
+            " #!/bin/sh",
+            " echo storage",
+            "+echo cpu",
+        ],
+    )
+    graph, _provider = _graph(tmp_path, [stale_plan, repaired_plan, "analysis ok"])
+    config = {"configurable": {"thread_id": "file-patch-repair"}}
+
+    await graph.ainvoke(
+        initial_state("add cpu info to script", source=CommandSource.USER),
+        config=config,
+    )
+    target.write_text("#!/bin/sh\necho storage\n", encoding="utf-8")
+    repair_result = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+    snapshot = await graph.aget_state(config)
+    interrupts = list(repair_result.get("__interrupt__", ())) if repair_result else []
+    if not interrupts:
+        interrupts = list(snapshot.tasks[0].interrupts)
+
+    assert interrupts[0].value["type"] == "confirm_file_patch"
+    assert "+echo cpu" in interrupts[0].value["unified_diff"]
+
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+
+    assert target.read_text(encoding="utf-8") == "#!/bin/sh\necho storage\necho cpu\n"
+    assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
 async def test_graph_blocks_file_patch_outside_allow_roots(tmp_path) -> None:

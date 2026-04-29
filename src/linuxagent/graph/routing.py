@@ -5,6 +5,7 @@ from __future__ import annotations
 from langchain_core.messages import AIMessage
 
 from ..interfaces import SafetyLevel
+from .file_patch_nodes import should_repair_file_patch
 from .replanning import should_repair_plan
 from .runbook_planning import has_next_plan_step
 from .state import AgentState
@@ -48,4 +49,10 @@ async def route_after_execute(state: AgentState) -> str:
         return "CONTINUE_RUNBOOK"
     if should_repair_plan(state):
         return "REPAIR_PLAN"
+    return "ANALYZE"
+
+
+async def route_after_file_patch_apply(state: AgentState) -> str:
+    if should_repair_file_patch(state):
+        return "REPAIR_FILE_PATCH"
     return "ANALYZE"

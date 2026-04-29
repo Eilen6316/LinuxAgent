@@ -28,6 +28,7 @@ class AgentState(TypedDict, total=False):
     pending_command: str | None
     command_plan: CommandPlan | None
     file_patch_plan: FilePatchPlan | None
+    file_patch_repair_attempts: int
     selected_runbook: Runbook | None
     runbook_step_index: int
     runbook_results: tuple[ExecutionResult, ...]
@@ -68,6 +69,7 @@ def initial_state(
         pending_command=None,
         command_plan=None,
         file_patch_plan=None,
+        file_patch_repair_attempts=0,
         selected_runbook=None,
         runbook_step_index=0,
         runbook_results=(),

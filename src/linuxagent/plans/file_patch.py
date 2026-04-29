@@ -219,6 +219,11 @@ def _dry_run_file_updates(patches: tuple[_FilePatch, ...]) -> tuple[_PlannedFile
 
 def _planned_file_update(patch: _FilePatch) -> _PlannedFileUpdate:
     target = _target_path(patch)
+    if patch.old_path == "/dev/null" and target.exists():
+        raise FilePatchApplyError(
+            "target already exists; use an update diff instead of a create diff",
+            path=target,
+        )
     old_lines = _read_lines(target)
     new_lines = _patched_lines(target, old_lines, patch.hunks)
     return _PlannedFileUpdate(target, tuple(new_lines), patch.new_path == "/dev/null")

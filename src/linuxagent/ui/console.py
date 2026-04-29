@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
+import select
 import sys
+import termios
 import time
+import tty
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
@@ -74,6 +79,11 @@ class ConsoleUI(UserInterface):
         rendered = Text(text, style="red") if stderr else Text(text)
         self._console.print(rendered, end="")
 
+    async def wait_for_cancel(self) -> str:
+        if not sys.stdin.isatty():
+            return await super().wait_for_cancel()
+        return await _wait_for_escape()
+
     def _print_hero(self) -> None:
         hero = Text()
         hero.append("LinuxAgent ", style=f"bold {self._accent_style()}")
@@ -108,3 +118,17 @@ class ConsoleUI(UserInterface):
 
 _render_unified_diff = render_unified_diff
 _diff_line_style = diff_line_style
+
+
+async def _wait_for_escape() -> str:
+    fd = sys.stdin.fileno()
+    old_attrs = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        while True:
+            await asyncio.sleep(0.05)
+            readable, _, _ = select.select([sys.stdin], [], [], 0)
+            if readable and os.read(fd, 1) == b"\x1b":
+                return "escape"
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)

@@ -163,18 +163,24 @@ async def _complete_plan_candidate(
             proposed = await context.provider.complete_with_tools(
                 prompt_messages,
                 list(context.tools),
-                tool_observer=_tool_event_observer(context, current_trace_id),
+                tool_observer=tool_event_observer(
+                    context.telemetry, context.tool_observer, current_trace_id
+                ),
             )
         except ProviderError as exc:
             return "", str(exc)
     return proposed.strip(), None
 
 
-def _tool_event_observer(context: IntentNodeContext, current_trace_id: str) -> ToolEventObserver:
+def tool_event_observer(
+    telemetry: TelemetryRecorder | None,
+    observer: ToolEventObserver | None,
+    current_trace_id: str,
+) -> ToolEventObserver:
     async def observe(event: dict[str, Any]) -> None:
-        _record_tool_event(context.telemetry, current_trace_id, event)
-        if context.tool_observer is not None:
-            result = context.tool_observer(event)
+        _record_tool_event(telemetry, current_trace_id, event)
+        if observer is not None:
+            result = observer(event)
             if inspect.isawaitable(result):
                 await result
 
@@ -333,6 +339,7 @@ def _direct_response_update(current_trace_id: str, response: str) -> AgentState:
         "pending_command": None,
         "command_plan": None,
         "file_patch_plan": None,
+        "file_patch_repair_attempts": 0,
         "selected_runbook": None,
         "runbook_step_index": 0,
         "runbook_results": (),
@@ -350,6 +357,7 @@ def _parse_error_update(current_trace_id: str, message: str) -> AgentState:
         "pending_command": None,
         "command_plan": None,
         "file_patch_plan": None,
+        "file_patch_repair_attempts": 0,
         "selected_runbook": None,
         "runbook_step_index": 0,
         "runbook_results": (),
@@ -372,6 +380,7 @@ def _plan_update(
         "pending_command": plan.primary.command,
         "command_plan": plan,
         "file_patch_plan": None,
+        "file_patch_repair_attempts": 0,
         "selected_runbook": None,
         "runbook_step_index": 0,
         "runbook_results": (),
@@ -389,6 +398,7 @@ def _file_patch_update(current_trace_id: str, plan: FilePatchPlan) -> AgentState
         "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
         "command_plan": None,
         "file_patch_plan": plan,
+        "file_patch_repair_attempts": 0,
         "selected_runbook": None,
         "runbook_step_index": 0,
         "runbook_results": (),

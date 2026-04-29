@@ -7,7 +7,11 @@ from typing import Any, TypeAlias
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from .file_patch_nodes import make_apply_file_patch_node, make_file_patch_confirm_node
+from .file_patch_nodes import (
+    make_apply_file_patch_node,
+    make_file_patch_confirm_node,
+    make_repair_file_patch_node,
+)
 from .intent import make_parse_intent_node
 from .nodes import (
     GraphDependencies,
@@ -23,6 +27,7 @@ from .routing import (
     respond_node,
     respond_refused_node,
     route_after_execute,
+    route_after_file_patch_apply,
     route_after_parse,
     route_by_safety,
 )
@@ -71,6 +76,18 @@ def _add_graph_nodes(graph: Any, deps: GraphDependencies) -> None:
         _langgraph_node(make_apply_file_patch_node(deps.audit, deps.file_patch_config)),
     )
     graph.add_node(
+        "repair_file_patch",
+        _langgraph_node(
+            make_repair_file_patch_node(
+                deps.provider,
+                deps.file_patch_config,
+                tools=deps.tools,
+                telemetry=deps.telemetry,
+                tool_observer=deps.tool_observer,
+            )
+        ),
+    )
+    graph.add_node(
         "execute",
         _langgraph_node(
             make_execute_node(
@@ -117,7 +134,11 @@ def _add_graph_edges(graph: Any) -> None:
     )
     graph.add_edge("advance_runbook", "safety_check")
     graph.add_edge("repair_plan", "safety_check")
-    graph.add_edge("apply_file_patch", "analyze")
+    graph.add_conditional_edges(
+        "apply_file_patch",
+        route_after_file_patch_apply,
+        {"REPAIR_FILE_PATCH": "repair_file_patch", "ANALYZE": "analyze"},
+    )
     graph.add_edge("analyze", "respond")
     graph.add_edge("respond", END)
     graph.add_edge("respond_block", END)

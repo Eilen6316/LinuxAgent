@@ -7,6 +7,7 @@ respond to LangGraph ``interrupt()`` payloads; the graph itself never calls
 
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -39,3 +40,8 @@ class UserInterface(ABC):
         """Display raw command output without extra decoration."""
         del stderr
         await self.print(text)
+
+    async def wait_for_cancel(self) -> str:
+        """Return a cancellation reason when the user asks to stop current work."""
+        future: asyncio.Future[str] = asyncio.Future()
+        return await future

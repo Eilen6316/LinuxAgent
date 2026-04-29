@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
@@ -79,7 +81,9 @@ class LinuxAgent:
         history = self.context_manager.snapshot()
         state: Any = initial_state(user_input, source=CommandSource.USER, history=history)
         while True:
-            result = await self.graph.ainvoke(state, config=config)
+            result = await self._ainvoke_with_cancel(state, config)
+            if result is None:
+                return {}
             interrupts = await self._interrupts(result, config)
             if not interrupts:
                 if isinstance(result, dict) and result.get("messages"):
@@ -92,6 +96,33 @@ class LinuxAgent:
             payload = interrupts[0].value
             response = await self.ui.handle_interrupt(payload)
             state = Command(resume=response)
+
+    async def _ainvoke_with_cancel(
+        self, state: Any, config: RunnableConfig
+    ) -> dict[str, Any] | None:
+        invoke_task = asyncio.create_task(self.graph.ainvoke(state, config=config))
+        cancel_task = asyncio.create_task(self._wait_for_cancel())
+        done, _pending = await asyncio.wait(
+            {invoke_task, cancel_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+        if invoke_task in done:
+            cancel_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await cancel_task
+            result = await invoke_task
+            return result if isinstance(result, dict) else {}
+        invoke_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await invoke_task
+        await self.ui.print("已终止当前 AI 工作。")
+        return None
+
+    async def _wait_for_cancel(self) -> str:
+        wait_for_cancel = getattr(self.ui, "wait_for_cancel", None)
+        if wait_for_cancel is None:
+            future: asyncio.Future[str] = asyncio.Future()
+            return await future
+        return str(await wait_for_cancel())
 
     async def _interrupts(self, result: Any, config: RunnableConfig) -> list[Any]:
         if isinstance(result, dict) and result.get("__interrupt__"):

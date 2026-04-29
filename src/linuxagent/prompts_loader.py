@@ -73,6 +73,16 @@ def build_repair_prompt() -> ChatPromptTemplate:
     )
 
 
+def build_file_patch_repair_prompt() -> ChatPromptTemplate:
+    """Build a prompt for failed FilePatchPlan recovery."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", load_prompt("planner.md")),
+            ("human", load_prompt("file_patch_repair.md")),
+        ]
+    )
+
+
 def build_direct_answer_prompt() -> ChatPromptTemplate:
     """Build a prompt for non-execution conversational answers."""
     return ChatPromptTemplate.from_messages(

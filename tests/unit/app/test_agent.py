@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -56,6 +57,7 @@ class _FakeUI:
         self.printed: list[str] = []
         self.raw_printed: list[tuple[str, bool]] = []
         self.interrupts: list[dict[str, Any]] = []
+        self.cancel_immediately = False
 
     async def input_stream(self):
         for item in self._inputs:
@@ -70,6 +72,11 @@ class _FakeUI:
 
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
         self.raw_printed.append((text, stderr))
+
+    async def wait_for_cancel(self) -> str:
+        if self.cancel_immediately:
+            return "escape"
+        return await asyncio.Future()
 
 
 class _FakeGraph:
@@ -99,6 +106,13 @@ class _FakeGraph:
             tasks=[SimpleNamespace(interrupts=self._snapshot_interrupts)],
             values=self._snapshot_values,
         )
+
+
+class _SlowGraph(_FakeGraph):
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del state, config
+        await asyncio.sleep(10)
+        return {}
 
 
 class _FakeExecutor:
@@ -199,6 +213,17 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
         "now",
         "done",
     ]
+
+
+async def test_run_turn_escape_cancels_inflight_graph(tmp_path) -> None:
+    ui = _FakeUI()
+    ui.cancel_immediately = True
+    agent = _agent(tmp_path, graph=_SlowGraph([]), ui=ui)
+
+    result = await agent.run_turn("slow task", thread_id="cancel")
+
+    assert result == {}
+    assert ui.printed == ["已终止当前 AI 工作。"]
 
 
 async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:

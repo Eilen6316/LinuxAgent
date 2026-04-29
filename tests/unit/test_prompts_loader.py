@@ -8,6 +8,7 @@ from linuxagent.prompts_loader import (
     build_analysis_prompt,
     build_chat_prompt,
     build_direct_answer_prompt,
+    build_file_patch_repair_prompt,
     build_intent_router_prompt,
     build_planner_prompt,
     build_repair_prompt,
@@ -24,6 +25,7 @@ def test_find_prompts_dir_resolves_for_editable_install() -> None:
     assert (path / "intent_router.md").is_file()
     assert (path / "planner.md").is_file()
     assert (path / "repair.md").is_file()
+    assert (path / "file_patch_repair.md").is_file()
 
 
 def test_load_system_prompt_is_non_empty() -> None:
@@ -65,6 +67,15 @@ def test_build_repair_prompt_has_recovery_variables() -> None:
     assert "runbook_guidance" in tmpl.input_variables
     assert "original_request" in tmpl.input_variables
     assert "current_goal" in tmpl.input_variables
+    assert "failure_context" in tmpl.input_variables
+
+
+def test_build_file_patch_repair_prompt_has_recovery_variables() -> None:
+    tmpl = build_file_patch_repair_prompt()
+    assert isinstance(tmpl, ChatPromptTemplate)
+    assert "runbook_guidance" in tmpl.input_variables
+    assert "original_request" in tmpl.input_variables
+    assert "previous_plan" in tmpl.input_variables
     assert "failure_context" in tmpl.input_variables
 
 
