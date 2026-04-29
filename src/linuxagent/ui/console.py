@@ -5,14 +5,13 @@ from __future__ import annotations
 import os
 import sys
 import time
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator, Callable, Iterable
 from pathlib import Path
 from typing import Any, cast
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
-from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
 from rich.console import Console
 from rich.panel import Panel
@@ -32,6 +31,8 @@ _SLASH_COMMANDS: tuple[tuple[str, str], ...] = (
     ("/quit", "Alias for /exit"),
     ("!", "Run a shell command directly and add output to context"),
 )
+
+_DIRECT_COMMAND_PROMPT_STYLE = "ansibrightmagenta"
 
 
 class ConsoleUI(UserInterface):
@@ -57,7 +58,7 @@ class ConsoleUI(UserInterface):
         session = self._session_factory()
         while True:
             try:
-                line = await session.prompt_async(self._build_prompt())
+                line = await session.prompt_async(self._dynamic_prompt(session))
             except (EOFError, KeyboardInterrupt):
                 return
             if line.strip():
@@ -138,12 +139,24 @@ class ConsoleUI(UserInterface):
             )
         )
 
-    def _build_prompt(self) -> HTML:
+    def _dynamic_prompt(self, session: Any) -> Callable[[], list[tuple[str, str]]]:
+        def prompt() -> list[tuple[str, str]]:
+            return self._build_prompt(session.default_buffer.text)
+
+        return prompt
+
+    def _build_prompt(self, current_text: str = "") -> list[tuple[str, str]]:
         accent = "ansiblue" if self._theme == "light" else "ansibrightcyan"
-        return HTML(
-            f'<b><style fg="{accent}">linuxagent</style></b> '
-            f'<style fg="ansibrightblack">{self._prompt_symbol}</style> '
-        )
+        symbol_style = "ansibrightblack"
+        if current_text.startswith("!"):
+            accent = _DIRECT_COMMAND_PROMPT_STYLE
+            symbol_style = _DIRECT_COMMAND_PROMPT_STYLE
+        return [
+            (f"bold {accent}", "linuxagent"),
+            ("", " "),
+            (symbol_style, self._prompt_symbol),
+            ("", " "),
+        ]
 
     def _default_session_factory(self) -> PromptSession[str]:
         self._history_path.parent.mkdir(parents=True, exist_ok=True)

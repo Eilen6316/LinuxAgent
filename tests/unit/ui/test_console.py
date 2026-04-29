@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 from prompt_toolkit.document import Document
 from rich.console import Console
@@ -23,12 +25,15 @@ class _FakeSession:
     def __init__(self, responses: list[str]) -> None:
         self._responses = list(responses)
         self.prompts: list[object] = []
+        self.default_buffer = SimpleNamespace(text="")
 
-    async def prompt_async(self, prompt: str) -> str:
-        self.prompts.append(prompt)
+    async def prompt_async(self, prompt: Any) -> str:
+        self.prompts.append(prompt() if callable(prompt) else prompt)
         if not self._responses:
             raise EOFError
-        return self._responses.pop(0)
+        response = self._responses.pop(0)
+        self.default_buffer.text = response
+        return response
 
 
 async def test_console_ui_input_stream_uses_prompt_session(monkeypatch, tmp_path: Path) -> None:
@@ -55,6 +60,17 @@ def test_console_ui_default_history_file_is_0600(tmp_path: Path) -> None:
     ui._default_session_factory()
 
     assert history_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_console_prompt_turns_magenta_for_direct_shell_prefix() -> None:
+    ui = ConsoleUI(prompt_symbol=">")
+
+    normal = ui._build_prompt("status")
+    direct = ui._build_prompt("!pwd")
+
+    assert ("bold ansibrightmagenta", "linuxagent") not in normal
+    assert ("bold ansibrightmagenta", "linuxagent") in direct
+    assert ("ansibrightmagenta", ">") in direct
 
 
 def test_slash_command_completer_suggests_commands() -> None:
