@@ -12,6 +12,7 @@ from .file_patch import (
     evaluate_file_patch_plan,
     file_patch_plan_json,
     parse_file_patch_plan,
+    select_file_patch_plan_files,
 )
 from .models import (
     CommandPlan,
@@ -38,4 +39,5 @@ __all__ = [
     "file_patch_plan_json",
     "parse_command_plan",
     "parse_file_patch_plan",
+    "select_file_patch_plan_files",
 ]

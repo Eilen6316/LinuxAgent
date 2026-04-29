@@ -21,6 +21,7 @@ from ..plans import (
     apply_file_patch_plan,
     evaluate_file_patch_plan,
     parse_file_patch_plan,
+    select_file_patch_plan_files,
 )
 from ..prompts_loader import build_file_patch_repair_prompt
 from ..providers.errors import ProviderError
@@ -71,9 +72,13 @@ def make_file_patch_confirm_node(audit: AuditLog, config: FilePatchConfig) -> No
         )
         if user_decision != "yes":
             return Command(goto="respond_refused", update={"audit_id": audit_id})
+        try:
+            plan = _selected_plan(plan, response)
+        except FilePatchApplyError as exc:
+            return Command(goto="respond_block", update=_patch_error(current_trace_id, str(exc)))
         return Command(
             goto="apply_file_patch",
-            update={"trace_id": current_trace_id, "user_confirmed": True, "audit_id": audit_id},
+            update=_confirmed_patch_update(current_trace_id, audit_id, plan),
         )
 
     return file_patch_confirm_node
@@ -215,6 +220,37 @@ def _patch_payload(
     }
 
 
+def _selected_plan(plan: FilePatchPlan, response: Any) -> FilePatchPlan:
+    selected = _selected_files(response)
+    if selected is None:
+        return plan
+    return select_file_patch_plan_files(plan, selected)
+
+
+def _selected_files(response: Any) -> tuple[str, ...] | None:
+    if not isinstance(response, dict):
+        return None
+    if "selected_files" not in response:
+        return None
+    raw = response.get("selected_files")
+    if not isinstance(raw, list | tuple):
+        return ()
+    return tuple(str(item).strip() for item in raw if str(item).strip())
+
+
+def _confirmed_patch_update(
+    current_trace_id: str, audit_id: str, plan: FilePatchPlan
+) -> AgentState:
+    return {
+        "trace_id": current_trace_id,
+        "user_confirmed": True,
+        "audit_id": audit_id,
+        "file_patch_plan": plan,
+        "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
+        "file_patch_selected_files": plan.files_changed,
+    }
+
+
 def _apply_patch_result(
     plan: FilePatchPlan, config: FilePatchConfig, duration: float
 ) -> ExecutionResult:
@@ -259,6 +295,7 @@ def _repair_update(state: AgentState, current_trace_id: str, plan: FilePatchPlan
         "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
         "file_patch_plan": plan,
         "file_patch_repair_attempts": state.get("file_patch_repair_attempts", 0) + 1,
+        "file_patch_selected_files": (),
         "plan_error": None,
         "command_source": CommandSource.LLM,
         "direct_response": False,

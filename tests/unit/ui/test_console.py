@@ -11,7 +11,7 @@ from prompt_toolkit.document import Document
 from rich.console import Console
 
 from linuxagent.ui import ConsoleUI
-from linuxagent.ui.console import SlashCommandCompleter
+from linuxagent.ui.console import SlashCommandCompleter, parse_file_selection
 
 
 async def test_console_ui_non_tty_auto_denies(monkeypatch) -> None:
@@ -71,6 +71,17 @@ def test_console_prompt_turns_magenta_for_direct_shell_prefix() -> None:
     assert ("bold ansibrightmagenta", "linuxagent") not in normal
     assert ("bold ansibrightmagenta", "linuxagent") in direct
     assert ("ansibrightmagenta", ">") in direct
+
+
+def test_parse_file_selection_accepts_indexes_ranges_and_paths() -> None:
+    files = ("one.py", "two.py", "three.py")
+
+    assert parse_file_selection("1, 3 two.py 2-3 missing.py", files) == (
+        "one.py",
+        "three.py",
+        "two.py",
+    )
+    assert parse_file_selection("4 9 missing.py", files) == ()
 
 
 def test_slash_command_completer_suggests_commands() -> None:

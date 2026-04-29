@@ -222,6 +222,59 @@ async def test_graph_confirms_and_applies_file_patch_plan(tmp_path) -> None:
     assert "patch applied" in str(resumed["messages"][-1].content)
 
 
+async def test_graph_applies_only_selected_file_patch_files(tmp_path) -> None:
+    first = tmp_path / "one.txt"
+    second = tmp_path / "two.txt"
+    plan = _file_patch_plan_from_diff(
+        first,
+        [
+            "--- /dev/null",
+            f"+++ {first}",
+            "@@ -0,0 +1 @@",
+            "+one",
+            "--- /dev/null",
+            f"+++ {second}",
+            "@@ -0,0 +1 @@",
+            "+two",
+        ],
+    )
+    payload = json.loads(plan)
+    payload["files_changed"] = [str(first), str(second)]
+    graph, _provider = _graph(tmp_path, [json.dumps(payload), "partial patch applied"])
+    config = {"configurable": {"thread_id": "file-patch-partial"}}
+
+    await graph.ainvoke(initial_state("create two files", source=CommandSource.USER), config=config)
+    resumed = await graph.ainvoke(
+        Command(
+            resume={
+                "decision": "yes",
+                "latency_ms": 1,
+                "selected_files": [str(second)],
+            }
+        ),
+        config=config,
+    )
+
+    assert not first.exists()
+    assert second.read_text(encoding="utf-8") == "two\n"
+    assert "partial patch applied" in str(resumed["messages"][-1].content)
+
+
+async def test_graph_blocks_empty_selected_file_patch_files(tmp_path) -> None:
+    target = tmp_path / "one.txt"
+    graph, _provider = _graph(tmp_path, [file_patch_plan_json(str(target), "one\n")])
+    config = {"configurable": {"thread_id": "file-patch-empty-selection"}}
+
+    await graph.ainvoke(initial_state("create one file", source=CommandSource.USER), config=config)
+    result = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1, "selected_files": []}),
+        config=config,
+    )
+
+    assert not target.exists()
+    assert "no file patch files selected" in str(result["messages"][-1].content)
+
+
 async def test_graph_refuses_file_patch_without_writing(tmp_path) -> None:
     target = tmp_path / "disk_info.sh"
     graph, _provider = _graph(

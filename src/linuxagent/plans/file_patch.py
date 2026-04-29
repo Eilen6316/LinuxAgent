@@ -168,6 +168,28 @@ def evaluate_file_patch_plan(
     return _with_permission_policy(safety, plan.permission_changes, config)
 
 
+def select_file_patch_plan_files(
+    plan: FilePatchPlan,
+    selected_files: tuple[str, ...],
+) -> FilePatchPlan:
+    selected = tuple(dict.fromkeys(item.strip() for item in selected_files if item.strip()))
+    if not selected:
+        raise FilePatchApplyError("no file patch files selected")
+    patches = _parse_file_patches(plan.unified_diff)
+    selected_patches = _select_patches(patches, selected)
+    selected_targets = tuple(str(_target_path(patch)) for patch in selected_patches)
+    return plan.model_copy(
+        update={
+            "files_changed": selected_targets,
+            "unified_diff": _format_file_patches(selected_patches),
+            "permission_changes": _select_permission_changes(
+                plan.permission_changes, selected_targets
+            ),
+            "rollback_diff": "",
+        }
+    )
+
+
 @dataclass(frozen=True)
 class _FilePatch:
     old_path: str
@@ -211,6 +233,45 @@ def _parse_file_patches(diff_text: str) -> tuple[_FilePatch, ...]:
     if not patches:
         raise FilePatchApplyError("unified diff contains no file patches")
     return tuple(patches)
+
+
+def _select_patches(
+    patches: tuple[_FilePatch, ...],
+    selected_files: tuple[str, ...],
+) -> tuple[_FilePatch, ...]:
+    selected = set(selected_files)
+    selected_patches = tuple(patch for patch in patches if _patch_matches(patch, selected))
+    matched = {_patch_match_key(patch, selected) for patch in selected_patches}
+    missing = tuple(path for path in selected_files if path not in matched)
+    if missing:
+        raise FilePatchApplyError("selected file is not present in patch", path=Path(missing[0]))
+    return selected_patches
+
+
+def _patch_matches(patch: _FilePatch, selected: set[str]) -> bool:
+    return _patch_match_key(patch, selected) != ""
+
+
+def _patch_match_key(patch: _FilePatch, selected: set[str]) -> str:
+    candidates = (str(_target_path(patch)), patch.old_path, patch.new_path)
+    return next((candidate for candidate in candidates if candidate in selected), "")
+
+
+def _format_file_patches(patches: tuple[_FilePatch, ...]) -> str:
+    lines: list[str] = []
+    for patch in patches:
+        lines.extend((f"--- {patch.old_path}", f"+++ {patch.new_path}"))
+        for hunk in patch.hunks:
+            lines.extend(hunk)
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def _select_permission_changes(
+    changes: tuple[FilePatchPermissionChange, ...],
+    selected_targets: tuple[str, ...],
+) -> tuple[FilePatchPermissionChange, ...]:
+    selected = set(selected_targets)
+    return tuple(change for change in changes if change.path in selected)
 
 
 def _dry_run_file_updates(patches: tuple[_FilePatch, ...]) -> tuple[_PlannedFileUpdate, ...]:

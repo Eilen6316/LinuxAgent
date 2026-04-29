@@ -15,6 +15,7 @@ from linuxagent.plans import (
     evaluate_file_patch_plan,
     file_patch_plan_json,
     parse_file_patch_plan,
+    select_file_patch_plan_files,
 )
 
 
@@ -124,6 +125,49 @@ def test_apply_file_patch_plan_applies_permission_changes(tmp_path: Path) -> Non
 
     assert result.permissions_changed == (target,)
     assert target.stat().st_mode & 0o777 == 0o755
+
+
+def test_select_file_patch_plan_files_applies_only_selected_file(tmp_path: Path) -> None:
+    first = tmp_path / "one.sh"
+    second = tmp_path / "two.sh"
+    payload = {
+        "plan_type": "file_patch",
+        "goal": "create two files",
+        "files_changed": [str(first), str(second)],
+        "unified_diff": "\n".join(
+            [
+                "--- /dev/null",
+                f"+++ {first}",
+                "@@ -0,0 +1 @@",
+                "+one",
+                "--- /dev/null",
+                f"+++ {second}",
+                "@@ -0,0 +1 @@",
+                "+two",
+                "",
+            ]
+        ),
+        "permission_changes": [{"path": str(second), "mode": "0755"}],
+    }
+    plan = parse_file_patch_plan(json.dumps(payload))
+
+    selected = select_file_patch_plan_files(plan, (str(second),))
+    result = apply_file_patch_plan(selected, FilePatchConfig(allow_roots=(tmp_path,)))
+
+    assert selected.files_changed == (str(second),)
+    assert result.files_changed == (second,)
+    assert result.permissions_changed == (second,)
+    assert not first.exists()
+    assert second.read_text(encoding="utf-8") == "two\n"
+    assert second.stat().st_mode & 0o777 == 0o755
+
+
+def test_select_file_patch_plan_files_rejects_unknown_selection(tmp_path: Path) -> None:
+    target = tmp_path / "one.sh"
+    plan = parse_file_patch_plan(file_patch_plan_json(str(target), "one\n"))
+
+    with pytest.raises(FilePatchApplyError, match="selected file"):
+        select_file_patch_plan_files(plan, (str(tmp_path / "missing.sh"),))
 
 
 def test_permission_changes_disabled_block_before_writing(tmp_path: Path) -> None:

@@ -15,7 +15,7 @@ from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 from rich.text import Text
 
 from ..interfaces import UserInterface
@@ -66,11 +66,9 @@ class ConsoleUI(UserInterface):
         if not sys.stdin.isatty():
             return {"decision": "non_tty_auto_deny", "latency_ms": 0}
         self._confirmation_renderer.render(payload)
-        approved = Confirm.ask("[bold]Allow this operation?[/]", default=False)
-        return {
-            "decision": "yes" if approved else "no",
-            "latency_ms": int((time.monotonic() - started) * 1000),
-        }
+        response = self._approval_response(payload)
+        response["latency_ms"] = int((time.monotonic() - started) * 1000)
+        return response
 
     async def print(self, text: str) -> None:
         self._console.print(Panel(Text(text), border_style=self._panel_style()))
@@ -115,9 +113,69 @@ class ConsoleUI(UserInterface):
             return "blue"
         return "bright_black"
 
+    def _approval_response(self, payload: dict[str, Any]) -> dict[str, Any]:
+        files = tuple(str(item) for item in payload.get("files_changed", ()) if str(item))
+        if payload.get("type") == "confirm_file_patch" and len(files) > 1:
+            return _file_patch_approval_response(files)
+        approved = Confirm.ask("[bold]Allow this operation?[/]", default=False)
+        return {"decision": "yes" if approved else "no"}
+
 
 _render_unified_diff = render_unified_diff
 _diff_line_style = diff_line_style
+
+
+def _file_patch_approval_response(files: tuple[str, ...]) -> dict[str, Any]:
+    if Confirm.ask("[bold]Apply all changed files?[/]", default=True):
+        return {"decision": "yes"}
+    if not Confirm.ask("[bold]Apply only selected files?[/]", default=False):
+        return {"decision": "no"}
+    selected = _prompt_selected_files(files)
+    if not selected:
+        return {"decision": "no"}
+    return {"decision": "yes", "selected_files": list(selected)}
+
+
+def _prompt_selected_files(files: tuple[str, ...]) -> tuple[str, ...]:
+    selection = Prompt.ask("[bold]Files to apply[/] (numbers, ranges, or paths)")
+    return parse_file_selection(selection, files)
+
+
+def parse_file_selection(selection: str, files: tuple[str, ...]) -> tuple[str, ...]:
+    selected: list[str] = []
+    for token in _selection_tokens(selection):
+        selected.extend(_selected_files_for_token(token, files))
+    return tuple(dict.fromkeys(selected))
+
+
+def _selection_tokens(selection: str) -> tuple[str, ...]:
+    return tuple(token.strip() for token in selection.replace(",", " ").split() if token.strip())
+
+
+def _selected_files_for_token(token: str, files: tuple[str, ...]) -> tuple[str, ...]:
+    if "-" in token and token.replace("-", "").isdigit():
+        return _range_selection(token, files)
+    if token.isdigit():
+        return _index_selection(token, files)
+    return (token,) if token in files else ()
+
+
+def _index_selection(token: str, files: tuple[str, ...]) -> tuple[str, ...]:
+    index = int(token) - 1
+    if 0 <= index < len(files):
+        return (files[index],)
+    return ()
+
+
+def _range_selection(token: str, files: tuple[str, ...]) -> tuple[str, ...]:
+    start_raw, _, end_raw = token.partition("-")
+    if not start_raw or not end_raw:
+        return ()
+    start = max(int(start_raw), 1)
+    end = min(int(end_raw), len(files))
+    if start > end:
+        return ()
+    return files[start - 1 : end]
 
 
 async def _wait_for_escape() -> str:
