@@ -83,6 +83,7 @@ def test_build_file_patch_repair_prompt_has_recovery_variables() -> None:
     assert "original_request" in tmpl.input_variables
     assert "previous_plan" in tmpl.input_variables
     assert "failure_context" in tmpl.input_variables
+    assert "NoChangePlan" in str(tmpl.messages[1].prompt.template)
     assert "smallest corrected diff" in str(tmpl.messages[1].prompt.template)
 
 

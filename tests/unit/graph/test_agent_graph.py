@@ -474,6 +474,38 @@ async def test_graph_retries_file_patch_repair_when_repaired_context_is_stale(
     assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
+async def test_graph_file_patch_repair_can_return_no_change(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("#!/bin/sh\necho disk\necho CPU\necho MEM\n", encoding="utf-8")
+    stale_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,4 @@",
+            " #!/bin/sh",
+            " echo storage",
+            "+echo CPU",
+            "+echo MEM",
+        ],
+    )
+    answer = "当前脚本已经包含 CPU 和 MEM 信息采集，无需修改。"
+    graph, _provider = _graph(tmp_path, [stale_plan, _no_change_plan_json(answer)])
+    config = {"configurable": {"thread_id": "file-patch-repair-no-change"}}
+
+    result = await graph.ainvoke(
+        initial_state("add CPU and MEM collection to this script", source=CommandSource.USER),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+
+    assert answer in str(result["messages"][-1].content)
+    assert not snapshot.tasks
+    assert snapshot.values.get("file_patch_plan") is None
+    assert snapshot.values["direct_response"] is True
+    assert target.read_text(encoding="utf-8") == "#!/bin/sh\necho disk\necho CPU\necho MEM\n"
+
+
 async def test_graph_repairs_failed_file_patch_and_reconfirms(tmp_path) -> None:
     target = tmp_path / "disk_info.sh"
     target.write_text("#!/bin/sh\necho disk\n", encoding="utf-8")

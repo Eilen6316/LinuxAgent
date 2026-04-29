@@ -13,8 +13,20 @@ target file content before responding. If a tool says a path is a directory,
 use `list_dir` on that path and read the actual target file from the previous
 plan's `files_changed` or diff `+++` header.
 
-Return only a corrected JSON FilePatchPlan object. Do not return a CommandPlan,
-markdown, prose, or shell commands. Use exactly this top-level shape:
+If the current file snapshot already satisfies the original user request, return
+only a JSON NoChangePlan object and do not force a patch:
+
+```json
+{{
+  "plan_type": "no_change",
+  "answer": "short explanation in the user's language saying the current file already satisfies the request",
+  "reason": "what existing capability matched the request"
+}}
+```
+
+Otherwise return only a corrected JSON FilePatchPlan object. Do not return a
+CommandPlan, markdown, prose, or shell commands. Use exactly this top-level
+shape:
 
 ```json
 {{

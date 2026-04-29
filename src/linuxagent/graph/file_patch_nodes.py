@@ -7,7 +7,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Any
 
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.types import Command, interrupt
 
@@ -19,9 +19,12 @@ from ..plans import (
     FilePatchPlan,
     FilePatchPlanParseError,
     FilePatchSafetyReport,
+    NoChangePlan,
+    NoChangePlanParseError,
     apply_file_patch_plan,
     evaluate_file_patch_plan,
     parse_file_patch_plan,
+    parse_no_change_plan,
     select_file_patch_plan_files,
 )
 from ..prompts_loader import build_file_patch_repair_prompt
@@ -143,11 +146,18 @@ def make_repair_file_patch_node(
                 proposed,
                 telemetry,
             )
-        except (FilePatchApplyError, FilePatchPlanParseError, ProviderError) as exc:
+        except (
+            FilePatchApplyError,
+            FilePatchPlanParseError,
+            NoChangePlanParseError,
+            ProviderError,
+        ) as exc:
             return Command(
                 goto="respond_block",
                 update=_patch_error(current_trace_id, f"file patch repair failed: {exc}"),
             )
+        if isinstance(plan, NoChangePlan):
+            return Command(goto="respond", update=_repair_no_change_update(current_trace_id, plan))
         return Command(
             goto="file_patch_confirm", update=_repair_update(state, current_trace_id, plan)
         )
@@ -163,14 +173,16 @@ async def _complete_valid_repair_plan(
     current_trace_id: str,
     proposed: str,
     telemetry: TelemetryRecorder | None,
-) -> FilePatchPlan:
+) -> FilePatchPlan | NoChangePlan:
     current = proposed
     for _ in _remaining_internal_repair_attempts(state):
         try:
-            plan = parse_file_patch_plan(current)
-            evaluate_file_patch_plan(plan, config)
+            plan = _parse_repair_candidate(current)
+            if isinstance(plan, NoChangePlan):
+                return plan
+            _ensure_repair_plan_is_valid(plan, config)
             return plan
-        except FilePatchPlanParseError as exc:
+        except (FilePatchPlanParseError, NoChangePlanParseError) as exc:
             current = await _retry_repair_plan_json(
                 provider, prompt, state, config, current_trace_id, current, str(exc), telemetry
             )
@@ -180,9 +192,28 @@ async def _complete_valid_repair_plan(
             current = await _retry_repair_plan_json(
                 provider, prompt, state, config, current_trace_id, current, str(exc), telemetry
             )
-    plan = parse_file_patch_plan(current)
-    evaluate_file_patch_plan(plan, config)
+    plan = _parse_repair_candidate(current)
+    if isinstance(plan, NoChangePlan):
+        return plan
+    _ensure_repair_plan_is_valid(plan, config)
     return plan
+
+
+def _parse_repair_candidate(candidate: str) -> FilePatchPlan | NoChangePlan:
+    try:
+        return parse_no_change_plan(candidate)
+    except NoChangePlanParseError as no_change_exc:
+        try:
+            return parse_file_patch_plan(candidate)
+        except FilePatchPlanParseError as patch_exc:
+            raise FilePatchPlanParseError(
+                "repair response must be a JSON FilePatchPlan or NoChangePlan object; "
+                f"NoChangePlan error: {no_change_exc}; FilePatchPlan error: {patch_exc}"
+            ) from patch_exc
+
+
+def _ensure_repair_plan_is_valid(plan: FilePatchPlan, config: FilePatchConfig) -> None:
+    evaluate_file_patch_plan(plan, config)
 
 
 def _remaining_internal_repair_attempts(state: AgentState) -> range:
@@ -375,6 +406,25 @@ def _repair_update(state: AgentState, current_trace_id: str, plan: FilePatchPlan
         "direct_response": False,
         "user_confirmed": False,
         "audit_id": None,
+    }
+
+
+def _repair_no_change_update(current_trace_id: str, plan: NoChangePlan) -> AgentState:
+    return {
+        "trace_id": current_trace_id,
+        "messages": [AIMessage(content=plan.answer)],
+        "pending_command": None,
+        "command_plan": None,
+        "file_patch_plan": None,
+        "file_patch_repair_attempts": 0,
+        "file_patch_selected_files": (),
+        "plan_error": None,
+        "safety_reason": None,
+        "command_source": CommandSource.LLM,
+        "direct_response": True,
+        "user_confirmed": False,
+        "audit_id": None,
+        "execution_result": None,
     }
 
 
