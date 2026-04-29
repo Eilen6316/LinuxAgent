@@ -36,6 +36,7 @@ from .state import AgentState
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 MAX_PATCH_CONTEXT_LINES = 120
 MAX_PATCH_CONTEXT_CHARS = 20_000
+MAX_FILE_PATCH_REPAIR_ATTEMPTS = 2
 
 
 def make_file_patch_confirm_node(audit: AuditLog, config: FilePatchConfig) -> Node:
@@ -133,7 +134,7 @@ def make_repair_file_patch_node(
             proposed = await _complete_repair_plan(
                 provider, prompt_messages, tools, telemetry, tool_observer, current_trace_id
             )
-            plan = await _parse_or_retry_repair_plan(
+            plan = await _complete_valid_repair_plan(
                 provider,
                 prompt,
                 state,
@@ -142,7 +143,6 @@ def make_repair_file_patch_node(
                 proposed,
                 telemetry,
             )
-            evaluate_file_patch_plan(plan, config)
         except (FilePatchApplyError, FilePatchPlanParseError, ProviderError) as exc:
             return Command(
                 goto="respond_block",
@@ -155,7 +155,7 @@ def make_repair_file_patch_node(
     return repair_file_patch_node
 
 
-async def _parse_or_retry_repair_plan(
+async def _complete_valid_repair_plan(
     provider: LLMProvider,
     prompt: Any,
     state: AgentState,
@@ -164,13 +164,31 @@ async def _parse_or_retry_repair_plan(
     proposed: str,
     telemetry: TelemetryRecorder | None,
 ) -> FilePatchPlan:
-    try:
-        return parse_file_patch_plan(proposed)
-    except FilePatchPlanParseError as exc:
-        retry = await _retry_repair_plan_json(
-            provider, prompt, state, config, current_trace_id, proposed, str(exc), telemetry
-        )
-        return parse_file_patch_plan(retry)
+    current = proposed
+    for _ in _remaining_internal_repair_attempts(state):
+        try:
+            plan = parse_file_patch_plan(current)
+            evaluate_file_patch_plan(plan, config)
+            return plan
+        except FilePatchPlanParseError as exc:
+            current = await _retry_repair_plan_json(
+                provider, prompt, state, config, current_trace_id, current, str(exc), telemetry
+            )
+        except FilePatchApplyError as exc:
+            if not _is_repairable_patch_error(str(exc)):
+                raise
+            current = await _retry_repair_plan_json(
+                provider, prompt, state, config, current_trace_id, current, str(exc), telemetry
+            )
+    plan = parse_file_patch_plan(current)
+    evaluate_file_patch_plan(plan, config)
+    return plan
+
+
+def _remaining_internal_repair_attempts(state: AgentState) -> range:
+    used = state.get("file_patch_repair_attempts", 0)
+    remaining = max(MAX_FILE_PATCH_REPAIR_ATTEMPTS - used, 1)
+    return range(remaining)
 
 
 async def _retry_repair_plan_json(
@@ -324,7 +342,7 @@ def should_repair_file_patch(state: AgentState) -> bool:
         state.get("file_patch_plan") is not None
         and result is not None
         and result.exit_code != 0
-        and state.get("file_patch_repair_attempts", 0) < 1
+        and state.get("file_patch_repair_attempts", 0) < MAX_FILE_PATCH_REPAIR_ATTEMPTS
     )
 
 
@@ -333,7 +351,7 @@ def _should_repair_patch_safety_failure(state: AgentState, safety: FilePatchSafe
     return (
         not safety.blocked_paths
         and not safety.high_risk_paths
-        and state.get("file_patch_repair_attempts", 0) < 1
+        and state.get("file_patch_repair_attempts", 0) < MAX_FILE_PATCH_REPAIR_ATTEMPTS
         and _is_repairable_patch_error(reasons)
     )
 

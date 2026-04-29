@@ -37,6 +37,7 @@ from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 ToolEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
+MAX_PLAN_PARSE_RETRIES = 2
 
 
 class IntentMode(StrEnum):
@@ -131,7 +132,7 @@ async def _build_command_plan(
         return _parse_planned_work(proposed)
     except (CommandPlanParseError, FilePatchPlanParseError) as exc:
         return await _recover_plan_parse_error(
-            context, messages, user_text, current_trace_id, str(exc)
+            context, messages, user_text, current_trace_id, str(exc), proposed
         )
 
 
@@ -142,7 +143,18 @@ def _parse_planned_work(proposed: str) -> CommandPlan | FilePatchPlan:
         try:
             return parse_command_plan(proposed)
         except CommandPlanParseError as command_exc:
-            raise CommandPlanParseError(str(command_exc)) from patch_exc
+            raise CommandPlanParseError(
+                _combined_plan_parse_error(patch_exc, command_exc)
+            ) from command_exc
+
+
+def _combined_plan_parse_error(
+    patch_exc: FilePatchPlanParseError, command_exc: CommandPlanParseError
+) -> str:
+    return (
+        "LLM response must be a JSON CommandPlan or FilePatchPlan object; "
+        f"FilePatchPlan error: {patch_exc}; CommandPlan error: {command_exc}"
+    )
 
 
 async def _complete_plan_candidate(
@@ -210,6 +222,7 @@ async def _recover_plan_parse_error(
     user_text: str,
     current_trace_id: str,
     error: str,
+    rejected_response: str,
 ) -> CommandPlan | FilePatchPlan | AgentState:
     if _should_fallback_to_direct_answer(error):
         return await _fallback_direct_answer(
@@ -223,7 +236,9 @@ async def _recover_plan_parse_error(
         )
     if not context.tools:
         return _parse_error_update(current_trace_id, error)
-    return await _retry_plan_or_error(context, messages, user_text, current_trace_id, error)
+    return await _retry_plan_or_error(
+        context, messages, user_text, current_trace_id, error, rejected_response
+    )
 
 
 async def _route_intent(
@@ -283,6 +298,7 @@ async def _retry_plan_or_error(
     user_text: str,
     current_trace_id: str,
     error: str,
+    rejected_response: str = "",
 ) -> CommandPlan | FilePatchPlan | AgentState:
     retry_plan = await _retry_command_plan(
         context.provider,
@@ -292,6 +308,7 @@ async def _retry_plan_or_error(
         context.runbook_guidance,
         current_trace_id,
         error,
+        rejected_response,
         context.telemetry,
     )
     if isinstance(retry_plan, CommandPlan | FilePatchPlan):
@@ -420,12 +437,23 @@ def _last_message_text(messages: list[BaseMessage]) -> str:
     return str(messages[-1].content)
 
 
-def _retry_intent_prompt(user_text: str, error: str) -> str:
+def _retry_intent_prompt(user_text: str, error: str, rejected_response: str, attempt: int) -> str:
+    previous_response = _retry_response_context(rejected_response)
     return (
         f"{user_text}\n\n"
-        f"The previous planning response was rejected: {error}. "
-        "Retry once without tools. Output exactly one valid JSON object and nothing else."
+        f"The previous planning response was rejected: {error}.\n"
+        f"{previous_response}"
+        f"JSON-only retry attempt {attempt}. If the user is asking to create or edit a "
+        "file, script, config, playbook, or code artifact, return a FilePatchPlan JSON "
+        "object. Otherwise return a CommandPlan JSON object. Output exactly one valid "
+        "JSON object and nothing else."
     )
+
+
+def _retry_response_context(rejected_response: str) -> str:
+    if not rejected_response.strip():
+        return ""
+    return f"Rejected response:\n{rejected_response[:2000]}\n\n"
 
 
 async def _retry_command_plan(
@@ -436,24 +464,56 @@ async def _retry_command_plan(
     runbook_guidance: str,
     current_trace_id: str,
     error: str,
+    rejected_response: str,
     telemetry: TelemetryRecorder | None,
 ) -> CommandPlan | FilePatchPlan | str:
+    current_error = error
+    current_response = rejected_response
+    for attempt in range(1, MAX_PLAN_PARSE_RETRIES + 1):
+        retry_proposed = await _complete_retry_plan(
+            provider,
+            prompt,
+            messages,
+            user_text,
+            runbook_guidance,
+            current_trace_id,
+            current_error,
+            current_response,
+            attempt,
+            telemetry,
+        )
+        try:
+            return _parse_planned_work(retry_proposed)
+        except (CommandPlanParseError, FilePatchPlanParseError) as exc:
+            current_error = str(exc)
+            current_response = retry_proposed
+    return current_error
+
+
+async def _complete_retry_plan(
+    provider: LLMProvider,
+    prompt: Any,
+    messages: list[BaseMessage],
+    user_text: str,
+    runbook_guidance: str,
+    current_trace_id: str,
+    error: str,
+    rejected_response: str,
+    attempt: int,
+    telemetry: TelemetryRecorder | None,
+) -> str:
     retry_messages = prompt.format_messages(
         chat_history=messages[:-1],
         runbook_guidance=runbook_guidance,
-        user_input=_retry_intent_prompt(user_text, error),
+        user_input=_retry_intent_prompt(user_text, error, rejected_response, attempt),
     )
     with span(
         telemetry,
         "llm.complete",
         current_trace_id,
-        {"node": "parse_intent", "retry": "json_only"},
+        {"node": "parse_intent", "retry": "json_only", "attempt": attempt},
     ):
-        retry_proposed = (await provider.complete(retry_messages)).strip()
-    try:
-        return _parse_planned_work(retry_proposed)
-    except (CommandPlanParseError, FilePatchPlanParseError) as exc:
-        return str(exc)
+        return (await provider.complete(retry_messages)).strip()
 
 
 def _select_host_names(user_text: str, cluster_service: ClusterService | None) -> tuple[str, ...]:

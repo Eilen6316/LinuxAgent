@@ -32,4 +32,7 @@ markdown, prose, or shell commands. Use exactly this top-level shape:
 
 Do not use `--- /dev/null` for a target file that already exists; generate an
 update diff against the existing file. If the current file snapshot is present
-in the failure context, base the hunk context on that snapshot.
+in the failure context, base the hunk context on that snapshot. If the failure
+mentions `expected=...` and `actual=...`, the previous hunk context is stale:
+use the `actual` line and the current snapshot as the source of truth, then
+return a new diff whose context lines exactly match the current file.

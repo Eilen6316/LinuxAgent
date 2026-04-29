@@ -89,6 +89,7 @@ def _graph(
     cluster_service: ClusterService | None = None,
     runbook_engine: RunbookEngine | None = None,
     file_patch_config: FilePatchConfig | None = None,
+    tools: tuple[Any, ...] = (),
     tool_observer: Any | None = None,
 ):
     provider = _FakeProvider(responses)
@@ -100,6 +101,7 @@ def _graph(
         command_service=CommandService(executor),
         audit=AuditLog(tmp_path / "audit.log"),
         cluster_service=cluster_service,
+        tools=tools,  # type: ignore[arg-type]
         runbook_engine=runbook_engine,
         file_patch_config=file_patch_config or FilePatchConfig(),
         tool_observer=tool_observer,
@@ -375,6 +377,61 @@ async def test_graph_retries_file_patch_repair_when_response_is_not_json(
     )
 
     assert target.read_text(encoding="utf-8") == "existing\necho disk\n"
+    assert "analysis ok" in str(resumed["messages"][-1].content)
+
+
+async def test_graph_retries_file_patch_repair_when_repaired_context_is_stale(
+    tmp_path,
+) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text(
+        '#!/bin/sh\nswapon --show 2>/dev/null || echo "无交换分区或需要root权限"\n',
+        encoding="utf-8",
+    )
+    stale_repair = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -2,1 +2,3 @@",
+            ' echo "7. 交换分区信息 (swapon --show):"',
+            "+echo CPU",
+            "+echo MEM",
+        ],
+    )
+    valid_repair = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -2,1 +2,3 @@",
+            ' swapon --show 2>/dev/null || echo "无交换分区或需要root权限"',
+            "+echo CPU",
+            "+echo MEM",
+        ],
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        [stale_repair, stale_repair, valid_repair, "analysis ok"],
+    )
+    config = {"configurable": {"thread_id": "file-patch-repair-stale-context"}}
+
+    await graph.ainvoke(
+        initial_state("add cpu and mem info to script", source=CommandSource.USER),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+    interrupts = snapshot.tasks[0].interrupts
+
+    assert interrupts[0].value["type"] == "confirm_file_patch"
+    assert interrupts[0].value["repair_attempt"] == 1
+    assert "swapon --show" in interrupts[0].value["unified_diff"]
+
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+
+    assert "echo CPU\necho MEM" in target.read_text(encoding="utf-8")
     assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
@@ -817,6 +874,41 @@ async def test_graph_blocks_non_json_command_plan(tmp_path) -> None:
 
     assert "已阻止执行" in str(result["messages"][-1].content)
     assert "JSON CommandPlan" in str(result["messages"][-1].content)
+
+
+async def test_graph_retries_tool_planning_parse_errors_into_file_patch_plan(
+    tmp_path,
+) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("#!/bin/sh\n", encoding="utf-8")
+    plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,1 +1,3 @@",
+            " #!/bin/sh",
+            "+echo CPU",
+            "+echo MEM",
+        ],
+    )
+    graph, provider = _graph(
+        tmp_path,
+        ["I checked the file.", "still not json", plan],
+        tools=(SimpleNamespace(name="read_file"),),
+    )
+    config = {"configurable": {"thread_id": "tool-plan-file-patch-retry"}}
+
+    await graph.ainvoke(
+        initial_state("add CPU and MEM collection to this script", source=CommandSource.USER),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+    interrupts = snapshot.tasks[0].interrupts
+
+    assert provider.tool_calls == 1
+    assert interrupts[0].value["type"] == "confirm_file_patch"
+    assert "+echo CPU" in interrupts[0].value["unified_diff"]
 
 
 async def test_graph_falls_back_to_direct_answer_for_empty_command_plan(tmp_path) -> None:
