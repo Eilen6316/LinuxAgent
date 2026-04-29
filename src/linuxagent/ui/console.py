@@ -13,7 +13,6 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
-from prompt_toolkit.shortcuts import radiolist_dialog
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
@@ -28,6 +27,7 @@ from .diff_renderer import (
     render_unified_diff,
 )
 from .prompt_session import PromptSessionManager, SlashCommandCompleter
+from .resume_selector import ResumeSelector
 
 __all__ = ["ConsoleUI", "SlashCommandCompleter"]
 
@@ -89,16 +89,7 @@ class ConsoleUI(UserInterface):
     async def choose_resume_session(self, sessions: list[Any]) -> str | None:
         if not sys.stdin.isatty():
             return None
-        values = [(session.thread_id, _resume_choice_label(session)) for session in sessions]
-        app = radiolist_dialog(
-            title="Resume session",
-            text="Use arrow keys or mouse to choose a saved session.",
-            values=values,
-            ok_text="Resume",
-            cancel_text="Cancel",
-        )
-        selected = await app.run_async()
-        return str(selected) if selected else None
+        return await ResumeSelector(sessions).choose()
 
     async def wait_for_cancel(self) -> str:
         if not sys.stdin.isatty():
