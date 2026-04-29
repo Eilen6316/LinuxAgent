@@ -49,9 +49,9 @@ or prose:
     }}
   ],
   "risk_summary": "short risk summary",
-  "preflight_checks": [],
-  "verification_commands": [],
-  "rollback_commands": [],
+  "preflight_checks": ["string command only"],
+  "verification_commands": ["string command only"],
+  "rollback_commands": ["string command only"],
   "requires_root": false,
   "expected_side_effects": []
 }}
@@ -59,6 +59,8 @@ or prose:
 
 Do not mark mutation commands as read-only. Do not rely on your own risk
 labels for execution approval; every command will be re-evaluated by policy.
+`preflight_checks`, `verification_commands`, and `rollback_commands` must be
+arrays of strings, not command objects. Put executable steps in `commands`.
 For multi-part requests, the commands array must cover every requested outcome
 before the turn can be considered complete. Do not stop at package download or
 installation when the user also asked for configuration, password changes,

@@ -41,6 +41,19 @@ class CommandPlan(BaseModel):
         "verification_commands",
         "rollback_commands",
         "expected_side_effects",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_command_items(cls, items: Any) -> Any:
+        if not isinstance(items, list | tuple):
+            return items
+        return tuple(_coerce_command_item(item) for item in items)
+
+    @field_validator(
+        "preflight_checks",
+        "verification_commands",
+        "rollback_commands",
+        "expected_side_effects",
     )
     @classmethod
     def _strip_empty_items(cls, items: tuple[str, ...]) -> tuple[str, ...]:
@@ -76,6 +89,12 @@ def _extract_json_payload(text: str) -> str:
     return match.group(1)
 
 
+def _coerce_command_item(item: Any) -> Any:
+    if isinstance(item, dict) and isinstance(item.get("command"), str):
+        return item["command"]
+    return item
+
+
 def _format_validation_error(exc: ValidationError) -> str:
     parts: list[str] = []
     for err in exc.errors():
@@ -84,7 +103,9 @@ def _format_validation_error(exc: ValidationError) -> str:
     return "invalid CommandPlan: " + "; ".join(parts)
 
 
-def command_plan_json(command: str, *, goal: str = "Execute command", read_only: bool = True) -> str:
+def command_plan_json(
+    command: str, *, goal: str = "Execute command", read_only: bool = True
+) -> str:
     """Small helper for tests and harness fixtures."""
     plan: dict[str, Any] = {
         "goal": goal,
