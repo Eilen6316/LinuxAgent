@@ -41,7 +41,7 @@ policy-driven, audited CLI for controlled human-in-the-loop Linux operations.
 - Capability-based policy engine with `SAFE`, `CONFIRM`, `BLOCK`, risk scores,
   capabilities, matched rules, and runtime YAML policy overrides.
 - Structured JSON `CommandPlan` validation before policy evaluation.
-- Eight YAML runbooks for common operations diagnostics, with multi-step
+- Eleven YAML runbooks for common operations diagnostics, with multi-step
   orchestration and per-step policy checks.
 - SSH cluster execution with batch confirmation, host-key verification, and
   remote shell-syntax guards.

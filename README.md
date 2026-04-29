@@ -6,7 +6,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-88.26%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-87.06%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -149,15 +149,15 @@ step still goes through normal policy, HITL, audit, and analysis flow.
 
 ## Quality Gate
 
-The current `v4.0.0` baseline:
+Current documented baseline from `make test` on 2026-04-30:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 372 passing |
-| Optional Anthropic compatibility | 4 passing |
+| Unit tests | 396 passing |
+| Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
 | Harness scenarios | 12 HITL / runbook / cluster scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 88.26% |
+| Coverage | 87.06% (`--cov-fail-under=80`) |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 
