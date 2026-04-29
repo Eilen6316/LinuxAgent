@@ -21,18 +21,28 @@ logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _base_parser()
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"linuxagent {__version__}",
+    )
+    _add_global_options(parser)
+    _add_subcommands(parser)
+    return parser
+
+
+def _base_parser() -> argparse.ArgumentParser:
+    return argparse.ArgumentParser(
         prog="linuxagent",
         description=(
             "LLM-driven Linux operations assistant with Human-in-the-Loop safety. "
             "Run `linuxagent` to start chat or `linuxagent check` to validate your configuration."
         ),
     )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"linuxagent {__version__}",
-    )
+
+
+def _add_global_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config",
         type=Path,
@@ -49,6 +59,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Increase log verbosity (-v=INFO, -vv=DEBUG).",
     )
+
+
+def _add_subcommands(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
     subparsers.add_parser(
         "check",
@@ -73,7 +86,6 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Audit log path. Defaults to audit.path from config.",
     )
-    return parser
 
 
 def _verbose_to_level(verbose: int) -> int:

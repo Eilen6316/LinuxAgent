@@ -10,7 +10,14 @@ from dataclasses import dataclass
 
 from ..interfaces import CommandSource, SafetyLevel
 from .builtin_rules import builtin_policy_config
-from .models import ApprovalMode, PolicyApproval, PolicyConfig, PolicyDecision, PolicyRule
+from .models import (
+    ApprovalMode,
+    PolicyApproval,
+    PolicyConfig,
+    PolicyDecision,
+    PolicyMatch,
+    PolicyRule,
+)
 
 MAX_COMMAND_LENGTH = 2048
 _BIDI_CONTROLS: frozenset[str] = frozenset(
@@ -177,30 +184,36 @@ class _CompiledRule:
 
     def matches(self, facts: CommandFacts) -> bool:
         match = self.rule.match
-        if match.input_validation:
-            return facts.input_error is not None
-        if facts.input_error is not None:
-            return False
-        if match.parse_error:
-            return facts.parse_error is not None
-        if facts.parse_error is not None:
-            return False
-        if match.empty:
-            return facts.empty
-        if facts.empty:
-            return False
-        if match.llm_first_run:
-            return facts.source is CommandSource.LLM
-        if match.interactive and is_interactive_tokens(
-            facts.tokens,
-            interactive_commands=self._interactive_commands,
-            noninteractive_flags=self._noninteractive_flags,
-        ):
+        structural = _structural_match_state(facts, match)
+        if structural is not None:
+            return structural
+        if self._matches_source_or_interactive(facts):
             return True
         if self._embedded_regex and any(
             pattern.search(facts.command) for pattern in self._embedded_regex
         ):
             return True
+        if not self._matches_command_shape(facts):
+            return False
+        if match.command:
+            return True
+        return _has_non_command_matcher(match)
+
+    def _matches_source_or_interactive(self, facts: CommandFacts) -> bool:
+        match = self.rule.match
+        if match.llm_first_run:
+            return facts.source is CommandSource.LLM
+        return bool(
+            match.interactive
+            and is_interactive_tokens(
+                facts.tokens,
+                interactive_commands=self._interactive_commands,
+                noninteractive_flags=self._noninteractive_flags,
+            )
+        )
+
+    def _matches_command_shape(self, facts: CommandFacts) -> bool:
+        match = self.rule.match
         if match.command and facts.head not in match.command:
             return False
         if match.subcommand_any and (not facts.args or facts.args[0] not in match.subcommand_any):
@@ -219,10 +232,30 @@ class _CompiledRule:
             return False
         if match.command:
             return facts.head in match.command
-        return bool(
-            match.args_any
-            or match.args_regex
-            or match.path_any
-            or match.path_regex
-            or match.subcommand_any
-        )
+        return True
+
+
+def _structural_match_state(facts: CommandFacts, match: PolicyMatch) -> bool | None:
+    if match.input_validation:
+        return facts.input_error is not None
+    if facts.input_error is not None:
+        return False
+    if match.parse_error:
+        return facts.parse_error is not None
+    if facts.parse_error is not None:
+        return False
+    if match.empty:
+        return facts.empty
+    if facts.empty:
+        return False
+    return None
+
+
+def _has_non_command_matcher(match: PolicyMatch) -> bool:
+    return bool(
+        match.args_any
+        or match.args_regex
+        or match.path_any
+        or match.path_regex
+        or match.subcommand_any
+    )

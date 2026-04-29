@@ -33,6 +33,12 @@ AgentGraph: TypeAlias = Any
 
 def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     graph = StateGraph(AgentState)
+    _add_graph_nodes(graph, deps)
+    _add_graph_edges(graph)
+    return graph.compile(checkpointer=MemorySaver())
+
+
+def _add_graph_nodes(graph: Any, deps: GraphDependencies) -> None:
     graph.add_node(
         "parse_intent",
         _langgraph_node(
@@ -82,6 +88,8 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     graph.add_node("respond_block", _langgraph_node(respond_block_node))
     graph.add_node("respond_refused", _langgraph_node(respond_refused_node))
 
+
+def _add_graph_edges(graph: Any) -> None:
     graph.add_edge(START, "parse_intent")
     graph.add_conditional_edges(
         "parse_intent",
@@ -113,7 +121,6 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     graph.add_edge("respond", END)
     graph.add_edge("respond_block", END)
     graph.add_edge("respond_refused", END)
-    return graph.compile(checkpointer=MemorySaver())
 
 
 def _langgraph_node(action: Any) -> Any:
