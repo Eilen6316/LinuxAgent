@@ -1,10 +1,5 @@
 id: service.status
 title: Check SSH service health
-triggers: [ssh, sshd, openssh]
-scenarios:
-  - 查看 ssh 服务状态
-  - check ssh service health
-  - inspect sshd status and logs
 steps:
   - command: systemctl status ssh --no-pager
     purpose: Show SSH service status without paging

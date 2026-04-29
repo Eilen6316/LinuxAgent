@@ -18,7 +18,7 @@ from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.interfaces import CommandSource, ExecutionResult
 from linuxagent.plans import command_plan_json
 from linuxagent.providers.errors import ProviderError
-from linuxagent.runbooks import Runbook, RunbookEngine, RunbookStep, load_runbooks
+from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.services import ClusterService, CommandService
 
 
@@ -536,10 +536,10 @@ async def test_graph_falls_back_to_direct_answer_for_empty_command_plan(tmp_path
     assert snapshot.values["direct_response"] is True
 
 
-async def test_graph_prefers_matching_runbook_before_llm(tmp_path) -> None:
+async def test_graph_provides_runbook_guidance_without_hard_routing(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
-        ["runbook analysis"],
+        [command_plan_json("df -h")],
         runbook_engine=_runbook_engine(),
     )
     config = {"configurable": {"thread_id": "runbook-disk"}}
@@ -548,89 +548,98 @@ async def test_graph_prefers_matching_runbook_before_llm(tmp_path) -> None:
 
     snapshot = await graph.aget_state(config)
     interrupt_payload = snapshot.tasks[0].interrupts[0].value
-    assert len(provider.complete_messages) == 1
+    assert len(provider.complete_messages) == 2
     assert snapshot.values["pending_command"] == "df -h"
-    assert snapshot.values["selected_runbook"].id == "disk.full"
-    assert interrupt_payload["runbook_id"] == "disk.full"
-    assert interrupt_payload["goal"] == "Investigate disk usage"
-    assert interrupt_payload["runbook_steps"][0]["command"] == "df -h"
+    assert snapshot.values.get("selected_runbook") is None
+    assert "runbook_id" not in interrupt_payload
+    planning_prompt = str(provider.complete_messages[1][-1].content)
+    assert "Runbook guidance library" in planning_prompt
+    assert "advisory only" in planning_prompt
+    assert "disk.full" in planning_prompt
+    assert "Do not hard-route" in planning_prompt
 
 
-async def test_graph_matches_server_status_runbook_before_tools(tmp_path) -> None:
-    graph, provider = _graph(
-        tmp_path,
-        ["runbook analysis"],
-        runbook_engine=_runbook_engine(),
-    )
-    config = {"configurable": {"thread_id": "runbook-server-status"}}
+async def test_graph_artifact_requests_are_not_captured_by_runbook_guidance(tmp_path) -> None:
+    plan = _multi_command_plan_json(["python3 --version", "python3 -c 'print(1)'"])
+    graph, provider = _graph(tmp_path, [plan], runbook_engine=_runbook_engine())
+    config = {"configurable": {"thread_id": "artifact-not-runbook"}}
 
     await graph.ainvoke(
-        initial_state("帮我查看一下服务器的状态如何", source=CommandSource.USER),
+        initial_state(
+            "写一个python脚本，脚本放在/tmp/下，查看服务器当前负载",
+            source=CommandSource.USER,
+        ),
         config=config,
     )
 
     snapshot = await graph.aget_state(config)
-    assert len(provider.complete_messages) == 1
-    assert snapshot.values["pending_command"] == "uptime"
-    assert snapshot.values["selected_runbook"].id == "system.health"
+    assert snapshot.values.get("selected_runbook") is None
+    assert snapshot.values["pending_command"] == "python3 --version"
+    planning_prompt = str(provider.complete_messages[1][-1].content)
+    assert "For artifact generation" in planning_prompt
+    assert "version/environment probe" in planning_prompt
 
 
-async def test_graph_matches_installed_packages_runbook_before_tools(tmp_path) -> None:
+async def test_graph_issue_5_requests_follow_planner_not_runbook_keywords(tmp_path) -> None:
+    cases = (
+        (
+            "写一个shell脚本，脚本放在/tmp/下即可，脚本需要查看服务器当前的负载情况",
+            "bash --version",
+            "issue-5-shell",
+        ),
+        (
+            "写一个playbook，脚本存在/tmp/目录下即可，脚本内容对ansible分组web的服务器，执行uptime",
+            "ansible --version",
+            "issue-5-playbook",
+        ),
+        (
+            "给crontab里面新增一个定时任务，每分钟给/tmp/time.log追加最新的当前时间。",
+            "crontab -l",
+            "issue-5-crontab",
+        ),
+    )
+    for user_input, planned_command, thread_id in cases:
+        graph, _provider = _graph(
+            tmp_path,
+            [command_plan_json(planned_command)],
+            runbook_engine=_runbook_engine(),
+        )
+        config = {"configurable": {"thread_id": thread_id}}
+
+        await graph.ainvoke(initial_state(user_input, source=CommandSource.USER), config=config)
+
+        snapshot = await graph.aget_state(config)
+        assert snapshot.values.get("selected_runbook") is None
+        assert snapshot.values["pending_command"] == planned_command
+
+
+async def test_graph_continues_runbook_guided_plan_after_first_confirmation(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
-        ["runbook analysis"],
-        runbook_engine=_runbook_engine(),
-    )
-    config = {"configurable": {"thread_id": "runbook-packages"}}
-
-    await graph.ainvoke(
-        initial_state("我都安装什么应用了", source=CommandSource.USER), config=config
-    )
-
-    snapshot = await graph.aget_state(config)
-    assert len(provider.complete_messages) == 1
-    assert snapshot.values["pending_command"] == "rpm -qa --last"
-    assert snapshot.values["selected_runbook"].id == "package.inventory"
-
-
-async def test_graph_matches_os_runbook_before_tools(tmp_path) -> None:
-    graph, provider = _graph(
-        tmp_path,
-        ["runbook analysis"],
-        runbook_engine=_runbook_engine(),
-    )
-    config = {"configurable": {"thread_id": "runbook-os"}}
-
-    await graph.ainvoke(initial_state("我是什么操作系统", source=CommandSource.USER), config=config)
-
-    snapshot = await graph.aget_state(config)
-    assert len(provider.complete_messages) == 1
-    assert snapshot.values["pending_command"] == "cat /etc/os-release"
-    assert snapshot.values["selected_runbook"].id == "system.os"
-
-
-async def test_graph_continues_safe_runbook_steps_after_first_confirmation(tmp_path) -> None:
-    graph, provider = _graph(
-        tmp_path,
-        ["runbook analysis"],
+        [_multi_command_plan_json(["df -h", "du -sh /var/log"]), "runbook-guided analysis"],
         runbook_engine=_runbook_engine(),
     )
     config = {"configurable": {"thread_id": "runbook-disk-continue"}}
 
     await graph.ainvoke(initial_state("机器磁盘满了", source=CommandSource.USER), config=config)
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+
+    snapshot = await graph.aget_state(config)
+    results = snapshot.values["runbook_results"]
+    assert snapshot.tasks[0].interrupts[0].value["command"] == "du -sh /var/log"
+    assert [result.command for result in results] == ["df -h"]
+    assert snapshot.values["runbook_step_index"] == 1
+    assert snapshot.values["command_source"] is CommandSource.LLM
     resumed = await graph.ainvoke(
         Command(resume={"decision": "yes", "latency_ms": 1}), config=config
     )
-
     snapshot = await graph.aget_state(config)
     results = snapshot.values["runbook_results"]
     assert not snapshot.tasks
     assert [result.command for result in results] == ["df -h", "du -sh /var/log"]
-    assert snapshot.values["runbook_step_index"] == 1
-    assert snapshot.values["command_source"] is CommandSource.RUNBOOK
-    assert "runbook analysis" in str(resumed["messages"][-1].content)
+    assert "runbook-guided analysis" in str(resumed["messages"][-1].content)
     analysis_prompt = str(provider.complete_messages[-1][-1].content)
-    assert "Runbook step results" in analysis_prompt
+    assert "Command step results" in analysis_prompt
     assert "df -h" in analysis_prompt
     assert "du -sh /var/log" in analysis_prompt
 
@@ -718,25 +727,11 @@ async def test_graph_replans_after_exhausted_failed_plan(tmp_path) -> None:
     assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
-async def test_graph_rechecks_policy_for_later_runbook_steps(tmp_path) -> None:
-    runbook = Runbook(
-        id="service.restart",
-        title="Restart service",
-        triggers=("restart-demo",),
-        scenarios=("restart-demo one", "restart-demo two", "restart-demo three"),
-        steps=(
-            RunbookStep(command="/bin/echo inspect", purpose="Inspect service", read_only=True),
-            RunbookStep(
-                command="systemctl restart ssh",
-                purpose="Restart ssh when requested",
-                read_only=False,
-            ),
-        ),
-    )
+async def test_graph_rechecks_policy_for_later_runbook_guided_steps(tmp_path) -> None:
     graph, _provider = _graph(
         tmp_path,
-        ["runbook analysis"],
-        runbook_engine=RunbookEngine((runbook,)),
+        [_multi_command_plan_json(["/bin/echo inspect", "systemctl restart ssh"])],
+        runbook_engine=_runbook_engine(),
     )
     config = {"configurable": {"thread_id": "runbook-reconfirm"}}
 
@@ -746,6 +741,5 @@ async def test_graph_rechecks_policy_for_later_runbook_steps(tmp_path) -> None:
     snapshot = await graph.aget_state(config)
     interrupt_payload = snapshot.tasks[0].interrupts[0].value
     assert snapshot.values["pending_command"] == "systemctl restart ssh"
-    assert interrupt_payload["command_source"] == CommandSource.RUNBOOK.value
+    assert interrupt_payload["command_source"] == CommandSource.LLM.value
     assert interrupt_payload["matched_rule"] == "DESTRUCTIVE"
-    assert interrupt_payload["runbook_step_index"] == 1

@@ -1,10 +1,5 @@
 id: container.inspect
 title: Inspect container state
-triggers: [container, docker, podman, 容器]
-scenarios:
-  - 查看容器状态
-  - show docker containers
-  - inspect container health
 steps:
   - command: docker ps
     purpose: List running containers

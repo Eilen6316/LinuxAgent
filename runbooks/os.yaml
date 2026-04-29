@@ -1,10 +1,5 @@
 id: system.os
 title: Inspect operating system version
-triggers: [os, operating system, distro, release, 操作系统, 系统版本, 发行版]
-scenarios:
-  - 我是什么操作系统
-  - 查看当前系统版本
-  - show operating system version
 steps:
   - command: cat /etc/os-release
     purpose: Show Linux distribution metadata

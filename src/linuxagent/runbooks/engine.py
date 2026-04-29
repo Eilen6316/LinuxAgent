@@ -1,4 +1,4 @@
-"""Runbook loader and simple matcher."""
+"""Runbook loading and policy validation."""
 
 from __future__ import annotations
 
@@ -63,20 +63,6 @@ class RunbookEngine:
     def runbooks(self) -> tuple[Runbook, ...]:
         return self._runbooks
 
-    def match(self, user_text: str) -> Runbook | None:
-        tokens = _normalized_tokens(user_text)
-        normalized_text = user_text.casefold()
-        best: tuple[int, Runbook] | None = None
-        for runbook in self._runbooks:
-            score = sum(
-                1
-                for trigger in runbook.triggers
-                if trigger.casefold() in tokens or trigger.casefold() in normalized_text
-            )
-            if score > 0 and (best is None or score > best[0]):
-                best = (score, runbook)
-        return None if best is None else best[1]
-
     def evaluate_steps(
         self,
         runbook: Runbook,
@@ -102,10 +88,6 @@ class RunbookEngine:
                     f"{decision.level.value}: {step.command}"
                 )
         return tuple(decisions)
-
-
-def _normalized_tokens(text: str) -> frozenset[str]:
-    return frozenset(part.strip(".,:;!?()[]{}").casefold() for part in text.split())
 
 
 def _contains_runbook_yaml(path: Path) -> bool:

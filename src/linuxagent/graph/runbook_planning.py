@@ -3,47 +3,42 @@
 from __future__ import annotations
 
 from ..interfaces import CommandSource
-from ..plans import CommandPlan, CommandPlanParseError, PlannedCommand
-from ..runbooks import Runbook, RunbookEngine, RunbookPolicyError
+from ..runbooks import Runbook, RunbookEngine
 from .state import AgentState
 
+MAX_GUIDANCE_RUNBOOKS = 12
+MAX_GUIDANCE_STEPS = 4
 
-def match_runbook_plan(
-    user_text: str,
-    trace_id: str,
-    runbook_engine: RunbookEngine | None,
-) -> tuple[CommandPlan, Runbook] | None:
+
+def build_runbook_guidance(runbook_engine: RunbookEngine | None) -> str:
     if runbook_engine is None:
-        return None
-    runbook = runbook_engine.match(user_text)
-    if runbook is None:
-        return None
-    try:
-        runbook_engine.evaluate_steps(runbook, trace_id=trace_id)
-    except RunbookPolicyError as exc:
-        raise CommandPlanParseError(str(exc)) from exc
-    return plan_from_runbook(runbook), runbook
+        return "No runbook guidance is available."
+    if not runbook_engine.runbooks:
+        return "No runbook guidance is available."
+
+    lines = [
+        "Runbook guidance library (advisory only):",
+        "Use these as examples for diagnostic sequencing. Do not hard-route a request to a",
+        "runbook. If the user asks to create code, scripts, playbooks, configs, files, or",
+        "cron entries, plan that artifact task instead of running diagnostic steps.",
+    ]
+    for runbook in runbook_engine.runbooks[:MAX_GUIDANCE_RUNBOOKS]:
+        lines.extend(_runbook_guidance_lines(runbook))
+    return "\n".join(lines)
 
 
-def plan_from_runbook(runbook: Runbook) -> CommandPlan:
-    return CommandPlan(
-        goal=runbook.title,
-        commands=tuple(
-            PlannedCommand(
-                command=step.command,
-                purpose=step.purpose,
-                read_only=step.read_only,
-                target_hosts=(),
-            )
-            for step in runbook.steps
-        ),
-        risk_summary=f"Matched runbook {runbook.id}.",
-        preflight_checks=runbook.preflight_checks,
-        verification_commands=runbook.verification_commands,
-        rollback_commands=runbook.rollback_commands,
-        requires_root=False,
-        expected_side_effects=(),
-    )
+def _runbook_guidance_lines(runbook: Runbook) -> list[str]:
+    lines = [f"- {runbook.id}: {runbook.title}"]
+    for step in runbook.steps[:MAX_GUIDANCE_STEPS]:
+        mode = "read-only" if step.read_only else "mutation"
+        lines.append(f"  - {mode}: {step.command} ({step.purpose})")
+    if runbook.preflight_checks:
+        lines.append(f"  - preflight: {', '.join(runbook.preflight_checks)}")
+    if runbook.verification_commands:
+        lines.append(f"  - verify: {', '.join(runbook.verification_commands)}")
+    if runbook.rollback_commands:
+        lines.append(f"  - rollback: {', '.join(runbook.rollback_commands)}")
+    return lines
 
 
 def has_next_plan_step(state: AgentState) -> bool:

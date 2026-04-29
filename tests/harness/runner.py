@@ -43,7 +43,11 @@ class _FakeProvider:
         self._responses = list(responses)
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
-        del messages, kwargs
+        del kwargs
+        if _is_intent_router_call(messages):
+            if self._responses and _is_intent_router_response(self._responses[0]):
+                return self._responses.pop(0)
+            return _router_response("COMMAND_PLAN")
         return self._responses.pop(0) if self._responses else "analysis ok"
 
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
@@ -53,6 +57,26 @@ class _FakeProvider:
     def stream(self, messages: list[BaseMessage], **kwargs: Any):
         del messages, kwargs
         raise NotImplementedError
+
+
+def _router_response(mode: str, answer: str = "", reason: str = "test route") -> str:
+    return json.dumps({"mode": mode, "answer": answer, "reason": reason}, ensure_ascii=False)
+
+
+def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
+    return bool(messages) and "intent router" in str(messages[0].content).casefold()
+
+
+def _is_intent_router_response(text: str) -> bool:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and payload.get("mode") in {
+        "DIRECT_ANSWER",
+        "COMMAND_PLAN",
+        "CLARIFY",
+    }
 
 
 class _FakeSSH:
@@ -88,7 +112,9 @@ class HarnessRunner:
                 GraphDependencies(
                     provider=_FakeProvider(scenario.provider_responses),
                     command_service=CommandService(
-                        LinuxCommandExecutor(SecurityConfig(command_timeout=5.0), whitelist=whitelist)
+                        LinuxCommandExecutor(
+                            SecurityConfig(command_timeout=5.0), whitelist=whitelist
+                        )
                     ),
                     audit=audit,
                     cluster_service=cluster_service,
@@ -151,7 +177,9 @@ class HarnessRunner:
                 json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()
             ]
             for expected_event in expected["audit_log_contains"]:
-                if not any(all(line.get(k) == v for k, v in expected_event.items()) for line in audit_lines):
+                if not any(
+                    all(line.get(k) == v for k, v in expected_event.items()) for line in audit_lines
+                ):
                     raise AssertionError(f"{scenario.name}: audit log missing {expected_event!r}")
 
 

@@ -1,10 +1,5 @@
 id: system.health
 title: Inspect overall system health
-triggers: [服务器, system health, server health, server status, host health, 系统健康, 系统状态]
-scenarios:
-  - 查看服务器状态
-  - 帮我查看一下服务器的状态如何
-  - inspect overall server health
 steps:
   - command: uptime
     purpose: Show uptime and load averages

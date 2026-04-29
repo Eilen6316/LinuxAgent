@@ -1,10 +1,5 @@
 id: disk.full
 title: Investigate disk usage
-triggers: [disk, full, space, 磁盘, 空间]
-scenarios:
-  - 机器磁盘满了，帮我看看哪里占空间
-  - disk full on this host
-  - find large directories
 steps:
   - command: df -h
     purpose: Show filesystem usage

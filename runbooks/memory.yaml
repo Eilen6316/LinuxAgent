@@ -1,10 +1,5 @@
 id: memory.pressure
 title: Investigate memory pressure
-triggers: [memory, mem, ram, oom, 内存]
-scenarios:
-  - 机器内存压力很高
-  - check memory usage
-  - investigate oom
 steps:
   - command: free -h
     purpose: Show memory usage

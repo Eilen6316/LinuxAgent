@@ -1,10 +1,5 @@
 id: logs.errors
 title: Inspect recent log errors
-triggers: [log, logs, error, journal, 日志, 错误]
-scenarios:
-  - 帮我看最近的错误日志
-  - show recent journal errors
-  - inspect service logs
 steps:
   - command: journalctl -p err --no-pager -n 100
     purpose: Show recent error-level journal entries

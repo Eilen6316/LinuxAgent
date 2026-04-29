@@ -1,5 +1,6 @@
 scenario: "runbook disk usage"
 provider_responses:
+  - '{"goal":"investigate disk usage","commands":[{"command":"df -h","purpose":"Show filesystem usage","read_only":true,"target_hosts":[]},{"command":"du -sh /var/log","purpose":"Estimate log directory usage","read_only":true,"target_hosts":[]}],"risk_summary":"runbook-guided read-only disk inspection","preflight_checks":["df -h"],"verification_commands":["df -h"],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
   - "Runbook disk analysis"
 setup:
   runbooks_enabled: true
@@ -9,7 +10,6 @@ inputs:
 expected_interrupts:
   - type: confirm_command
     matched_rule: LLM_FIRST_RUN
-    runbook_id: disk.full
 resume:
   decision: yes
   latency_ms: 90

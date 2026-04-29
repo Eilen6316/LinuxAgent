@@ -20,8 +20,6 @@ class Runbook(BaseModel):
 
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
-    triggers: tuple[str, ...] = Field(min_length=1)
-    scenarios: tuple[str, ...] = Field(min_length=3)
     steps: tuple[RunbookStep, ...] = Field(min_length=1)
     preflight_checks: tuple[str, ...] = ()
     verification_commands: tuple[str, ...] = ()

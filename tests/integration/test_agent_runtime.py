@@ -86,6 +86,20 @@ def _is_intent_router_response(text: str) -> bool:
     }
 
 
+def _multi_command_plan_json(commands: list[str]) -> str:
+    payload = json.loads(command_plan_json(commands[0]))
+    payload["commands"] = [
+        {
+            "command": command,
+            "purpose": f"Run {command}",
+            "read_only": True,
+            "target_hosts": [],
+        }
+        for command in commands
+    ]
+    return json.dumps(payload)
+
+
 class _Monitoring:
     async def start(self) -> None:
         return None
@@ -133,14 +147,19 @@ async def test_agent_runtime_confirms_and_resumes_llm_command(tmp_path: Path) ->
 
 
 @pytest.mark.integration
-async def test_agent_runtime_continues_runbook_after_first_confirm(tmp_path: Path) -> None:
-    provider = _Provider(["runbook analysis"])
+async def test_agent_runtime_continues_runbook_guided_plan_after_first_confirm(
+    tmp_path: Path,
+) -> None:
+    provider = _Provider(
+        [
+            _multi_command_plan_json(["/bin/echo first", "/bin/echo second"]),
+            "runbook-guided analysis",
+        ]
+    )
     ui = _UI()
     runbook = Runbook(
         id="runtime.echo",
         title="Runtime Echo",
-        triggers=("runtime-runbook",),
-        scenarios=("runtime-runbook", "runtime-runbook check", "runtime-runbook inspect"),
         steps=(
             RunbookStep(command="/bin/echo first", purpose="First safe check", read_only=True),
             RunbookStep(command="/bin/echo second", purpose="Second safe check", read_only=True),
@@ -155,9 +174,12 @@ async def test_agent_runtime_continues_runbook_after_first_confirm(tmp_path: Pat
 
     await agent.run_turn("runtime-runbook", thread_id="runtime-runbook")
 
-    assert len(ui.interrupts) == 1
-    assert ui.interrupts[0]["runbook_id"] == "runtime.echo"
-    assert ui.printed == ["runbook analysis"]
+    assert [payload["command"] for payload in ui.interrupts] == [
+        "/bin/echo first",
+        "/bin/echo second",
+    ]
+    assert all("runbook_id" not in payload for payload in ui.interrupts)
+    assert ui.printed == ["runbook-guided analysis"]
     analysis_prompt = str(provider.complete_messages[-1][-1].content)
     assert "/bin/echo first" in analysis_prompt
     assert "/bin/echo second" in analysis_prompt

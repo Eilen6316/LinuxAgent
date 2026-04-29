@@ -12,11 +12,10 @@ from linuxagent.runbooks.models import Runbook, RunbookStep
 from linuxagent.telemetry import TelemetryRecorder
 
 
-def test_loads_eleven_builtin_runbooks_with_three_scenarios() -> None:
+def test_loads_eleven_builtin_runbooks() -> None:
     runbooks = load_runbooks(Path(__file__).resolve().parents[3] / "runbooks")
 
     assert len(runbooks) == 11
-    assert all(len(runbook.scenarios) >= 3 for runbook in runbooks)
 
 
 def test_find_runbooks_dir_skips_python_package_directory() -> None:
@@ -24,21 +23,13 @@ def test_find_runbooks_dir_skips_python_package_directory() -> None:
     assert (find_runbooks_dir() / "disk.yaml").is_file()
 
 
-def test_runbook_match_uses_triggers() -> None:
-    runbooks = load_runbooks(Path(__file__).resolve().parents[3] / "runbooks")
-    engine = RunbookEngine(runbooks)
+def test_builtin_runbooks_do_not_define_fixed_natural_language_routes() -> None:
+    runbook_dir = Path(__file__).resolve().parents[3] / "runbooks"
 
-    matched = engine.match("机器磁盘 满了")
-
-    assert matched is not None
-    assert matched.id == "disk.full"
-
-
-def test_ssh_service_runbook_does_not_capture_arbitrary_services() -> None:
-    runbooks = load_runbooks(Path(__file__).resolve().parents[3] / "runbooks")
-    engine = RunbookEngine(runbooks)
-
-    assert engine.match("看一下 nginx 服务状态") is None
+    for path in runbook_dir.glob("*.yaml"):
+        text = path.read_text(encoding="utf-8")
+        assert "triggers:" not in text
+        assert "scenarios:" not in text
 
 
 def test_builtin_runbooks_do_not_use_fixed_example_targets() -> None:
@@ -62,8 +53,6 @@ def test_runbook_read_only_mismatch_fails_policy_validation() -> None:
     runbook = Runbook(
         id="bad",
         title="bad",
-        triggers=("bad",),
-        scenarios=("bad one", "bad two", "bad three"),
         steps=(RunbookStep(command="rm -rf /tmp/foo", purpose="bad", read_only=True),),
     )
     engine = RunbookEngine((runbook,))

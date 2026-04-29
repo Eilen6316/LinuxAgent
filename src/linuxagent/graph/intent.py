@@ -24,7 +24,7 @@ from ..runbooks import RunbookEngine
 from ..services import ClusterService
 from ..telemetry import TelemetryRecorder
 from .common import span, trace_id
-from .runbook_planning import match_runbook_plan
+from .runbook_planning import build_runbook_guidance
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -54,6 +54,7 @@ def make_parse_intent_node(
     prompt = build_chat_prompt()
     direct_answer_prompt = build_direct_answer_prompt()
     intent_router_prompt = build_intent_router_prompt()
+    runbook_guidance = build_runbook_guidance(runbook_engine)
 
     async def parse_intent_node(state: AgentState) -> AgentState:
         current_trace_id = trace_id(state)
@@ -69,29 +70,9 @@ def make_parse_intent_node(
         )
         if intent.mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY}:
             return _direct_response_update(current_trace_id, intent.answer)
-        try:
-            runbook_plan = match_runbook_plan(user_text, current_trace_id, runbook_engine)
-        except CommandPlanParseError as exc:
-            return _parse_error_update(current_trace_id, str(exc))
-        if runbook_plan is not None:
-            plan, runbook = runbook_plan
-            selected_hosts = _selected_hosts_for_plan(user_text, plan, cluster_service)
-            return {
-                "trace_id": current_trace_id,
-                "pending_command": plan.primary.command,
-                "command_plan": plan,
-                "selected_runbook": runbook,
-                "runbook_step_index": 0,
-                "runbook_results": (),
-                "plan_result_start_index": 0,
-                "plan_error": None,
-                "command_source": CommandSource.LLM,
-                "selected_hosts": selected_hosts,
-                "direct_response": False,
-            }
         prompt_messages = prompt.format_messages(
             chat_history=messages[:-1],
-            user_input=_intent_prompt(user_text),
+            user_input=_intent_prompt(user_text, runbook_guidance),
         )
         with span(telemetry, "llm.complete", current_trace_id, {"node": "parse_intent"}):
             if tools:
@@ -108,7 +89,14 @@ def make_parse_intent_node(
                 tool_error = None
         if tool_error is not None:
             retry_plan = await _retry_command_plan(
-                provider, prompt, messages, user_text, current_trace_id, tool_error, telemetry
+                provider,
+                prompt,
+                messages,
+                user_text,
+                runbook_guidance,
+                current_trace_id,
+                tool_error,
+                telemetry,
             )
             if isinstance(retry_plan, str):
                 return _parse_error_update(current_trace_id, retry_plan)
@@ -130,7 +118,14 @@ def make_parse_intent_node(
                 if not tools:
                     return _parse_error_update(current_trace_id, str(exc))
                 retry_plan = await _retry_command_plan(
-                    provider, prompt, messages, user_text, current_trace_id, str(exc), telemetry
+                    provider,
+                    prompt,
+                    messages,
+                    user_text,
+                    runbook_guidance,
+                    current_trace_id,
+                    str(exc),
+                    telemetry,
                 )
                 if isinstance(retry_plan, str):
                     if _should_fallback_to_direct_answer(retry_plan):
@@ -277,9 +272,10 @@ def _last_message_text(messages: list[BaseMessage]) -> str:
     return str(messages[-1].content)
 
 
-def _intent_prompt(user_text: str) -> str:
+def _intent_prompt(user_text: str, runbook_guidance: str) -> str:
     return (
         f"{user_text}\n\n"
+        f"{runbook_guidance}\n\n"
         "Return only a JSON CommandPlan object with this schema: "
         '{"goal": str, "commands": [{"command": str, "purpose": str, '
         '"read_only": bool, "target_hosts": [str]}], "risk_summary": str, '
@@ -293,14 +289,23 @@ def _intent_prompt(user_text: str) -> str:
         "Prefer non-interactive package-manager flags and non-interactive administration commands. "
         "Each command is executed without a shell: do not use OS command chaining, pipes, "
         "redirects, command substitution, or fallback operators such as ||. "
+        "Runbooks are advisory examples, not routing rules; use, adapt, combine, or ignore "
+        "them according to the user's actual goal. If the user asks to write a shell, Python, "
+        "Go, Ansible, YAML, systemd, nginx, cron, or other artifact, create an artifact plan "
+        "instead of running diagnostic runbook commands only because words overlap. "
+        "For artifact generation that depends on a runtime or toolchain, include a minimal "
+        "read-only version/environment probe before creating the file when the version is "
+        "not already known, then use conservative compatible code and validation commands. "
+        "Because commands run without a shell, write files using argv-safe tools such as "
+        "python3 -c with pathlib rather than redirection or heredocs. "
         "If useful, call tools before deciding. "
         "Do not include markdown or prose."
     )
 
 
-def _retry_intent_prompt(user_text: str, error: str) -> str:
+def _retry_intent_prompt(user_text: str, runbook_guidance: str, error: str) -> str:
     return (
-        f"{_intent_prompt(user_text)}\n\n"
+        f"{_intent_prompt(user_text, runbook_guidance)}\n\n"
         f"The previous planning response was rejected: {error}. "
         "Retry once without tools. Output exactly one valid JSON object and nothing else."
     )
@@ -311,13 +316,14 @@ async def _retry_command_plan(
     prompt: Any,
     messages: list[BaseMessage],
     user_text: str,
+    runbook_guidance: str,
     current_trace_id: str,
     error: str,
     telemetry: TelemetryRecorder | None,
 ) -> CommandPlan | str:
     retry_messages = prompt.format_messages(
         chat_history=messages[:-1],
-        user_input=_retry_intent_prompt(user_text, error),
+        user_input=_retry_intent_prompt(user_text, runbook_guidance, error),
     )
     with span(
         telemetry,
