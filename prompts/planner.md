@@ -34,8 +34,8 @@ validation commands. Because commands run without a shell, write files using
 argv-safe tools such as `python3 -c` with `pathlib` rather than redirection or
 heredocs.
 
-Return only a JSON CommandPlan object with this schema. Do not include markdown
-or prose:
+For normal command execution, return only a JSON CommandPlan object with this
+schema. Do not include markdown or prose:
 
 ```json
 {{
@@ -70,3 +70,24 @@ and non-interactive administration commands over terminal clients.
 Each command string is executed without a shell. Do not use OS command chaining,
 pipes, redirects, command substitution, or fallback operators such as `||`;
 represent each fallback as a separate command step.
+
+For local file creation, code edits, config edits, script edits, or other file
+mutations, prefer a FilePatchPlan instead of a CommandPlan. The patch will be
+shown to the user before any file is changed. Return only this JSON object:
+
+```json
+{{
+  "plan_type": "file_patch",
+  "goal": "short file mutation goal",
+  "files_changed": ["path/to/file"],
+  "unified_diff": "--- old/path\n+++ new/path\n@@ -1,1 +1,1 @@\n-old line\n+new line\n",
+  "risk_summary": "short risk summary",
+  "verification_commands": ["string command only"],
+  "rollback_diff": "",
+  "expected_side_effects": ["filesystem.write"]
+}}
+```
+
+For new files, use `--- /dev/null` and `+++ /absolute/or/relative/path` in the
+unified diff. Do not apply the patch through shell commands; the graph applies
+FilePatchPlan after human confirmation.

@@ -7,6 +7,7 @@ from typing import Any, TypeAlias
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from .file_patch_nodes import make_apply_file_patch_node, make_file_patch_confirm_node
 from .intent import make_parse_intent_node
 from .nodes import (
     GraphDependencies,
@@ -55,6 +56,14 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
         _langgraph_node(make_confirm_node(deps.audit, deps.command_service, deps.telemetry)),
     )
     graph.add_node(
+        "file_patch_confirm",
+        _langgraph_node(make_file_patch_confirm_node(deps.audit)),
+    )
+    graph.add_node(
+        "apply_file_patch",
+        _langgraph_node(make_apply_file_patch_node(deps.audit)),
+    )
+    graph.add_node(
         "execute",
         _langgraph_node(
             make_execute_node(
@@ -77,7 +86,11 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     graph.add_conditional_edges(
         "parse_intent",
         route_after_parse,
-        {"RESPOND": "respond", "SAFETY": "safety_check"},
+        {
+            "PATCH_CONFIRM": "file_patch_confirm",
+            "RESPOND": "respond",
+            "SAFETY": "safety_check",
+        },
     )
     graph.add_conditional_edges(
         "safety_check",
@@ -95,6 +108,7 @@ def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     )
     graph.add_edge("advance_runbook", "safety_check")
     graph.add_edge("repair_plan", "safety_check")
+    graph.add_edge("apply_file_patch", "analyze")
     graph.add_edge("analyze", "respond")
     graph.add_edge("respond", END)
     graph.add_edge("respond_block", END)

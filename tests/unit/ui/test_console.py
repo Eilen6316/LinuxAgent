@@ -121,6 +121,27 @@ def test_render_confirm_shows_basic_command_fields() -> None:
     assert "read-only" in rendered
 
 
+def test_render_file_patch_confirm_shows_planned_diff() -> None:
+    console = Console(record=True, color_system="truecolor", width=120)
+    ui = ConsoleUI(console=console)
+
+    ui._render_file_patch_confirm(
+        {
+            "goal": "Edit demo",
+            "files_changed": ["demo.sh"],
+            "risk_summary": "writes one file",
+            "verification_commands": ["sh demo.sh"],
+            "unified_diff": "--- demo.sh\n+++ demo.sh\n@@ -1,1 +1,1 @@\n-old\n+new\n",
+        }
+    )
+
+    rendered = console.export_text()
+    assert "Planned diff" in rendered
+    assert "demo.sh" in rendered
+    assert "-old" in rendered
+    assert "+new" in rendered
+
+
 def test_render_confirm_shows_only_remaining_runbook_steps() -> None:
     console = Console(record=True, width=120)
     ui = ConsoleUI(console=console)

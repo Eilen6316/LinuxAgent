@@ -38,6 +38,8 @@ async def route_by_safety(state: AgentState) -> str:
 async def route_after_parse(state: AgentState) -> str:
     if state.get("direct_response"):
         return "RESPOND"
+    if state.get("file_patch_plan") is not None:
+        return "PATCH_CONFIRM"
     return "SAFETY"
 
 

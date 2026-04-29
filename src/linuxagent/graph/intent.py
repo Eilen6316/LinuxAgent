@@ -13,7 +13,14 @@ from langchain_core.tools import BaseTool
 from langgraph.types import Command
 
 from ..interfaces import CommandSource, LLMProvider
-from ..plans import CommandPlan, CommandPlanParseError, parse_command_plan
+from ..plans import (
+    CommandPlan,
+    CommandPlanParseError,
+    FilePatchPlan,
+    FilePatchPlanParseError,
+    parse_command_plan,
+    parse_file_patch_plan,
+)
 from ..prompts_loader import (
     build_direct_answer_prompt,
     build_intent_router_prompt,
@@ -97,6 +104,8 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     outcome = await _build_command_plan(context, messages, user_text, current_trace_id)
     if isinstance(outcome, CommandPlan):
         return _plan_update(current_trace_id, user_text, outcome, context.cluster_service)
+    if isinstance(outcome, FilePatchPlan):
+        return _file_patch_update(current_trace_id, outcome)
     return outcome
 
 
@@ -105,7 +114,7 @@ async def _build_command_plan(
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
-) -> CommandPlan | AgentState:
+) -> CommandPlan | FilePatchPlan | AgentState:
     proposed, tool_error = await _complete_plan_candidate(
         context, messages, user_text, current_trace_id
     )
@@ -114,11 +123,21 @@ async def _build_command_plan(
             context, messages, user_text, current_trace_id, tool_error
         )
     try:
-        return parse_command_plan(proposed)
-    except CommandPlanParseError as exc:
+        return _parse_planned_work(proposed)
+    except (CommandPlanParseError, FilePatchPlanParseError) as exc:
         return await _recover_plan_parse_error(
             context, messages, user_text, current_trace_id, str(exc)
         )
+
+
+def _parse_planned_work(proposed: str) -> CommandPlan | FilePatchPlan:
+    try:
+        return parse_file_patch_plan(proposed)
+    except FilePatchPlanParseError as patch_exc:
+        try:
+            return parse_command_plan(proposed)
+        except CommandPlanParseError as command_exc:
+            raise CommandPlanParseError(str(command_exc)) from patch_exc
 
 
 async def _complete_plan_candidate(
@@ -150,7 +169,7 @@ async def _recover_plan_parse_error(
     user_text: str,
     current_trace_id: str,
     error: str,
-) -> CommandPlan | AgentState:
+) -> CommandPlan | FilePatchPlan | AgentState:
     if _should_fallback_to_direct_answer(error):
         return await _fallback_direct_answer(
             context.provider,
@@ -223,7 +242,7 @@ async def _retry_plan_or_error(
     user_text: str,
     current_trace_id: str,
     error: str,
-) -> CommandPlan | AgentState:
+) -> CommandPlan | FilePatchPlan | AgentState:
     retry_plan = await _retry_command_plan(
         context.provider,
         context.planner_prompt,
@@ -234,7 +253,7 @@ async def _retry_plan_or_error(
         error,
         context.telemetry,
     )
-    if isinstance(retry_plan, CommandPlan):
+    if isinstance(retry_plan, CommandPlan | FilePatchPlan):
         return retry_plan
     if _should_fallback_to_direct_answer(retry_plan):
         return await _fallback_direct_answer(
@@ -278,6 +297,7 @@ def _direct_response_update(current_trace_id: str, response: str) -> AgentState:
         "messages": [AIMessage(content=response)],
         "pending_command": None,
         "command_plan": None,
+        "file_patch_plan": None,
         "selected_runbook": None,
         "runbook_step_index": 0,
         "runbook_results": (),
@@ -294,6 +314,7 @@ def _parse_error_update(current_trace_id: str, message: str) -> AgentState:
         "trace_id": current_trace_id,
         "pending_command": None,
         "command_plan": None,
+        "file_patch_plan": None,
         "selected_runbook": None,
         "runbook_step_index": 0,
         "runbook_results": (),
@@ -315,6 +336,7 @@ def _plan_update(
         "trace_id": current_trace_id,
         "pending_command": plan.primary.command,
         "command_plan": plan,
+        "file_patch_plan": None,
         "selected_runbook": None,
         "runbook_step_index": 0,
         "runbook_results": (),
@@ -322,6 +344,23 @@ def _plan_update(
         "plan_error": None,
         "command_source": CommandSource.LLM,
         "selected_hosts": _selected_hosts_for_plan(user_text, plan, cluster_service),
+        "direct_response": False,
+    }
+
+
+def _file_patch_update(current_trace_id: str, plan: FilePatchPlan) -> AgentState:
+    return {
+        "trace_id": current_trace_id,
+        "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
+        "command_plan": None,
+        "file_patch_plan": plan,
+        "selected_runbook": None,
+        "runbook_step_index": 0,
+        "runbook_results": (),
+        "plan_result_start_index": 0,
+        "plan_error": None,
+        "command_source": CommandSource.LLM,
+        "selected_hosts": (),
         "direct_response": False,
     }
 
@@ -349,7 +388,7 @@ async def _retry_command_plan(
     current_trace_id: str,
     error: str,
     telemetry: TelemetryRecorder | None,
-) -> CommandPlan | str:
+) -> CommandPlan | FilePatchPlan | str:
     retry_messages = prompt.format_messages(
         chat_history=messages[:-1],
         runbook_guidance=runbook_guidance,
@@ -363,8 +402,8 @@ async def _retry_command_plan(
     ):
         retry_proposed = (await provider.complete(retry_messages)).strip()
     try:
-        return parse_command_plan(retry_proposed)
-    except CommandPlanParseError as exc:
+        return _parse_planned_work(retry_proposed)
+    except (CommandPlanParseError, FilePatchPlanParseError) as exc:
         return str(exc)
 
 

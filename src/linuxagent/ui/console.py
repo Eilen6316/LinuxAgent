@@ -68,7 +68,10 @@ class ConsoleUI(UserInterface):
         started = time.monotonic()
         if not sys.stdin.isatty():
             return {"decision": "non_tty_auto_deny", "latency_ms": 0}
-        self._render_confirm(payload)
+        if payload.get("type") == "confirm_file_patch":
+            self._render_file_patch_confirm(payload)
+        else:
+            self._render_confirm(payload)
         approved = Confirm.ask("[bold]Allow this operation?[/]", default=False)
         return {
             "decision": "yes" if approved else "no",
@@ -135,6 +138,34 @@ class ConsoleUI(UserInterface):
                 table,
                 title="[bold bright_yellow]Human confirmation required[/]",
                 border_style="bright_yellow",
+                padding=(1, 2),
+            )
+        )
+
+    def _render_file_patch_confirm(self, payload: dict[str, Any]) -> None:
+        table = Table.grid(padding=(0, 2))
+        table.add_column(style=f"bold {self._accent_style()}")
+        table.add_column(style="white")
+        table.add_row("Goal", str(payload.get("goal") or ""))
+        table.add_row("Files", "\n".join(str(item) for item in payload.get("files_changed", ())))
+        if payload.get("risk_summary"):
+            table.add_row("Risk", str(payload["risk_summary"]))
+        verification = payload.get("verification_commands") or []
+        if verification:
+            table.add_row("Verify", "\n".join(str(item) for item in verification))
+        self._console.print(
+            Panel(
+                table,
+                title="[bold bright_yellow]File patch confirmation required[/]",
+                border_style="bright_yellow",
+                padding=(1, 2),
+            )
+        )
+        self._console.print(
+            Panel(
+                _render_unified_diff(str(payload.get("unified_diff") or "")),
+                title="[bold]Planned diff[/]",
+                border_style="bright_magenta",
                 padding=(1, 2),
             )
         )
@@ -208,3 +239,22 @@ class SlashCommandCompleter:
     ) -> AsyncGenerator[Completion, None]:
         for completion in self.get_completions(document, complete_event):
             yield completion
+
+
+def _render_unified_diff(diff_text: str) -> Text:
+    rendered = Text()
+    for line in diff_text.splitlines():
+        style = _diff_line_style(line)
+        rendered.append(line, style=style)
+        rendered.append("\n")
+    return rendered
+
+
+def _diff_line_style(line: str) -> str:
+    if line.startswith("+") and not line.startswith("+++"):
+        return "green"
+    if line.startswith("-") and not line.startswith("---"):
+        return "red"
+    if line.startswith("@@"):
+        return "yellow"
+    return "white"

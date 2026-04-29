@@ -14,7 +14,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph.message import add_messages
 
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel
-from ..plans import CommandPlan
+from ..plans import CommandPlan, FilePatchPlan
 from ..runbooks import Runbook
 
 
@@ -27,6 +27,7 @@ class AgentState(TypedDict, total=False):
     trace_id: str | None
     pending_command: str | None
     command_plan: CommandPlan | None
+    file_patch_plan: FilePatchPlan | None
     selected_runbook: Runbook | None
     runbook_step_index: int
     runbook_results: tuple[ExecutionResult, ...]
@@ -66,6 +67,7 @@ def initial_state(
         trace_id=None,
         pending_command=None,
         command_plan=None,
+        file_patch_plan=None,
         selected_runbook=None,
         runbook_step_index=0,
         runbook_results=(),

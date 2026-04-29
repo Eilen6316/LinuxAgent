@@ -16,7 +16,7 @@ from linuxagent.config.models import ClusterConfig, ClusterHost, SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.interfaces import CommandSource, ExecutionResult
-from linuxagent.plans import command_plan_json
+from linuxagent.plans import command_plan_json, file_patch_plan_json
 from linuxagent.providers.errors import ProviderError
 from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.services import ClusterService, CommandService
@@ -167,6 +167,60 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     trace_ids = {record["trace_id"] for record in audit_records}
     assert len(trace_ids) == 1
     assert None not in trace_ids
+
+
+async def test_graph_confirms_and_applies_file_patch_plan(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    graph, _provider = _graph(
+        tmp_path,
+        [
+            file_patch_plan_json(
+                str(target),
+                "#!/bin/sh\necho disk\n",
+                goal="Create disk script",
+            ),
+            "patch applied",
+        ],
+    )
+    config = {"configurable": {"thread_id": "file-patch-confirm"}}
+
+    await graph.ainvoke(
+        initial_state("create a disk info shell script", source=CommandSource.USER),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+    interrupt_payload = snapshot.tasks[0].interrupts[0].value
+
+    assert interrupt_payload["type"] == "confirm_file_patch"
+    assert str(target) in interrupt_payload["unified_diff"]
+    assert not target.exists()
+
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+
+    assert target.read_text(encoding="utf-8") == "#!/bin/sh\necho disk\n"
+    assert "patch applied" in str(resumed["messages"][-1].content)
+
+
+async def test_graph_refuses_file_patch_without_writing(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    graph, _provider = _graph(
+        tmp_path,
+        [file_patch_plan_json(str(target), "#!/bin/sh\necho disk\n")],
+    )
+    config = {"configurable": {"thread_id": "file-patch-refuse"}}
+
+    await graph.ainvoke(
+        initial_state("create a disk info shell script", source=CommandSource.USER),
+        config=config,
+    )
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "no", "latency_ms": 1}), config=config
+    )
+
+    assert not target.exists()
+    assert "已拒绝执行" in str(resumed["messages"][-1].content)
 
 
 async def test_graph_non_tty_deny_goes_to_refused(tmp_path) -> None:
