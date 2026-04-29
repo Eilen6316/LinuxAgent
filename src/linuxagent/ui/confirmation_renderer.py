@@ -156,7 +156,7 @@ class ConfirmationRenderer:
 
     def _add_patch_risk_rows(self, table: Table, payload: dict[str, Any]) -> None:
         if payload.get("risk_level") == "high":
-            table.add_row("Elevated risk", "yes - high-risk path requires explicit review")
+            table.add_row("Elevated risk", "yes - elevated file patch risk requires review")
         self._add_list_rows(
             table,
             payload,
@@ -178,7 +178,7 @@ class ConfirmationRenderer:
         if repair_attempt:
             table.add_row(
                 "Status",
-                f"AI reread the target file and repaired this diff (attempt {repair_attempt})",
+                f"LinuxAgent reread the target file and repaired this diff (attempt {repair_attempt})",
             )
 
     def _accent_style(self) -> str:

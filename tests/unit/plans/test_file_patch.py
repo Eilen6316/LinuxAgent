@@ -113,6 +113,33 @@ def test_evaluate_file_patch_plan_marks_allowed_high_risk_path(tmp_path: Path) -
     assert report.high_risk_paths == (target,)
 
 
+def test_evaluate_file_patch_plan_marks_large_rewrite_high_risk(tmp_path: Path) -> None:
+    target = tmp_path / "disk_info.sh"
+    original = [f"echo old-{index}" for index in range(1, 21)]
+    target.write_text("\n".join(original) + "\n", encoding="utf-8")
+    diff_lines = [f"--- {target}", f"+++ {target}", "@@ -1,20 +1,20 @@"]
+    for index in range(1, 13):
+        diff_lines.append(f"-echo old-{index}")
+        diff_lines.append(f"+echo new-{index}")
+    diff_lines.extend(f" {line}" for line in original[12:])
+    plan = parse_file_patch_plan(
+        json.dumps(
+            {
+                "plan_type": "file_patch",
+                "goal": "rewrite script",
+                "files_changed": [str(target)],
+                "unified_diff": "\n".join(diff_lines) + "\n",
+            }
+        )
+    )
+
+    report = evaluate_file_patch_plan(plan, FilePatchConfig(allow_roots=(tmp_path,)))
+
+    assert report.allowed is True
+    assert report.risk_level == "high"
+    assert any("large rewrite of existing file" in reason for reason in report.reasons)
+
+
 def test_apply_file_patch_plan_applies_permission_changes(tmp_path: Path) -> None:
     target = tmp_path / "hello.sh"
     payload = json.loads(file_patch_plan_json(str(target), "#!/bin/sh\necho hi\n"))

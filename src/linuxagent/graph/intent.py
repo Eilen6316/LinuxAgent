@@ -19,8 +19,11 @@ from ..plans import (
     CommandPlanParseError,
     FilePatchPlan,
     FilePatchPlanParseError,
+    NoChangePlan,
+    NoChangePlanParseError,
     parse_command_plan,
     parse_file_patch_plan,
+    parse_no_change_plan,
 )
 from ..prompts_loader import (
     build_direct_answer_prompt,
@@ -112,6 +115,8 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
         return _plan_update(current_trace_id, user_text, outcome, context.cluster_service)
     if isinstance(outcome, FilePatchPlan):
         return _file_patch_update(current_trace_id, outcome)
+    if isinstance(outcome, NoChangePlan):
+        return _direct_response_update(current_trace_id, outcome.answer)
     return outcome
 
 
@@ -120,7 +125,7 @@ async def _build_command_plan(
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
-) -> CommandPlan | FilePatchPlan | AgentState:
+) -> CommandPlan | FilePatchPlan | NoChangePlan | AgentState:
     proposed, tool_error = await _complete_plan_candidate(
         context, messages, user_text, current_trace_id
     )
@@ -130,30 +135,36 @@ async def _build_command_plan(
         )
     try:
         return _parse_planned_work(proposed)
-    except (CommandPlanParseError, FilePatchPlanParseError) as exc:
+    except (CommandPlanParseError, FilePatchPlanParseError, NoChangePlanParseError) as exc:
         return await _recover_plan_parse_error(
             context, messages, user_text, current_trace_id, str(exc), proposed
         )
 
 
-def _parse_planned_work(proposed: str) -> CommandPlan | FilePatchPlan:
+def _parse_planned_work(proposed: str) -> CommandPlan | FilePatchPlan | NoChangePlan:
     try:
-        return parse_file_patch_plan(proposed)
-    except FilePatchPlanParseError as patch_exc:
+        return parse_no_change_plan(proposed)
+    except NoChangePlanParseError as no_change_exc:
         try:
-            return parse_command_plan(proposed)
-        except CommandPlanParseError as command_exc:
-            raise CommandPlanParseError(
-                _combined_plan_parse_error(patch_exc, command_exc)
-            ) from command_exc
+            return parse_file_patch_plan(proposed)
+        except FilePatchPlanParseError as patch_exc:
+            try:
+                return parse_command_plan(proposed)
+            except CommandPlanParseError as command_exc:
+                raise CommandPlanParseError(
+                    _combined_plan_parse_error(no_change_exc, patch_exc, command_exc)
+                ) from command_exc
 
 
 def _combined_plan_parse_error(
-    patch_exc: FilePatchPlanParseError, command_exc: CommandPlanParseError
+    no_change_exc: NoChangePlanParseError,
+    patch_exc: FilePatchPlanParseError,
+    command_exc: CommandPlanParseError,
 ) -> str:
     return (
-        "LLM response must be a JSON CommandPlan or FilePatchPlan object; "
-        f"FilePatchPlan error: {patch_exc}; CommandPlan error: {command_exc}"
+        "LLM response must be a JSON CommandPlan, FilePatchPlan, or NoChangePlan object; "
+        f"NoChangePlan error: {no_change_exc}; FilePatchPlan error: {patch_exc}; "
+        f"CommandPlan error: {command_exc}"
     )
 
 
@@ -223,7 +234,7 @@ async def _recover_plan_parse_error(
     current_trace_id: str,
     error: str,
     rejected_response: str,
-) -> CommandPlan | FilePatchPlan | AgentState:
+) -> CommandPlan | FilePatchPlan | NoChangePlan | AgentState:
     if _should_fallback_to_direct_answer(error):
         return await _fallback_direct_answer(
             context.provider,
@@ -299,7 +310,7 @@ async def _retry_plan_or_error(
     current_trace_id: str,
     error: str,
     rejected_response: str = "",
-) -> CommandPlan | FilePatchPlan | AgentState:
+) -> CommandPlan | FilePatchPlan | NoChangePlan | AgentState:
     retry_plan = await _retry_command_plan(
         context.provider,
         context.planner_prompt,
@@ -311,7 +322,7 @@ async def _retry_plan_or_error(
         rejected_response,
         context.telemetry,
     )
-    if isinstance(retry_plan, CommandPlan | FilePatchPlan):
+    if isinstance(retry_plan, CommandPlan | FilePatchPlan | NoChangePlan):
         return retry_plan
     if _should_fallback_to_direct_answer(retry_plan):
         return await _fallback_direct_answer(
@@ -445,8 +456,9 @@ def _retry_intent_prompt(user_text: str, error: str, rejected_response: str, att
         f"{previous_response}"
         f"JSON-only retry attempt {attempt}. If the user is asking to create or edit a "
         "file, script, config, playbook, or code artifact, return a FilePatchPlan JSON "
-        "object. Otherwise return a CommandPlan JSON object. Output exactly one valid "
-        "JSON object and nothing else."
+        "object. If current file content already satisfies the request, return a "
+        "NoChangePlan JSON object. Otherwise return a CommandPlan JSON object. Output "
+        "exactly one valid JSON object and nothing else."
     )
 
 
@@ -466,7 +478,7 @@ async def _retry_command_plan(
     error: str,
     rejected_response: str,
     telemetry: TelemetryRecorder | None,
-) -> CommandPlan | FilePatchPlan | str:
+) -> CommandPlan | FilePatchPlan | NoChangePlan | str:
     current_error = error
     current_response = rejected_response
     for attempt in range(1, MAX_PLAN_PARSE_RETRIES + 1):
@@ -484,7 +496,7 @@ async def _retry_command_plan(
         )
         try:
             return _parse_planned_work(retry_proposed)
-        except (CommandPlanParseError, FilePatchPlanParseError) as exc:
+        except (CommandPlanParseError, FilePatchPlanParseError, NoChangePlanParseError) as exc:
             current_error = str(exc)
             current_response = retry_proposed
     return current_error

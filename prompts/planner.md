@@ -35,7 +35,13 @@ argv-safe tools such as `python3 -c` with `pathlib` rather than redirection or
 heredocs.
 When editing existing files or writing code against current repository content,
 use read-only workspace tools such as `read_file`, `list_dir`, and
-`search_files` before producing a FilePatchPlan.
+`search_files` before producing a FilePatchPlan. Compare the user's requested
+capability against the current file content before proposing changes. If the
+existing implementation already satisfies the request, do not create a no-op or
+cosmetic patch; return a NoChangePlan. If only part of the request is missing,
+preserve the existing file's structure, language, style, comments, and working
+logic, then produce the smallest diff that adds the missing behavior. Avoid
+rewriting, reformatting, renumbering, or translating unrelated code and text.
 If an artifact creation request reaches this planner without a target path,
 filename, target directory, or clear chat_history destination, do not invent one.
 Return no file mutation plan; ask a clarifying question before planning.
@@ -110,3 +116,14 @@ the user asked to edit/update that existing file. Do not apply the patch through
 shell commands; the graph applies FilePatchPlan after human confirmation. If a
 generated script needs executable permissions, use `permission_changes`; do not
 emit `chmod` as a shell command.
+
+If an inspected existing file already has the requested functionality and no
+file mutation is needed, return only this JSON object:
+
+```json
+{{
+  "plan_type": "no_change",
+  "answer": "short explanation in the user's language saying the existing implementation already satisfies the request",
+  "reason": "what existing capability matched the request"
+}}
+```

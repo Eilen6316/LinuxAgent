@@ -41,3 +41,8 @@ If the failure mentions `expected=...` and `actual=...`, the previous hunk
 context is stale: use the `actual` line and the current snapshot as the source
 of truth, then return a new diff whose context lines exactly match the current
 file.
+When repairing an edit to an existing file, compare the request with the current
+snapshot first. Preserve existing structure, language, comments, and working
+logic, and return the smallest corrected diff that adds only the missing
+behavior. Do not rewrite, reformat, renumber, or translate unrelated content
+just because the previous patch failed.

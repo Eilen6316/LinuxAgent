@@ -6,7 +6,13 @@ import json
 
 import pytest
 
-from linuxagent.plans import CommandPlanParseError, command_plan_json, parse_command_plan
+from linuxagent.plans import (
+    CommandPlanParseError,
+    NoChangePlanParseError,
+    command_plan_json,
+    parse_command_plan,
+    parse_no_change_plan,
+)
 
 
 def test_parse_command_plan_accepts_json_object() -> None:
@@ -59,3 +65,23 @@ def test_parse_command_plan_rejects_non_json_text() -> None:
 def test_parse_command_plan_rejects_invalid_schema() -> None:
     with pytest.raises(CommandPlanParseError, match="invalid CommandPlan"):
         parse_command_plan('{"goal": "missing commands"}')
+
+
+def test_parse_no_change_plan_accepts_json_object() -> None:
+    plan = parse_no_change_plan(
+        json.dumps(
+            {
+                "plan_type": "no_change",
+                "answer": "已有脚本已经包含 CPU 和 MEM 采集，无需修改。",
+                "reason": "existing implementation covers request",
+            }
+        )
+    )
+
+    assert plan.answer.startswith("已有脚本")
+    assert plan.reason == "existing implementation covers request"
+
+
+def test_parse_no_change_plan_rejects_command_plan_shape() -> None:
+    with pytest.raises(NoChangePlanParseError, match="NoChangePlan"):
+        parse_no_change_plan(command_plan_json("/bin/echo hi"))

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -13,6 +13,18 @@ _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 class CommandPlanParseError(ValueError):
     """Raised when the LLM does not return a valid CommandPlan JSON object."""
+
+
+class NoChangePlanParseError(ValueError):
+    """Raised when the LLM does not return a valid NoChangePlan JSON object."""
+
+
+class NoChangePlan(BaseModel):
+    model_config = _FROZEN
+
+    plan_type: Literal["no_change"] = "no_change"
+    answer: str = Field(min_length=1)
+    reason: str = ""
 
 
 class PlannedCommand(BaseModel):
@@ -79,6 +91,26 @@ def parse_command_plan(text: str) -> CommandPlan:
         raise CommandPlanParseError(_format_validation_error(exc)) from exc
 
 
+def parse_no_change_plan(text: str) -> NoChangePlan:
+    """Parse strict JSON returned by the model into a no-op response plan."""
+    try:
+        payload = _extract_json_payload(text)
+    except CommandPlanParseError as exc:
+        raise NoChangePlanParseError("LLM response must be a JSON NoChangePlan object") from exc
+    try:
+        raw = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise NoChangePlanParseError(f"LLM response is not valid JSON: {exc.msg}") from exc
+    if not isinstance(raw, dict):
+        raise NoChangePlanParseError("LLM response JSON must be an object")
+    if raw.get("plan_type") != "no_change":
+        raise NoChangePlanParseError("LLM response is not a NoChangePlan object")
+    try:
+        return NoChangePlan.model_validate(raw)
+    except ValidationError as exc:
+        raise NoChangePlanParseError(_format_validation_error(exc, "NoChangePlan")) from exc
+
+
 def _extract_json_payload(text: str) -> str:
     stripped = text.strip()
     if stripped.startswith("{"):
@@ -95,12 +127,12 @@ def _coerce_command_item(item: Any) -> Any:
     return item
 
 
-def _format_validation_error(exc: ValidationError) -> str:
+def _format_validation_error(exc: ValidationError, model_name: str = "CommandPlan") -> str:
     parts: list[str] = []
     for err in exc.errors():
         loc = ".".join(str(part) for part in err["loc"])
         parts.append(f"{loc}: {err['msg']} (input={err.get('input')!r})")
-    return "invalid CommandPlan: " + "; ".join(parts)
+    return f"invalid {model_name}: " + "; ".join(parts)
 
 
 def command_plan_json(

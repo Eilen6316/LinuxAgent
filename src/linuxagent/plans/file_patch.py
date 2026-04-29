@@ -16,6 +16,8 @@ from ..config.models import FilePatchConfig
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 _HUNK_RE = re.compile(r"^@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@")
 _MODE_RE = re.compile(r"^0?[0-7]{3,4}$")
+_LARGE_REWRITE_MIN_DELETIONS = 8
+_LARGE_REWRITE_MIN_RATIO = 0.30
 
 
 class FilePatchPlanParseError(ValueError):
@@ -165,7 +167,8 @@ def evaluate_file_patch_plan(
     patches = _parse_file_patches(plan.unified_diff)
     _dry_run_file_updates(patches)
     safety = _evaluate_paths(_patch_paths(patches, plan.permission_changes), config, cwd)
-    return _with_permission_policy(safety, plan.permission_changes, config)
+    safety = _with_permission_policy(safety, plan.permission_changes, config)
+    return _with_large_rewrite_policy(safety, patches)
 
 
 def select_file_patch_plan_files(
@@ -381,6 +384,52 @@ def _with_permission_policy(
         high_risk_paths=report.high_risk_paths,
         reasons=reasons,
     )
+
+
+def _with_large_rewrite_policy(
+    report: FilePatchSafetyReport, patches: tuple[_FilePatch, ...]
+) -> FilePatchSafetyReport:
+    if not report.allowed or report.risk_level == "blocked":
+        return report
+    reasons = _large_rewrite_reasons(patches)
+    if not reasons:
+        return report
+    return FilePatchSafetyReport(
+        allowed=report.allowed,
+        risk_level="high",
+        paths=report.paths,
+        blocked_paths=report.blocked_paths,
+        high_risk_paths=report.high_risk_paths,
+        reasons=(*report.reasons, *reasons),
+    )
+
+
+def _large_rewrite_reasons(patches: tuple[_FilePatch, ...]) -> tuple[str, ...]:
+    reasons: list[str] = []
+    for patch in patches:
+        if patch.old_path == "/dev/null" or patch.new_path == "/dev/null":
+            continue
+        target = _target_path(patch)
+        old_line_count = len(_read_lines(target))
+        deletions = _count_hunk_marker(patch, "-")
+        if not _is_large_rewrite(old_line_count, deletions):
+            continue
+        additions = _count_hunk_marker(patch, "+")
+        reasons.append(
+            f"large rewrite of existing file: {target} "
+            f"(+{additions} -{deletions} over {old_line_count} existing lines)"
+        )
+    return tuple(reasons)
+
+
+def _is_large_rewrite(old_line_count: int, deletions: int) -> bool:
+    if old_line_count == 0 or deletions < _LARGE_REWRITE_MIN_DELETIONS:
+        return False
+    return deletions / old_line_count >= _LARGE_REWRITE_MIN_RATIO
+
+
+def _count_hunk_marker(patch: _FilePatch, marker: str) -> int:
+    return sum(1 for hunk in patch.hunks for line in hunk[1:] if line.startswith(marker))
 
 
 def _path_safety_reasons(blocked: tuple[Path, ...], high_risk: tuple[Path, ...]) -> tuple[str, ...]:

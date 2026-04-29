@@ -171,6 +171,17 @@ def _file_patch_plan_from_diff(path: Path, diff_lines: list[str]) -> str:
     return json.dumps(payload)
 
 
+def _no_change_plan_json(answer: str = "已有实现已经满足需求，无需修改。") -> str:
+    return json.dumps(
+        {
+            "plan_type": "no_change",
+            "answer": answer,
+            "reason": "existing implementation already satisfies the request",
+        },
+        ensure_ascii=False,
+    )
+
+
 async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo hi"), "analysis ok"])
     config = {"configurable": {"thread_id": "t1"}}
@@ -594,6 +605,33 @@ async def test_graph_marks_high_risk_file_patch_confirmation(tmp_path) -> None:
     assert str(target) in payload["high_risk_paths"]
 
 
+async def test_graph_marks_large_rewrite_file_patch_confirmation(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    original = [f"echo old-{index}" for index in range(1, 21)]
+    target.write_text("\n".join(original) + "\n", encoding="utf-8")
+    diff_lines = [f"--- {target}", f"+++ {target}", "@@ -1,20 +1,20 @@"]
+    for index in range(1, 13):
+        diff_lines.append(f"-echo old-{index}")
+        diff_lines.append(f"+echo new-{index}")
+    diff_lines.extend(f" {line}" for line in original[12:])
+    graph, _provider = _graph(
+        tmp_path,
+        [_file_patch_plan_from_diff(target, diff_lines)],
+        file_patch_config=FilePatchConfig(allow_roots=(tmp_path,)),
+    )
+    config = {"configurable": {"thread_id": "file-patch-large-rewrite"}}
+
+    await graph.ainvoke(
+        initial_state("add cpu and memory info to existing script", source=CommandSource.USER),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+
+    assert payload["risk_level"] == "high"
+    assert any("large rewrite of existing file" in reason for reason in payload["risk_reasons"])
+
+
 async def test_graph_non_tty_deny_goes_to_refused(tmp_path) -> None:
     graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo hi")])
     config = {"configurable": {"thread_id": "t2"}}
@@ -849,6 +887,24 @@ async def test_graph_clarifies_artifact_creation_without_destination(tmp_path) -
     assert len(provider.complete_messages) == 1
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
+    assert snapshot.values.get("file_patch_plan") is None
+    assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_returns_no_change_plan_as_direct_response(tmp_path) -> None:
+    answer = "已有脚本已经包含 CPU 和 MEM 采集，无需修改。"
+    graph, _provider = _graph(tmp_path, [_no_change_plan_json(answer)])
+    config = {"configurable": {"thread_id": "no-change-existing-file"}}
+
+    result = await graph.ainvoke(
+        initial_state("在这个脚本里再添加 CPU 和 MEM 信息采集", source=CommandSource.USER),
+        config=config,
+    )
+
+    assert answer in str(result["messages"][-1].content)
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values.get("pending_command") is None
     assert snapshot.values.get("file_patch_plan") is None
     assert snapshot.values["direct_response"] is True
 

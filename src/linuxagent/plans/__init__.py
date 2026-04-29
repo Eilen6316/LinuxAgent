@@ -17,9 +17,12 @@ from .file_patch import (
 from .models import (
     CommandPlan,
     CommandPlanParseError,
+    NoChangePlan,
+    NoChangePlanParseError,
     PlannedCommand,
     command_plan_json,
     parse_command_plan,
+    parse_no_change_plan,
 )
 
 __all__ = [
@@ -30,6 +33,8 @@ __all__ = [
     "FilePatchPlan",
     "FilePatchPlanParseError",
     "FilePatchSafetyReport",
+    "NoChangePlan",
+    "NoChangePlanParseError",
     "PatchApplyResult",
     "PlannedCommand",
     "apply_file_patch_plan",
@@ -39,5 +44,6 @@ __all__ = [
     "file_patch_plan_json",
     "parse_command_plan",
     "parse_file_patch_plan",
+    "parse_no_change_plan",
     "select_file_patch_plan_files",
 ]
