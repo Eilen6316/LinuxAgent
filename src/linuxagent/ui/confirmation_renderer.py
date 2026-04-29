@@ -8,7 +8,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .diff_renderer import DiffRenderer, diff_summary
+from .diff_renderer import (
+    DEFAULT_MAX_LINES_PER_FILE,
+    DiffRenderer,
+    diff_display_summary,
+    diff_summary,
+)
 
 
 class ConfirmationRenderer:
@@ -61,6 +66,15 @@ class ConfirmationRenderer:
         table = self._base_table()
         table.add_row("Goal", str(payload.get("goal") or ""))
         table.add_row("Files", "\n".join(str(item) for item in payload.get("files_changed", ())))
+        table.add_row("Stats", diff_summary(str(payload.get("unified_diff") or "")))
+        table.add_row(
+            "Display",
+            diff_display_summary(
+                str(payload.get("unified_diff") or ""),
+                max_lines_per_file=DEFAULT_MAX_LINES_PER_FILE,
+            ),
+        )
+        self._add_patch_status_row(table, payload)
         self._add_optional_rows(table, payload, ("risk_summary",))
         self._add_patch_risk_rows(table, payload)
         self._add_list_rows(table, payload, (("Verify", "verification_commands"),))
@@ -158,6 +172,14 @@ class ConfirmationRenderer:
         ]
         if rendered:
             table.add_row("Permissions", "\n".join(rendered))
+
+    def _add_patch_status_row(self, table: Table, payload: dict[str, Any]) -> None:
+        repair_attempt = int(payload.get("repair_attempt") or 0)
+        if repair_attempt:
+            table.add_row(
+                "Status",
+                f"AI reread the target file and repaired this diff (attempt {repair_attempt})",
+            )
 
     def _accent_style(self) -> str:
         if self._theme == "light":

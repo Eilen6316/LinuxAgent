@@ -335,6 +335,16 @@ def test_tool_event_message_formats_workspace_tools() -> None:
             {"phase": "error", "tool_name": "read_file", "output_preview": "denied"}
         )
     )
+    assert (
+        container_module._tool_event_message(
+            {
+                "phase": "start",
+                "tool_name": "repair_file_patch",
+                "args": {"files": ["demo.sh"]},
+            }
+        )
+        == "AI 正在重新读取文件并修复 diff demo.sh"
+    )
 
 
 def test_container_disables_embedding_tools_for_deepseek_by_default(

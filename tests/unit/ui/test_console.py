@@ -136,6 +136,7 @@ def test_render_file_patch_confirm_shows_planned_diff() -> None:
             "permission_changes": [
                 {"path": "demo.sh", "mode": "0755", "reason": "make executable"}
             ],
+            "repair_attempt": 1,
             "verification_commands": ["sh demo.sh"],
             "unified_diff": "--- demo.sh\n+++ demo.sh\n@@ -1,1 +1,1 @@\n-old\n+new\n",
         }
@@ -144,6 +145,9 @@ def test_render_file_patch_confirm_shows_planned_diff() -> None:
     rendered = console.export_text()
     assert "Planned diff" in rendered
     assert "1 file, +1 -1" in rendered
+    assert "Stats" in rendered
+    assert "full diff shown" in rendered
+    assert "repaired this diff (attempt 1)" in rendered
     assert "Elevated risk" in rendered
     assert "demo.sh -> 0755" in rendered
     assert "demo.sh" in rendered

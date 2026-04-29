@@ -59,7 +59,9 @@ def make_file_patch_confirm_node(audit: AuditLog, config: FilePatchConfig) -> No
             command_source=CommandSource.LLM.value,
             trace_id=current_trace_id,
         )
-        response = interrupt(_patch_payload(plan, audit_id, safety))
+        response = interrupt(
+            _patch_payload(plan, audit_id, safety, state.get("file_patch_repair_attempts", 0))
+        )
         user_decision = decision(response)
         await audit.record_decision(
             audit_id,
@@ -112,6 +114,7 @@ def make_repair_file_patch_node(
 
     async def repair_file_patch_node(state: AgentState) -> Command[Any]:
         current_trace_id = trace_id(state)
+        await _notify_repair_start(state, telemetry, tool_observer, current_trace_id)
         prompt_messages = prompt.format_messages(
             runbook_guidance="No runbook guidance is available for file patch repair.",
             original_request=_last_human_text(state.get("messages", [])),
@@ -155,6 +158,27 @@ async def _complete_repair_plan(
     ).strip()
 
 
+async def _notify_repair_start(
+    state: AgentState,
+    telemetry: TelemetryRecorder | None,
+    observer: ToolEventObserver | None,
+    current_trace_id: str,
+) -> None:
+    notification = tool_event_observer(telemetry, observer, current_trace_id)(
+        _repair_tool_event(state)
+    )
+    if notification is not None:
+        await notification
+
+
+def _repair_tool_event(state: AgentState) -> dict[str, Any]:
+    return {
+        "phase": "start",
+        "tool_name": "repair_file_patch",
+        "args": {"files": list(_current_patch_files(state))},
+    }
+
+
 def _evaluate_patch_safety(plan: FilePatchPlan, config: FilePatchConfig) -> FilePatchSafetyReport:
     try:
         return evaluate_file_patch_plan(plan, config)
@@ -168,7 +192,10 @@ def _evaluate_patch_safety(plan: FilePatchPlan, config: FilePatchConfig) -> File
 
 
 def _patch_payload(
-    plan: FilePatchPlan, audit_id: str, safety: FilePatchSafetyReport
+    plan: FilePatchPlan,
+    audit_id: str,
+    safety: FilePatchSafetyReport,
+    repair_attempt: int,
 ) -> dict[str, Any]:
     return {
         "type": "confirm_file_patch",
@@ -180,6 +207,7 @@ def _patch_payload(
         "risk_level": safety.risk_level,
         "risk_reasons": list(safety.reasons),
         "high_risk_paths": [str(path) for path in safety.high_risk_paths],
+        "repair_attempt": repair_attempt,
         "verification_commands": list(plan.verification_commands),
         "permission_changes": [change.model_dump() for change in plan.permission_changes],
         "rollback_diff": plan.rollback_diff,
@@ -249,6 +277,11 @@ def _patch_failure_context(state: AgentState) -> str:
 def _previous_plan_json(state: AgentState) -> str:
     plan = state.get("file_patch_plan")
     return "" if plan is None else plan.model_dump_json()
+
+
+def _current_patch_files(state: AgentState) -> tuple[str, ...]:
+    plan = state.get("file_patch_plan")
+    return () if plan is None else plan.files_changed
 
 
 def _last_human_text(messages: list[BaseMessage]) -> str:

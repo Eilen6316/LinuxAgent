@@ -89,6 +89,7 @@ def _graph(
     cluster_service: ClusterService | None = None,
     runbook_engine: RunbookEngine | None = None,
     file_patch_config: FilePatchConfig | None = None,
+    tool_observer: Any | None = None,
 ):
     provider = _FakeProvider(responses)
     executor = LinuxCommandExecutor(
@@ -101,6 +102,7 @@ def _graph(
         cluster_service=cluster_service,
         runbook_engine=runbook_engine,
         file_patch_config=file_patch_config or FilePatchConfig(),
+        tool_observer=tool_observer,
     )
     return build_agent_graph(deps), provider
 
@@ -284,7 +286,12 @@ async def test_graph_repairs_failed_file_patch_and_reconfirms(tmp_path) -> None:
             "+echo cpu",
         ],
     )
-    graph, _provider = _graph(tmp_path, [stale_plan, repaired_plan, "analysis ok"])
+    events: list[dict[str, Any]] = []
+    graph, _provider = _graph(
+        tmp_path,
+        [stale_plan, repaired_plan, "analysis ok"],
+        tool_observer=events.append,
+    )
     config = {"configurable": {"thread_id": "file-patch-repair"}}
 
     await graph.ainvoke(
@@ -301,7 +308,9 @@ async def test_graph_repairs_failed_file_patch_and_reconfirms(tmp_path) -> None:
         interrupts = list(snapshot.tasks[0].interrupts)
 
     assert interrupts[0].value["type"] == "confirm_file_patch"
+    assert interrupts[0].value["repair_attempt"] == 1
     assert "+echo cpu" in interrupts[0].value["unified_diff"]
+    assert events[-1]["tool_name"] == "repair_file_patch"
 
     resumed = await graph.ainvoke(
         Command(resume={"decision": "yes", "latency_ms": 1}), config=config

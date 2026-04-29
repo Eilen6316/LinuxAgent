@@ -69,14 +69,16 @@ class DiffRenderer:
         files = parse_unified_diff_files(diff_text)
         if not files:
             return render_unified_diff(diff_text)
+        total_files = len(files)
         panels = [
             Panel(
                 self._render_file(file),
-                title=f"[bold]{file.title}[/]",
+                title=f"[bold]{index}/{total_files} {file.title}[/]",
+                subtitle=self._file_subtitle(file),
                 border_style="bright_magenta",
                 padding=(1, 2),
             )
-            for file in files
+            for index, file in enumerate(files, start=1)
         ]
         return Group(*panels)
 
@@ -89,8 +91,18 @@ class DiffRenderer:
         rendered = render_unified_diff("\n".join(lines))
         if truncated:
             remaining = len(file.lines) - len(lines)
-            rendered.append(f"... {remaining} more diff lines hidden\n", style="dim")
+            rendered.append(
+                f"... page 1/{_page_count(len(file.lines), len(lines))}; "
+                f"{remaining} more diff lines hidden\n",
+                style="dim",
+            )
         return rendered
+
+    def _file_subtitle(self, file: DiffFile) -> str:
+        if self._max_lines_per_file is None or len(file.lines) <= self._max_lines_per_file:
+            return ""
+        pages = _page_count(len(file.lines), self._max_lines_per_file)
+        return f"[dim]page 1/{pages}; showing first {self._max_lines_per_file} lines[/]"
 
 
 def diff_summary(diff_text: str) -> str:
@@ -99,6 +111,22 @@ def diff_summary(diff_text: str) -> str:
         return DiffStats.from_files(files).summary
     stats = DiffStats.from_lines(tuple(diff_text.splitlines()))
     return stats.summary
+
+
+def diff_display_summary(
+    diff_text: str, *, max_lines_per_file: int | None = DEFAULT_MAX_LINES_PER_FILE
+) -> str:
+    files = parse_unified_diff_files(diff_text)
+    if not files:
+        line_count = len(diff_text.splitlines())
+        if max_lines_per_file is None or line_count <= max_lines_per_file:
+            return "full diff shown"
+        return _hidden_summary(line_count, max_lines_per_file)
+    hidden_files = tuple(file for file in files if _is_truncated(file, max_lines_per_file))
+    if not hidden_files:
+        return "full diff shown"
+    hidden_lines = sum(len(file.lines) - int(max_lines_per_file or 0) for file in hidden_files)
+    return f"{len(hidden_files)} file diff paged, {hidden_lines} lines hidden"
 
 
 def parse_unified_diff_files(diff_text: str) -> tuple[DiffFile, ...]:
@@ -155,3 +183,16 @@ def _is_addition(line: str) -> bool:
 
 def _is_deletion(line: str) -> bool:
     return line.startswith("-") and not line.startswith("---")
+
+
+def _is_truncated(file: DiffFile, max_lines_per_file: int | None) -> bool:
+    return max_lines_per_file is not None and len(file.lines) > max_lines_per_file
+
+
+def _page_count(total_lines: int, page_size: int) -> int:
+    return max(1, (total_lines + page_size - 1) // page_size)
+
+
+def _hidden_summary(line_count: int, max_lines_per_file: int) -> str:
+    hidden = line_count - max_lines_per_file
+    return f"diff paged, {hidden} lines hidden"
