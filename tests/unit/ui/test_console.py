@@ -137,6 +137,7 @@ def test_render_file_patch_confirm_shows_planned_diff() -> None:
 
     rendered = console.export_text()
     assert "Planned diff" in rendered
+    assert "1 file, +1 -1" in rendered
     assert "demo.sh" in rendered
     assert "-old" in rendered
     assert "+new" in rendered

@@ -8,6 +8,8 @@ from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.text import Text
 
+DEFAULT_MAX_LINES_PER_FILE = 200
+
 
 @dataclass(frozen=True)
 class DiffFile:
@@ -17,17 +19,50 @@ class DiffFile:
 
     @property
     def title(self) -> str:
+        stats = self.stats
+        suffix = f" (+{stats.additions} -{stats.deletions})"
         if self.new_path == "/dev/null":
-            return self.old_path
+            return f"{self.old_path}{suffix}"
         if self.old_path == "/dev/null":
-            return self.new_path
+            return f"{self.new_path}{suffix}"
         if self.old_path == self.new_path:
-            return self.new_path
-        return f"{self.old_path} -> {self.new_path}"
+            return f"{self.new_path}{suffix}"
+        return f"{self.old_path} -> {self.new_path}{suffix}"
+
+    @property
+    def stats(self) -> DiffStats:
+        return DiffStats.from_lines(self.lines)
+
+
+@dataclass(frozen=True)
+class DiffStats:
+    additions: int = 0
+    deletions: int = 0
+    files: int = 0
+
+    @classmethod
+    def from_lines(cls, lines: tuple[str, ...]) -> DiffStats:
+        additions = sum(1 for line in lines if _is_addition(line))
+        deletions = sum(1 for line in lines if _is_deletion(line))
+        return cls(additions=additions, deletions=deletions, files=1)
+
+    @classmethod
+    def from_files(cls, files: tuple[DiffFile, ...]) -> DiffStats:
+        stats = [file.stats for file in files]
+        return cls(
+            additions=sum(item.additions for item in stats),
+            deletions=sum(item.deletions for item in stats),
+            files=len(files),
+        )
+
+    @property
+    def summary(self) -> str:
+        file_label = "file" if self.files == 1 else "files"
+        return f"{self.files} {file_label}, +{self.additions} -{self.deletions}"
 
 
 class DiffRenderer:
-    def __init__(self, *, max_lines_per_file: int | None = None) -> None:
+    def __init__(self, *, max_lines_per_file: int | None = DEFAULT_MAX_LINES_PER_FILE) -> None:
         self._max_lines_per_file = max_lines_per_file
 
     def render(self, diff_text: str) -> RenderableType:
@@ -56,6 +91,14 @@ class DiffRenderer:
             remaining = len(file.lines) - len(lines)
             rendered.append(f"... {remaining} more diff lines hidden\n", style="dim")
         return rendered
+
+
+def diff_summary(diff_text: str) -> str:
+    files = parse_unified_diff_files(diff_text)
+    if files:
+        return DiffStats.from_files(files).summary
+    stats = DiffStats.from_lines(tuple(diff_text.splitlines()))
+    return stats.summary
 
 
 def parse_unified_diff_files(diff_text: str) -> tuple[DiffFile, ...]:
@@ -90,9 +133,9 @@ def render_unified_diff(diff_text: str) -> Text:
 
 
 def diff_line_style(line: str) -> str:
-    if line.startswith("+") and not line.startswith("+++"):
+    if _is_addition(line):
         return "green"
-    if line.startswith("-") and not line.startswith("---"):
+    if _is_deletion(line):
         return "red"
     if line.startswith("@@"):
         return "yellow"
@@ -104,3 +147,11 @@ def _clean_diff_header(raw: str) -> str:
     if path.startswith(("a/", "b/")):
         return path[2:]
     return path
+
+
+def _is_addition(line: str) -> bool:
+    return line.startswith("+") and not line.startswith("+++")
+
+
+def _is_deletion(line: str) -> bool:
+    return line.startswith("-") and not line.startswith("---")

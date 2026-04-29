@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .diff_renderer import DiffRenderer
+from .diff_renderer import DiffRenderer, diff_summary
 
 
 class ConfirmationRenderer:
@@ -67,7 +67,7 @@ class ConfirmationRenderer:
         self._console.print(
             Panel(
                 self._diff_renderer.render(str(payload.get("unified_diff") or "")),
-                title="[bold]Planned diff[/]",
+                title=f"[bold]Planned diff[/] ({diff_summary(str(payload.get('unified_diff') or ''))})",
                 border_style="bright_magenta",
                 padding=(1, 2),
             )
