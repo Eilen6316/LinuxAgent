@@ -555,11 +555,48 @@ def _patched_lines(path: Path, old_lines: list[str], hunks: tuple[list[str], ...
     cursor = 0
     for hunk_index, hunk in enumerate(hunks, start=1):
         start = _hunk_old_start(hunk[0], path, hunk_index)
-        hunk_start = max(start - 1, 0)
+        hunk_start = _resolve_hunk_start(hunk[1:], old_lines, max(start - 1, 0), cursor)
         output.extend(old_lines[cursor:hunk_start])
         cursor = _apply_hunk_lines(hunk[1:], old_lines, output, hunk_start, path, hunk_index)
     output.extend(old_lines[cursor:])
     return output
+
+
+def _resolve_hunk_start(
+    hunk_lines: list[str], old_lines: list[str], preferred: int, cursor: int
+) -> int:
+    bounded_preferred = max(preferred, cursor)
+    old_sequence = _hunk_old_sequence(hunk_lines)
+    if not old_sequence or _old_sequence_matches(old_lines, bounded_preferred, old_sequence):
+        return bounded_preferred
+    match = _find_hunk_old_sequence(old_lines, old_sequence, cursor, bounded_preferred)
+    return bounded_preferred if match is None else match
+
+
+def _hunk_old_sequence(hunk_lines: list[str]) -> tuple[str, ...]:
+    return tuple(line[1:] for line in hunk_lines if line[:1] in {" ", "-"})
+
+
+def _find_hunk_old_sequence(
+    old_lines: list[str],
+    old_sequence: tuple[str, ...],
+    start: int,
+    preferred: int,
+) -> int | None:
+    candidates = [
+        index
+        for index in range(start, len(old_lines) - len(old_sequence) + 1)
+        if _old_sequence_matches(old_lines, index, old_sequence)
+    ]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda index: abs(index - preferred))
+
+
+def _old_sequence_matches(old_lines: list[str], start: int, old_sequence: tuple[str, ...]) -> bool:
+    if start < 0 or start + len(old_sequence) > len(old_lines):
+        return False
+    return tuple(old_lines[start : start + len(old_sequence)]) == old_sequence
 
 
 def _apply_hunk_lines(

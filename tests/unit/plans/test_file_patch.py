@@ -80,6 +80,39 @@ def test_apply_unified_diff_rejects_context_mismatch(tmp_path: Path) -> None:
         apply_unified_diff(diff)
 
 
+def test_apply_unified_diff_relocates_hunk_when_line_number_is_stale(tmp_path: Path) -> None:
+    path = tmp_path / "disk_info.sh"
+    path.write_text(
+        "\n".join(
+            [
+                'echo -e "\\n[11] 磁盘空间占用最大的目录"',
+                'du -sh /* 2>/dev/null | sort -rh | head -10 || echo "权限不足无法扫描"',
+                'echo -e "\\n完成"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    diff = "\n".join(
+        [
+            f"--- {path}",
+            f"+++ {path}",
+            "@@ -2,2 +2,4 @@",
+            ' echo -e "\\n[11] 磁盘空间占用最大的目录"',
+            ' du -sh /* 2>/dev/null | sort -rh | head -10 || echo "权限不足无法扫描"',
+            '+echo -e "\\n[12] CPU 信息"',
+            "+lscpu",
+            "",
+        ]
+    )
+
+    apply_unified_diff(diff)
+
+    content = path.read_text(encoding="utf-8")
+    assert 'echo -e "\\n[12] CPU 信息"' in content
+    assert "lscpu" in content
+
+
 def test_apply_unified_diff_rejects_paths_outside_allow_roots(tmp_path: Path) -> None:
     allowed = tmp_path / "allowed"
     target = tmp_path / "outside" / "blocked.sh"
