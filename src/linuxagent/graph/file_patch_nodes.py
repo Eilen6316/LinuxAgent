@@ -49,7 +49,7 @@ def make_file_patch_confirm_node(audit: AuditLog, config: FilePatchConfig) -> No
         plan = state.get("file_patch_plan")
         if plan is None:
             return Command(goto="respond_block", update=_patch_error(current_trace_id, "no patch"))
-        safety = _evaluate_patch_safety(plan, config)
+        safety = _evaluate_patch_safety(state, config)
         if not safety.allowed:
             if _should_repair_patch_safety_failure(state, safety):
                 reason = "; ".join(safety.reasons)
@@ -283,9 +283,16 @@ def _repair_tool_event(state: AgentState) -> dict[str, Any]:
     }
 
 
-def _evaluate_patch_safety(plan: FilePatchPlan, config: FilePatchConfig) -> FilePatchSafetyReport:
+def _evaluate_patch_safety(state: AgentState, config: FilePatchConfig) -> FilePatchSafetyReport:
+    plan = state.get("file_patch_plan")
+    if plan is None:
+        return FilePatchSafetyReport(False, "blocked", (), reasons=("no patch",))
     try:
-        return evaluate_file_patch_plan(plan, config)
+        return evaluate_file_patch_plan(
+            plan,
+            config,
+            request_intent=state.get("file_patch_request_intent", "unknown"),
+        )
     except FilePatchApplyError as exc:
         return FilePatchSafetyReport(
             allowed=False,
@@ -398,6 +405,7 @@ def _is_repairable_patch_error(reasons: str) -> bool:
     return (
         "unified diff context does not match target file" in reasons
         or "target already exists" in reasons
+        or "create request attempted to update existing file" in reasons
     )
 
 
@@ -406,6 +414,7 @@ def _repair_update(state: AgentState, current_trace_id: str, plan: FilePatchPlan
         "trace_id": current_trace_id,
         "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
         "file_patch_plan": plan,
+        "file_patch_request_intent": state.get("file_patch_request_intent", "unknown"),
         "file_patch_repair_attempts": state.get("file_patch_repair_attempts", 0) + 1,
         "file_patch_selected_files": (),
         "plan_error": None,
@@ -423,6 +432,7 @@ def _repair_no_change_update(current_trace_id: str, plan: NoChangePlan) -> Agent
         "pending_command": None,
         "command_plan": None,
         "file_patch_plan": None,
+        "file_patch_request_intent": "unknown",
         "file_patch_repair_attempts": 0,
         "file_patch_selected_files": (),
         "plan_error": None,

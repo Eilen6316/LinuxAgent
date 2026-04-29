@@ -21,7 +21,12 @@ from rich.text import Text
 
 from ..interfaces import UserInterface
 from .confirmation_renderer import ConfirmationRenderer
-from .diff_renderer import diff_line_style, render_unified_diff
+from .diff_renderer import (
+    DiffRenderer,
+    diff_line_style,
+    parse_unified_diff_files,
+    render_unified_diff,
+)
 from .prompt_session import PromptSessionManager, SlashCommandCompleter
 
 __all__ = ["ConsoleUI", "SlashCommandCompleter"]
@@ -133,6 +138,8 @@ class ConsoleUI(UserInterface):
 
     def _approval_response(self, payload: dict[str, Any]) -> dict[str, Any]:
         files = tuple(str(item) for item in payload.get("files_changed", ()) if str(item))
+        if payload.get("type") == "confirm_file_patch":
+            _review_file_patch_diff(payload, self._console)
         if payload.get("type") == "confirm_file_patch" and len(files) > 1:
             return _file_patch_approval_response(files)
         approved = Confirm.ask("[bold]Allow this operation?[/]", default=False)
@@ -150,6 +157,39 @@ def _file_patch_approval_response(files: tuple[str, ...]) -> dict[str, Any]:
     if selected == files:
         return {"decision": "yes"}
     return {"decision": "yes", "selected_files": list(selected)}
+
+
+def _review_file_patch_diff(payload: dict[str, Any], console: Console) -> None:
+    files = parse_unified_diff_files(str(payload.get("unified_diff") or ""))
+    if not files:
+        return
+    renderer = DiffRenderer()
+    for file in files:
+        if not Confirm.ask(f"[bold]Expand diff for {file.display_path}?[/]", default=False):
+            continue
+        _page_file_diff(console, renderer, file)
+
+
+def _page_file_diff(console: Console, renderer: DiffRenderer, file: Any) -> None:
+    page_count = renderer.page_count(file)
+    page = 1
+    while page <= page_count:
+        console.print(
+            Panel(
+                renderer.render_file_page(file, page),
+                title=f"[bold]{file.title}[/]",
+                border_style="bright_magenta",
+                padding=(1, 2),
+            )
+        )
+        if page >= page_count:
+            return
+        if not Confirm.ask(
+            f"[bold]Show next diff page for {file.display_path}? ({page + 1}/{page_count})[/]",
+            default=True,
+        ):
+            return
+        page += 1
 
 
 def _resume_choice_label(session: Any) -> str:

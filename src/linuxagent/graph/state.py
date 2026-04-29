@@ -8,7 +8,7 @@ update).
 
 from __future__ import annotations
 
-from typing import Annotated, TypedDict
+from typing import Annotated, Literal, TypedDict
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph.message import add_messages
@@ -28,6 +28,7 @@ class AgentState(TypedDict, total=False):
     pending_command: str | None
     command_plan: CommandPlan | None
     file_patch_plan: FilePatchPlan | None
+    file_patch_request_intent: Literal["create", "update", "unknown"]
     file_patch_repair_attempts: int
     file_patch_selected_files: tuple[str, ...]
     selected_runbook: Runbook | None
@@ -70,6 +71,7 @@ def initial_state(
         pending_command=None,
         command_plan=None,
         file_patch_plan=None,
+        file_patch_request_intent="unknown",
         file_patch_repair_attempts=0,
         file_patch_selected_files=(),
         selected_runbook=None,

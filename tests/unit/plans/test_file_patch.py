@@ -141,6 +141,38 @@ def test_evaluate_file_patch_plan_marks_large_rewrite_high_risk(tmp_path: Path) 
     assert any("large rewrite of existing file" in reason for reason in report.reasons)
 
 
+def test_evaluate_file_patch_plan_blocks_create_intent_update_diff(tmp_path: Path) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("#!/bin/sh\necho old\n", encoding="utf-8")
+    plan = parse_file_patch_plan(
+        json.dumps(
+            {
+                "plan_type": "file_patch",
+                "goal": "create disk script",
+                "files_changed": [str(target)],
+                "unified_diff": "\n".join(
+                    [
+                        f"--- {target}",
+                        f"+++ {target}",
+                        "@@ -1,2 +1,3 @@",
+                        " #!/bin/sh",
+                        " echo old",
+                        "+echo disk",
+                        "",
+                    ]
+                ),
+            }
+        )
+    )
+
+    report = evaluate_file_patch_plan(
+        plan, FilePatchConfig(allow_roots=(tmp_path,)), request_intent="create"
+    )
+
+    assert report.allowed is False
+    assert "create request attempted to update existing file" in report.reasons[0]
+
+
 def test_apply_file_patch_plan_applies_permission_changes(tmp_path: Path) -> None:
     target = tmp_path / "hello.sh"
     payload = json.loads(file_patch_plan_json(str(target), "#!/bin/sh\necho hi\n"))

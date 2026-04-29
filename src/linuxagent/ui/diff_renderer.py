@@ -95,21 +95,35 @@ class DiffRenderer:
         ]
         return Group(*panels)
 
-    def _render_file(self, file: DiffFile) -> Text:
-        lines = file.lines
-        truncated = False
-        if self._max_lines_per_file is not None and len(lines) > self._max_lines_per_file:
-            lines = lines[: self._max_lines_per_file]
-            truncated = True
-        rendered = render_compact_file_diff(file, lines)
-        if truncated:
-            remaining = len(file.lines) - len(lines)
+    def page_count(self, file: DiffFile) -> int:
+        if self._max_lines_per_file is None:
+            return 1
+        return _page_count(len(file.lines), self._max_lines_per_file)
+
+    def render_file_page(self, file: DiffFile, page: int) -> Text:
+        if self._max_lines_per_file is None:
+            return render_compact_file_diff(file)
+        page_count = self.page_count(file)
+        page_number = max(1, min(page, page_count))
+        start = (page_number - 1) * self._max_lines_per_file
+        end = start + self._max_lines_per_file
+        old_line, new_line = _line_counters_before(file.lines, start)
+        rendered = render_compact_file_diff(
+            file,
+            file.lines[start:end],
+            old_line=old_line,
+            new_line=new_line,
+        )
+        if page_count > 1:
             rendered.append(
-                f"... page 1/{_page_count(len(file.lines), len(lines))}; "
-                f"{remaining} more diff lines hidden\n",
+                f"... page {page_number}/{page_count}; "
+                f"{max(len(file.lines) - end, 0)} more diff lines hidden\n",
                 style="dim",
             )
         return rendered
+
+    def _render_file(self, file: DiffFile) -> Text:
+        return self.render_file_page(file, 1)
 
     def _file_subtitle(self, file: DiffFile) -> str:
         if self._max_lines_per_file is None or len(file.lines) <= self._max_lines_per_file:
@@ -173,11 +187,15 @@ def render_unified_diff(diff_text: str) -> Text:
     return rendered
 
 
-def render_compact_file_diff(file: DiffFile, lines: tuple[str, ...] | None = None) -> Text:
+def render_compact_file_diff(
+    file: DiffFile,
+    lines: tuple[str, ...] | None = None,
+    *,
+    old_line: int = 0,
+    new_line: int = 0,
+) -> Text:
     rendered = Text()
     rendered.append(f"{file.title}\n", style="bold white")
-    old_line = 0
-    new_line = 0
     for line in lines or file.lines:
         hunk = _HUNK_RE.match(line)
         if hunk is not None:
@@ -187,6 +205,19 @@ def render_compact_file_diff(file: DiffFile, lines: tuple[str, ...] | None = Non
             continue
         old_line, new_line = _render_compact_line(rendered, line, old_line, new_line)
     return rendered
+
+
+def _line_counters_before(lines: tuple[str, ...], stop: int) -> tuple[int, int]:
+    old_line = 0
+    new_line = 0
+    for line in lines[:stop]:
+        hunk = _HUNK_RE.match(line)
+        if hunk is not None:
+            old_line = int(hunk.group("old"))
+            new_line = int(hunk.group("new"))
+            continue
+        old_line, new_line = _advance_compact_counters(line, old_line, new_line)
+    return old_line, new_line
 
 
 def _render_compact_line(
@@ -202,6 +233,16 @@ def _render_compact_line(
         return old_line, new_line + 1
     content = line[1:] if line.startswith(" ") else line
     rendered.append(f"{new_line:>5}  {content}\n", style="white")
+    return old_line + 1, new_line + 1
+
+
+def _advance_compact_counters(line: str, old_line: int, new_line: int) -> tuple[int, int]:
+    if line.startswith(("--- ", "+++ ")):
+        return old_line, new_line
+    if _is_deletion(line):
+        return old_line + 1, new_line
+    if _is_addition(line):
+        return old_line, new_line + 1
     return old_line + 1, new_line + 1
 
 

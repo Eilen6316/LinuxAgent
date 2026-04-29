@@ -175,11 +175,13 @@ def evaluate_file_patch_plan(
     config: FilePatchConfig,
     *,
     cwd: Path | None = None,
+    request_intent: Literal["create", "update", "unknown"] = "unknown",
 ) -> FilePatchSafetyReport:
     patches = _parse_file_patches(plan.unified_diff)
     _dry_run_file_updates(patches)
     safety = _evaluate_paths(_patch_paths(patches, plan.permission_changes), config, cwd)
     safety = _with_permission_policy(safety, plan.permission_changes, config)
+    safety = _with_create_intent_policy(safety, patches, request_intent)
     return _with_large_rewrite_policy(safety, patches)
 
 
@@ -443,6 +445,41 @@ def _with_large_rewrite_policy(
         high_risk_paths=report.high_risk_paths,
         reasons=(*report.reasons, *reasons),
     )
+
+
+def _with_create_intent_policy(
+    report: FilePatchSafetyReport,
+    patches: tuple[_FilePatch, ...],
+    request_intent: Literal["create", "update", "unknown"],
+) -> FilePatchSafetyReport:
+    if request_intent != "create" or not report.allowed:
+        return report
+    conflicts = _create_intent_update_conflicts(patches)
+    if not conflicts:
+        return report
+    reasons = (
+        *report.reasons,
+        "create request attempted to update existing file: " + _join_paths(conflicts),
+    )
+    return FilePatchSafetyReport(
+        allowed=False,
+        risk_level="blocked",
+        paths=report.paths,
+        blocked_paths=report.blocked_paths,
+        high_risk_paths=report.high_risk_paths,
+        reasons=reasons,
+    )
+
+
+def _create_intent_update_conflicts(patches: tuple[_FilePatch, ...]) -> tuple[Path, ...]:
+    conflicts: list[Path] = []
+    for patch in patches:
+        if patch.old_path == "/dev/null" or patch.new_path == "/dev/null":
+            continue
+        target = _target_path(patch)
+        if target.exists():
+            conflicts.append(target)
+    return tuple(conflicts)
 
 
 def _large_rewrite_reasons(patches: tuple[_FilePatch, ...]) -> tuple[str, ...]:

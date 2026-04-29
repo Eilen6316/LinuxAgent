@@ -7,7 +7,7 @@ import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool
@@ -114,7 +114,7 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     if isinstance(outcome, CommandPlan):
         return _plan_update(current_trace_id, user_text, outcome, context.cluster_service)
     if isinstance(outcome, FilePatchPlan):
-        return _file_patch_update(current_trace_id, outcome)
+        return _file_patch_update(current_trace_id, user_text, outcome)
     if isinstance(outcome, NoChangePlan):
         return _direct_response_update(current_trace_id, outcome.answer)
     return outcome
@@ -367,6 +367,7 @@ def _direct_response_update(current_trace_id: str, response: str) -> AgentState:
         "pending_command": None,
         "command_plan": None,
         "file_patch_plan": None,
+        "file_patch_request_intent": "unknown",
         "file_patch_repair_attempts": 0,
         "file_patch_selected_files": (),
         "selected_runbook": None,
@@ -386,6 +387,7 @@ def _parse_error_update(current_trace_id: str, message: str) -> AgentState:
         "pending_command": None,
         "command_plan": None,
         "file_patch_plan": None,
+        "file_patch_request_intent": "unknown",
         "file_patch_repair_attempts": 0,
         "file_patch_selected_files": (),
         "selected_runbook": None,
@@ -410,6 +412,7 @@ def _plan_update(
         "pending_command": plan.primary.command,
         "command_plan": plan,
         "file_patch_plan": None,
+        "file_patch_request_intent": "unknown",
         "file_patch_repair_attempts": 0,
         "file_patch_selected_files": (),
         "selected_runbook": None,
@@ -423,12 +426,13 @@ def _plan_update(
     }
 
 
-def _file_patch_update(current_trace_id: str, plan: FilePatchPlan) -> AgentState:
+def _file_patch_update(current_trace_id: str, user_text: str, plan: FilePatchPlan) -> AgentState:
     return {
         "trace_id": current_trace_id,
         "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
         "command_plan": None,
         "file_patch_plan": plan,
+        "file_patch_request_intent": _file_patch_request_intent(user_text),
         "file_patch_repair_attempts": 0,
         "file_patch_selected_files": (),
         "selected_runbook": None,
@@ -440,6 +444,42 @@ def _file_patch_update(current_trace_id: str, plan: FilePatchPlan) -> AgentState
         "selected_hosts": (),
         "direct_response": False,
     }
+
+
+def _file_patch_request_intent(user_text: str) -> Literal["create", "update", "unknown"]:
+    normalized = user_text.casefold()
+    create_markers = (
+        "新建",
+        "创建",
+        "生成",
+        "写一个",
+        "写个",
+        "新增一个",
+        "create",
+        "generate",
+        "write a",
+        "write an",
+        "new file",
+        "new script",
+    )
+    update_markers = (
+        "修改",
+        "更新",
+        "补一条",
+        "补充",
+        "添加",
+        "再添加",
+        "edit",
+        "update",
+        "modify",
+        "append",
+        "add ",
+    )
+    if any(marker in normalized for marker in update_markers):
+        return "update"
+    if any(marker in normalized for marker in create_markers):
+        return "create"
+    return "unknown"
 
 
 def _last_message_text(messages: list[BaseMessage]) -> str:

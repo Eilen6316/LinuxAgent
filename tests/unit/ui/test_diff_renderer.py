@@ -134,6 +134,20 @@ def test_diff_renderer_truncates_large_diff_by_default() -> None:
     assert "more diff lines hidden" in console.export_text()
 
 
+def test_diff_renderer_can_render_later_pages() -> None:
+    console = Console(record=True, width=120)
+    body = "\n".join(f"+line {index}" for index in range(5))
+    renderer = DiffRenderer(max_lines_per_file=4)
+    file = parse_unified_diff_files(f"--- /dev/null\n+++ demo.py\n@@ -0,0 +5 @@\n{body}\n")[0]
+
+    console.print(renderer.render_file_page(file, 2))
+
+    rendered = console.export_text()
+    assert "page 2/2" in rendered
+    assert "+line 0" not in rendered
+    assert "+line 4" in rendered
+
+
 def test_diff_display_summary_reports_hidden_lines() -> None:
     body = "\n".join(f"+line {index}" for index in range(5))
     summary = diff_display_summary(
