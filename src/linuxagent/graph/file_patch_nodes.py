@@ -359,7 +359,7 @@ def _should_repair_patch_safety_failure(state: AgentState, safety: FilePatchSafe
 def _is_repairable_patch_error(reasons: str) -> bool:
     return (
         "unified diff context does not match target file" in reasons
-        or "target already exists; use an update diff instead of a create diff" in reasons
+        or "target already exists" in reasons
     )
 
 

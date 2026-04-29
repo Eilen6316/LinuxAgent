@@ -30,9 +30,14 @@ markdown, prose, or shell commands. Use exactly this top-level shape:
 }}
 ```
 
-Do not use `--- /dev/null` for a target file that already exists; generate an
-update diff against the existing file. If the current file snapshot is present
-in the failure context, base the hunk context on that snapshot. If the failure
-mentions `expected=...` and `actual=...`, the previous hunk context is stale:
-use the `actual` line and the current snapshot as the source of truth, then
-return a new diff whose context lines exactly match the current file.
+Do not use `--- /dev/null` for a target file that already exists. If the
+original request asked to create a new file and the chosen filename is already
+taken, inspect the sibling directory with `list_dir` and return a create diff
+for a clear unused filename in that same directory. Do not update, overwrite, or
+rewrite the existing file unless the original request asked to edit/update that
+file. If the current file snapshot is present in the failure context and the
+user asked to update that existing file, base the hunk context on that snapshot.
+If the failure mentions `expected=...` and `actual=...`, the previous hunk
+context is stale: use the `actual` line and the current snapshot as the source
+of truth, then return a new diff whose context lines exactly match the current
+file.

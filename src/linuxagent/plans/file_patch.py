@@ -282,7 +282,8 @@ def _planned_file_update(patch: _FilePatch) -> _PlannedFileUpdate:
     target = _target_path(patch)
     if patch.old_path == "/dev/null" and target.exists():
         raise FilePatchApplyError(
-            "target already exists; use an update diff instead of a create diff",
+            "target already exists; create requests must choose an unused filename, "
+            "while edit requests must use an update diff",
             path=target,
         )
     old_lines = _read_lines(target)

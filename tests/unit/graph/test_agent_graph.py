@@ -522,6 +522,36 @@ async def test_graph_repairs_failed_file_patch_and_reconfirms(tmp_path) -> None:
     assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
+async def test_graph_repairs_new_file_name_collision_with_unused_name(tmp_path) -> None:
+    existing = tmp_path / "disk_info.sh"
+    alternate = tmp_path / "disk_info_1.sh"
+    existing.write_text("#!/bin/sh\necho existing\n", encoding="utf-8")
+    first_plan = file_patch_plan_json(str(existing), "#!/bin/sh\necho disk\n")
+    repaired_plan = file_patch_plan_json(str(alternate), "#!/bin/sh\necho disk\n")
+    graph, _provider = _graph(tmp_path, [first_plan, repaired_plan, "analysis ok"])
+    config = {"configurable": {"thread_id": "new-file-collision"}}
+
+    await graph.ainvoke(
+        initial_state("create a new disk info shell script in tmp", source=CommandSource.USER),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+    interrupts = snapshot.tasks[0].interrupts
+
+    assert interrupts[0].value["type"] == "confirm_file_patch"
+    assert interrupts[0].value["repair_attempt"] == 1
+    assert str(alternate) in interrupts[0].value["files_changed"]
+    assert str(existing) not in interrupts[0].value["files_changed"]
+
+    resumed = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+
+    assert existing.read_text(encoding="utf-8") == "#!/bin/sh\necho existing\n"
+    assert alternate.read_text(encoding="utf-8") == "#!/bin/sh\necho disk\n"
+    assert "analysis ok" in str(resumed["messages"][-1].content)
+
+
 async def test_graph_blocks_file_patch_outside_allow_roots(tmp_path) -> None:
     target = tmp_path / "blocked" / "demo.sh"
     graph, _provider = _graph(
