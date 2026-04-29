@@ -41,6 +41,15 @@ class UserInterface(ABC):
         del stderr
         await self.print(text)
 
+    def supports_resume_selector(self) -> bool:
+        """Return true when the UI can present an interactive resume picker."""
+        return False
+
+    async def choose_resume_session(self, sessions: list[Any]) -> str | None:
+        """Return the selected session thread_id, or ``None`` when cancelled."""
+        del sessions
+        return None
+
     async def wait_for_cancel(self) -> str:
         """Return a cancellation reason when the user asks to stop current work."""
         future: asyncio.Future[str] = asyncio.Future()

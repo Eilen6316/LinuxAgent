@@ -21,7 +21,7 @@ class DirectCommandRunner:
     audit: AuditLog
     context_manager: ContextManager
     history_threads: set[str]
-    persist_history: Callable[[], None]
+    persist_history: Callable[[str], None]
 
     async def run(self, command: str, thread_id: str) -> None:
         if not command:
@@ -98,7 +98,7 @@ class DirectCommandRunner:
                 AIMessage(content=_context_output(result, safety)),
             ]
         )
-        self.persist_history()
+        self.persist_history(thread_id)
 
 
 def _context_output(result: ExecutionResult | None, safety: SafetyResult) -> str:

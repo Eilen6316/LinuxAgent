@@ -7,7 +7,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-88.63%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-88.26%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -58,13 +58,13 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Structured planning | LLM output is validated as JSON `CommandPlan` before any policy check or execution |
 | Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
 | Runbooks | 11 YAML runbooks supplied as planner guidance, not pre-LLM hard routes |
-| Human-in-the-Loop | LangGraph `interrupt()` + `MemorySaver` for interrupt / persist / resume |
+| Human-in-the-Loop | LangGraph `interrupt()` + session resume for controlled operator workflows |
 | Session whitelist | Approved SAFE commands skip confirmation within the same process; destructive commands never enter |
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | 369 default unit tests + optional Anthropic compatibility coverage + 12 HITL YAML scenarios + 8 integration smoke tests, 88%+ coverage |
+| Testability | 372 default unit tests + optional Anthropic compatibility coverage + 12 HITL YAML scenarios + 8 integration smoke tests, 88%+ coverage |
 
 ---
 
@@ -122,7 +122,7 @@ The earlier incarnation was a monolithic agent script. To make it production-fit
 |---|---|---|
 | Agent class | One 4710-line God Object covering parsing, execution, UI, SSH, monitoring | `app/agent.py` at **72 lines**, pure coordinator wiring graph / ui / services |
 | Flow control | Recursive `process_user_input` with nested `if/else` | LangGraph `StateGraph`, split into intent / safety / routing / node-factory modules |
-| State persistence | Hand-written JSON files, permissions not enforced | LangGraph `MemorySaver` with thread_id checkpointing |
+| State persistence | Hand-written JSON files, permissions not enforced | Saved session history plus in-process LangGraph checkpointing |
 | UI coupling | UI logic directly embedded in the agent class | `ConsoleUI` implementing `UserInterface`, Rich + prompt_toolkit |
 | DI | Module-level singletons / globals | Hand-written `Container` with lazy factories + explicit injection |
 | Package layout | Flat `src/` + `setup.py` | `src/linuxagent/` src-layout + `pyproject.toml` (PEP 517/621) |
@@ -234,8 +234,8 @@ confirmation and again before SSH connection setup.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **369 passing by default; Anthropic compatibility is covered when the extra is installed** |
-| Coverage | 0 | **88.63%** (`--cov-fail-under=80` gate) |
+| Unit tests | 0 | **372 passing by default; Anthropic compatibility is covered when the extra is installed** |
+| Coverage | 0 | **88.26%** (`--cov-fail-under=80` gate) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
 
@@ -328,7 +328,7 @@ linuxagent check
 | `telemetry` | `exporter` | `local` | Local JSONL spans by default; `none` disables writes |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | Local telemetry path |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
-| `ui` | `max_chat_history` | `20` | Max retained history messages; new sessions do not load them automatically |
+| `ui` | `max_chat_history` | `20` | Max retained messages per saved session; new sessions do not load them automatically |
 | `logging` | `level` | `INFO` | `DEBUG` / `INFO` / `WARNING` / ... |
 | `logging` | `format` | `console` | `console` (Rich colour) / `json` (production) |
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | Semantic search model; **local PyTorch models are disallowed** |
@@ -359,12 +359,13 @@ You'll see a welcome panel followed by the prompt:
 linuxagent ❯
 ```
 
-Every CLI launch starts as a new conversation. Saved history is available only
-through explicit slash commands. Typing `/` opens the command completion menu:
+Every CLI launch starts as a new conversation. Saved sessions are available
+only through explicit slash commands. Typing `/` opens the command completion
+menu:
 
 | Slash command | Effect |
 |---|---|
-| `/history` | List locally saved history; enter a listed number to recall it |
+| `/resume` | Choose a locally saved session with arrow keys / mouse, or enter a number in non-interactive fallbacks |
 | `/new` or `/clear` | Start a fresh empty-context conversation in the same CLI |
 | `/tools` | Show slash/tool entry points currently available |
 | `/help` | Show slash command help |

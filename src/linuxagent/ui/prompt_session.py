@@ -14,7 +14,7 @@ from prompt_toolkit.history import FileHistory
 
 _SLASH_COMMANDS: tuple[tuple[str, str], ...] = (
     ("/help", "Show available slash commands"),
-    ("/history", "List saved conversations, then choose a number to restore one"),
+    ("/resume", "List saved sessions, then choose one to resume"),
     ("/new", "Start a fresh empty-context conversation"),
     ("/clear", "Alias for /new"),
     ("/tools", "Show enabled local/LLM tool entry points"),

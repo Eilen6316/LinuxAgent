@@ -58,6 +58,8 @@ class _FakeUI:
         self.raw_printed: list[tuple[str, bool]] = []
         self.interrupts: list[dict[str, Any]] = []
         self.cancel_immediately = False
+        self.resume_choice: str | None = None
+        self.resume_selector_enabled = False
 
     async def input_stream(self):
         for item in self._inputs:
@@ -77,6 +79,13 @@ class _FakeUI:
         if self.cancel_immediately:
             return "escape"
         return await asyncio.Future()
+
+    def supports_resume_selector(self) -> bool:
+        return self.resume_selector_enabled
+
+    async def choose_resume_session(self, sessions: list[Any]) -> str | None:
+        del sessions
+        return self.resume_choice
 
 
 class _FakeGraph:
@@ -280,7 +289,7 @@ async def test_run_starts_and_stops_services(tmp_path) -> None:
     assert cluster.closed is True
 
 
-async def test_run_slash_history_lists_without_graph_call(tmp_path) -> None:
+async def test_run_slash_resume_lists_without_graph_call(tmp_path) -> None:
     history_path = tmp_path / "history.json"
     chat_service = ChatService(history_path, max_messages=10)
     chat_service.add([HumanMessage(content="old question"), AIMessage(content="old answer")])
@@ -288,7 +297,7 @@ async def test_run_slash_history_lists_without_graph_call(tmp_path) -> None:
     graph = _FakeGraph([])
     agent = LinuxAgent(
         graph=graph,  # type: ignore[arg-type]
-        ui=_FakeUI(inputs=["/history", "/exit"]),
+        ui=_FakeUI(inputs=["/resume", "/exit"]),
         chat_service=chat_service,
         command_service=_command_service(),
         audit=AuditLog(tmp_path / "audit.log"),
@@ -302,7 +311,17 @@ async def test_run_slash_history_lists_without_graph_call(tmp_path) -> None:
     assert "old question" in "\n".join(agent.ui.printed)  # type: ignore[attr-defined]
 
 
-async def test_history_load_explicitly_injects_context(tmp_path) -> None:
+async def test_history_slash_command_is_removed(tmp_path) -> None:
+    graph = _FakeGraph([])
+    agent = _agent(tmp_path, graph=graph, ui=_FakeUI(inputs=["/history", "/exit"]))
+
+    await agent.run(thread_id="cli")
+
+    assert graph.calls == []
+    assert "未知命令" in "\n".join(agent.ui.printed)  # type: ignore[attr-defined]
+
+
+async def test_resume_switches_to_saved_session_context(tmp_path) -> None:
     history_path = tmp_path / "history.json"
     chat_service = ChatService(history_path, max_messages=10)
     chat_service.add(
@@ -327,7 +346,7 @@ async def test_history_load_explicitly_injects_context(tmp_path) -> None:
     )
     agent = LinuxAgent(
         graph=graph,  # type: ignore[arg-type]
-        ui=_FakeUI(inputs=["/history", "1", "continue"]),
+        ui=_FakeUI(inputs=["/resume", "1", "continue"]),
         chat_service=chat_service,
         command_service=_command_service(),
         audit=AuditLog(tmp_path / "audit.log"),
@@ -338,14 +357,50 @@ async def test_history_load_explicitly_injects_context(tmp_path) -> None:
     await agent.run(thread_id="cli")
 
     assert [message.content for message in graph.calls[0]["messages"]] == [
+        "first question",
+        "first answer",
         "second question",
         "second answer",
         "continue",
     ]
     rendered = "\n".join(agent.ui.printed)  # type: ignore[attr-defined]
-    assert "已召回历史 #1" in rendered
+    assert "已恢复会话" in rendered
     assert "second question" in rendered
     assert "second answer" in rendered
+
+
+async def test_resume_uses_interactive_selector_when_available(tmp_path) -> None:
+    history_path = tmp_path / "history.json"
+    chat_service = ChatService(history_path, max_messages=10)
+    chat_service.replace_session(
+        "saved-thread",
+        [HumanMessage(content="saved question"), AIMessage(content="saved answer")],
+    )
+    ui = _FakeUI(inputs=["/resume", "continue"])
+    ui.resume_selector_enabled = True
+    ui.resume_choice = "saved-thread"
+    graph = _FakeGraph(
+        [
+            {
+                "messages": [
+                    HumanMessage(content="saved question"),
+                    AIMessage(content="saved answer"),
+                    HumanMessage(content="continue"),
+                    AIMessage(content="done"),
+                ]
+            }
+        ]
+    )
+    agent = _agent(tmp_path, graph=graph, ui=ui, chat_service=chat_service)
+
+    await agent.run(thread_id="cli")
+
+    assert [message.content for message in graph.calls[0]["messages"]] == [
+        "saved question",
+        "saved answer",
+        "continue",
+    ]
+    assert "可恢复会话" not in "\n".join(ui.printed)
 
 
 async def test_new_slash_command_resets_active_context(tmp_path) -> None:
@@ -355,7 +410,7 @@ async def test_new_slash_command_resets_active_context(tmp_path) -> None:
     graph = _FakeGraph([{"messages": [HumanMessage(content="fresh"), AIMessage(content="done")]}])
     agent = LinuxAgent(
         graph=graph,  # type: ignore[arg-type]
-        ui=_FakeUI(inputs=["/history", "1", "/new", "fresh"]),
+        ui=_FakeUI(inputs=["/resume", "1", "/new", "fresh"]),
         chat_service=chat_service,
         command_service=_command_service(),
         audit=AuditLog(tmp_path / "audit.log"),

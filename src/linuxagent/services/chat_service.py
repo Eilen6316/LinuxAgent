@@ -6,8 +6,18 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
+
+DEFAULT_SESSION_ID = "default"
+
+
+@dataclass(frozen=True)
+class ChatSession:
+    thread_id: str
+    title: str
+    messages: tuple[BaseMessage, ...]
 
 
 @dataclass
@@ -15,17 +25,43 @@ class ChatService:
     history_path: Path
     max_messages: int
     _messages: list[BaseMessage] = field(default_factory=list)
+    _sessions: dict[str, ChatSession] = field(default_factory=dict)
 
     def add(self, messages: list[BaseMessage]) -> None:
-        self._messages.extend(messages)
-        if len(self._messages) > self.max_messages:
-            self._messages = self._messages[-self.max_messages :]
+        self.replace_session(DEFAULT_SESSION_ID, [*self._messages, *messages])
 
     def replace(self, messages: list[BaseMessage]) -> None:
-        self._messages = list(messages[-self.max_messages :])
+        self.replace_session(DEFAULT_SESSION_ID, messages)
 
-    def snapshot(self) -> list[BaseMessage]:
-        return list(self._messages)
+    def snapshot(self, thread_id: str | None = None) -> list[BaseMessage]:
+        if thread_id is None:
+            return list(self._messages)
+        session = self._sessions.get(thread_id)
+        return [] if session is None else list(session.messages)
+
+    def replace_session(
+        self,
+        thread_id: str,
+        messages: list[BaseMessage],
+        *,
+        title: str | None = None,
+    ) -> None:
+        trimmed = list(messages[-self.max_messages :])
+        if thread_id in self._sessions:
+            self._sessions.pop(thread_id)
+        self._sessions[thread_id] = ChatSession(
+            thread_id=thread_id,
+            title=title or _session_title(trimmed),
+            messages=tuple(trimmed),
+        )
+        self._messages = trimmed
+
+    def list_sessions(self, *, limit: int = 10) -> list[ChatSession]:
+        sessions = list(self._sessions.values())
+        return list(reversed(sessions[-limit:]))
+
+    def get_session(self, thread_id: str) -> ChatSession | None:
+        return self._sessions.get(thread_id)
 
     def save(self) -> None:
         self.history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -33,15 +69,31 @@ class ChatService:
             fd = os.open(self.history_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             os.close(fd)
         os.chmod(self.history_path, 0o600)
-        data = messages_to_dict(self._messages)
-        self.history_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        data = {
+            "version": 2,
+            "sessions": [
+                {
+                    "thread_id": session.thread_id,
+                    "title": session.title,
+                    "messages": messages_to_dict(list(session.messages)),
+                }
+                for session in self._sessions.values()
+            ],
+        }
+        self.history_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         os.chmod(self.history_path, 0o600)
 
     def load(self) -> None:
         if not self.history_path.is_file():
             return
         raw = json.loads(self.history_path.read_text(encoding="utf-8"))
-        self._messages = messages_from_dict(raw)[-self.max_messages :]
+        if isinstance(raw, list):
+            self.replace(messages_from_dict(raw))
+            return
+        if isinstance(raw, dict):
+            self._load_sessions(raw.get("sessions"))
 
     def export_markdown(self) -> str:
         lines: list[str] = []
@@ -49,3 +101,33 @@ class ChatService:
             role = message.type.title()
             lines.append(f"## {role}\n\n{message.content}\n")
         return "\n".join(lines).strip()
+
+    def _load_sessions(self, raw_sessions: Any) -> None:
+        if not isinstance(raw_sessions, list):
+            return
+        self._sessions.clear()
+        self._messages = []
+        for raw_session in raw_sessions:
+            if isinstance(raw_session, dict):
+                self._load_session(raw_session)
+
+    def _load_session(self, raw_session: dict[str, Any]) -> None:
+        raw_thread_id = raw_session.get("thread_id")
+        raw_messages = raw_session.get("messages")
+        if not isinstance(raw_thread_id, str) or not isinstance(raw_messages, list):
+            return
+        messages = messages_from_dict(raw_messages)
+        raw_title = raw_session.get("title")
+        self.replace_session(
+            raw_thread_id,
+            messages,
+            title=raw_title if isinstance(raw_title, str) else None,
+        )
+
+
+def _session_title(messages: list[BaseMessage]) -> str:
+    for message in messages:
+        if message.type == "human":
+            text = " ".join(str(message.content).split())
+            return text[:60] if text else "Untitled session"
+    return "Untitled session"

@@ -13,12 +13,14 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
+from prompt_toolkit.shortcuts import radiolist_dialog
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.text import Text
 
 from ..interfaces import UserInterface
+from ..services import ChatSession
 from .confirmation_renderer import ConfirmationRenderer
 from .diff_renderer import diff_line_style, render_unified_diff
 from .prompt_session import PromptSessionManager, SlashCommandCompleter
@@ -77,6 +79,23 @@ class ConsoleUI(UserInterface):
         rendered = Text(text, style="red") if stderr else Text(text)
         self._console.print(rendered, end="")
 
+    def supports_resume_selector(self) -> bool:
+        return sys.stdin.isatty()
+
+    async def choose_resume_session(self, sessions: list[Any]) -> str | None:
+        if not sys.stdin.isatty():
+            return None
+        values = [(session.thread_id, _resume_choice_label(session)) for session in sessions]
+        app = radiolist_dialog(
+            title="Resume session",
+            text="Use arrow keys or mouse to choose a saved session.",
+            values=values,
+            ok_text="Resume",
+            cancel_text="Cancel",
+        )
+        selected = await app.run_async()
+        return str(selected) if selected else None
+
     async def wait_for_cancel(self) -> str:
         if not sys.stdin.isatty():
             return await super().wait_for_cancel()
@@ -132,6 +151,11 @@ def _file_patch_approval_response(files: tuple[str, ...]) -> dict[str, Any]:
     if selected == files:
         return {"decision": "yes"}
     return {"decision": "yes", "selected_files": list(selected)}
+
+
+def _resume_choice_label(session: ChatSession) -> str:
+    title = session.title if len(session.title) <= 72 else f"{session.title[:69]}..."
+    return f"{title}  [{len(session.messages)} messages]"
 
 
 async def _wait_for_escape() -> str:

@@ -42,5 +42,8 @@ def test_slash_command_completer_suggests_commands() -> None:
 
     completions = list(completer.get_completions(Document("/h"), object()))
 
-    assert [item.text for item in completions] == ["/help", "/history"]
+    assert [item.text for item in completions] == ["/help"]
     assert all(item.display_meta_text for item in completions)
+
+    resume = list(completer.get_completions(Document("/r"), object()))
+    assert [item.text for item in resume] == ["/resume"]

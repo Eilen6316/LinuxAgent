@@ -6,7 +6,7 @@ import asyncio
 import json
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from linuxagent.config.models import ClusterConfig, ClusterHost, MonitoringConfig
 from linuxagent.intelligence import CommandLearner
@@ -67,6 +67,30 @@ def test_chat_service_saves_history_with_0600(tmp_path) -> None:
     loaded.load()
     assert [msg.content for msg in loaded.snapshot()] == ["two"]
     assert "two" in loaded.export_markdown()
+
+
+def test_chat_service_saves_named_resume_sessions(tmp_path) -> None:
+    path = tmp_path / "history.json"
+    service = ChatService(path, max_messages=10)
+    service.replace_session(
+        "thread-a",
+        [HumanMessage(content="old task"), AIMessage(content="old answer")],
+    )
+    service.replace_session(
+        "thread-b",
+        [HumanMessage(content="new task"), AIMessage(content="new answer")],
+    )
+    service.save()
+
+    loaded = ChatService(path, max_messages=10)
+    loaded.load()
+    sessions = loaded.list_sessions()
+
+    assert [session.thread_id for session in sessions] == ["thread-b", "thread-a"]
+    assert [message.content for message in loaded.snapshot("thread-a")] == [
+        "old task",
+        "old answer",
+    ]
 
 
 class _FakeSSH:

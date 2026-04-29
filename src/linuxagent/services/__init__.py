@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .chat_service import ChatService
+from .chat_service import ChatService, ChatSession
 from .cluster_service import ClusterService
 from .command_service import (
     CommandBlockedByPolicyError,
@@ -20,6 +20,7 @@ from .monitoring_service import (
 
 __all__ = [
     "ChatService",
+    "ChatSession",
     "ClusterService",
     "CommandBlockedByPolicyError",
     "CommandConfirmationRequiredError",
