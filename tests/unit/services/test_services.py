@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, messages_to_dict
 
 from linuxagent.config.models import ClusterConfig, ClusterHost, MonitoringConfig
 from linuxagent.intelligence import CommandLearner
@@ -91,6 +92,57 @@ def test_chat_service_saves_named_resume_sessions(tmp_path) -> None:
         "old task",
         "old answer",
     ]
+
+
+def test_chat_service_persists_session_times_and_sorts_by_updated_at(tmp_path) -> None:
+    path = tmp_path / "history.json"
+    older = datetime(2026, 4, 29, 10, 0, tzinfo=UTC)
+    newer = datetime(2026, 4, 30, 10, 0, tzinfo=UTC)
+    payload = {
+        "version": 2,
+        "sessions": [
+            _history_session("older", "old task", older),
+            _history_session("newer", "new task", newer),
+        ],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = ChatService(path, max_messages=10)
+    loaded.load()
+    sessions = loaded.list_sessions()
+
+    assert [session.thread_id for session in sessions] == ["newer", "older"]
+    assert sessions[0].created_at == newer
+    assert sessions[0].updated_at == newer
+
+
+def test_chat_service_migrates_undated_sessions_in_file_order(tmp_path) -> None:
+    path = tmp_path / "history.json"
+    payload = {
+        "version": 2,
+        "sessions": [
+            _history_session("thread-a", "old task", None),
+            _history_session("thread-b", "new task", None),
+        ],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = ChatService(path, max_messages=10)
+    loaded.load()
+
+    assert [session.thread_id for session in loaded.list_sessions()] == ["thread-b", "thread-a"]
+
+
+def _history_session(thread_id: str, content: str, timestamp: datetime | None) -> dict[str, object]:
+    session: dict[str, object] = {
+        "thread_id": thread_id,
+        "title": content,
+        "messages": messages_to_dict([HumanMessage(content=content)]),
+    }
+    if timestamp is not None:
+        session["created_at"] = timestamp.isoformat()
+        session["updated_at"] = timestamp.isoformat()
+    return session
 
 
 class _FakeSSH:

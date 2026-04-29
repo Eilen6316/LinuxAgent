@@ -60,6 +60,7 @@ class _FakeUI:
         self.cancel_immediately = False
         self.resume_choice: str | None = None
         self.resume_selector_enabled = False
+        self.resume_sessions: list[Any] = []
 
     async def input_stream(self):
         for item in self._inputs:
@@ -84,7 +85,7 @@ class _FakeUI:
         return self.resume_selector_enabled
 
     async def choose_resume_session(self, sessions: list[Any]) -> str | None:
-        del sessions
+        self.resume_sessions = list(sessions)
         return self.resume_choice
 
 
@@ -433,6 +434,7 @@ async def test_resume_continues_pending_interrupt(tmp_path) -> None:
 
     assert ui.interrupts == [{"type": "confirm_command", "command": "ls"}]
     assert isinstance(graph.calls[0], Command)
+    assert "pending confirm" in ui.resume_sessions[0].label
     assert "done" in "\n".join(ui.printed)
 
 

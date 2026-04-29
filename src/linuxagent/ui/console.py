@@ -20,7 +20,6 @@ from rich.prompt import Confirm
 from rich.text import Text
 
 from ..interfaces import UserInterface
-from ..services import ChatSession
 from .confirmation_renderer import ConfirmationRenderer
 from .diff_renderer import diff_line_style, render_unified_diff
 from .prompt_session import PromptSessionManager, SlashCommandCompleter
@@ -153,9 +152,14 @@ def _file_patch_approval_response(files: tuple[str, ...]) -> dict[str, Any]:
     return {"decision": "yes", "selected_files": list(selected)}
 
 
-def _resume_choice_label(session: ChatSession) -> str:
-    title = session.title if len(session.title) <= 72 else f"{session.title[:69]}..."
-    return f"{title}  [{len(session.messages)} messages]"
+def _resume_choice_label(session: Any) -> str:
+    label = getattr(session, "label", None)
+    if isinstance(label, str):
+        return label
+    title = str(getattr(session, "title", "Untitled session"))
+    messages = tuple(getattr(session, "messages", ()))
+    compact_title = title if len(title) <= 72 else f"{title[:69]}..."
+    return f"{compact_title}  [{len(messages)} messages]"
 
 
 async def _wait_for_escape() -> str:

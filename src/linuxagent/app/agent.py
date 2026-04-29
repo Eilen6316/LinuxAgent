@@ -19,7 +19,13 @@ from ..intelligence import ContextManager
 from ..interfaces import CommandSource, UserInterface
 from ..services import ChatService, ClusterService, CommandService, MonitoringService
 from .direct_command import DirectCommandRunner
-from .resume import render_resumed_session, resume_list, session_title
+from .resume import (
+    ResumeSessionItem,
+    render_resumed_session,
+    resume_item,
+    resume_list,
+    session_title,
+)
 
 
 @dataclass
@@ -175,14 +181,15 @@ class LinuxAgent:
             return None
         sessions = self.chat_service.list_sessions()
         if not sessions:
-            await self.ui.print(resume_list(sessions))
+            await self.ui.print(resume_list([]))
             return None
+        items = await self._resume_items(sessions)
         if self.ui.supports_resume_selector():
-            selected_thread_id = await self.ui.choose_resume_session(sessions)
+            selected_thread_id = await self.ui.choose_resume_session(items)
             if selected_thread_id is not None:
                 return await self._resume_and_continue(selected_thread_id)
             return None
-        await self.ui.print(resume_list(sessions))
+        await self.ui.print(resume_list(items))
         self._pending_resume_thread_id = ""
         return None
 
@@ -219,6 +226,22 @@ class LinuxAgent:
         if selected_thread_id is not None:
             await self._resume_pending_work(selected_thread_id)
         return selected_thread_id
+
+    async def _resume_items(self, sessions: list[Any]) -> list[ResumeSessionItem]:
+        items: list[ResumeSessionItem] = []
+        for session in sessions:
+            items.append(resume_item(session, status=await self._resume_status(session.thread_id)))
+        return items
+
+    async def _resume_status(self, thread_id: str) -> str:
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+        interrupts = await self._interrupts({}, config)
+        if not interrupts:
+            return ""
+        payload = interrupts[0].value
+        if isinstance(payload, dict) and payload.get("type") == "confirm_file_patch":
+            return "pending patch"
+        return "pending confirm"
 
     async def _resume_pending_work(self, thread_id: str) -> None:
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}

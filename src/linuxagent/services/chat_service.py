@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,8 @@ class ChatSession:
     thread_id: str
     title: str
     messages: tuple[BaseMessage, ...]
+    created_at: datetime
+    updated_at: datetime
 
 
 @dataclass
@@ -47,17 +50,19 @@ class ChatService:
         title: str | None = None,
     ) -> None:
         trimmed = list(messages[-self.max_messages :])
-        if thread_id in self._sessions:
-            self._sessions.pop(thread_id)
+        now = _now()
+        existing = self._sessions.get(thread_id)
         self._sessions[thread_id] = ChatSession(
             thread_id=thread_id,
             title=title or _session_title(trimmed),
             messages=tuple(trimmed),
+            created_at=existing.created_at if existing is not None else now,
+            updated_at=now,
         )
         self._messages = trimmed
 
     def list_sessions(self, *, limit: int = 10) -> list[ChatSession]:
-        sessions = list(self._sessions.values())
+        sessions = sorted(self._sessions.values(), key=lambda session: session.updated_at)
         return list(reversed(sessions[-limit:]))
 
     def get_session(self, thread_id: str) -> ChatSession | None:
@@ -75,6 +80,8 @@ class ChatService:
                 {
                     "thread_id": session.thread_id,
                     "title": session.title,
+                    "created_at": session.created_at.isoformat(),
+                    "updated_at": session.updated_at.isoformat(),
                     "messages": messages_to_dict(list(session.messages)),
                 }
                 for session in self._sessions.values()
@@ -107,22 +114,43 @@ class ChatService:
             return
         self._sessions.clear()
         self._messages = []
-        for raw_session in raw_sessions:
+        fallback_time = _now()
+        for index, raw_session in enumerate(raw_sessions):
             if isinstance(raw_session, dict):
-                self._load_session(raw_session)
+                self._load_session(raw_session, fallback_time + timedelta(microseconds=index))
 
-    def _load_session(self, raw_session: dict[str, Any]) -> None:
+    def _load_session(self, raw_session: dict[str, Any], fallback_time: datetime) -> None:
         raw_thread_id = raw_session.get("thread_id")
         raw_messages = raw_session.get("messages")
         if not isinstance(raw_thread_id, str) or not isinstance(raw_messages, list):
             return
         messages = messages_from_dict(raw_messages)
         raw_title = raw_session.get("title")
-        self.replace_session(
-            raw_thread_id,
-            messages,
-            title=raw_title if isinstance(raw_title, str) else None,
+        trimmed = list(messages[-self.max_messages :])
+        created_at = _parse_time(raw_session.get("created_at")) or fallback_time
+        updated_at = _parse_time(raw_session.get("updated_at")) or created_at
+        self._sessions[raw_thread_id] = ChatSession(
+            thread_id=raw_thread_id,
+            title=raw_title if isinstance(raw_title, str) else _session_title(trimmed),
+            messages=tuple(trimmed),
+            created_at=created_at,
+            updated_at=updated_at,
         )
+        self._messages = trimmed
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _parse_time(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _session_title(messages: list[BaseMessage]) -> str:
