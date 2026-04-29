@@ -37,7 +37,7 @@ from .providers import provider_factory
 from .runbooks import RunbookEngine, find_runbooks_dir, load_runbooks
 from .services import ChatService, ClusterService, CommandService, MonitoringService
 from .telemetry import TelemetryRecorder
-from .tools import build_intelligence_tools, build_system_tools
+from .tools import build_intelligence_tools, build_system_tools, build_workspace_tools
 from .ui import ConsoleUI
 
 if TYPE_CHECKING:
@@ -234,7 +234,11 @@ class Container:
     def tools(self) -> list[BaseTool]:
         return self._cached(
             "tools",
-            lambda: [*self.system_tools(), *self.intelligence_tools()],
+            lambda: [
+                *self.system_tools(),
+                *build_workspace_tools(self._config.file_patch),
+                *self.intelligence_tools(),
+            ],
         )
 
     def ui(self) -> ConsoleUI:

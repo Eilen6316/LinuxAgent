@@ -55,6 +55,8 @@ def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() ->
     assert isinstance(tmpl, ChatPromptTemplate)
     assert "user_input" in tmpl.input_variables
     assert "runbook_guidance" in tmpl.input_variables
+    assert "read_file" in str(tmpl.messages[0].prompt.template)
+    assert "search_files" in str(tmpl.messages[0].prompt.template)
 
 
 def test_build_repair_prompt_has_recovery_variables() -> None:

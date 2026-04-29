@@ -1,0 +1,61 @@
+"""Workspace read-only tool tests."""
+
+from __future__ import annotations
+
+import pytest
+
+from linuxagent.config.models import FilePatchConfig
+from linuxagent.tools import (
+    WorkspaceAccessError,
+    build_workspace_tools,
+    make_list_dir_tool,
+    make_read_file_tool,
+    make_search_files_tool,
+)
+
+
+def test_read_file_returns_line_window(tmp_path) -> None:
+    path = tmp_path / "app.py"
+    path.write_text("one\ntwo\nthree\n", encoding="utf-8")
+    tool = make_read_file_tool(FilePatchConfig(allow_roots=(tmp_path,)))
+
+    output = tool.invoke({"path": str(path), "offset": 1, "limit": 1})
+
+    assert output == "2:two"
+
+
+def test_read_file_rejects_path_outside_allowed_roots(tmp_path) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+    tool = make_read_file_tool(FilePatchConfig(allow_roots=(tmp_path / "workspace",)))
+
+    with pytest.raises(WorkspaceAccessError, match="outside allowed roots"):
+        tool.invoke({"path": str(outside)})
+
+
+def test_list_dir_returns_sorted_entries(tmp_path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "pkg").mkdir()
+    (root / "README.md").write_text("readme\n", encoding="utf-8")
+    tool = make_list_dir_tool(FilePatchConfig(allow_roots=(root,)))
+
+    output = tool.invoke({"path": str(root)})
+
+    assert output == ["pkg/", "README.md"]
+
+
+def test_search_files_finds_regex_matches(tmp_path) -> None:
+    (tmp_path / "app.py").write_text("alpha\nneedle = True\n", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("needle here\n", encoding="utf-8")
+    tool = make_search_files_tool(FilePatchConfig(allow_roots=(tmp_path,)))
+
+    output = tool.invoke({"root": str(tmp_path), "pattern": "needle", "max_matches": 2})
+
+    assert output == ["app.py:2:needle = True", "notes.txt:1:needle here"]
+
+
+def test_build_workspace_tools_exposes_expected_names(tmp_path) -> None:
+    tools = build_workspace_tools(FilePatchConfig(allow_roots=(tmp_path,)))
+
+    assert [tool.name for tool in tools] == ["read_file", "list_dir", "search_files"]

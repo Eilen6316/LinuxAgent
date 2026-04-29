@@ -33,6 +33,9 @@ version is not already known, then use conservative compatible code and
 validation commands. Because commands run without a shell, write files using
 argv-safe tools such as `python3 -c` with `pathlib` rather than redirection or
 heredocs.
+When editing existing files or writing code against current repository content,
+use read-only workspace tools such as `read_file`, `list_dir`, and
+`search_files` before producing a FilePatchPlan.
 
 For normal command execution, return only a JSON CommandPlan object with this
 schema. Do not include markdown or prose:

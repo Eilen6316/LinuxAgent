@@ -265,6 +265,26 @@ def test_container_passes_monitoring_config_to_system_tools(
     assert captured["monitoring_config"].cpu_threshold == 12.0
 
 
+def test_container_adds_workspace_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_build_workspace_tools(config):
+        captured["allow_roots"] = config.allow_roots
+        return [SimpleNamespace(name="read_file")]
+
+    monkeypatch.setattr(container_module, "build_workspace_tools", fake_build_workspace_tools)
+    cfg = AppConfig.model_validate(
+        {
+            "file_patch": {"allow_roots": [tmp_path]},
+            "intelligence": {"enabled": False},
+        }
+    )
+    runtime = Container(cfg)
+
+    assert [tool.name for tool in runtime.tools() if tool.name == "read_file"] == ["read_file"]
+    assert captured["allow_roots"] == (tmp_path,)
+
+
 def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_provider = SimpleNamespace(name="provider")
     fake_graph = SimpleNamespace(name="graph")
