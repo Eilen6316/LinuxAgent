@@ -43,6 +43,18 @@ class IntentDecision:
     reason: str
 
 
+@dataclass(frozen=True)
+class IntentNodeContext:
+    provider: LLMProvider
+    planner_prompt: Any
+    direct_answer_prompt: Any
+    intent_router_prompt: Any
+    runbook_guidance: str
+    cluster_service: ClusterService | None
+    tools: tuple[BaseTool, ...]
+    telemetry: TelemetryRecorder | None
+
+
 def make_parse_intent_node(
     provider: LLMProvider,
     *,
@@ -51,113 +63,107 @@ def make_parse_intent_node(
     telemetry: TelemetryRecorder | None = None,
     runbook_engine: RunbookEngine | None = None,
 ) -> Node:
-    prompt = build_planner_prompt()
-    direct_answer_prompt = build_direct_answer_prompt()
-    intent_router_prompt = build_intent_router_prompt()
-    runbook_guidance = build_runbook_guidance(runbook_engine)
+    context = IntentNodeContext(
+        provider=provider,
+        planner_prompt=build_planner_prompt(),
+        direct_answer_prompt=build_direct_answer_prompt(),
+        intent_router_prompt=build_intent_router_prompt(),
+        runbook_guidance=build_runbook_guidance(runbook_engine),
+        cluster_service=cluster_service,
+        tools=tools,
+        telemetry=telemetry,
+    )
 
     async def parse_intent_node(state: AgentState) -> AgentState:
-        current_trace_id = trace_id(state)
-        messages = list(state.get("messages", []))
-        user_text = _last_message_text(messages)
-        intent = await _route_intent(
-            provider,
-            intent_router_prompt,
+        return await _parse_intent_update(context, state)
+
+    return parse_intent_node
+
+
+async def _parse_intent_update(context: IntentNodeContext, state: AgentState) -> AgentState:
+    current_trace_id = trace_id(state)
+    messages = list(state.get("messages", []))
+    user_text = _last_message_text(messages)
+    intent = await _route_intent(
+        context.provider,
+        context.intent_router_prompt,
+        messages,
+        user_text,
+        current_trace_id,
+        context.telemetry,
+    )
+    if intent.mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY}:
+        return _direct_response_update(current_trace_id, intent.answer)
+    outcome = await _build_command_plan(context, messages, user_text, current_trace_id)
+    if isinstance(outcome, CommandPlan):
+        return _plan_update(current_trace_id, user_text, outcome, context.cluster_service)
+    return outcome
+
+
+async def _build_command_plan(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+) -> CommandPlan | AgentState:
+    proposed, tool_error = await _complete_plan_candidate(
+        context, messages, user_text, current_trace_id
+    )
+    if tool_error is not None:
+        return await _retry_plan_or_error(
+            context, messages, user_text, current_trace_id, tool_error
+        )
+    try:
+        return parse_command_plan(proposed)
+    except CommandPlanParseError as exc:
+        return await _recover_plan_parse_error(
+            context, messages, user_text, current_trace_id, str(exc)
+        )
+
+
+async def _complete_plan_candidate(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+) -> tuple[str, str | None]:
+    prompt_messages = context.planner_prompt.format_messages(
+        chat_history=messages[:-1],
+        runbook_guidance=context.runbook_guidance,
+        user_input=user_text,
+    )
+    with span(context.telemetry, "llm.complete", current_trace_id, {"node": "parse_intent"}):
+        if not context.tools:
+            return (await context.provider.complete(prompt_messages)).strip(), None
+        try:
+            proposed = await context.provider.complete_with_tools(
+                prompt_messages, list(context.tools)
+            )
+        except ProviderError as exc:
+            return "", str(exc)
+    return proposed.strip(), None
+
+
+async def _recover_plan_parse_error(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    error: str,
+) -> CommandPlan | AgentState:
+    if _should_fallback_to_direct_answer(error):
+        return await _fallback_direct_answer(
+            context.provider,
+            context.direct_answer_prompt,
             messages,
             user_text,
             current_trace_id,
-            telemetry,
+            error,
+            context.telemetry,
         )
-        if intent.mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY}:
-            return _direct_response_update(current_trace_id, intent.answer)
-        prompt_messages = prompt.format_messages(
-            chat_history=messages[:-1],
-            runbook_guidance=runbook_guidance,
-            user_input=user_text,
-        )
-        with span(telemetry, "llm.complete", current_trace_id, {"node": "parse_intent"}):
-            if tools:
-                try:
-                    proposed = (
-                        await provider.complete_with_tools(prompt_messages, list(tools))
-                    ).strip()
-                    tool_error = None
-                except ProviderError as exc:
-                    proposed = ""
-                    tool_error = str(exc)
-            else:
-                proposed = (await provider.complete(prompt_messages)).strip()
-                tool_error = None
-        if tool_error is not None:
-            retry_plan = await _retry_command_plan(
-                provider,
-                prompt,
-                messages,
-                user_text,
-                runbook_guidance,
-                current_trace_id,
-                tool_error,
-                telemetry,
-            )
-            if isinstance(retry_plan, str):
-                return _parse_error_update(current_trace_id, retry_plan)
-            plan = retry_plan
-        else:
-            try:
-                plan = parse_command_plan(proposed)
-            except CommandPlanParseError as exc:
-                if _should_fallback_to_direct_answer(str(exc)):
-                    return await _fallback_direct_answer(
-                        provider,
-                        direct_answer_prompt,
-                        messages,
-                        user_text,
-                        current_trace_id,
-                        str(exc),
-                        telemetry,
-                    )
-                if not tools:
-                    return _parse_error_update(current_trace_id, str(exc))
-                retry_plan = await _retry_command_plan(
-                    provider,
-                    prompt,
-                    messages,
-                    user_text,
-                    runbook_guidance,
-                    current_trace_id,
-                    str(exc),
-                    telemetry,
-                )
-                if isinstance(retry_plan, str):
-                    if _should_fallback_to_direct_answer(retry_plan):
-                        return await _fallback_direct_answer(
-                            provider,
-                            direct_answer_prompt,
-                            messages,
-                            user_text,
-                            current_trace_id,
-                            retry_plan,
-                            telemetry,
-                        )
-                    return _parse_error_update(current_trace_id, retry_plan)
-                plan = retry_plan
-        command = plan.primary.command
-        selected_hosts = _selected_hosts_for_plan(user_text, plan, cluster_service)
-        return {
-            "trace_id": current_trace_id,
-            "pending_command": command,
-            "command_plan": plan,
-            "selected_runbook": None,
-            "runbook_step_index": 0,
-            "runbook_results": (),
-            "plan_result_start_index": 0,
-            "plan_error": None,
-            "command_source": CommandSource.LLM,
-            "selected_hosts": selected_hosts,
-            "direct_response": False,
-        }
-
-    return parse_intent_node
+    if not context.tools:
+        return _parse_error_update(current_trace_id, error)
+    return await _retry_plan_or_error(context, messages, user_text, current_trace_id, error)
 
 
 async def _route_intent(
@@ -209,6 +215,38 @@ async def _fallback_direct_answer(
     ):
         answer = (await provider.complete(prompt_messages)).strip()
     return _direct_response_update(current_trace_id, answer)
+
+
+async def _retry_plan_or_error(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    error: str,
+) -> CommandPlan | AgentState:
+    retry_plan = await _retry_command_plan(
+        context.provider,
+        context.planner_prompt,
+        messages,
+        user_text,
+        context.runbook_guidance,
+        current_trace_id,
+        error,
+        context.telemetry,
+    )
+    if isinstance(retry_plan, CommandPlan):
+        return retry_plan
+    if _should_fallback_to_direct_answer(retry_plan):
+        return await _fallback_direct_answer(
+            context.provider,
+            context.direct_answer_prompt,
+            messages,
+            user_text,
+            current_trace_id,
+            retry_plan,
+            context.telemetry,
+        )
+    return _parse_error_update(current_trace_id, retry_plan)
 
 
 def _should_fallback_to_direct_answer(error: str) -> bool:
@@ -263,6 +301,27 @@ def _parse_error_update(current_trace_id: str, message: str) -> AgentState:
         "plan_error": message,
         "command_source": CommandSource.LLM,
         "selected_hosts": (),
+        "direct_response": False,
+    }
+
+
+def _plan_update(
+    current_trace_id: str,
+    user_text: str,
+    plan: CommandPlan,
+    cluster_service: ClusterService | None,
+) -> AgentState:
+    return {
+        "trace_id": current_trace_id,
+        "pending_command": plan.primary.command,
+        "command_plan": plan,
+        "selected_runbook": None,
+        "runbook_step_index": 0,
+        "runbook_results": (),
+        "plan_result_start_index": 0,
+        "plan_error": None,
+        "command_source": CommandSource.LLM,
+        "selected_hosts": _selected_hosts_for_plan(user_text, plan, cluster_service),
         "direct_response": False,
     }
 
