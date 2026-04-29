@@ -32,6 +32,15 @@ Allowed modes:
   missing or ambiguous enough that planning a command would be unsafe or likely
   wrong.
 
+Artifact creation needs an explicit destination before planning. If the user
+asks to write, generate, create, or make a script, program, playbook, config, or
+other file artifact but does not provide a target path, filename, target
+directory, or usable chat_history context that identifies the destination,
+return `CLARIFY` and ask where to save it. Do not guess `/tmp`, the current
+working directory, or a home directory. If chat_history already names a target
+directory or file and the new request clearly continues that work, you may route
+to `COMMAND_PLAN`.
+
 For `DIRECT_ANSWER`, put the answer in `answer` in the user's language. For
 `CLARIFY`, ask a concise clarifying question in `answer`. For `COMMAND_PLAN`,
 use an empty string for `answer`.

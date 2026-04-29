@@ -835,6 +835,24 @@ async def test_graph_answers_howto_without_command_panel(tmp_path) -> None:
     assert snapshot.values["direct_response"] is True
 
 
+async def test_graph_clarifies_artifact_creation_without_destination(tmp_path) -> None:
+    answer = "脚本要保存到哪个目录和文件名？"
+    graph, provider = _graph(tmp_path, [_router_response("CLARIFY", answer)])
+    config = {"configurable": {"thread_id": "artifact-path-clarify"}}
+
+    result = await graph.ainvoke(
+        initial_state("写一个查看磁盘信息的 shell 脚本", source=CommandSource.USER),
+        config=config,
+    )
+
+    assert answer in str(result["messages"][-1].content)
+    assert len(provider.complete_messages) == 1
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values.get("file_patch_plan") is None
+    assert snapshot.values["direct_response"] is True
+
+
 async def test_graph_keeps_operator_request_on_command_plan_path(tmp_path) -> None:
     graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo mutate")])
     config = {"configurable": {"thread_id": "operator-command"}}

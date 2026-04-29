@@ -50,6 +50,9 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     tmpl = build_intent_router_prompt()
     assert isinstance(tmpl, ChatPromptTemplate)
     assert "user_input" in tmpl.input_variables
+    body = str(tmpl.messages[0].prompt.template)
+    assert "Artifact creation needs an explicit destination" in body
+    assert "Do not guess `/tmp`" in body
 
 
 def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() -> None:
@@ -59,6 +62,7 @@ def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() ->
     assert "runbook_guidance" in tmpl.input_variables
     assert "read_file" in str(tmpl.messages[0].prompt.template)
     assert "search_files" in str(tmpl.messages[0].prompt.template)
+    assert "do not invent one" in str(tmpl.messages[0].prompt.template)
 
 
 def test_build_repair_prompt_has_recovery_variables() -> None:

@@ -36,6 +36,9 @@ heredocs.
 When editing existing files or writing code against current repository content,
 use read-only workspace tools such as `read_file`, `list_dir`, and
 `search_files` before producing a FilePatchPlan.
+If an artifact creation request reaches this planner without a target path,
+filename, target directory, or clear chat_history destination, do not invent one.
+Return no file mutation plan; ask a clarifying question before planning.
 
 For normal command execution, return only a JSON CommandPlan object with this
 schema. Do not include markdown or prose:
