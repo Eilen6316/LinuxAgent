@@ -159,7 +159,7 @@ def test_render_file_patch_confirm_shows_planned_diff() -> None:
 
 
 def test_file_patch_approval_asks_each_file(monkeypatch) -> None:
-    decisions = iter([False, False, False, True, False, True])
+    decisions = iter([True, False, True])
     asked: list[str] = []
 
     def fake_confirm(message: str, *, default: bool) -> bool:
@@ -198,9 +198,6 @@ def test_file_patch_approval_asks_each_file(monkeypatch) -> None:
 
     assert response == {"decision": "yes", "selected_files": ["one.py", "three.py"]}
     assert asked == [
-        "[bold]Expand diff for one.py?[/]",
-        "[bold]Expand diff for two.py?[/]",
-        "[bold]Expand diff for three.py?[/]",
         "[bold]Apply one.py?[/]",
         "[bold]Apply two.py?[/]",
         "[bold]Apply three.py?[/]",
@@ -208,7 +205,7 @@ def test_file_patch_approval_asks_each_file(monkeypatch) -> None:
 
 
 def test_file_patch_approval_pages_expanded_large_diff(monkeypatch) -> None:
-    decisions = iter([True, True, False])
+    decisions = iter([True, False])
 
     def fake_confirm(message: str, *, default: bool) -> bool:
         del message, default
@@ -230,8 +227,30 @@ def test_file_patch_approval_pages_expanded_large_diff(monkeypatch) -> None:
     assert response == {"decision": "no"}
     rendered = console.export_text()
     assert "Created demo.py (+250 -0)" in rendered
-    assert "page 1/2" in rendered
     assert "page 2/2" in rendered
+
+
+def test_file_patch_approval_does_not_reexpand_full_diff(monkeypatch) -> None:
+    asked: list[str] = []
+
+    def fake_confirm(message: str, *, default: bool) -> bool:
+        del default
+        asked.append(message)
+        return True
+
+    monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", fake_confirm)
+    ui = ConsoleUI()
+
+    response = ui._approval_response(
+        {
+            "type": "confirm_file_patch",
+            "files_changed": ["demo.py"],
+            "unified_diff": "--- demo.py\n+++ demo.py\n@@ -1 +1 @@\n-old\n+new\n",
+        }
+    )
+
+    assert response == {"decision": "yes"}
+    assert asked == ["[bold]Allow this operation?[/]"]
 
 
 def test_file_patch_approval_applies_all_when_all_files_confirmed(monkeypatch) -> None:

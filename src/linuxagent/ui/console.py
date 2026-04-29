@@ -156,14 +156,21 @@ def _review_file_patch_diff(payload: dict[str, Any], console: Console) -> None:
         return
     renderer = DiffRenderer()
     for file in files:
-        if not Confirm.ask(f"[bold]Expand diff for {file.display_path}?[/]", default=False):
+        if renderer.page_count(file) <= 1:
             continue
-        _page_file_diff(console, renderer, file)
+        if not Confirm.ask(
+            f"[bold]Show hidden diff pages for {file.display_path}?[/]",
+            default=False,
+        ):
+            continue
+        _page_file_diff(console, renderer, file, start_page=2)
 
 
-def _page_file_diff(console: Console, renderer: DiffRenderer, file: Any) -> None:
+def _page_file_diff(
+    console: Console, renderer: DiffRenderer, file: Any, *, start_page: int = 1
+) -> None:
     page_count = renderer.page_count(file)
-    page = 1
+    page = max(1, min(start_page, page_count))
     while page <= page_count:
         console.print(
             Panel(
@@ -176,7 +183,7 @@ def _page_file_diff(console: Console, renderer: DiffRenderer, file: Any) -> None
         if page >= page_count:
             return
         if not Confirm.ask(
-            f"[bold]Show next diff page for {file.display_path}? ({page + 1}/{page_count})[/]",
+            f"[bold]Show next hidden diff page for {file.display_path}? ({page + 1}/{page_count})[/]",
             default=True,
         ):
             return
