@@ -30,7 +30,10 @@ def test_parse_unified_diff_files_splits_multiple_files() -> None:
         )
     )
 
-    assert [file.title for file in files] == ["one.py (+1 -1)", "two.py (+1 -0)"]
+    assert [file.title for file in files] == [
+        "Edited one.py (+1 -1)",
+        "Created two.py (+1 -0)",
+    ]
 
 
 def test_diff_summary_counts_files_additions_and_deletions() -> None:
@@ -76,10 +79,10 @@ def test_diff_renderer_outputs_file_scoped_panels() -> None:
     )
 
     rendered = console.export_text()
-    assert "one.py" in rendered
-    assert "two.py" in rendered
-    assert "-old" in rendered
-    assert "+created" in rendered
+    assert "Edited one.py (+1 -1)" in rendered
+    assert "Created two.py (+1 -0)" in rendered
+    assert "1 -old" in rendered
+    assert "1 +created" in rendered
 
 
 def test_diff_renderer_can_truncate_large_file_diff() -> None:
@@ -117,8 +120,8 @@ def test_diff_renderer_labels_file_panels_with_indexes() -> None:
     )
 
     rendered = console.export_text()
-    assert "1/2 one.py (+1 -1)" in rendered
-    assert "2/2 two.py (+1 -1)" in rendered
+    assert "1/2 Edited one.py (+1 -1)" in rendered
+    assert "2/2 Edited two.py (+1 -1)" in rendered
 
 
 def test_diff_renderer_truncates_large_diff_by_default() -> None:

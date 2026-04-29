@@ -153,8 +153,9 @@ def test_render_file_patch_confirm_shows_planned_diff() -> None:
     assert "Elevated risk" in rendered
     assert "demo.sh -> 0755" in rendered
     assert "demo.sh" in rendered
-    assert "-old" in rendered
-    assert "+new" in rendered
+    assert "Edited demo.sh (+1 -1)" in rendered
+    assert "1 -old" in rendered
+    assert "1 +new" in rendered
 
 
 def test_file_patch_approval_asks_each_file(monkeypatch) -> None:

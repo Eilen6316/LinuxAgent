@@ -2,6 +2,7 @@
 
 from .file_patch import (
     FilePatchApplyError,
+    FilePatchChangeSummary,
     FilePatchPermissionChange,
     FilePatchPlan,
     FilePatchPlanParseError,
@@ -13,6 +14,7 @@ from .file_patch import (
     file_patch_plan_json,
     parse_file_patch_plan,
     select_file_patch_plan_files,
+    summarize_file_patch_plan,
 )
 from .models import (
     CommandPlan,
@@ -33,6 +35,7 @@ __all__ = [
     "FilePatchPlan",
     "FilePatchPlanParseError",
     "FilePatchSafetyReport",
+    "FilePatchChangeSummary",
     "NoChangePlan",
     "NoChangePlanParseError",
     "PatchApplyResult",
@@ -46,4 +49,5 @@ __all__ = [
     "parse_file_patch_plan",
     "parse_no_change_plan",
     "select_file_patch_plan_files",
+    "summarize_file_patch_plan",
 ]

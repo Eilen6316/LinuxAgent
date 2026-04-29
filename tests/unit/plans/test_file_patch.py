@@ -16,6 +16,7 @@ from linuxagent.plans import (
     file_patch_plan_json,
     parse_file_patch_plan,
     select_file_patch_plan_files,
+    summarize_file_patch_plan,
 )
 
 
@@ -195,6 +196,15 @@ def test_select_file_patch_plan_files_rejects_unknown_selection(tmp_path: Path) 
 
     with pytest.raises(FilePatchApplyError, match="selected file"):
         select_file_patch_plan_files(plan, (str(tmp_path / "missing.sh"),))
+
+
+def test_summarize_file_patch_plan_labels_each_changed_file(tmp_path: Path) -> None:
+    target = tmp_path / "demo.sh"
+    plan = parse_file_patch_plan(file_patch_plan_json(str(target), "#!/bin/sh\necho hi\n"))
+
+    summaries = summarize_file_patch_plan(plan)
+
+    assert [summary.label for summary in summaries] == [f"Created {target} (+2 -0)"]
 
 
 def test_permission_changes_disabled_block_before_writing(tmp_path: Path) -> None:

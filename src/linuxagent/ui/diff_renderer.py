@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from rich.console import Group, RenderableType
@@ -9,6 +10,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 DEFAULT_MAX_LINES_PER_FILE = 200
+_HUNK_RE = re.compile(r"^@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@")
 
 
 @dataclass(frozen=True)
@@ -20,14 +22,25 @@ class DiffFile:
     @property
     def title(self) -> str:
         stats = self.stats
-        suffix = f" (+{stats.additions} -{stats.deletions})"
-        if self.new_path == "/dev/null":
-            return f"{self.old_path}{suffix}"
+        return f"{self.action} {self.display_path} (+{stats.additions} -{stats.deletions})"
+
+    @property
+    def action(self) -> str:
         if self.old_path == "/dev/null":
-            return f"{self.new_path}{suffix}"
+            return "Created"
+        if self.new_path == "/dev/null":
+            return "Deleted"
+        return "Edited"
+
+    @property
+    def display_path(self) -> str:
+        if self.new_path == "/dev/null":
+            return self.old_path
+        if self.old_path == "/dev/null":
+            return self.new_path
         if self.old_path == self.new_path:
-            return f"{self.new_path}{suffix}"
-        return f"{self.old_path} -> {self.new_path}{suffix}"
+            return self.new_path
+        return f"{self.old_path} -> {self.new_path}"
 
     @property
     def stats(self) -> DiffStats:
@@ -88,7 +101,7 @@ class DiffRenderer:
         if self._max_lines_per_file is not None and len(lines) > self._max_lines_per_file:
             lines = lines[: self._max_lines_per_file]
             truncated = True
-        rendered = render_unified_diff("\n".join(lines))
+        rendered = render_compact_file_diff(file, lines)
         if truncated:
             remaining = len(file.lines) - len(lines)
             rendered.append(
@@ -158,6 +171,38 @@ def render_unified_diff(diff_text: str) -> Text:
         rendered.append(line, style=diff_line_style(line))
         rendered.append("\n")
     return rendered
+
+
+def render_compact_file_diff(file: DiffFile, lines: tuple[str, ...] | None = None) -> Text:
+    rendered = Text()
+    rendered.append(f"{file.title}\n", style="bold white")
+    old_line = 0
+    new_line = 0
+    for line in lines or file.lines:
+        hunk = _HUNK_RE.match(line)
+        if hunk is not None:
+            old_line = int(hunk.group("old"))
+            new_line = int(hunk.group("new"))
+            rendered.append("    ...\n", style="dim")
+            continue
+        old_line, new_line = _render_compact_line(rendered, line, old_line, new_line)
+    return rendered
+
+
+def _render_compact_line(
+    rendered: Text, line: str, old_line: int, new_line: int
+) -> tuple[int, int]:
+    if line.startswith(("--- ", "+++ ")):
+        return old_line, new_line
+    if _is_deletion(line):
+        rendered.append(f"{old_line:>5} -{line[1:]}\n", style="red")
+        return old_line + 1, new_line
+    if _is_addition(line):
+        rendered.append(f"{new_line:>5} +{line[1:]}\n", style="green")
+        return old_line, new_line + 1
+    content = line[1:] if line.startswith(" ") else line
+    rendered.append(f"{new_line:>5}  {content}\n", style="white")
+    return old_line + 1, new_line + 1
 
 
 def diff_line_style(line: str) -> str:

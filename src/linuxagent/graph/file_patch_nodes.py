@@ -26,6 +26,7 @@ from ..plans import (
     parse_file_patch_plan,
     parse_no_change_plan,
     select_file_patch_plan_files,
+    summarize_file_patch_plan,
 )
 from ..prompts_loader import build_file_patch_repair_prompt
 from ..providers.errors import ProviderError
@@ -356,12 +357,18 @@ def _apply_patch_result(
         patch_result = apply_file_patch_plan(plan, config)
     except FilePatchApplyError as exc:
         return ExecutionResult("apply file patch", 1, "", str(exc), duration)
-    stdout = _patch_stdout(patch_result.files_changed, patch_result.permissions_changed)
+    stdout = _patch_stdout(plan, patch_result.files_changed, patch_result.permissions_changed)
     return ExecutionResult("apply file patch", 0, stdout, "", duration)
 
 
-def _patch_stdout(files_changed: tuple[Any, ...], permissions_changed: tuple[Any, ...]) -> str:
-    lines = ["patched files:", *(str(path) for path in files_changed)]
+def _patch_stdout(
+    plan: FilePatchPlan, files_changed: tuple[Any, ...], permissions_changed: tuple[Any, ...]
+) -> str:
+    summaries = tuple(summary.label for summary in summarize_file_patch_plan(plan))
+    if summaries:
+        lines = list(summaries)
+    else:
+        lines = ["patched files:", *(str(path) for path in files_changed)]
     if permissions_changed:
         lines.extend(["permissions changed:", *(str(path) for path in permissions_changed)])
     return "\n".join(lines)
