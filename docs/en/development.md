@@ -152,11 +152,15 @@ read-only tools:
 
 All workspace file reads reuse `file_patch.allow_roots`; the default roots are
 the current workspace and `/tmp`. Patch application dry-runs unified diffs,
-checks allow/high-risk roots, validates optional permission changes, and can
-relocate hunks when the line number is stale but the old context matches
-exactly. Confirmation rendering shows compact per-file diffs, `+N / -M` stats,
-large-diff pagination, high-risk path warnings, permission changes, and
-per-file acceptance for multi-file patches.
+checks allow/high-risk roots before reading targets, validates optional
+permission changes, and can relocate hunks when the line number is stale but the
+old context matches exactly. The apply path is transactional: symlink path
+components, hardlinks, directories, device files, FIFOs, sockets, oversized
+targets, and non-UTF-8 text are rejected; writes use temporary files and atomic
+replace; existing targets are backed up and rolled back if a later write or
+permission change fails. Confirmation rendering shows compact per-file diffs,
+`+N / -M` stats, large-diff pagination, high-risk path warnings, permission
+changes, and per-file acceptance for multi-file patches.
 
 The planner prompt should preserve existing file style and behavior. If a
 requested feature already exists, it should return a no-change answer. If a

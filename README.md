@@ -137,7 +137,7 @@ not ask the LLM to explain or generate a reply for that turn.
 | Capability-based policy engine | Produces `SAFE` / `CONFIRM` / `BLOCK`, risk scores, capabilities, and matched rules |
 | YAML policy defaults | Command policy data is loaded from `configs/policy.default.yaml`, not Python rule tables |
 | Structured `CommandPlan` | LLM output must validate as JSON before any policy or execution path |
-| Structured file patches | Script/code/config edits use `FilePatchPlan`, unified-diff validation, path policy, and HITL review |
+| Structured file patches | Script/code/config edits use transactional `FilePatchPlan` apply, unified-diff validation, path policy, and HITL review |
 | Read-only workspace tools | Planner can inspect allowed files with `read_file`, `list_dir`, and `search_files` before proposing patches |
 | AI-owned intent routing | Conversation vs operation vs clarification is decided by `prompts/intent_router.md`, not Python keyword rules |
 | Explicit resume control | New sessions do not inherit previous chats unless `/resume` is used; pending HITL checkpoints resume there too |
@@ -181,6 +181,15 @@ compact `+` / `-` diff snippets, high-risk path warnings, permission changes,
 large-diff pagination, and per-file acceptance for multi-file patches. Full
 diffs are not shown twice; extra review prompts appear only when hidden pages
 exist.
+
+After approval, patch application runs as a transaction. LinuxAgent validates
+target paths before reading file content, rejects symlink path components,
+hardlinks, directories, device files, FIFOs, sockets, oversized targets, and
+non-UTF-8 text, then writes through a temporary file and atomic replace. Existing
+targets are backed up under a local `.linuxagent-patch-*` sandbox directory and
+rolled back automatically if a later file or permission change fails. Audit
+metadata records changed files, permission changes, backup path hashes, rollback
+outcome, and the sandbox root.
 
 By default, file patch reads and writes are limited to the current workspace and
 `/tmp` through `file_patch.allow_roots`. Sensitive roots such as `/etc` and SSH

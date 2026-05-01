@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import socket
 from pathlib import Path
 
 import pytest
@@ -252,6 +254,10 @@ def test_apply_file_patch_plan_applies_permission_changes(tmp_path: Path) -> Non
 
     assert result.permissions_changed == (target,)
     assert target.stat().st_mode & 0o777 == 0o755
+    assert result.transaction is not None
+    assert result.transaction.rollback_outcome == "not_needed"
+    assert result.transaction.sandbox_root == tmp_path
+    assert result.transaction.backups[0].target == target
 
 
 def test_select_file_patch_plan_files_applies_only_selected_file(tmp_path: Path) -> None:
@@ -319,6 +325,41 @@ def test_permission_changes_disabled_block_before_writing(tmp_path: Path) -> Non
     assert not target.exists()
 
 
+def test_apply_rolls_back_content_when_later_write_fails(tmp_path: Path) -> None:
+    first = tmp_path / "one.txt"
+    blocker = tmp_path / "not-a-dir"
+    first.write_text("old\n", encoding="utf-8")
+    blocker.write_text("blocks mkdir\n", encoding="utf-8")
+    payload = {
+        "plan_type": "file_patch",
+        "goal": "update then fail",
+        "files_changed": [str(first), str(blocker / "two.txt")],
+        "unified_diff": "\n".join(
+            [
+                f"--- {first}",
+                f"+++ {first}",
+                "@@ -1 +1 @@",
+                "-old",
+                "+new",
+                "--- /dev/null",
+                f"+++ {blocker / 'two.txt'}",
+                "@@ -0,0 +1 @@",
+                "+two",
+                "",
+            ]
+        ),
+    }
+    plan = parse_file_patch_plan(json.dumps(payload))
+
+    with pytest.raises(FilePatchApplyError) as exc_info:
+        apply_file_patch_plan(plan, FilePatchConfig(allow_roots=(tmp_path,)))
+
+    assert first.read_text(encoding="utf-8") == "old\n"
+    assert blocker.read_text(encoding="utf-8") == "blocks mkdir\n"
+    assert exc_info.value.transaction is not None
+    assert exc_info.value.transaction.rollback_outcome == "succeeded"
+
+
 def test_missing_permission_target_blocks_before_writing(tmp_path: Path) -> None:
     target = tmp_path / "hello.sh"
     missing = tmp_path / "missing.sh"
@@ -330,6 +371,83 @@ def test_missing_permission_target_blocks_before_writing(tmp_path: Path) -> None
         apply_file_patch_plan(plan, FilePatchConfig(allow_roots=(tmp_path,)))
 
     assert not target.exists()
+
+
+def test_apply_rejects_symlink_target(tmp_path: Path) -> None:
+    real = tmp_path / "real.txt"
+    link = tmp_path / "link.txt"
+    real.write_text("old\n", encoding="utf-8")
+    link.symlink_to(real)
+    diff = "\n".join([f"--- {link}", f"+++ {link}", "@@ -1 +1 @@", "-old", "+new", ""])
+
+    with pytest.raises(FilePatchApplyError, match="symlink"):
+        apply_unified_diff(diff, config=FilePatchConfig(allow_roots=(tmp_path,)))
+
+    assert real.read_text(encoding="utf-8") == "old\n"
+
+
+def test_apply_rejects_hardlink_target(tmp_path: Path) -> None:
+    original = tmp_path / "original.txt"
+    hardlink = tmp_path / "hardlink.txt"
+    original.write_text("old\n", encoding="utf-8")
+    os.link(original, hardlink)
+    diff = "\n".join([f"--- {hardlink}", f"+++ {hardlink}", "@@ -1 +1 @@", "-old", "+new", ""])
+
+    with pytest.raises(FilePatchApplyError, match="hardlink"):
+        apply_unified_diff(diff, config=FilePatchConfig(allow_roots=(tmp_path,)))
+
+    assert original.read_text(encoding="utf-8") == "old\n"
+
+
+def test_apply_rejects_directory_target(tmp_path: Path) -> None:
+    target = tmp_path / "dir"
+    target.mkdir()
+    diff = "\n".join([f"--- {target}", f"+++ {target}", "@@ -1 +1 @@", "-old", "+new", ""])
+
+    with pytest.raises(FilePatchApplyError, match="regular file"):
+        apply_unified_diff(diff, config=FilePatchConfig(allow_roots=(tmp_path,)))
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires POSIX mkfifo")
+def test_apply_rejects_fifo_target(tmp_path: Path) -> None:
+    target = tmp_path / "pipe"
+    os.mkfifo(target)
+    diff = "\n".join([f"--- {target}", f"+++ {target}", "@@ -1 +1 @@", "-old", "+new", ""])
+
+    with pytest.raises(FilePatchApplyError, match="regular file"):
+        apply_unified_diff(diff, config=FilePatchConfig(allow_roots=(tmp_path,)))
+
+
+def test_apply_rejects_socket_target(tmp_path: Path) -> None:
+    target = tmp_path / "agent.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        server.bind(str(target))
+        diff = "\n".join([f"--- {target}", f"+++ {target}", "@@ -1 +1 @@", "-old", "+new", ""])
+
+        with pytest.raises(FilePatchApplyError, match="regular file"):
+            apply_unified_diff(diff, config=FilePatchConfig(allow_roots=(tmp_path,)))
+    finally:
+        server.close()
+        target.unlink(missing_ok=True)
+
+
+def test_apply_rejects_large_target_before_reading(tmp_path: Path) -> None:
+    target = tmp_path / "large.txt"
+    target.write_bytes(b"a" * (5 * 1024 * 1024 + 1))
+    diff = "\n".join([f"--- {target}", f"+++ {target}", "@@ -1 +1 @@", "-a", "+b", ""])
+
+    with pytest.raises(FilePatchApplyError, match="max size"):
+        apply_unified_diff(diff, config=FilePatchConfig(allow_roots=(tmp_path,)))
+
+
+def test_apply_rejects_non_utf8_target(tmp_path: Path) -> None:
+    target = tmp_path / "binary.txt"
+    target.write_bytes(b"\xff\n")
+    diff = "\n".join([f"--- {target}", f"+++ {target}", "@@ -1 +1 @@", "-x", "+y", ""])
+
+    with pytest.raises(FilePatchApplyError, match="UTF-8"):
+        apply_unified_diff(diff, config=FilePatchConfig(allow_roots=(tmp_path,)))
 
 
 def test_file_patch_plan_rejects_invalid_permission_mode(tmp_path: Path) -> None:

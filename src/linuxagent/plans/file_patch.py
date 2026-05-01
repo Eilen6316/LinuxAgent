@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
+import shutil
+import stat
+import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
@@ -18,6 +24,7 @@ _HUNK_RE = re.compile(r"^@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@")
 _MODE_RE = re.compile(r"^0?[0-7]{3,4}$")
 _LARGE_REWRITE_MIN_DELETIONS = 8
 _LARGE_REWRITE_MIN_RATIO = 0.30
+_MAX_PATCH_TARGET_BYTES = 5 * 1024 * 1024
 
 
 class FilePatchPlanParseError(ValueError):
@@ -35,12 +42,14 @@ class FilePatchApplyError(ValueError):
         hunk_index: int | None = None,
         expected: str | None = None,
         actual: str | None = None,
+        transaction: Any | None = None,
     ) -> None:
         super().__init__(_patch_error_message(message, path, hunk_index, expected, actual))
         self.path = path
         self.hunk_index = hunk_index
         self.expected = expected
         self.actual = actual
+        self.transaction = transaction
 
 
 class FilePatchPermissionChange(BaseModel):
@@ -90,6 +99,22 @@ class FilePatchPlan(BaseModel):
 class PatchApplyResult:
     files_changed: tuple[Path, ...]
     permissions_changed: tuple[Path, ...] = ()
+    transaction: FilePatchTransactionResult | None = None
+
+
+@dataclass(frozen=True)
+class FilePatchBackupRecord:
+    target: Path
+    existed: bool
+    backup_path_hash: str | None = None
+    original_mode: int | None = None
+
+
+@dataclass(frozen=True)
+class FilePatchTransactionResult:
+    sandbox_root: Path
+    backups: tuple[FilePatchBackupRecord, ...]
+    rollback_outcome: Literal["not_needed", "succeeded", "failed"]
 
 
 @dataclass(frozen=True)
@@ -150,11 +175,11 @@ def apply_unified_diff(
     safety = _with_permission_policy(safety, permission_changes, config)
     if not safety.allowed:
         raise FilePatchApplyError("; ".join(safety.reasons))
-    planned = _dry_run_file_updates(patches)
+    _validate_patch_targets_before_read(patches, cwd)
+    planned = _dry_run_file_updates(patches, cwd)
     _validate_permission_targets(planned, permission_changes, cwd)
-    changed = _apply_file_updates(planned)
-    permissions = _apply_permission_changes(permission_changes, config, cwd)
-    return PatchApplyResult(files_changed=changed, permissions_changed=permissions)
+    transaction = FilePatchTransaction(planned, permission_changes, config, cwd)
+    return transaction.apply()
 
 
 def apply_file_patch_plan(
@@ -183,8 +208,9 @@ def evaluate_file_patch_plan(
     safety = _with_permission_policy(safety, plan.permission_changes, config)
     safety = _with_create_intent_policy(safety, patches, request_intent)
     if safety.allowed:
-        _dry_run_file_updates(patches)
-    return _with_large_rewrite_policy(safety, patches)
+        _validate_patch_targets_before_read(patches, cwd)
+        _dry_run_file_updates(patches, cwd)
+    return _with_large_rewrite_policy(safety, patches, cwd)
 
 
 def select_file_patch_plan_files(
@@ -322,12 +348,14 @@ def _select_permission_changes(
     return tuple(change for change in changes if change.path in selected)
 
 
-def _dry_run_file_updates(patches: tuple[_FilePatch, ...]) -> tuple[_PlannedFileUpdate, ...]:
-    return tuple(_planned_file_update(patch) for patch in patches)
+def _dry_run_file_updates(
+    patches: tuple[_FilePatch, ...], cwd: Path | None
+) -> tuple[_PlannedFileUpdate, ...]:
+    return tuple(_planned_file_update(patch, cwd) for patch in patches)
 
 
-def _planned_file_update(patch: _FilePatch) -> _PlannedFileUpdate:
-    target = _target_path(patch)
+def _planned_file_update(patch: _FilePatch, cwd: Path | None) -> _PlannedFileUpdate:
+    target = _resolve_user_path(_target_path(patch), cwd)
     if patch.old_path == "/dev/null" and target.exists():
         raise FilePatchApplyError(
             "target already exists; create requests must choose an unused filename, "
@@ -339,20 +367,113 @@ def _planned_file_update(patch: _FilePatch) -> _PlannedFileUpdate:
     return _PlannedFileUpdate(target, tuple(new_lines), patch.new_path == "/dev/null")
 
 
-def _apply_file_updates(updates: tuple[_PlannedFileUpdate, ...]) -> tuple[Path, ...]:
-    changed: list[Path] = []
-    for update in updates:
-        changed.append(_apply_file_update(update))
-    return tuple(changed)
+class FilePatchTransaction:
+    def __init__(
+        self,
+        updates: tuple[_PlannedFileUpdate, ...],
+        permission_changes: tuple[FilePatchPermissionChange, ...],
+        config: FilePatchConfig | None,
+        cwd: Path | None,
+    ) -> None:
+        self._updates = updates
+        self._permission_changes = permission_changes
+        self._config = config
+        self._cwd = cwd
+        self._sandbox_root = _transaction_root(updates)
+        self._backup_dir = Path(
+            tempfile.mkdtemp(prefix=".linuxagent-patch-", dir=str(self._sandbox_root))
+        )
+        self._backups: list[FilePatchBackupRecord] = []
 
+    def apply(self) -> PatchApplyResult:
+        changed: tuple[Path, ...] = ()
+        permissions: tuple[Path, ...] = ()
+        rollback: Literal["not_needed", "succeeded", "failed"] = "not_needed"
+        try:
+            self._backup_targets()
+            changed = tuple(self._apply_file_update(update) for update in self._updates)
+            permissions = _apply_permission_changes(
+                self._permission_changes, self._config, self._cwd
+            )
+        except Exception as exc:
+            rollback = self._rollback()
+            if isinstance(exc, FilePatchApplyError):
+                raise FilePatchApplyError(
+                    str(exc), transaction=self._transaction_result(rollback)
+                ) from exc
+            raise FilePatchApplyError(
+                f"file patch transaction failed: {exc}",
+                transaction=self._transaction_result(rollback),
+            ) from exc
+        finally:
+            shutil.rmtree(self._backup_dir, ignore_errors=True)
+        return PatchApplyResult(
+            files_changed=changed,
+            permissions_changed=permissions,
+            transaction=FilePatchTransactionResult(
+                sandbox_root=self._sandbox_root,
+                backups=tuple(self._backups),
+                rollback_outcome=rollback,
+            ),
+        )
 
-def _apply_file_update(update: _PlannedFileUpdate) -> Path:
-    if update.delete:
-        update.target.unlink(missing_ok=True)
+    def _transaction_result(
+        self, rollback: Literal["not_needed", "succeeded", "failed"]
+    ) -> FilePatchTransactionResult:
+        return FilePatchTransactionResult(
+            sandbox_root=self._sandbox_root,
+            backups=tuple(self._backups),
+            rollback_outcome=rollback,
+        )
+
+    def _backup_targets(self) -> None:
+        targets = (
+            *(update.target for update in self._updates),
+            *self._permission_targets(),
+        )
+        for target in dict.fromkeys(targets):
+            _validate_safe_existing_path(target)
+            if not target.exists():
+                self._backups.append(FilePatchBackupRecord(target=target, existed=False))
+                continue
+            backup_path = self._backup_dir / f"{len(self._backups)}.bak"
+            shutil.copy2(target, backup_path)
+            self._backups.append(
+                FilePatchBackupRecord(
+                    target=target,
+                    existed=True,
+                    backup_path_hash=_path_hash(backup_path),
+                    original_mode=target.stat().st_mode & 0o7777,
+                )
+            )
+
+    def _permission_targets(self) -> tuple[Path, ...]:
+        return tuple(
+            _resolve_user_path(Path(change.path), self._cwd) for change in self._permission_changes
+        )
+
+    def _apply_file_update(self, update: _PlannedFileUpdate) -> Path:
+        if update.delete:
+            update.target.unlink(missing_ok=True)
+            return update.target
+        update.target.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_text(update.target, _join_lines(list(update.new_lines)))
         return update.target
-    update.target.parent.mkdir(parents=True, exist_ok=True)
-    update.target.write_text(_join_lines(list(update.new_lines)), encoding="utf-8")
-    return update.target
+
+    def _rollback(self) -> Literal["succeeded", "failed"]:
+        try:
+            for index, backup in reversed(list(enumerate(self._backups))):
+                if backup.existed:
+                    backup_path = self._backup_dir / f"{index}.bak"
+                    _atomic_replace(backup_path, backup.target)
+                    if backup.original_mode is not None:
+                        backup.target.chmod(backup.original_mode)
+                else:
+                    with suppress(FileNotFoundError, NotADirectoryError):
+                        backup.target.unlink(missing_ok=True)
+        except Exception:
+            return "failed"
+        return "succeeded"
 
 
 def _apply_permission_changes(
@@ -382,9 +503,89 @@ def _validate_permission_targets(
 
 
 def _apply_permission_change(change: FilePatchPermissionChange, cwd: Path | None) -> Path:
-    target = _resolve_user_path(Path(change.path), cwd)
+    raw_target = _absolute_user_path(Path(change.path), cwd)
+    _reject_symlink_path(raw_target)
+    target = raw_target.resolve(strict=False)
+    _validate_safe_existing_path(target)
     target.chmod(int(change.mode, 8))
     return target
+
+
+def _validate_patch_targets_before_read(patches: tuple[_FilePatch, ...], cwd: Path | None) -> None:
+    for patch in patches:
+        raw_target = _absolute_user_path(_target_path(patch), cwd)
+        _reject_symlink_path(raw_target)
+        target = raw_target.resolve(strict=False)
+        if target.exists():
+            _validate_safe_existing_path(target)
+            continue
+        if patch.old_path != "/dev/null":
+            raise FilePatchApplyError("patch target does not exist", path=target)
+        _reject_symlink_path(raw_target.parent)
+
+
+def _validate_safe_existing_path(path: Path) -> None:
+    _reject_symlink_path(path)
+    try:
+        info = path.lstat()
+    except (FileNotFoundError, NotADirectoryError):
+        return
+    mode = info.st_mode
+    if stat.S_ISLNK(mode):
+        raise FilePatchApplyError("symlink patch target is not allowed", path=path)
+    if not stat.S_ISREG(mode):
+        raise FilePatchApplyError("patch target is not a regular file", path=path)
+    if info.st_nlink > 1:
+        raise FilePatchApplyError("hardlink patch target is not allowed", path=path)
+    if info.st_size > _MAX_PATCH_TARGET_BYTES:
+        raise FilePatchApplyError(
+            f"patch target exceeds max size ({_MAX_PATCH_TARGET_BYTES} bytes)", path=path
+        )
+
+
+def _reject_symlink_path(path: Path) -> None:
+    current = path if path.is_absolute() else Path.cwd() / path
+    candidates = [current, *current.parents]
+    for candidate in candidates:
+        try:
+            if candidate.is_symlink():
+                raise FilePatchApplyError("symlink path component is not allowed", path=candidate)
+        except OSError as exc:
+            raise FilePatchApplyError(f"cannot inspect path component: {candidate}") from exc
+
+
+def _transaction_root(updates: tuple[_PlannedFileUpdate, ...]) -> Path:
+    if not updates:
+        return Path.cwd()
+    root = updates[0].target.parent
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        existed = path.exists()
+        if existed:
+            shutil.copystat(path, tmp_path)
+        _atomic_replace(tmp_path, path)
+        if not existed:
+            path.chmod(0o644)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def _atomic_replace(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    source.replace(target)
+
+
+def _path_hash(path: Path) -> str:
+    return hashlib.sha256(str(path).encode("utf-8")).hexdigest()
 
 
 def _patch_paths(
@@ -432,11 +633,11 @@ def _with_permission_policy(
 
 
 def _with_large_rewrite_policy(
-    report: FilePatchSafetyReport, patches: tuple[_FilePatch, ...]
+    report: FilePatchSafetyReport, patches: tuple[_FilePatch, ...], cwd: Path | None
 ) -> FilePatchSafetyReport:
     if not report.allowed or report.risk_level == "blocked":
         return report
-    reasons = _large_rewrite_reasons(patches)
+    reasons = _large_rewrite_reasons(patches, cwd)
     if not reasons:
         return report
     return FilePatchSafetyReport(
@@ -484,12 +685,12 @@ def _create_intent_update_conflicts(patches: tuple[_FilePatch, ...]) -> tuple[Pa
     return tuple(conflicts)
 
 
-def _large_rewrite_reasons(patches: tuple[_FilePatch, ...]) -> tuple[str, ...]:
+def _large_rewrite_reasons(patches: tuple[_FilePatch, ...], cwd: Path | None) -> tuple[str, ...]:
     reasons: list[str] = []
     for patch in patches:
         if patch.old_path == "/dev/null" or patch.new_path == "/dev/null":
             continue
-        target = _target_path(patch)
+        target = _resolve_user_path(_target_path(patch), cwd)
         old_line_count = len(_read_lines(target))
         deletions = _count_hunk_marker(patch, "-")
         if not _is_large_rewrite(old_line_count, deletions):
@@ -542,10 +743,14 @@ def _matches_root(path: Path, root: Path) -> bool:
 
 
 def _resolve_user_path(path: Path, cwd: Path | None) -> Path:
+    return _absolute_user_path(path, cwd).resolve(strict=False)
+
+
+def _absolute_user_path(path: Path, cwd: Path | None) -> Path:
     candidate = path.expanduser()
     if not candidate.is_absolute():
         candidate = (cwd or Path.cwd()) / candidate
-    return candidate.resolve(strict=False)
+    return candidate
 
 
 def _join_paths(paths: tuple[Path, ...]) -> str:
@@ -675,7 +880,10 @@ def _read_lines(path: Path) -> list[str]:
         return []
     if not path.is_file():
         raise FilePatchApplyError(f"patch target is not a file: {path}")
-    return path.read_text(encoding="utf-8").splitlines()
+    try:
+        return path.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        raise FilePatchApplyError("patch target is not valid UTF-8 text", path=path) from exc
 
 
 def _join_lines(lines: list[str]) -> str:

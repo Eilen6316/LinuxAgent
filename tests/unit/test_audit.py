@@ -40,6 +40,13 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
             resource_limits={"cpu_seconds": None},
             fallback_reason="sandbox disabled",
         ),
+        file_patch={
+            "files_changed": ["demo.sh"],
+            "permission_changes": [{"path": "demo.sh", "mode": "0755"}],
+            "sandbox_root": "/workspace",
+            "rollback_outcome": "not_needed",
+            "backups": [{"target": "demo.sh", "backup_path_hash": "abc"}],
+        },
     )
 
     assert path.stat().st_mode & 0o777 == 0o600
@@ -55,6 +62,8 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
     assert lines[2]["duration_ms"] == 250
     assert lines[2]["sandbox"]["runner"] == "noop"
     assert lines[2]["sandbox"]["enforced"] is False
+    assert lines[2]["file_patch"]["files_changed"] == ["demo.sh"]
+    assert lines[2]["file_patch"]["rollback_outcome"] == "not_needed"
     assert all(line["trace_id"] is None for line in lines)
     assert lines[0]["prev_hash"] == "0" * 64
     assert verify_audit_log(path).valid is True

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
 from typing import Any
@@ -18,9 +19,11 @@ from ..plans import (
     CommandPlan,
     CommandPlanParseError,
     FilePatchApplyError,
+    FilePatchBackupRecord,
     FilePatchPlan,
     FilePatchPlanParseError,
     FilePatchSafetyReport,
+    FilePatchTransactionResult,
     NoChangePlan,
     NoChangePlanParseError,
     apply_file_patch_plan,
@@ -45,6 +48,12 @@ Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 MAX_PATCH_CONTEXT_LINES = 120
 MAX_PATCH_CONTEXT_CHARS = 20_000
 DEFAULT_FILE_PATCH_REPAIR_ATTEMPTS = 2
+
+
+@dataclass(frozen=True)
+class _PatchApplyOutcome:
+    result: ExecutionResult
+    audit_metadata: dict[str, Any] | None = None
 
 
 def make_file_patch_confirm_node(audit: AuditLog, config: FilePatchConfig) -> Node:
@@ -109,21 +118,24 @@ def make_apply_file_patch_node(audit: AuditLog, config: FilePatchConfig) -> Node
         started = monotonic()
         plan = state.get("file_patch_plan")
         if plan is None:
-            result = synthetic_result("apply file patch", 2, "", "no file patch proposed")
+            outcome = _PatchApplyOutcome(
+                synthetic_result("apply file patch", 2, "", "no file patch proposed")
+            )
         else:
-            result = _apply_patch_result(plan, config, monotonic() - started)
+            outcome = _apply_patch_result(plan, config, monotonic() - started)
         audit_id = state.get("audit_id")
         if audit_id is not None:
             await audit.record_execution(
                 audit_id,
-                command=result.command,
-                exit_code=result.exit_code,
-                duration=result.duration,
+                command=outcome.result.command,
+                exit_code=outcome.result.exit_code,
+                duration=outcome.result.duration,
                 trace_id=current_trace_id,
+                file_patch=outcome.audit_metadata,
             )
         return {
             "trace_id": current_trace_id,
-            "execution_result": result,
+            "execution_result": outcome.result,
             "file_patch_max_repair_attempts": config.max_repair_attempts,
         }
 
@@ -426,13 +438,47 @@ def _confirmed_patch_update(
 
 def _apply_patch_result(
     plan: FilePatchPlan, config: FilePatchConfig, duration: float
-) -> ExecutionResult:
+) -> _PatchApplyOutcome:
     try:
         patch_result = apply_file_patch_plan(plan, config)
     except FilePatchApplyError as exc:
-        return ExecutionResult("apply file patch", 1, "", str(exc), duration)
+        return _PatchApplyOutcome(
+            ExecutionResult("apply file patch", 1, "", str(exc), duration),
+            _patch_audit_metadata(plan, exc.transaction),
+        )
     stdout = _patch_stdout(plan, patch_result.files_changed, patch_result.permissions_changed)
-    return ExecutionResult("apply file patch", 0, stdout, "", duration)
+    return _PatchApplyOutcome(
+        ExecutionResult("apply file patch", 0, stdout, "", duration),
+        _patch_audit_metadata(plan, patch_result.transaction),
+    )
+
+
+def _patch_audit_metadata(
+    plan: FilePatchPlan,
+    transaction: FilePatchTransactionResult | None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "files_changed": list(plan.files_changed),
+        "permission_changes": [change.model_dump() for change in plan.permission_changes],
+    }
+    if transaction is not None:
+        payload.update(
+            {
+                "sandbox_root": str(transaction.sandbox_root),
+                "rollback_outcome": transaction.rollback_outcome,
+                "backups": [_backup_record(record) for record in transaction.backups],
+            }
+        )
+    return payload
+
+
+def _backup_record(record: FilePatchBackupRecord) -> dict[str, Any]:
+    return {
+        "target": str(record.target),
+        "existed": record.existed,
+        "backup_path_hash": record.backup_path_hash,
+        "original_mode": oct(record.original_mode) if record.original_mode is not None else None,
+    }
 
 
 def _patch_stdout(

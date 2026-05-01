@@ -56,7 +56,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 |---|---|
 | Natural language → command | Prompt + tool calling over OpenAI / DeepSeek / Anthropic Claude |
 | Structured planning | LLM output is validated as JSON `CommandPlan` before any policy check or execution |
-| File patch planning | Script, code, and config edits use structured `FilePatchPlan` output, unified-diff preview, and HITL approval |
+| File patch planning | Script, code, and config edits use structured `FilePatchPlan` output, unified-diff preview, transactional apply, and HITL approval |
 | Read-only workspace tools | The planner can inspect real files through `read_file`, `list_dir`, and `search_files` before proposing a patch |
 | Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
 | Runbooks | 11 YAML runbooks supplied as planner guidance, not pre-LLM hard routes |
@@ -454,6 +454,14 @@ redirection.
    requested only when hidden pages exist.
 6. Multi-file patches can be accepted per file, so the operator can apply only
    the files they approve.
+
+After approval, LinuxAgent applies the patch transactionally. It validates
+targets before reading content, rejects symlink path components, hardlinks,
+directories, device files, FIFOs, sockets, oversized targets, and non-UTF-8
+text, writes through temporary files and atomic replace, and rolls back backed-up
+files and permission bits if any later step fails. The audit record includes the
+changed files, permission changes, backup path hashes, rollback outcome, and
+sandbox root.
 
 By default, patch reads and writes are limited to the current workspace and
 `/tmp` through `file_patch.allow_roots`. Paths such as `/etc`, `/root/.ssh`, and
