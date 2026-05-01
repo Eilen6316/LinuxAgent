@@ -49,6 +49,7 @@ class DirectCommandRunner:
                 command=result.command,
                 exit_code=result.exit_code,
                 duration=result.duration,
+                sandbox=result.sandbox,
             )
         self._append_context(thread_id, command, result, safety)
 

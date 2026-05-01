@@ -36,6 +36,7 @@ from .interfaces import LLMProvider
 from .policy import PolicyEngine, runtime_policy_config
 from .providers import provider_factory
 from .runbooks import RunbookEngine, find_runbooks_dir, load_runbooks
+from .sandbox import NoopSandboxRunner, SandboxRunner
 from .services import ChatService, ClusterService, CommandService, MonitoringService
 from .telemetry import TelemetryRecorder
 from .tools import build_intelligence_tools, build_system_tools, build_workspace_tools
@@ -106,7 +107,15 @@ class Container:
             lambda: LinuxCommandExecutor(
                 self._config.security,
                 policy_engine=self.policy_engine(),
+                sandbox_config=self._config.sandbox,
+                sandbox_runner=self.sandbox_runner(),
             ),
+        )
+
+    def sandbox_runner(self) -> SandboxRunner:
+        return self._cached(
+            "sandbox_runner",
+            lambda: NoopSandboxRunner(enabled=self._config.sandbox.enabled),
         )
 
     def policy_engine(self) -> PolicyEngine:

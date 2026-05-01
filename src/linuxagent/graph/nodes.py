@@ -12,7 +12,7 @@ from langgraph.types import Command, interrupt
 
 from ..audit import AuditLog
 from ..config.models import FilePatchConfig
-from ..interfaces import CommandSource, LLMProvider
+from ..interfaces import CommandSource, ExecutionResult, LLMProvider
 from ..prompts_loader import build_analysis_prompt
 from ..runbooks import RunbookEngine
 from ..security import guard_execution_result
@@ -118,12 +118,13 @@ def make_execute_node(
                 "trace_id": current_trace_id,
                 "execution_result": synthetic_result("", 2, "", "no command proposed"),
             }
+        attributes: dict[str, object] = {"cluster": bool(state.get("selected_hosts"))}
         try:
             with span(
                 telemetry,
                 "command.execute",
                 current_trace_id,
-                {"cluster": bool(state.get("selected_hosts"))},
+                attributes,
             ):
                 result = await run_command(
                     state,
@@ -132,18 +133,10 @@ def make_execute_node(
                     cluster_service,
                     trace_id=current_trace_id,
                 )
+                _record_sandbox_span(attributes, result)
         except Exception as exc:  # noqa: BLE001 - graph returns error state instead of crashing
             result = synthetic_result(command, 1, "", str(exc))
-        audit_id = state.get("audit_id")
-        if audit_id is not None:
-            await audit.record_execution(
-                audit_id,
-                command=result.command,
-                exit_code=result.exit_code,
-                duration=result.duration,
-                trace_id=current_trace_id,
-                batch_hosts=state.get("batch_hosts", ()),
-            )
+        await _record_command_execution(audit, state, result, current_trace_id)
         update: AgentState = {"trace_id": current_trace_id, "execution_result": result}
         plan = state.get("command_plan")
         if plan is not None:
@@ -153,6 +146,38 @@ def make_execute_node(
         return update
 
     return execute_node
+
+
+def _record_sandbox_span(attributes: dict[str, object], result: ExecutionResult) -> None:
+    if result.sandbox is None:
+        return
+    attributes.update(
+        {
+            "sandbox.runner": result.sandbox.runner.value,
+            "sandbox.profile": result.sandbox.requested_profile.value,
+            "sandbox.enforced": result.sandbox.enforced,
+        }
+    )
+
+
+async def _record_command_execution(
+    audit: AuditLog,
+    state: AgentState,
+    result: ExecutionResult,
+    current_trace_id: str,
+) -> None:
+    audit_id = state.get("audit_id")
+    if audit_id is None:
+        return
+    await audit.record_execution(
+        audit_id,
+        command=result.command,
+        exit_code=result.exit_code,
+        duration=result.duration,
+        trace_id=current_trace_id,
+        batch_hosts=state.get("batch_hosts", ()),
+        sandbox=result.sandbox,
+    )
 
 
 def make_advance_runbook_node() -> Node:

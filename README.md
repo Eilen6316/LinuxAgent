@@ -142,6 +142,7 @@ not ask the LLM to explain or generate a reply for that turn.
 | AI-owned intent routing | Conversation vs operation vs clarification is decided by `prompts/intent_router.md`, not Python keyword rules |
 | Explicit resume control | New sessions do not inherit previous chats unless `/resume` is used; pending HITL checkpoints resume there too |
 | Direct `!` command mode | Runs operator-authored commands without an AI reply and adds command/output to current context |
+| Sandbox metadata boundary | Commands carry a selected sandbox profile into audit and telemetry; default `noop` records metadata only |
 | YAML runbooks | Common ops procedures are injected as planner guidance, not pre-LLM hard routes |
 | Learner memory | Successful command patterns are persisted locally after secret redaction |
 | LangGraph HITL | Confirmation uses `interrupt()` and checkpointing rather than inline `input()` |
@@ -181,6 +182,15 @@ key directories are highlighted as high risk, and permission changes such as
 Automatic patch repair defaults to two rounds and can be tuned with
 `file_patch.max_repair_attempts` (`0` disables automatic patch repair).
 
+## Sandbox Status
+
+LinuxAgent currently ships the Plan 1 sandbox boundary. `config.yaml` includes a
+`sandbox` section, and local command execution records the selected sandbox
+profile in audit/telemetry metadata. The default is `sandbox.enabled: false`
+with `runner: noop`; this is compatibility metadata only and does not isolate
+processes. Setting `sandbox.enabled: true` requires a future enforcing runner and
+is rejected while only the no-op runner exists.
+
 ## Safety Model
 
 | Operation | Default behavior |
@@ -192,8 +202,11 @@ Automatic patch repair defaults to two rounds and can be tuned with
 | SSH batch across two or more hosts | Explicit batch confirmation |
 | Non-TTY confirmation request | Auto-deny |
 | Unknown SSH host | Reject by default |
+| Default sandbox runner | Records profile metadata only; no process isolation |
 
-LinuxAgent is **not** an autonomous remediator or a command sandbox. It is intended for controlled operator-in-the-loop use. See [Production Readiness](docs/en/production-readiness.md) and [Threat Model](docs/en/threat-model.md).
+LinuxAgent is **not** an autonomous remediator. The current default `noop`
+sandbox runner is also not a command sandbox; it is intended for controlled
+operator-in-the-loop use. See [Production Readiness](docs/en/production-readiness.md) and [Threat Model](docs/en/threat-model.md).
 
 ## Built-In Runbooks
 

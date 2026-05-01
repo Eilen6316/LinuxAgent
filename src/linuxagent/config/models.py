@@ -11,7 +11,17 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
+
+from ..sandbox.models import SandboxNetworkPolicy, SandboxProfile, SandboxRunnerKind
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 DEFAULT_OUTPUT_LIMIT_PARAMETER: Literal["max_completion_tokens"] = "max_completion_tokens"
@@ -110,7 +120,7 @@ class FilePatchConfig(BaseModel):
 
     allow_roots: UserPathTuple = (
         Path("."),
-        Path("/tmp"),  # noqa: S108  # nosec B108 - explicit patch sandbox
+        Path("/tmp"),  # noqa: S108  # nosec B108
     )
     high_risk_roots: UserPathTuple = (
         Path("/etc"),
@@ -119,6 +129,45 @@ class FilePatchConfig(BaseModel):
     )
     allow_permission_changes: bool = True
     max_repair_attempts: int = Field(default=2, ge=0, le=10)
+
+
+class SandboxResourceLimitsConfig(BaseModel):
+    model_config = _FROZEN
+
+    cpu_seconds: int | None = Field(default=None, ge=1, le=3600)
+    memory_mb: int | None = Field(default=None, ge=16, le=262144)
+    process_count: int | None = Field(default=None, ge=1, le=4096)
+    output_bytes: int | None = Field(default=None, ge=1024, le=104857600)
+
+    def to_record(self) -> dict[str, int | float | None]:
+        return {
+            "cpu_seconds": self.cpu_seconds,
+            "memory_mb": self.memory_mb,
+            "process_count": self.process_count,
+            "output_bytes": self.output_bytes,
+        }
+
+
+class SandboxConfig(BaseModel):
+    model_config = _FROZEN
+
+    enabled: bool = False
+    runner: SandboxRunnerKind = SandboxRunnerKind.NOOP
+    default_profile: SandboxProfile = SandboxProfile.SYSTEM_INSPECT
+    allowed_roots: UserPathTuple = (
+        Path("."),
+        Path("/tmp"),  # noqa: S108  # nosec B108
+    )
+    temp_dir: UserPath = Path("/tmp/linuxagent-sandbox")  # noqa: S108  # nosec B108
+    network: SandboxNetworkPolicy = SandboxNetworkPolicy.INHERIT
+    network_allowlist: tuple[str, ...] = ()
+    limits: SandboxResourceLimitsConfig = Field(default_factory=SandboxResourceLimitsConfig)
+
+    @model_validator(mode="after")
+    def _reject_enabled_noop(self) -> SandboxConfig:
+        if self.enabled and self.runner is SandboxRunnerKind.NOOP:
+            raise ValueError("sandbox.enabled=true requires an enforcing sandbox runner")
+        return self
 
 
 class ClusterHost(BaseModel):
@@ -237,6 +286,7 @@ class AppConfig(BaseModel):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     policy: PolicyRuntimeConfig = Field(default_factory=PolicyRuntimeConfig)
     file_patch: FilePatchConfig = Field(default_factory=FilePatchConfig)
+    sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     cluster: ClusterConfig = Field(default_factory=ClusterConfig)
     audit: AuditConfig = Field(default_factory=AuditConfig)
     ui: UIConfig = Field(default_factory=UIConfig)

@@ -359,6 +359,10 @@ linuxagent check
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | Matching paths are shown as elevated-risk patch confirmations |
 | `file_patch` | `allow_permission_changes` | `true` | Allows patch plans to declare chmod-style permission changes |
 | `file_patch` | `max_repair_attempts` | `2` | Automatic FilePatchPlan repair rounds; `0` disables patch repair |
+| `sandbox` | `enabled` | `false` | Plan 1 boundary flag; `true` requires an enforcing runner |
+| `sandbox` | `runner` | `noop` | Compatibility runner that records metadata only; it does not isolate processes |
+| `sandbox` | `default_profile` | `system_inspect` | Default profile recorded for commands without stronger policy capabilities |
+| `sandbox` | `network` | `inherit` | Requested network policy metadata |
 | `cluster` | `batch_confirm_threshold` | `2` | Host count that triggers batch confirm |
 | `cluster` | `hosts` | `[]` | Cluster host list |
 | `audit` | `path` | `~/.linuxagent/audit.log` | Audit log location; **audit cannot be disabled** |

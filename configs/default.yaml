@@ -33,6 +33,22 @@ file_patch:
   allow_permission_changes: true
   max_repair_attempts: 2
 
+sandbox:
+  enabled: false
+  runner: noop
+  default_profile: system_inspect
+  allowed_roots:
+    - .
+    - /tmp
+  temp_dir: /tmp/linuxagent-sandbox
+  network: inherit
+  network_allowlist: []
+  limits:
+    cpu_seconds:
+    memory_mb:
+    process_count:
+    output_bytes:
+
 cluster:
   batch_confirm_threshold: 2
   timeout: 60.0

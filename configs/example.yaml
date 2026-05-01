@@ -90,6 +90,25 @@ file_patch:
   # Set to 0 to disable patch repair fallback.
   max_repair_attempts: 2
 
+sandbox:
+  # Plan 1 compatibility mode. The default no-op runner records sandbox
+  # metadata only; it does not isolate commands. Enabling sandbox requires a
+  # real enforcing runner from a later sandbox plan.
+  enabled: false
+  runner: noop
+  default_profile: system_inspect  # none | read_only | system_inspect | workspace_write | privileged_passthrough
+  allowed_roots:
+    - .
+    - /tmp
+  temp_dir: /tmp/linuxagent-sandbox
+  network: inherit                # inherit | disabled | loopback_only | allowlist
+  network_allowlist: []
+  limits:
+    cpu_seconds:
+    memory_mb:
+    process_count:
+    output_bytes:
+
 cluster:
   # Any command sent to >= this many hosts triggers R-HITL-02 batch confirm.
   # The default of 2 catches even a tiny dev+prod pair by design.

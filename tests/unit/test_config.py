@@ -14,6 +14,7 @@ from linuxagent.config.loader import (
     load_config,
 )
 from linuxagent.config.models import AppConfig, AuditConfig, ClusterConfig, LLMProviderName
+from linuxagent.sandbox import SandboxProfile, SandboxRunnerKind
 
 
 def _write_secure(directory: Path, body: str) -> Path:
@@ -32,6 +33,9 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.security.session_whitelist_enabled is True
     assert cfg.policy.path is None
     assert cfg.policy.include_builtin is True
+    assert cfg.sandbox.enabled is False
+    assert cfg.sandbox.runner is SandboxRunnerKind.NOOP
+    assert cfg.sandbox.default_profile is SandboxProfile.SYSTEM_INSPECT
     assert cfg.cluster.batch_confirm_threshold == 2
     assert cfg.audit.path.name == "audit.log"
     assert cfg.ui.max_chat_history == 20
@@ -142,6 +146,46 @@ def test_file_patch_config_supports_file_patch_options(tmp_path: Path) -> None:
     assert cfg.file_patch.high_risk_roots == (tmp_path / "workspace" / "etc",)
     assert cfg.file_patch.allow_permission_changes is False
     assert cfg.file_patch.max_repair_attempts == 4
+
+
+def test_sandbox_config_defaults_to_noop_metadata_mode() -> None:
+    cfg = AppConfig.model_validate({})
+
+    assert cfg.sandbox.enabled is False
+    assert cfg.sandbox.runner is SandboxRunnerKind.NOOP
+    assert cfg.sandbox.network == "inherit"
+    assert cfg.sandbox.limits.to_record() == {
+        "cpu_seconds": None,
+        "memory_mb": None,
+        "process_count": None,
+        "output_bytes": None,
+    }
+
+
+def test_sandbox_config_rejects_enabled_noop() -> None:
+    with pytest.raises(ValidationError, match="enforcing sandbox runner"):
+        AppConfig.model_validate({"sandbox": {"enabled": True, "runner": "noop"}})
+
+
+def test_sandbox_config_validates_profile_and_limits() -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "sandbox": {
+                "default_profile": "workspace_write",
+                "network": "loopback_only",
+                "limits": {"cpu_seconds": 10, "memory_mb": 256, "process_count": 32},
+            }
+        }
+    )
+
+    assert cfg.sandbox.default_profile is SandboxProfile.WORKSPACE_WRITE
+    assert cfg.sandbox.network == "loopback_only"
+    assert cfg.sandbox.limits.cpu_seconds == 10
+
+
+def test_sandbox_config_rejects_invalid_limits() -> None:
+    with pytest.raises(ValidationError, match="cpu_seconds"):
+        AppConfig.model_validate({"sandbox": {"limits": {"cpu_seconds": 0}}})
 
 
 # ---- Loader tests -------------------------------------------------------

@@ -18,8 +18,9 @@ import shlex
 import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
-from ..config.models import SecurityConfig
+from ..config.models import SandboxConfig, SecurityConfig
 from ..interfaces import (
     CommandExecutor,
     CommandSource,
@@ -29,6 +30,9 @@ from ..interfaces import (
     SafetyResult,
 )
 from ..policy import DEFAULT_POLICY_ENGINE, PolicyDecision, PolicyEngine
+from ..sandbox.models import SandboxRequest, SandboxResult, SandboxRunner
+from ..sandbox.noop import NoopSandboxRunner
+from ..sandbox.profiles import profile_for_safety
 from .session_whitelist import SessionWhitelist
 
 logger = logging.getLogger(__name__)
@@ -50,6 +54,7 @@ class CommandBlockedError(RuntimeError):
 class _SpawnPayload:
     argv: list[str]
     timeout: float
+    sandbox: SandboxResult
 
 
 class LinuxCommandExecutor(CommandExecutor):
@@ -61,10 +66,16 @@ class LinuxCommandExecutor(CommandExecutor):
         *,
         whitelist: SessionWhitelist | None = None,
         policy_engine: PolicyEngine | None = None,
+        sandbox_config: SandboxConfig | None = None,
+        sandbox_runner: SandboxRunner | None = None,
     ) -> None:
         self._config = config
         self._whitelist = whitelist or SessionWhitelist()
         self._policy_engine = policy_engine or DEFAULT_POLICY_ENGINE
+        self._sandbox_config = sandbox_config or SandboxConfig()
+        self._sandbox_runner = sandbox_runner or NoopSandboxRunner(
+            enabled=self._sandbox_config.enabled
+        )
 
     # -- CommandExecutor interface ----------------------------------------
 
@@ -137,6 +148,7 @@ class LinuxCommandExecutor(CommandExecutor):
             stdout=stdout_b.decode("utf-8", errors="replace"),
             stderr=stderr_b.decode("utf-8", errors="replace"),
             duration=duration,
+            sandbox=payload.sandbox,
         )
 
     async def execute_interactive(self, command: str) -> ExecutionResult:
@@ -171,6 +183,7 @@ class LinuxCommandExecutor(CommandExecutor):
             stdout="",
             stderr="",
             duration=time.monotonic() - start,
+            sandbox=payload.sandbox,
         )
 
     async def execute_streaming(
@@ -216,6 +229,7 @@ class LinuxCommandExecutor(CommandExecutor):
             stdout="".join(stdout_parts),
             stderr="".join(stderr_parts),
             duration=time.monotonic() - start,
+            sandbox=payload.sandbox,
         )
 
     # -- Helpers ----------------------------------------------------------
@@ -244,13 +258,37 @@ class LinuxCommandExecutor(CommandExecutor):
                 )
             )
 
-        return _SpawnPayload(argv=argv, timeout=self._config.command_timeout)
+        return _SpawnPayload(
+            argv=argv,
+            timeout=self._config.command_timeout,
+            sandbox=self._sandbox_metadata(command, argv, verdict),
+        )
 
     # -- Whitelist access -------------------------------------------------
 
     @property
     def whitelist(self) -> SessionWhitelist:
         return self._whitelist
+
+    def _sandbox_metadata(
+        self,
+        command: str,
+        argv: list[str],
+        verdict: SafetyResult,
+    ) -> SandboxResult:
+        request = SandboxRequest(
+            command=command,
+            argv=tuple(argv),
+            cwd=Path.cwd(),
+            timeout=self._config.command_timeout,
+            profile=profile_for_safety(
+                verdict,
+                default_profile=self._sandbox_config.default_profile,
+            ),
+            network=self._sandbox_config.network,
+            resource_limits=self._sandbox_config.limits.to_record(),
+        )
+        return self._sandbox_runner.describe(request)
 
 
 def _safety_result(decision: PolicyDecision) -> SafetyResult:

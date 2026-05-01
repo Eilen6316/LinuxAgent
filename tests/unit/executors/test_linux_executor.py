@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from linuxagent.config.models import SecurityConfig
+from linuxagent.config.models import SandboxConfig, SecurityConfig
 from linuxagent.executors import (
     CommandBlockedError,
     CommandTimeoutError,
@@ -21,6 +21,7 @@ from linuxagent.executors import (
 from linuxagent.interfaces import CommandSource, SafetyLevel
 from linuxagent.policy import PolicyEngine
 from linuxagent.policy.models import PolicyConfig, PolicyMatch, PolicyRule
+from linuxagent.sandbox import SandboxProfile, SandboxRunnerKind
 
 
 def _make(
@@ -149,12 +150,29 @@ async def test_execute_happy_path() -> None:
     assert result.stdout.strip() == "hello"
     assert result.stderr == ""
     assert result.duration >= 0
+    assert result.sandbox is not None
+    assert result.sandbox.runner is SandboxRunnerKind.NOOP
+    assert result.sandbox.enforced is False
 
 
 async def test_execute_nonzero_exit_code() -> None:
     ex = _make()
     result = await ex.execute("/bin/false")
     assert result.exit_code != 0
+
+
+async def test_execute_records_configured_sandbox_metadata() -> None:
+    ex = LinuxCommandExecutor(
+        SecurityConfig(command_timeout=5.0),
+        sandbox_config=SandboxConfig(default_profile=SandboxProfile.READ_ONLY),
+    )
+
+    result = await ex.execute("/bin/echo hello")
+
+    assert result.sandbox is not None
+    assert result.sandbox.requested_profile is SandboxProfile.READ_ONLY
+    assert result.sandbox.enabled is False
+    assert result.sandbox.fallback_reason == "sandbox disabled"
 
 
 async def test_execute_streaming_emits_output_chunks() -> None:

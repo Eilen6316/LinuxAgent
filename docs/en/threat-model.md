@@ -19,7 +19,7 @@ but to make model-driven operations explicit, reviewable, and auditable.
 |---|---|
 | User terminal | The local operator is trusted to approve or deny commands |
 | LLM provider | Not trusted with secrets or final authority |
-| Local subprocess | Executes with the invoking user's privileges |
+| Local subprocess | Executes with the invoking user's privileges; the Plan 1 no-op sandbox records metadata only |
 | SSH target | Must already be trusted through `known_hosts` |
 | Config file | Trusted only if owned by the user and `chmod 600` |
 | Audit log | Append-only best effort with hash-chain tamper detection |
@@ -37,10 +37,12 @@ but to make model-driven operations explicit, reviewable, and auditable.
 | Audit log tampering hides an approval | Hash-chained JSONL records and `linuxagent audit verify` |
 | Non-interactive automation silently approves work | No-TTY confirmation requests auto-deny |
 | Overly broad dependencies increase supply-chain risk | Major-version bounds plus release constraints file and build verification |
+| Operators assume sandbox isolation is active | `sandbox.enabled=true` is rejected while only the no-op runner exists; audit/telemetry marks `enforced=false` |
 
 ## Out of Scope
 
-- Sandboxing arbitrary commands after the operator approves them.
+- Sandboxing arbitrary commands after the operator approves them. Plan 1 only
+  records sandbox profile metadata; enforcing runners are future work.
 - Preventing a malicious local root user from modifying files.
 - Replacing host intrusion detection, EDR, SIEM, or privileged access
   management.

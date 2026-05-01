@@ -12,6 +12,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
+from ..sandbox.models import SandboxResult
+
 OutputCallback = Callable[[str], Awaitable[None]]
 
 
@@ -48,6 +50,7 @@ class ExecutionResult:
     stdout: str
     stderr: str
     duration: float
+    sandbox: SandboxResult | None = None
 
 
 class CommandExecutor(ABC):

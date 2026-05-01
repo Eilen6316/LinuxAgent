@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .sandbox.models import SandboxResult
 from .security import redact_record
 
 GENESIS_HASH = "0" * 64
@@ -25,7 +26,9 @@ GENESIS_HASH = "0" * 64
 @dataclass(frozen=True)
 class AuditLog:
     path: Path
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False, compare=False)
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False, compare=False
+    )
 
     async def begin(
         self,
@@ -79,18 +82,20 @@ class AuditLog:
         duration: float,
         trace_id: str | None = None,
         batch_hosts: tuple[str, ...] = (),
+        sandbox: SandboxResult | None = None,
     ) -> None:
-        self.append(
-            {
-                "event": "command_executed",
-                "audit_id": audit_id,
-                "command": command,
-                "exit_code": exit_code,
-                "duration_ms": int(duration * 1000),
-                "trace_id": trace_id,
-                "batch_hosts": list(batch_hosts),
-            }
-        )
+        record: dict[str, Any] = {
+            "event": "command_executed",
+            "audit_id": audit_id,
+            "command": command,
+            "exit_code": exit_code,
+            "duration_ms": int(duration * 1000),
+            "trace_id": trace_id,
+            "batch_hosts": list(batch_hosts),
+        }
+        if sandbox is not None:
+            record["sandbox"] = sandbox.to_record()
+        self.append(record)
 
     def append(self, record: dict[str, Any]) -> None:
         with self._lock:

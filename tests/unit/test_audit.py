@@ -5,6 +5,12 @@ from __future__ import annotations
 import json
 
 from linuxagent.audit import AuditLog, verify_audit_log
+from linuxagent.sandbox import (
+    SandboxNetworkPolicy,
+    SandboxProfile,
+    SandboxResult,
+    SandboxRunnerKind,
+)
 
 
 async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
@@ -24,6 +30,16 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
         exit_code=0,
         duration=0.25,
         batch_hosts=("a", "b"),
+        sandbox=SandboxResult(
+            requested_profile=SandboxProfile.SYSTEM_INSPECT,
+            runner=SandboxRunnerKind.NOOP,
+            enabled=False,
+            enforced=False,
+            root=None,
+            network=SandboxNetworkPolicy.INHERIT,
+            resource_limits={"cpu_seconds": None},
+            fallback_reason="sandbox disabled",
+        ),
     )
 
     assert path.stat().st_mode & 0o777 == 0o600
@@ -37,6 +53,8 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
     assert lines[1]["decision"] == "yes"
     assert lines[2]["exit_code"] == 0
     assert lines[2]["duration_ms"] == 250
+    assert lines[2]["sandbox"]["runner"] == "noop"
+    assert lines[2]["sandbox"]["enforced"] is False
     assert all(line["trace_id"] is None for line in lines)
     assert lines[0]["prev_hash"] == "0" * 64
     assert verify_audit_log(path).valid is True
@@ -55,7 +73,10 @@ async def test_audit_log_redacts_sensitive_fields_but_keeps_command_raw(tmp_path
     )
 
     line = json.loads(path.read_text(encoding="utf-8"))
-    assert line["command"] == "curl -H 'Authorization: Bearer raw-command-token' https://example.invalid"
+    assert (
+        line["command"]
+        == "curl -H 'Authorization: Bearer raw-command-token' https://example.invalid"
+    )
     assert line["api_key"] == "***redacted***"
     assert "hunter2" not in line["stderr"]
 
@@ -79,7 +100,9 @@ async def test_audit_log_records_trace_id_and_detects_tampering(tmp_path) -> Non
     assert verify_audit_log(path).checked_records == 2
 
     records[0]["decision"] = "tampered"
-    path.write_text("\n".join(json.dumps(record, sort_keys=True) for record in records), encoding="utf-8")
+    path.write_text(
+        "\n".join(json.dumps(record, sort_keys=True) for record in records), encoding="utf-8"
+    )
 
     result = verify_audit_log(path)
     assert result.valid is False

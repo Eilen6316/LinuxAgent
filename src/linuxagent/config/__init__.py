@@ -15,6 +15,8 @@ from .models import (
     LogAnalysisConfig,
     LoggingConfig,
     MonitoringConfig,
+    SandboxConfig,
+    SandboxResourceLimitsConfig,
     SecurityConfig,
     UIConfig,
 )
@@ -33,6 +35,8 @@ __all__ = [
     "LogAnalysisConfig",
     "LoggingConfig",
     "MonitoringConfig",
+    "SandboxConfig",
+    "SandboxResourceLimitsConfig",
     "SecurityConfig",
     "UIConfig",
     "load_config",

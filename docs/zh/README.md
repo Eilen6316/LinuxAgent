@@ -354,6 +354,10 @@ linuxagent check
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | 命中后以高风险 diff 确认展示 |
 | `file_patch` | `allow_permission_changes` | `true` | 是否允许 patch 计划声明权限位变更 |
 | `file_patch` | `max_repair_attempts` | `2` | 自动修复 FilePatchPlan 的轮数；`0` 表示关闭自动 patch repair |
+| `sandbox` | `enabled` | `false` | Plan 1 沙箱边界开关；设为 `true` 需要真实隔离 runner |
+| `sandbox` | `runner` | `noop` | 兼容 runner，只记录 metadata，不隔离进程 |
+| `sandbox` | `default_profile` | `system_inspect` | 没有更强 policy capability 时记录的默认 profile |
+| `sandbox` | `network` | `inherit` | 请求的网络策略 metadata |
 | `cluster` | `batch_confirm_threshold` | `2` | 批量确认阈值（主机数） |
 | `cluster` | `hosts` | `[]` | 集群主机列表 |
 | `audit` | `path` | `~/.linuxagent/audit.log` | 审计日志位置；**审计无法关闭** |
