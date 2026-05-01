@@ -359,10 +359,10 @@ linuxagent check
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | Matching paths are shown as elevated-risk patch confirmations |
 | `file_patch` | `allow_permission_changes` | `true` | Allows patch plans to declare chmod-style permission changes |
 | `file_patch` | `max_repair_attempts` | `2` | Automatic FilePatchPlan repair rounds; `0` disables patch repair |
-| `sandbox` | `enabled` | `false` | Plan 1 boundary flag; `true` requires an enforcing runner |
-| `sandbox` | `runner` | `noop` | Compatibility runner that records metadata only; it does not isolate processes |
+| `sandbox` | `enabled` | `false` | Sandbox boundary flag; `true` fails closed when the selected runner cannot enforce the requested safe profile |
+| `sandbox` | `runner` | `noop` | `noop`, `local`, or optional `bubblewrap`; `noop` records metadata only |
 | `sandbox` | `default_profile` | `system_inspect` | Default profile recorded for commands without stronger policy capabilities |
-| `sandbox` | `network` | `inherit` | Requested network policy metadata |
+| `sandbox` | `network` | `inherit` | `inherit`, `disabled`, `loopback_only`, or `allowlist`; unsupported policies fail closed for safe profiles |
 | `sandbox.tools` | `max_rounds` | `3` | Maximum tool-calling rounds per planner request |
 | `sandbox.tools` | `timeout_seconds` | `5.0` | Per-tool runtime timeout |
 | `sandbox.tools` | `max_output_chars` | `20000` | Per-tool output budget before truncation |

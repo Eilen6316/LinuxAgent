@@ -35,7 +35,7 @@ file_patch:
 
 sandbox:
   enabled: false
-  runner: noop
+  runner: noop                 # noop | local | bubblewrap
   default_profile: system_inspect
   allowed_roots:
     - .

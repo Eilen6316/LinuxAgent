@@ -7,6 +7,7 @@ Concrete isolation backends are introduced by later sandbox plans.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -23,6 +24,8 @@ class SandboxProfile(StrEnum):
 
 class SandboxRunnerKind(StrEnum):
     NOOP = "noop"
+    LOCAL = "local"
+    BUBBLEWRAP = "bubblewrap"
 
 
 class SandboxNetworkPolicy(StrEnum):
@@ -37,6 +40,7 @@ class SandboxUnavailableError(RuntimeError):
 
 
 ResourceLimits = dict[str, int | float | None]
+SandboxOutputCallback = Callable[[str], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,9 @@ class SandboxRequest:
     profile: SandboxProfile
     network: SandboxNetworkPolicy
     resource_limits: ResourceLimits
+    network_allowlist: tuple[str, ...] = ()
+    allowed_roots: tuple[Path, ...] = ()
+    temp_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +81,14 @@ class SandboxResult:
         }
 
 
+@dataclass(frozen=True)
+class SandboxRunResult:
+    exit_code: int
+    stdout: str
+    stderr: str
+    sandbox: SandboxResult
+
+
 @runtime_checkable
 class SandboxRunner(Protocol):
     @property
@@ -82,3 +97,13 @@ class SandboxRunner(Protocol):
 
     def describe(self, request: SandboxRequest) -> SandboxResult:
         """Return the runtime sandbox metadata for a prepared command."""
+
+    async def run(
+        self,
+        request: SandboxRequest,
+        *,
+        on_stdout: SandboxOutputCallback | None = None,
+        on_stderr: SandboxOutputCallback | None = None,
+        interactive: bool = False,
+    ) -> SandboxRunResult:
+        """Execute ``request.argv`` and return bounded command output."""

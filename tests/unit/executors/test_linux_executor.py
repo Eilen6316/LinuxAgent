@@ -21,7 +21,8 @@ from linuxagent.executors import (
 from linuxagent.interfaces import CommandSource, SafetyLevel
 from linuxagent.policy import PolicyEngine
 from linuxagent.policy.models import PolicyConfig, PolicyMatch, PolicyRule
-from linuxagent.sandbox import SandboxProfile, SandboxRunnerKind
+from linuxagent.sandbox import LocalProcessSandboxRunner, SandboxProfile, SandboxRunnerKind
+from linuxagent.sandbox.models import SandboxUnavailableError
 
 
 def _make(
@@ -173,6 +174,49 @@ async def test_execute_records_configured_sandbox_metadata() -> None:
     assert result.sandbox.requested_profile is SandboxProfile.READ_ONLY
     assert result.sandbox.enabled is False
     assert result.sandbox.fallback_reason == "sandbox disabled"
+
+
+async def test_execute_fails_closed_when_runner_cannot_enforce_safe_profile() -> None:
+    ex = LinuxCommandExecutor(
+        SecurityConfig(command_timeout=5.0),
+        sandbox_config=SandboxConfig(
+            enabled=True,
+            runner=SandboxRunnerKind.LOCAL,
+            default_profile=SandboxProfile.READ_ONLY,
+        ),
+        sandbox_runner=LocalProcessSandboxRunner(enabled=True),
+    )
+
+    with pytest.raises(SandboxUnavailableError, match="cannot enforce sandbox profile"):
+        await ex.execute("/bin/echo hello")
+
+
+async def test_sandbox_does_not_downgrade_file_write_policy(tmp_path: Path) -> None:
+    engine = PolicyEngine(
+        PolicyConfig(
+            rules=(
+                PolicyRule(
+                    id="custom.write.confirm",
+                    legacy_rule="CUSTOM_WRITE_CONFIRM",
+                    level=SafetyLevel.CONFIRM,
+                    risk_score=70,
+                    capabilities=("filesystem.write",),
+                    reason="writes require HITL",
+                    match=PolicyMatch(command=("python",)),
+                ),
+            )
+        )
+    )
+    ex = LinuxCommandExecutor(
+        SecurityConfig(command_timeout=5.0),
+        policy_engine=engine,
+        sandbox_config=SandboxConfig(default_profile=SandboxProfile.READ_ONLY),
+    )
+
+    result = ex.is_safe(f'python -c \'open({str(tmp_path / "x")!r}, "w").write("x")\'')
+
+    assert result.level is SafetyLevel.CONFIRM
+    assert result.matched_rule == "CUSTOM_WRITE_CONFIRM"
 
 
 async def test_execute_streaming_emits_output_chunks() -> None:

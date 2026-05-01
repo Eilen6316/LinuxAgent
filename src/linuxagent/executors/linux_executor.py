@@ -12,8 +12,6 @@ is thin: validate → classify → (optionally) spawn → collect → return.
 
 from __future__ import annotations
 
-import asyncio
-import logging
 import shlex
 import sys
 import time
@@ -30,12 +28,10 @@ from ..interfaces import (
     SafetyResult,
 )
 from ..policy import DEFAULT_POLICY_ENGINE, PolicyDecision, PolicyEngine
-from ..sandbox.models import SandboxRequest, SandboxResult, SandboxRunner
+from ..sandbox.models import SandboxRequest, SandboxRunner
 from ..sandbox.noop import NoopSandboxRunner
 from ..sandbox.profiles import profile_for_safety
 from .session_whitelist import SessionWhitelist
-
-logger = logging.getLogger(__name__)
 
 
 class CommandTimeoutError(RuntimeError):
@@ -52,9 +48,7 @@ class CommandBlockedError(RuntimeError):
 
 @dataclass(frozen=True)
 class _SpawnPayload:
-    argv: list[str]
-    timeout: float
-    sandbox: SandboxResult
+    request: SandboxRequest
 
 
 class LinuxCommandExecutor(CommandExecutor):
@@ -118,37 +112,21 @@ class LinuxCommandExecutor(CommandExecutor):
         """
         payload = self._prepare(command)
         start = time.monotonic()
-
-        process = await asyncio.create_subprocess_exec(
-            *payload.argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(
-                process.communicate(), timeout=payload.timeout
-            )
+            result = await self._sandbox_runner.run(payload.request)
         except TimeoutError as exc:
-            process.kill()
-            # Drain after kill so we don't leak a zombie. Deliberately don't
-            # re-raise communicate() errors from the drain itself.
-            try:
-                await process.communicate()
-            except Exception:  # noqa: BLE001 — drain is best-effort
-                logger.debug("drain after timeout failed for %s", payload.argv)
             raise CommandTimeoutError(
-                f"command timed out after {payload.timeout}s: {command!r}"
+                f"command timed out after {payload.request.timeout}s: {command!r}"
             ) from exc
 
         duration = time.monotonic() - start
         return ExecutionResult(
             command=command,
-            exit_code=process.returncode if process.returncode is not None else -1,
-            stdout=stdout_b.decode("utf-8", errors="replace"),
-            stderr=stderr_b.decode("utf-8", errors="replace"),
+            exit_code=result.exit_code,
+            stdout=result.stdout,
+            stderr=result.stderr,
             duration=duration,
-            sandbox=payload.sandbox,
+            sandbox=result.sandbox,
         )
 
     async def execute_interactive(self, command: str) -> ExecutionResult:
@@ -164,26 +142,20 @@ class LinuxCommandExecutor(CommandExecutor):
             )
 
         start = time.monotonic()
-        process = await asyncio.create_subprocess_exec(*payload.argv)
         try:
-            await asyncio.wait_for(process.wait(), timeout=payload.timeout)
+            result = await self._sandbox_runner.run(payload.request, interactive=True)
         except TimeoutError as exc:
-            process.kill()
-            try:
-                await process.wait()
-            except Exception:  # noqa: BLE001 - best-effort cleanup after timeout
-                logger.debug("interactive wait cleanup failed for %s", payload.argv)
             raise CommandTimeoutError(
-                f"command timed out after {payload.timeout}s: {command!r}"
+                f"command timed out after {payload.request.timeout}s: {command!r}"
             ) from exc
 
         return ExecutionResult(
             command=command,
-            exit_code=process.returncode if process.returncode is not None else -1,
+            exit_code=result.exit_code,
             stdout="",
             stderr="",
             duration=time.monotonic() - start,
-            sandbox=payload.sandbox,
+            sandbox=result.sandbox,
         )
 
     async def execute_streaming(
@@ -196,40 +168,23 @@ class LinuxCommandExecutor(CommandExecutor):
         """Run ``command`` while streaming stdout/stderr chunks."""
         payload = self._prepare(command)
         start = time.monotonic()
-        process = await asyncio.create_subprocess_exec(
-            *payload.argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        assert process.stdout is not None
-        assert process.stderr is not None
-        stdout_parts: list[str] = []
-        stderr_parts: list[str] = []
         try:
-            await asyncio.wait_for(
-                asyncio.gather(
-                    _stream_pipe(process.stdout, on_stdout, stdout_parts),
-                    _stream_pipe(process.stderr, on_stderr, stderr_parts),
-                    process.wait(),
-                ),
-                timeout=payload.timeout,
+            result = await self._sandbox_runner.run(
+                payload.request,
+                on_stdout=on_stdout,
+                on_stderr=on_stderr,
             )
         except TimeoutError as exc:
-            process.kill()
-            try:
-                await process.wait()
-            except Exception:  # noqa: BLE001 - best-effort cleanup after timeout
-                logger.debug("streaming wait cleanup failed for %s", payload.argv)
             raise CommandTimeoutError(
-                f"command timed out after {payload.timeout}s: {command!r}"
+                f"command timed out after {payload.request.timeout}s: {command!r}"
             ) from exc
         return ExecutionResult(
             command=command,
-            exit_code=process.returncode if process.returncode is not None else -1,
-            stdout="".join(stdout_parts),
-            stderr="".join(stderr_parts),
+            exit_code=result.exit_code,
+            stdout=result.stdout,
+            stderr=result.stderr,
             duration=time.monotonic() - start,
-            sandbox=payload.sandbox,
+            sandbox=result.sandbox,
         )
 
     # -- Helpers ----------------------------------------------------------
@@ -258,11 +213,7 @@ class LinuxCommandExecutor(CommandExecutor):
                 )
             )
 
-        return _SpawnPayload(
-            argv=argv,
-            timeout=self._config.command_timeout,
-            sandbox=self._sandbox_metadata(command, argv, verdict),
-        )
+        return _SpawnPayload(request=self._sandbox_request(command, argv, verdict))
 
     # -- Whitelist access -------------------------------------------------
 
@@ -270,13 +221,13 @@ class LinuxCommandExecutor(CommandExecutor):
     def whitelist(self) -> SessionWhitelist:
         return self._whitelist
 
-    def _sandbox_metadata(
+    def _sandbox_request(
         self,
         command: str,
         argv: list[str],
         verdict: SafetyResult,
-    ) -> SandboxResult:
-        request = SandboxRequest(
+    ) -> SandboxRequest:
+        return SandboxRequest(
             command=command,
             argv=tuple(argv),
             cwd=Path.cwd(),
@@ -286,9 +237,11 @@ class LinuxCommandExecutor(CommandExecutor):
                 default_profile=self._sandbox_config.default_profile,
             ),
             network=self._sandbox_config.network,
+            network_allowlist=self._sandbox_config.network_allowlist,
             resource_limits=self._sandbox_config.limits.to_record(),
+            allowed_roots=self._sandbox_config.allowed_roots,
+            temp_dir=self._sandbox_config.temp_dir,
         )
-        return self._sandbox_runner.describe(request)
 
 
 def _safety_result(decision: PolicyDecision) -> SafetyResult:
@@ -301,17 +254,6 @@ def _safety_result(decision: PolicyDecision) -> SafetyResult:
         capabilities=decision.capabilities,
         can_whitelist=decision.can_whitelist,
     )
-
-
-async def _stream_pipe(
-    pipe: asyncio.StreamReader,
-    callback: OutputCallback,
-    parts: list[str],
-) -> None:
-    while chunk := await pipe.read(4096):
-        text = chunk.decode("utf-8", errors="replace")
-        parts.append(text)
-        await callback(text)
 
 
 def _has_destructive_capability(capabilities: tuple[str, ...]) -> bool:

@@ -169,6 +169,14 @@ def test_sandbox_config_rejects_enabled_noop() -> None:
         AppConfig.model_validate({"sandbox": {"enabled": True, "runner": "noop"}})
 
 
+def test_sandbox_config_accepts_local_and_bubblewrap_runners() -> None:
+    local = AppConfig.model_validate({"sandbox": {"enabled": True, "runner": "local"}})
+    bubblewrap = AppConfig.model_validate({"sandbox": {"enabled": True, "runner": "bubblewrap"}})
+
+    assert local.sandbox.runner is SandboxRunnerKind.LOCAL
+    assert bubblewrap.sandbox.runner is SandboxRunnerKind.BUBBLEWRAP
+
+
 def test_sandbox_config_validates_profile_and_limits() -> None:
     cfg = AppConfig.model_validate(
         {

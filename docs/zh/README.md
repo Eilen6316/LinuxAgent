@@ -354,10 +354,10 @@ linuxagent check
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | 命中后以高风险 diff 确认展示 |
 | `file_patch` | `allow_permission_changes` | `true` | 是否允许 patch 计划声明权限位变更 |
 | `file_patch` | `max_repair_attempts` | `2` | 自动修复 FilePatchPlan 的轮数；`0` 表示关闭自动 patch repair |
-| `sandbox` | `enabled` | `false` | Plan 1 沙箱边界开关；设为 `true` 需要真实隔离 runner |
-| `sandbox` | `runner` | `noop` | 兼容 runner，只记录 metadata，不隔离进程 |
+| `sandbox` | `enabled` | `false` | sandbox 边界开关；设为 `true` 后，所选 runner 不能执行请求的安全 profile 时会 fail-closed |
+| `sandbox` | `runner` | `noop` | `noop`、`local` 或可选 `bubblewrap`；`noop` 只记录 metadata |
 | `sandbox` | `default_profile` | `system_inspect` | 没有更强 policy capability 时记录的默认 profile |
-| `sandbox` | `network` | `inherit` | 请求的网络策略 metadata |
+| `sandbox` | `network` | `inherit` | `inherit`、`disabled`、`loopback_only` 或 `allowlist`；安全 profile 下不支持则 fail-closed |
 | `sandbox.tools` | `max_rounds` | `3` | 每次 planner 请求允许的最大 tool-calling 轮数 |
 | `sandbox.tools` | `timeout_seconds` | `5.0` | 单次工具调用超时 |
 | `sandbox.tools` | `max_output_chars` | `20000` | 单次工具输出截断阈值 |

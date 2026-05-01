@@ -91,11 +91,12 @@ file_patch:
   max_repair_attempts: 2
 
 sandbox:
-  # Plan 1 compatibility mode. The default no-op runner records sandbox
-  # metadata only; it does not isolate commands. Enabling sandbox requires a
-  # real enforcing runner from a later sandbox plan.
+  # The default no-op runner records metadata only; it does not isolate
+  # commands. Use runner: local for process lifecycle controls, or
+  # runner: bubblewrap when bwrap is installed and the requested profile can be
+  # enforced.
   enabled: false
-  runner: noop
+  runner: noop                 # noop | local | bubblewrap
   default_profile: system_inspect  # none | read_only | system_inspect | workspace_write | privileged_passthrough
   allowed_roots:
     - .

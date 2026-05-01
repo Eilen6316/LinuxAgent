@@ -36,7 +36,13 @@ from .interfaces import LLMProvider
 from .policy import PolicyEngine, runtime_policy_config
 from .providers import provider_factory
 from .runbooks import RunbookEngine, find_runbooks_dir, load_runbooks
-from .sandbox import NoopSandboxRunner, SandboxRunner
+from .sandbox import (
+    BubblewrapSandboxRunner,
+    LocalProcessSandboxRunner,
+    NoopSandboxRunner,
+    SandboxRunner,
+)
+from .sandbox.models import SandboxRunnerKind
 from .services import ChatService, ClusterService, CommandService, MonitoringService
 from .telemetry import TelemetryRecorder
 from .tools import (
@@ -120,8 +126,15 @@ class Container:
     def sandbox_runner(self) -> SandboxRunner:
         return self._cached(
             "sandbox_runner",
-            lambda: NoopSandboxRunner(enabled=self._config.sandbox.enabled),
+            lambda: self._build_sandbox_runner(),
         )
+
+    def _build_sandbox_runner(self) -> SandboxRunner:
+        if self._config.sandbox.runner is SandboxRunnerKind.LOCAL:
+            return LocalProcessSandboxRunner(enabled=self._config.sandbox.enabled)
+        if self._config.sandbox.runner is SandboxRunnerKind.BUBBLEWRAP:
+            return BubblewrapSandboxRunner(enabled=self._config.sandbox.enabled)
+        return NoopSandboxRunner(enabled=self._config.sandbox.enabled)
 
     def policy_engine(self) -> PolicyEngine:
         return self._cached(

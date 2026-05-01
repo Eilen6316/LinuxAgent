@@ -19,6 +19,7 @@ from linuxagent.config.loader import ConfigError
 from linuxagent.config.models import AppConfig, MonitoringConfig
 from linuxagent.container import Container
 from linuxagent.policy.config_rules import PolicyConfigError
+from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner
 from linuxagent.services import MonitoringAlert
 
 
@@ -184,6 +185,14 @@ def test_container_returns_config_instance() -> None:
     cfg = AppConfig.model_validate({})
     container = Container(cfg)
     assert container.config is cfg
+
+
+def test_container_builds_configured_sandbox_runner() -> None:
+    local_cfg = AppConfig.model_validate({"sandbox": {"enabled": True, "runner": "local"}})
+    bwrap_cfg = AppConfig.model_validate({"sandbox": {"enabled": True, "runner": "bubblewrap"}})
+
+    assert isinstance(Container(local_cfg).sandbox_runner(), LocalProcessSandboxRunner)
+    assert isinstance(Container(bwrap_cfg).sandbox_runner(), BubblewrapSandboxRunner)
 
 
 def test_container_loads_runtime_policy_from_config(tmp_path: Path) -> None:

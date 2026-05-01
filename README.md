@@ -200,12 +200,15 @@ Automatic patch repair defaults to two rounds and can be tuned with
 
 ## Sandbox Status
 
-LinuxAgent currently ships the Plan 1 sandbox boundary. `config.yaml` includes a
-`sandbox` section, and local command execution records the selected sandbox
-profile in audit/telemetry metadata. The default is `sandbox.enabled: false`
-with `runner: noop`; this is compatibility metadata only and does not isolate
-processes. Setting `sandbox.enabled: true` requires a future enforcing runner and
-is rejected while only the no-op runner exists.
+LinuxAgent local command execution now goes through a sandbox runner boundary.
+The default remains `sandbox.enabled: false` with `runner: noop`, which preserves
+compatibility while recording sandbox metadata only. `runner: local` applies
+process lifecycle controls such as clean environment, closed stdin, timeout,
+process-group cleanup, resource limits, output limits, and configured cwd roots,
+but it does not claim filesystem or network isolation for safe profiles.
+`runner: bubblewrap` is optional and capability-probed; if `bwrap` is missing or
+cannot enforce the requested profile or network policy, safe profiles fail
+closed while explicit passthrough profiles remain auditable passthrough.
 
 ## Safety Model
 
@@ -219,6 +222,7 @@ is rejected while only the no-op runner exists.
 | Non-TTY confirmation request | Auto-deny |
 | Unknown SSH host | Reject by default |
 | Default sandbox runner | Records profile metadata only; no process isolation |
+| Enabled safe sandbox profile unavailable | Fail closed before spawning |
 
 LinuxAgent is **not** an autonomous remediator. The current default `noop`
 sandbox runner is also not a command sandbox; it is intended for controlled
