@@ -261,12 +261,12 @@ Current documented baseline from `make test` on 2026-05-01:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 511 passing |
+| Unit tests | 516 passing |
 | Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
 | Sandbox boundary suite | covered by `make sandbox` |
 | Harness scenarios | 17 HITL / runbook / cluster / sandbox scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 87.60% (`--cov-fail-under=80`) |
+| Coverage | 87.62% (`--cov-fail-under=80`) |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 

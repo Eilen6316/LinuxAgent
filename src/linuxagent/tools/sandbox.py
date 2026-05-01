@@ -65,32 +65,58 @@ async def invoke_tool_with_sandbox(
     limits: ToolRuntimeLimits,
     remaining_total_chars: int,
 ) -> ToolRunResult:
+    if tool_sandbox_record(tool) is None:
+        return _tool_error_result(
+            tool,
+            args,
+            "denied",
+            "tool is missing ToolSandboxSpec metadata",
+            limits,
+            remaining_total_chars,
+        )
     timeout = _tool_timeout(tool, limits)
     try:
         raw_result = await asyncio.wait_for(tool.ainvoke(args), timeout=timeout)
     except TimeoutError:
-        content = _structured_error(tool.name, "timeout", f"tool exceeded {timeout}s")
-        return ToolRunResult(
-            content=content,
-            event=_tool_event(tool, args, "error", "timeout", content),
-            output_chars=len(content),
+        return _tool_error_result(
+            tool,
+            args,
+            "timeout",
+            f"tool exceeded {timeout}s",
+            limits,
+            remaining_total_chars,
         )
     except Exception as exc:  # noqa: BLE001 - tool failures are returned to the model
         status = _error_status(exc)
-        content = _structured_error(tool.name, status, _redacted_output(str(exc)))
-        return ToolRunResult(
-            content=content,
-            event=_tool_event(tool, args, "error", status, content),
-            output_chars=len(content),
+        return _tool_error_result(
+            tool, args, status, _redacted_output(str(exc)), limits, remaining_total_chars
         )
 
-    content = _redacted_output(raw_result)
-    limit = min(limits.max_output_chars, max(remaining_total_chars, 0))
-    content, truncated = _truncate(content, limit)
+    content, truncated = _finalize_tool_content(raw_result, limits, remaining_total_chars)
     status = "truncated" if truncated else "allowed"
     return ToolRunResult(
         content=content,
         event=_tool_event(tool, args, "end", status, content, truncated=truncated),
+        output_chars=len(content),
+    )
+
+
+def _tool_error_result(
+    tool: BaseTool,
+    args: dict[str, Any],
+    status: str,
+    message: str,
+    limits: ToolRuntimeLimits,
+    remaining_total_chars: int,
+) -> ToolRunResult:
+    content, truncated = _finalize_tool_content(
+        _structured_error(tool.name, status, message),
+        limits,
+        remaining_total_chars,
+    )
+    return ToolRunResult(
+        content=content,
+        event=_tool_event(tool, args, "error", status, content, truncated=truncated),
         output_chars=len(content),
     )
 
@@ -127,6 +153,16 @@ def _redacted_output(result: Any) -> str:
             default=str,
         )
     return redact_text(_tool_output_to_str(result)).text
+
+
+def _finalize_tool_content(
+    result: Any,
+    limits: ToolRuntimeLimits,
+    remaining_total_chars: int,
+) -> tuple[str, bool]:
+    content = _redacted_output(result)
+    limit = min(limits.max_output_chars, max(remaining_total_chars, 0))
+    return _truncate(content, limit)
 
 
 def _truncate(content: str, limit: int) -> tuple[str, bool]:

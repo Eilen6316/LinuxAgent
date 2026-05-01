@@ -41,15 +41,7 @@ class BubblewrapSandboxRunner:
             raise SandboxUnavailableError("bubblewrap executable not found")
         self._validate_network(request)
         validate_cwd_allowed(request.cwd, request.allowed_roots)
-        return SandboxResult(
-            requested_profile=request.profile,
-            runner=self.name,
-            enabled=True,
-            enforced=True,
-            root=str(request.cwd),
-            network=request.network,
-            resource_limits=request.resource_limits,
-        )
+        return self._enforced_result(request)
 
     async def run(
         self,
@@ -59,9 +51,8 @@ class BubblewrapSandboxRunner:
         on_stderr: SandboxOutputCallback | None = None,
         interactive: bool = False,
     ) -> SandboxRunResult:
-        sandbox = self.describe(request)
-        executable = self._probe()
-        if not sandbox.enforced or executable is None:
+        sandbox, executable = self._describe_for_run(request)
+        if not sandbox.enforced:
             return await self._run_local(request, sandbox, on_stdout, on_stderr, interactive)
         wrapped = _wrap_request(request, executable)
         result = await self._controlled_local.run(
@@ -71,6 +62,21 @@ class BubblewrapSandboxRunner:
             interactive=interactive,
         )
         return SandboxRunResult(result.exit_code, result.stdout, result.stderr, sandbox)
+
+    def _describe_for_run(self, request: SandboxRequest) -> tuple[SandboxResult, Path]:
+        if not self._enabled:
+            return self._disabled_result(request), Path()
+        if request.profile in _PASSTHROUGH_PROFILES:
+            return (
+                self._passthrough_result(request, "profile permits privileged passthrough"),
+                Path(),
+            )
+        executable = self._probe()
+        if executable is None:
+            raise SandboxUnavailableError("bubblewrap executable not found")
+        self._validate_network(request)
+        validate_cwd_allowed(request.cwd, request.allowed_roots)
+        return self._enforced_result(request), executable
 
     async def _run_local(
         self,
@@ -122,6 +128,17 @@ class BubblewrapSandboxRunner:
             network=request.network,
             resource_limits=request.resource_limits,
             fallback_reason=reason,
+        )
+
+    def _enforced_result(self, request: SandboxRequest) -> SandboxResult:
+        return SandboxResult(
+            requested_profile=request.profile,
+            runner=self.name,
+            enabled=True,
+            enforced=True,
+            root=str(request.cwd),
+            network=request.network,
+            resource_limits=request.resource_limits,
         )
 
 

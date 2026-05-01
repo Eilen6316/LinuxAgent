@@ -24,7 +24,9 @@ from linuxagent.providers.errors import (
     ProviderRateLimitError,
     ProviderTimeoutError,
 )
+from linuxagent.sandbox import SandboxProfile
 from linuxagent.tools import ToolRuntimeLimits
+from linuxagent.tools.sandbox import ToolSandboxSpec, attach_tool_sandbox
 
 
 def _cfg(**overrides: object) -> APIConfig:
@@ -41,6 +43,13 @@ def _cfg(**overrides: object) -> APIConfig:
     }
     base.update(overrides)
     return APIConfig.model_validate(base)
+
+
+def _sandboxed(tool_obj):
+    return attach_tool_sandbox(
+        tool_obj,
+        ToolSandboxSpec(profile=SandboxProfile.READ_ONLY, max_output_chars=20000),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -99,9 +108,44 @@ async def test_complete_with_tools_resolves_tool_calls() -> None:
         ]
     )
     provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
-    out = await provider.complete_with_tools([HumanMessage(content="check nginx")], [lookup_status])
+    out = await provider.complete_with_tools(
+        [HumanMessage(content="check nginx")], [_sandboxed(lookup_status)]
+    )
     assert out == "systemctl status nginx"
     assert [tool.name for tool in model.bound_tools] == ["lookup_status"]
+
+
+async def test_complete_with_tools_rejects_unwrapped_tool_before_binding() -> None:
+    events: list[dict[str, Any]] = []
+
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    model = _ToolCallingModel([AIMessage(content="unreachable")])
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    with pytest.raises(ProviderError, match="missing ToolSandboxSpec"):
+        await provider.complete_with_tools(
+            [HumanMessage(content="check nginx")],
+            [lookup_status],
+            tool_observer=events.append,
+        )
+
+    assert model.bound_tools == []
+    assert events == [
+        {
+            "phase": "error",
+            "status": "denied",
+            "tool_name": "lookup_status",
+            "args": {},
+            "sandbox": None,
+            "output_preview": "tool is missing ToolSandboxSpec metadata",
+            "output_chars": len("tool is missing ToolSandboxSpec metadata"),
+            "truncated": False,
+        }
+    ]
 
 
 async def test_complete_with_tools_emits_tool_observer_events() -> None:
@@ -132,7 +176,7 @@ async def test_complete_with_tools_emits_tool_observer_events() -> None:
 
     await provider.complete_with_tools(
         [HumanMessage(content="check nginx")],
-        [lookup_status],
+        [_sandboxed(lookup_status)],
         tool_observer=events.append,
     )
 
@@ -163,7 +207,7 @@ async def test_complete_with_tools_truncates_tool_output() -> None:
 
     await provider.complete_with_tools(
         [HumanMessage(content="read")],
-        [read_big],
+        [_sandboxed(read_big)],
         tool_observer=events.append,
         tool_runtime_limits=ToolRuntimeLimits(max_output_chars=20, max_total_output_chars=20),
     )
@@ -194,7 +238,7 @@ async def test_complete_with_tools_redacts_tool_output() -> None:
 
     await provider.complete_with_tools(
         [HumanMessage(content="read")],
-        [read_secret],
+        [_sandboxed(read_secret)],
         tool_observer=events.append,
     )
 
@@ -232,7 +276,7 @@ async def test_complete_with_tools_redacts_structured_tool_output() -> None:
 
     await provider.complete_with_tools(
         [HumanMessage(content="read")],
-        [read_structured_secret],
+        [_sandboxed(read_structured_secret)],
         tool_observer=events.append,
     )
 
@@ -263,7 +307,7 @@ async def test_complete_with_tools_redacts_tool_exception_message() -> None:
 
     await provider.complete_with_tools(
         [HumanMessage(content="read")],
-        [failing_tool],
+        [_sandboxed(failing_tool)],
         tool_observer=events.append,
     )
 
@@ -272,6 +316,37 @@ async def test_complete_with_tools_redacts_tool_exception_message() -> None:
     assert "plain-token" not in events[1]["output_preview"]
     assert "password=***redacted***" in events[1]["output_preview"]
     assert "token=***redacted***" in events[1]["output_preview"]
+
+
+async def test_complete_with_tools_truncates_tool_exception_message() -> None:
+    events: list[dict[str, Any]] = []
+
+    @tool
+    async def failing_tool() -> str:
+        """Raise oversized error text."""
+        raise ValueError("x" * 500)
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "failing_tool", "args": {}, "id": "1", "type": "tool_call"}],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="read")],
+        [_sandboxed(failing_tool)],
+        tool_observer=events.append,
+        tool_runtime_limits=ToolRuntimeLimits(max_output_chars=80, max_total_output_chars=80),
+    )
+
+    assert events[1]["phase"] == "error"
+    assert events[1]["truncated"] is True
+    assert events[1]["output_chars"] <= 80
 
 
 async def test_complete_with_tools_times_out_tool_call() -> None:
@@ -296,7 +371,7 @@ async def test_complete_with_tools_times_out_tool_call() -> None:
 
     await provider.complete_with_tools(
         [HumanMessage(content="slow")],
-        [slow_tool],
+        [_sandboxed(slow_tool)],
         tool_observer=events.append,
         tool_runtime_limits=ToolRuntimeLimits(timeout_seconds=0.001),
     )
@@ -331,7 +406,7 @@ async def test_complete_with_tools_uses_configured_max_rounds() -> None:
     with pytest.raises(ProviderError, match="tool loop exceeded"):
         await provider.complete_with_tools(
             [HumanMessage(content="check nginx")],
-            [lookup_status],
+            [_sandboxed(lookup_status)],
             tool_runtime_limits=ToolRuntimeLimits(max_rounds=1),
         )
 
@@ -357,7 +432,9 @@ async def test_complete_with_tools_retries_on_rate_limit() -> None:
 
     model = _RetryingToolModel([AIMessage(content="systemctl status nginx")], failures=2)
     provider = BaseLLMProvider(_cfg(max_retries=5), model)  # type: ignore[arg-type]
-    out = await provider.complete_with_tools([HumanMessage(content="check nginx")], [lookup_status])
+    out = await provider.complete_with_tools(
+        [HumanMessage(content="check nginx")], [_sandboxed(lookup_status)]
+    )
     assert out == "systemctl status nginx"
     assert model.failures == 0
 

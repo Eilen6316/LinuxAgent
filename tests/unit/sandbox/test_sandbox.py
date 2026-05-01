@@ -167,6 +167,25 @@ async def test_local_runner_enforces_output_limit() -> None:
     assert "sandbox output limit exceeded" in result.stderr
 
 
+async def test_local_runner_enforces_shared_output_limit() -> None:
+    runner = LocalProcessSandboxRunner(enabled=True)
+    code = "import sys; sys.stdout.write('o' * 800); sys.stderr.write('e' * 800)"
+
+    result = await runner.run(
+        _request(
+            (sys.executable, "-c", code),
+            profile=SandboxProfile.PRIVILEGED_PASSTHROUGH,
+            limits={"output_bytes": 1024},
+        )
+    )
+
+    process_output_bytes = len(result.stdout.encode("utf-8")) + len(
+        result.stderr.replace("sandbox output limit exceeded", "").encode("utf-8")
+    )
+    assert process_output_bytes <= 1024 + len("\n[truncated:  ]\n")
+    assert "sandbox output limit exceeded" in result.stderr
+
+
 async def test_local_runner_timeout_kills_process_group(tmp_path: Path) -> None:
     runner = LocalProcessSandboxRunner(enabled=True)
     marker = tmp_path / "child-survived"
@@ -286,6 +305,37 @@ async def test_bubblewrap_run_path_keeps_local_process_controls(
     assert "sandbox output limit exceeded" in result.stderr
 
 
+async def test_bubblewrap_run_probes_only_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("LINUXAGENT_BWRAP_SINGLE_PROBE", "visible")
+    executable = tmp_path / "bwrap"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "import sys\n"
+        "separator = sys.argv.index('--')\n"
+        "os.execvp(sys.argv[separator + 1], sys.argv[separator + 1:])\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    runner = _CountingBubblewrapRunner(enabled=True, executable=executable)
+    code = "import os; print(os.environ.get('LINUXAGENT_BWRAP_SINGLE_PROBE', 'missing'))"
+
+    result = await runner.run(
+        _request(
+            (sys.executable, "-c", code),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+        )
+    )
+
+    assert runner.probe_count == 1
+    assert result.sandbox.enforced is True
+    assert result.stdout.strip() == "missing"
+
+
 def test_profile_mapping_prefers_destructive_capabilities() -> None:
     safety = SafetyResult(
         SafetyLevel.CONFIRM,
@@ -320,6 +370,16 @@ def test_profile_mapping_can_record_explicit_none_default() -> None:
     safety = SafetyResult(SafetyLevel.SAFE, capabilities=())
 
     assert profile_for_safety(safety, default_profile=SandboxProfile.NONE) is SandboxProfile.NONE
+
+
+class _CountingBubblewrapRunner(BubblewrapSandboxRunner):
+    def __init__(self, *, enabled: bool, executable: Path) -> None:
+        super().__init__(enabled=enabled, executable=executable)
+        self.probe_count = 0
+
+    def _probe(self) -> Path | None:
+        self.probe_count += 1
+        return super()._probe()
 
 
 def _request(

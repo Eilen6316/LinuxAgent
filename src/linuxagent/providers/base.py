@@ -112,6 +112,7 @@ class BaseLLMProvider(LLMProvider):
             return await self.complete(messages, **kwargs)
         tool_observer = _pop_tool_observer(kwargs)
         tool_limits = _pop_tool_runtime(kwargs)
+        await _ensure_tool_sandbox_specs(tools, tool_observer)
 
         bound_model = self._model.bind_tools(tools)
         history = list(messages)
@@ -233,6 +234,29 @@ def _coerce_ai_message(message: BaseMessage) -> AIMessage:
         content=_content_to_str(message.content),
         tool_calls=getattr(message, "tool_calls", []),
     )
+
+
+async def _ensure_tool_sandbox_specs(tools: list[BaseTool], observer: ToolObserver | None) -> None:
+    missing = [tool.name for tool in tools if tool_sandbox_record(tool) is None]
+    if not missing:
+        return
+    message = "tool is missing ToolSandboxSpec metadata"
+    for name in sorted(missing):
+        await _notify_tool_observer(
+            observer,
+            {
+                "phase": "error",
+                "status": "denied",
+                "tool_name": name,
+                "args": {},
+                "sandbox": None,
+                "output_preview": message,
+                "output_chars": len(message),
+                "truncated": False,
+            },
+        )
+    names = ", ".join(sorted(missing))
+    raise ProviderError(f"LLM tools missing ToolSandboxSpec metadata: {names}")
 
 
 async def _execute_tool_calls(

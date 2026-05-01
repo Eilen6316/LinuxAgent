@@ -8,6 +8,7 @@ import signal
 import sys
 from asyncio.subprocess import Process
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -165,11 +166,12 @@ async def _collect_output(
     stdout_parts: list[str] = []
     stderr_parts: list[str] = []
     limit = None if compatibility_mode else _output_limit(request.resource_limits)
+    budget = _OutputBudget(limit)
     try:
         await asyncio.wait_for(
             asyncio.gather(
-                _read_stream(process.stdout, stdout_parts, limit, on_stdout),
-                _read_stream(process.stderr, stderr_parts, limit, on_stderr),
+                _read_stream(process.stdout, stdout_parts, budget, on_stdout),
+                _read_stream(process.stderr, stderr_parts, budget, on_stderr),
                 process.wait(),
             ),
             timeout=request.timeout,
@@ -192,30 +194,27 @@ async def _collect_output(
 async def _read_stream(
     stream: asyncio.StreamReader | None,
     parts: list[str],
-    limit: int | None,
+    budget: _OutputBudget,
     callback: SandboxOutputCallback | None,
 ) -> None:
     if stream is None:
         return
-    used = 0
     while chunk := await stream.read(4096):
-        used = await _append_chunk(chunk, parts, used, limit, callback)
+        await _append_chunk(chunk, parts, budget, callback)
 
 
 async def _append_chunk(
     chunk: bytes,
     parts: list[str],
-    used: int,
-    limit: int | None,
+    budget: _OutputBudget,
     callback: SandboxOutputCallback | None,
-) -> int:
-    if limit is not None and used + len(chunk) > limit:
-        chunk = chunk[: max(limit - used, 0)]
-        if chunk:
-            await _append_text(chunk, parts, callback)
+) -> None:
+    accepted = budget.take(len(chunk))
+    if accepted < len(chunk):
+        if accepted > 0:
+            await _append_text(chunk[:accepted], parts, callback)
         raise _OutputLimitExceededError
     await _append_text(chunk, parts, callback)
-    return used + len(chunk)
 
 
 async def _append_text(
@@ -234,6 +233,20 @@ def _output_limit(limits: dict[str, int | float | None]) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+@dataclass
+class _OutputBudget:
+    limit: int | None
+    used: int = 0
+
+    def take(self, requested: int) -> int:
+        if self.limit is None:
+            return requested
+        remaining = max(self.limit - self.used, 0)
+        accepted = min(requested, remaining)
+        self.used += accepted
+        return accepted
 
 
 def _preexec_fn(limits: dict[str, int | float | None]) -> Callable[[], None]:
