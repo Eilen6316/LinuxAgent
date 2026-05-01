@@ -26,6 +26,7 @@ from .resume import (
     resume_list,
     session_title,
 )
+from .slash import slash_help, tools_help
 
 
 @dataclass
@@ -81,7 +82,12 @@ class LinuxAgent:
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
         self.context_manager.replace(await self._history(config))
         history = self.context_manager.snapshot()
-        state: Any = initial_state(user_input, source=CommandSource.USER, history=history)
+        state: Any = initial_state(
+            user_input,
+            source=CommandSource.USER,
+            history=history,
+            command_permissions=await self._command_permissions(config),
+        )
         while True:
             result = await self._ainvoke_with_cancel(state, config)
             if result is None:
@@ -150,16 +156,27 @@ class LinuxAgent:
             return stored
         return []
 
+    async def _command_permissions(self, config: RunnableConfig) -> tuple[str, ...]:
+        snapshot = await self.graph.aget_state(config)
+        values = getattr(snapshot, "values", {})
+        if isinstance(values, dict):
+            permissions = values.get("command_permissions")
+            if isinstance(permissions, tuple):
+                return permissions
+            if isinstance(permissions, list) and all(isinstance(item, str) for item in permissions):
+                return tuple(permissions)
+        return ()
+
     async def _handle_slash(self, line: str, thread_id: str) -> str | None:
         if not line.startswith("/"):
             return None
         command, _, rest = line.partition(" ")
         match command:
             case "/help":
-                await self.ui.print(_slash_help())
+                await self.ui.print(slash_help())
                 return thread_id
             case "/tools":
-                await self.ui.print(_tools_help(self.tool_names))
+                await self.ui.print(tools_help(self.tool_names))
                 return thread_id
             case "/resume":
                 return await self._handle_resume_command(rest.strip(), thread_id) or thread_id
@@ -271,21 +288,3 @@ class LinuxAgent:
     def _persist_active_history(self, thread_id: str) -> None:
         active = self.context_manager.snapshot()
         self.chat_service.replace_session(thread_id, active, title=session_title(active))
-
-
-def _slash_help() -> str:
-    return "\n".join(
-        [
-            "可用命令：",
-            "/help - 显示帮助",
-            "/resume - 查看本机保存的会话；随后输入编号恢复",
-            "/new 或 /clear - 开启一个空上下文新对话",
-            "/tools - 查看可用工具入口",
-            "/exit 或 /quit - 退出",
-        ]
-    )
-
-
-def _tools_help(tool_names: tuple[str, ...]) -> str:
-    names = ", ".join(tool_names) if tool_names else "当前没有启用 LangChain 工具"
-    return f"Slash 命令可直接调用本地功能；LLM 可用工具：{names}"

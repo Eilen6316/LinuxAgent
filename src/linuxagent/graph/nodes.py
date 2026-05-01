@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -12,7 +13,7 @@ from langgraph.types import Command, interrupt
 
 from ..audit import AuditLog
 from ..config.models import FilePatchConfig
-from ..interfaces import CommandSource, ExecutionResult, LLMProvider
+from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLevel
 from ..prompts_loader import build_analysis_prompt
 from ..runbooks import RunbookEngine
 from ..security import guard_execution_result
@@ -22,7 +23,7 @@ from ..tools import ToolRuntimeLimits
 from .common import span, trace_id
 from .execution import analysis_context, run_command, synthetic_result
 from .intent import make_parse_intent_node
-from .payloads import build_confirm_payload, decision, latency_ms, may_whitelist
+from .payloads import build_confirm_payload, decision, latency_ms, may_whitelist, permissions
 from .runbook_planning import next_plan_step_update
 from .safety_nodes import make_safety_check_node
 from .state import AgentState
@@ -75,17 +76,10 @@ def make_confirm_node(
         )
         payload = build_confirm_payload(state, audit_id)
         response = interrupt(payload)
-        with span(
-            telemetry, "hitl.confirm", current_trace_id, {"matched_rule": state.get("matched_rule")}
-        ):
-            user_decision = decision(response)
-            await audit.record_decision(
-                audit_id,
-                decision=user_decision,
-                latency_ms=latency_ms(response),
-                trace_id=current_trace_id,
-            )
-        if user_decision != "yes":
+        user_decision = await _record_confirm_decision(
+            audit, telemetry, state, response, audit_id, current_trace_id
+        )
+        if user_decision not in {"yes", "yes_all"}:
             return Command(
                 goto="respond_refused",
                 update={
@@ -94,16 +88,113 @@ def make_confirm_node(
                     "audit_id": audit_id,
                 },
             )
-        if may_whitelist(state, payload):
-            whitelist = getattr(command_service.executor, "whitelist", None)
-            if whitelist is not None and command is not None:
-                whitelist.add(command)
+        command_permissions = _updated_command_permissions(
+            state,
+            payload,
+            command_service,
+            allow_all=user_decision == "yes_all",
+        )
         return Command(
             goto="execute",
-            update={"trace_id": current_trace_id, "user_confirmed": True, "audit_id": audit_id},
+            update={
+                "trace_id": current_trace_id,
+                "user_confirmed": True,
+                "audit_id": audit_id,
+                "command_permissions": command_permissions,
+            },
         )
 
     return confirm_node
+
+
+async def _record_confirm_decision(
+    audit: AuditLog,
+    telemetry: TelemetryRecorder | None,
+    state: AgentState,
+    response: Any,
+    audit_id: str,
+    current_trace_id: str,
+) -> str:
+    with span(
+        telemetry, "hitl.confirm", current_trace_id, {"matched_rule": state.get("matched_rule")}
+    ):
+        user_decision = decision(response)
+        await audit.record_decision(
+            audit_id,
+            decision=user_decision,
+            latency_ms=latency_ms(response),
+            trace_id=current_trace_id,
+            permissions=permissions(response),
+        )
+    return user_decision
+
+
+def _updated_command_permissions(
+    state: AgentState,
+    payload: dict[str, Any],
+    command_service: CommandService,
+    *,
+    allow_all: bool,
+) -> tuple[str, ...]:
+    existing = tuple(state.get("command_permissions", ()))
+    if not may_whitelist(state, payload) or not _conversation_permissions_enabled(command_service):
+        return existing
+    candidates = _plan_commands(state) if allow_all else _current_command(state)
+    allowed = list(existing)
+    for command in candidates:
+        verdict = command_service.classify(command, source=CommandSource.LLM)
+        if verdict.level is SafetyLevel.BLOCK or not verdict.can_whitelist:
+            continue
+        if _has_destructive_capability(verdict.capabilities):
+            continue
+        key = _normalize_command(command)
+        if key is not None and key not in allowed:
+            allowed.append(key)
+    return tuple(allowed)
+
+
+def _current_command(state: AgentState) -> tuple[str, ...]:
+    command = state.get("pending_command")
+    return (command,) if command else ()
+
+
+def _plan_commands(state: AgentState) -> tuple[str, ...]:
+    plan = state.get("command_plan")
+    if plan is None:
+        return _current_command(state)
+    return tuple(item.command for item in plan.commands)
+
+
+def _normalize_command(command: str) -> str | None:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+    if not tokens:
+        return None
+    return " ".join(tokens)
+
+
+def _conversation_permissions_enabled(command_service: CommandService) -> bool:
+    executor = getattr(command_service, "executor", None)
+    return bool(getattr(executor, "session_whitelist_enabled", True))
+
+
+def _has_destructive_capability(capabilities: tuple[str, ...]) -> bool:
+    destructive_prefixes = (
+        "filesystem.delete",
+        "filesystem.truncate",
+        "block_device.",
+        "service.mutate",
+        "package.remove",
+        "container.mutate",
+        "kubernetes.",
+        "network.firewall",
+        "identity.mutate",
+        "cron.mutate",
+        "privilege.sudo",
+    )
+    return any(capability.startswith(destructive_prefixes) for capability in capabilities)
 
 
 def make_execute_node(

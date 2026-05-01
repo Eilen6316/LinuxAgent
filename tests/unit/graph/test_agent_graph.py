@@ -99,10 +99,11 @@ def _graph(
     tools: tuple[Any, ...] = (),
     tool_observer: Any | None = None,
     checkpointer: Any | None = None,
+    security_config: SecurityConfig | None = None,
 ):
     provider = _FakeProvider(responses)
     executor = LinuxCommandExecutor(
-        SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+        security_config or SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
     )
     deps = GraphDependencies(
         provider=provider,  # type: ignore[arg-type]
@@ -211,6 +212,115 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     trace_ids = {record["trace_id"] for record in audit_records}
     assert len(trace_ids) == 1
     assert None not in trace_ids
+
+
+async def test_graph_allow_all_is_scoped_to_conversation_state(tmp_path) -> None:
+    plan = json.dumps(
+        {
+            "goal": "inspect host",
+            "commands": [
+                {
+                    "command": "/bin/echo os",
+                    "purpose": "show os",
+                    "read_only": True,
+                    "target_hosts": [],
+                },
+                {
+                    "command": "/bin/echo nginx",
+                    "purpose": "show nginx",
+                    "read_only": True,
+                    "target_hosts": [],
+                },
+            ],
+        }
+    )
+    graph, _provider = _graph(tmp_path, [plan, "analysis ok"])
+    config = {"configurable": {"thread_id": "allow-all"}}
+
+    await graph.ainvoke(initial_state("inspect versions", source=CommandSource.USER), config=config)
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+    assert payload["permission_candidates"] == [
+        {"type": "Bash", "command": "/bin/echo os"},
+        {"type": "Bash", "command": "/bin/echo nginx"},
+    ]
+
+    resumed = await graph.ainvoke(
+        Command(
+            resume={
+                "decision": "yes_all",
+                "latency_ms": 1,
+                "permissions": {"allow": ["Bash(/bin/echo os)", "Bash(/bin/echo nginx)"]},
+            }
+        ),
+        config=config,
+    )
+
+    assert "analysis ok" in str(resumed["messages"][-1].content)
+    audit_records = [
+        json.loads(line)
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["event"] for record in audit_records].count("confirm_decision") == 1
+    decision_record = next(
+        record for record in audit_records if record["event"] == "confirm_decision"
+    )
+    assert decision_record["decision"] == "yes_all"
+    assert decision_record["permissions"]["allow"] == [
+        "Bash(/bin/echo os)",
+        "Bash(/bin/echo nginx)",
+    ]
+    snapshot = await graph.aget_state(config)
+    assert tuple(snapshot.values["command_permissions"]) == (
+        "/bin/echo os",
+        "/bin/echo nginx",
+    )
+    results = snapshot.values["runbook_results"]
+    assert [result.command for result in results] == ["/bin/echo os", "/bin/echo nginx"]
+
+
+async def test_graph_conversation_permissions_do_not_cross_threads(tmp_path) -> None:
+    plan = command_plan_json("/bin/echo scoped")
+    graph, _provider = _graph(tmp_path, [plan, "analysis allowed", plan])
+    other_config = {"configurable": {"thread_id": "other"}}
+
+    await graph.ainvoke(
+        initial_state(
+            "repeat",
+            source=CommandSource.USER,
+            command_permissions=("/bin/echo scoped",),
+        ),
+        config={"configurable": {"thread_id": "allowed"}},
+    )
+    result = await graph.ainvoke(
+        initial_state("repeat", source=CommandSource.USER),
+        config=other_config,
+    )
+
+    del result
+    snapshot = await graph.aget_state(other_config)
+    assert snapshot.tasks[0].interrupts[0].value["type"] == "confirm_command"
+
+
+async def test_graph_conversation_permissions_respect_config_toggle(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [command_plan_json("/bin/echo disabled")],
+        security_config=SecurityConfig(session_whitelist_enabled=False),
+    )
+    config = {"configurable": {"thread_id": "permission-disabled"}}
+
+    await graph.ainvoke(
+        initial_state(
+            "repeat",
+            source=CommandSource.USER,
+            command_permissions=("/bin/echo disabled",),
+        ),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.tasks[0].interrupts[0].value["type"] == "confirm_command"
 
 
 async def test_graph_pending_interrupt_survives_restart(tmp_path) -> None:

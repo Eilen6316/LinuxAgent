@@ -125,6 +125,10 @@ selected session stopped at a HITL confirmation, LinuxAgent reloads the local
 checkpoint and reopens the confirmation flow. Use `/new` to reset context inside
 a running CLI session and `/tools` to see available slash/tool entry points.
 Typing `/` opens the slash-command completion menu.
+When a multi-command LLM plan is confirmed, the prompt may offer
+`a=allow all`; that permission is scoped to the current conversation thread and
+the same thread when resumed with `/resume`. New conversations do not inherit
+it, and destructive or `never_whitelist` policy matches still ask every time.
 Input beginning with `!` is direct command mode: LinuxAgent executes the
 operator-authored command, streams stdout/stderr live, and records both
 `!<command>` and the system result into the active conversation context. It does
@@ -216,7 +220,8 @@ closed while explicit passthrough profiles remain auditable passthrough.
 |---|---|
 | User-authored read-only command | May run when policy returns `SAFE` |
 | First LLM-generated command | `CONFIRM` |
-| Destructive command | `CONFIRM` every time; never session-whitelisted |
+| Conversation-approved LLM command | May skip repeat confirmation only in the same conversation thread, including `/resume` of that thread |
+| Destructive command | `CONFIRM` every time; never conversation-whitelisted |
 | Command targeting root or sensitive paths | `BLOCK` when matched by policy |
 | SSH batch across two or more hosts | Explicit batch confirmation with target hosts and remote profiles |
 | Non-TTY confirmation request | Auto-deny |
@@ -256,12 +261,12 @@ Current documented baseline from `make test` on 2026-05-01:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 501 passing |
+| Unit tests | 511 passing |
 | Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
 | Sandbox boundary suite | covered by `make sandbox` |
 | Harness scenarios | 17 HITL / runbook / cluster / sandbox scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 87.61% (`--cov-fail-under=80`) |
+| Coverage | 87.60% (`--cov-fail-under=80`) |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 

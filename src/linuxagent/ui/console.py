@@ -15,7 +15,7 @@ from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 from rich.text import Text
 
 from ..interfaces import UserInterface
@@ -133,6 +133,24 @@ class ConsoleUI(UserInterface):
             _review_file_patch_diff(payload, self._console)
         if payload.get("type") == "confirm_file_patch" and len(files) > 1:
             return _file_patch_approval_response(files)
+        if _can_allow_conversation(payload):
+            choice = Prompt.ask(
+                "[bold]Allow this operation?[/] "
+                "([green]a[/]=allow all in this conversation/resume)",
+                choices=["y", "n", "a"],
+                default="n",
+                show_choices=False,
+            )
+            if choice == "a":
+                return {
+                    "decision": "yes_all",
+                    "permissions": {
+                        "allow": [
+                            f"Bash({item['command']})" for item in _permission_candidates(payload)
+                        ]
+                    },
+                }
+            return {"decision": "yes" if choice == "y" else "no"}
         approved = Confirm.ask("[bold]Allow this operation?[/]", default=False)
         return {"decision": "yes" if approved else "no"}
 
@@ -148,6 +166,25 @@ def _file_patch_approval_response(files: tuple[str, ...]) -> dict[str, Any]:
     if selected == files:
         return {"decision": "yes"}
     return {"decision": "yes", "selected_files": list(selected)}
+
+
+def _can_allow_conversation(payload: dict[str, Any]) -> bool:
+    return (
+        payload.get("type") == "confirm_command"
+        and bool(payload.get("can_whitelist", True))
+        and not payload.get("is_destructive", False)
+        and not payload.get("batch_hosts")
+        and bool(_permission_candidates(payload))
+    )
+
+
+def _permission_candidates(payload: dict[str, Any]) -> list[dict[str, str]]:
+    candidates = payload.get("permission_candidates") or []
+    return [
+        item
+        for item in candidates
+        if isinstance(item, dict) and isinstance(item.get("command"), str)
+    ]
 
 
 def _review_file_patch_diff(payload: dict[str, Any], console: Console) -> None:

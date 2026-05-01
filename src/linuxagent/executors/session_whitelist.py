@@ -1,8 +1,11 @@
 """In-process command whitelist for HITL downgrade (R-HITL-01).
 
-Once the user has approved an LLM-generated command, the whitelist lets the
-same command re-execute within the same process without another CONFIRM
-prompt. The whitelist:
+This is the low-level in-process whitelist used by direct executor callers.
+LangGraph HITL stores normal command permissions in per-thread graph state so
+they are scoped to the active conversation and `/resume` of that conversation.
+For callers that use this class directly, an approved LLM-generated command can
+re-execute within the same process without another CONFIRM prompt. The
+whitelist:
 
 - **Never persists** across process restarts (security invariant).
 - **Never accepts destructive commands** (R-HITL-03). ``add()`` silently drops

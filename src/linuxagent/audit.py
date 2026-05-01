@@ -62,16 +62,18 @@ class AuditLog:
         decision: str,
         latency_ms: int | None = None,
         trace_id: str | None = None,
+        permissions: dict[str, Any] | None = None,
     ) -> None:
-        self.append(
-            {
-                "event": "confirm_decision",
-                "audit_id": audit_id,
-                "decision": decision,
-                "latency_ms": latency_ms,
-                "trace_id": trace_id,
-            }
-        )
+        record: dict[str, Any] = {
+            "event": "confirm_decision",
+            "audit_id": audit_id,
+            "decision": decision,
+            "latency_ms": latency_ms,
+            "trace_id": trace_id,
+        }
+        if permissions is not None:
+            record["permissions"] = permissions
+        self.append(record)
 
     async def record_execution(
         self,

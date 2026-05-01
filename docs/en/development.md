@@ -201,6 +201,13 @@ Every graph run receives a `trace_id` that is attached to HITL audit records
 and local telemetry spans. The default telemetry backend writes JSONL to
 `~/.linuxagent/telemetry.jsonl`; it does not require an external OTel service.
 
+HITL "allow all" decisions are recorded as `decision: yes_all` with a
+Claude-style `permissions.allow` list such as `Bash(cat /etc/os-release)`.
+Those permissions live in LangGraph state for the current conversation thread
+and the same thread after `/resume`; they are not global executor permissions
+and are still blocked by `never_whitelist`, destructive capabilities, SSH batch
+confirmation, policy, and sandbox gates.
+
 Audit records are hash-chained with `prev_hash` and `hash`. Use
 `linuxagent audit verify` to validate the current audit log and locate the
 first tampered line.

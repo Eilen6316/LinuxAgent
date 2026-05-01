@@ -26,6 +26,7 @@ def build_confirm_payload(state: AgentState, audit_id: str) -> dict[str, Any]:
         "remote_preflight_commands": list(state.get("remote_preflight_commands", ())),
         "is_destructive": _is_destructive(command or "", state.get("safety_capabilities", ())),
         "can_whitelist": state.get("safety_can_whitelist", True),
+        "permission_candidates": _permission_candidates(state),
         **_plan_payload(state.get("command_plan"), state.get("runbook_step_index", 0)),
         **_runbook_payload(state.get("selected_runbook"), state.get("runbook_step_index", 0)),
     }
@@ -76,6 +77,19 @@ def latency_ms(response: Any) -> int | None:
     if isinstance(response, dict) and isinstance(response.get("latency_ms"), int):
         return int(response["latency_ms"])
     return None
+
+
+def permissions(response: Any) -> dict[str, Any] | None:
+    if isinstance(response, dict) and isinstance(response.get("permissions"), dict):
+        return dict(response["permissions"])
+    return None
+
+
+def _permission_candidates(state: AgentState) -> list[dict[str, str]]:
+    plan = state.get("command_plan")
+    if plan is None or len(plan.commands) <= 1:
+        return []
+    return [{"type": "Bash", "command": item.command} for item in plan.commands]
 
 
 def _plan_payload(plan: CommandPlan | None, step_index: int = 0) -> dict[str, Any]:

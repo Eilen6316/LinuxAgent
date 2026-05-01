@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from langgraph.types import Command
 
@@ -45,11 +46,24 @@ def make_safety_check_node(
         batch_hosts = _batch_hosts(selected, cluster_service)
         remote_profiles = _remote_profiles(selected, cluster_service)
         remote_preflight = _remote_preflight_commands(selected, cluster_service)
-        level = verdict.level
+        level = _permission_adjusted_level(
+            state,
+            command,
+            verdict,
+            batch_hosts,
+            permissions_enabled=_conversation_permissions_enabled(command_service),
+        )
         if batch_hosts and level is SafetyLevel.SAFE:
             level = SafetyLevel.CONFIRM
         return _safety_update(
-            current_trace_id, verdict, level, batch_hosts, remote_profiles, remote_preflight
+            current_trace_id,
+            verdict,
+            level,
+            batch_hosts,
+            remote_profiles,
+            remote_preflight,
+            matched_rule=_matched_rule(verdict, level, batch_hosts),
+            reason=_safety_reason(verdict, level, batch_hosts),
         )
 
     return safety_check_node
@@ -77,16 +91,15 @@ def _safety_update(
     batch_hosts: tuple[str, ...],
     remote_profiles: tuple[dict[str, object], ...],
     remote_preflight_commands: tuple[dict[str, object], ...],
+    *,
+    matched_rule: str | None,
+    reason: str | None,
 ) -> AgentState:
     return {
         "trace_id": trace,
         "safety_level": level,
-        "matched_rule": (
-            "BATCH_CONFIRM"
-            if batch_hosts and level is SafetyLevel.CONFIRM
-            else verdict.matched_rule
-        ),
-        "safety_reason": "batch command requires confirmation" if batch_hosts else verdict.reason,
+        "matched_rule": matched_rule,
+        "safety_reason": reason,
         "command_source": verdict.command_source,
         "safety_capabilities": verdict.capabilities,
         "safety_can_whitelist": _can_whitelist(verdict),
@@ -94,6 +107,74 @@ def _safety_update(
         "remote_profiles": remote_profiles,
         "remote_preflight_commands": remote_preflight_commands,
     }
+
+
+def _permission_adjusted_level(
+    state: AgentState,
+    command: str,
+    verdict: Any,
+    batch_hosts: tuple[str, ...],
+    *,
+    permissions_enabled: bool,
+) -> SafetyLevel:
+    if batch_hosts:
+        return cast(SafetyLevel, verdict.level)
+    if (
+        permissions_enabled
+        and verdict.level is SafetyLevel.CONFIRM
+        and verdict.command_source is CommandSource.LLM
+        and verdict.matched_rule == "LLM_FIRST_RUN"
+        and _can_whitelist(verdict)
+        and _has_permission(state, command)
+    ):
+        return SafetyLevel.SAFE
+    return cast(SafetyLevel, verdict.level)
+
+
+def _conversation_permissions_enabled(command_service: CommandService) -> bool:
+    executor = getattr(command_service, "executor", None)
+    return bool(getattr(executor, "session_whitelist_enabled", True))
+
+
+def _matched_rule(
+    verdict: Any,
+    level: SafetyLevel,
+    batch_hosts: tuple[str, ...],
+) -> str | None:
+    if batch_hosts and level is SafetyLevel.CONFIRM:
+        return "BATCH_CONFIRM"
+    if level is SafetyLevel.SAFE and verdict.level is SafetyLevel.CONFIRM:
+        return "CONVERSATION_PERMISSION"
+    return cast(str | None, verdict.matched_rule)
+
+
+def _safety_reason(
+    verdict: Any,
+    level: SafetyLevel,
+    batch_hosts: tuple[str, ...],
+) -> str | None:
+    if batch_hosts:
+        return "batch command requires confirmation"
+    if level is SafetyLevel.SAFE and verdict.level is SafetyLevel.CONFIRM:
+        return "allowed by current conversation permission"
+    return cast(str | None, verdict.reason)
+
+
+def _has_permission(state: AgentState, command: str) -> bool:
+    key = _normalize_command(command)
+    if key is None:
+        return False
+    return key in state.get("command_permissions", ())
+
+
+def _normalize_command(command: str) -> str | None:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+    if not tokens:
+        return None
+    return " ".join(tokens)
 
 
 def _can_whitelist(verdict: Any) -> bool:

@@ -253,6 +253,55 @@ def test_file_patch_approval_does_not_reexpand_full_diff(monkeypatch) -> None:
     assert asked == ["[bold]Allow this operation?[/]"]
 
 
+def test_command_approval_can_allow_all_in_conversation(monkeypatch) -> None:
+    asked: list[str] = []
+
+    def fake_prompt(message: str, **kwargs: Any) -> str:
+        del kwargs
+        asked.append(message)
+        return "a"
+
+    monkeypatch.setattr("linuxagent.ui.console.Prompt.ask", fake_prompt)
+    ui = ConsoleUI()
+
+    response = ui._approval_response(
+        {
+            "type": "confirm_command",
+            "can_whitelist": True,
+            "permission_candidates": [
+                {"type": "Bash", "command": "cat /etc/os-release"},
+                {"type": "Bash", "command": "nginx -v"},
+            ],
+        }
+    )
+
+    assert response == {
+        "decision": "yes_all",
+        "permissions": {
+            "allow": ["Bash(cat /etc/os-release)", "Bash(nginx -v)"],
+        },
+    }
+    assert "allow all in this conversation/resume" in asked[0]
+
+
+def test_command_approval_does_not_offer_allow_all_for_destructive_command(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", lambda message, *, default: True)
+    ui = ConsoleUI()
+
+    response = ui._approval_response(
+        {
+            "type": "confirm_command",
+            "is_destructive": True,
+            "can_whitelist": False,
+            "permission_candidates": [{"type": "Bash", "command": "rm -rf /tmp/x"}],
+        }
+    )
+
+    assert response == {"decision": "yes"}
+
+
 def test_file_patch_approval_applies_all_when_all_files_confirmed(monkeypatch) -> None:
     monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", lambda message, *, default: True)
     ui = ConsoleUI()

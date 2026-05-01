@@ -5,9 +5,10 @@ pre-tokenised argv list. No code path spawns a shell: no string argument to
 ``subprocess.run``, no ``os.system`` / ``os.popen``, no shell keyword.
 Repo-wide red-line checks enforce this in CI (R-SEC-01/R-SEC-06).
 
-Safety classification is delegated to :mod:`.safety`; whitelist lookup and
-promotion is delegated to :mod:`.session_whitelist`. The executor itself
-is thin: validate → classify → (optionally) spawn → collect → return.
+Safety classification is delegated to :mod:`.safety`; direct executor
+whitelist lookup is delegated to :mod:`.session_whitelist`. LangGraph
+conversation permissions are handled in graph state. The executor itself is
+thin: validate → classify → (optionally) spawn → collect → return.
 """
 
 from __future__ import annotations
@@ -220,6 +221,10 @@ class LinuxCommandExecutor(CommandExecutor):
     @property
     def whitelist(self) -> SessionWhitelist:
         return self._whitelist
+
+    @property
+    def session_whitelist_enabled(self) -> bool:
+        return self._config.session_whitelist_enabled
 
     def _sandbox_request(
         self,

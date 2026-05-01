@@ -59,9 +59,9 @@ api:
 security:
   command_timeout: 30.0
   max_command_length: 2048
-  # Session whitelist lets you approve an LLM-generated SAFE command once
-  # and reuse it within the same process. Destructive commands (R-HITL-03)
-  # are NEVER whitelisted, regardless of this flag.
+  # Conversation permissions let you approve LLM-generated SAFE commands for
+  # the current conversation thread and the same thread after /resume.
+  # Destructive commands (R-HITL-03) are NEVER whitelisted, regardless of this flag.
   session_whitelist_enabled: true
 
 policy:

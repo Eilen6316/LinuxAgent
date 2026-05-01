@@ -61,7 +61,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
 | Runbooks | 11 YAML runbooks supplied as planner guidance, not pre-LLM hard routes |
 | Human-in-the-Loop | LangGraph `interrupt()` + session resume for controlled operator workflows |
-| Session whitelist | Approved SAFE commands skip confirmation within the same process; destructive commands never enter |
+| Conversation permissions | Approved SAFE commands can skip confirmation only within the same conversation thread, including `/resume`; destructive commands never enter |
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
@@ -226,7 +226,7 @@ batch confirmation, and audit metadata.
 | Policy | Previous | Current `v4` |
 |---|---|---|
 | First model-generated command | runs directly | forced CONFIRM (`LLM_FIRST_RUN`) |
-| Re-running an approved command | every run re-prompts | whitelisted within the session, cleared on exit |
+| Re-running an approved command | every run re-prompts | allowed only within the same conversation thread, including `/resume` of that thread |
 | Destructive commands | string blacklist | token match + raw scan + subcommand regex, **never** whitelisted |
 | Batch cluster operations | silent spread | hosts ≥ `cluster.batch_confirm_threshold` (default 2) forces CONFIRM; shell syntax is blocked before SSH; payload shows remote profiles |
 | Non-interactive environment | can be bypassed | no-TTY confirm auto-returns `non_tty_auto_deny` |
@@ -236,8 +236,8 @@ batch confirmation, and audit metadata.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **Current documented baseline: 501 passing; Anthropic compatibility can be verified when the extra is installed** |
-| Coverage | 0 | **87.61%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
+| Unit tests | 0 | **Current documented baseline: 511 passing; Anthropic compatibility can be verified when the extra is installed** |
+| Coverage | 0 | **87.60%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI checks command, SSH, HITL, code-structure, and sandbox bypass red lines |
 
@@ -357,7 +357,7 @@ linuxagent check
 | `api` | `max_retries` | `3` | Exponential-backoff retry attempts |
 | `security` | `command_timeout` | `30.0` | Max local command runtime |
 | `security` | `max_command_length` | `2048` | Per-command character cap |
-| `security` | `session_whitelist_enabled` | `true` | Toggle the session whitelist |
+| `security` | `session_whitelist_enabled` | `true` | Toggle conversation-scoped command permissions |
 | `file_patch` | `allow_roots` | `[".", "/tmp"]` | Roots where file patch tools may read and write |
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | Matching paths are shown as elevated-risk patch confirmations |
 | `file_patch` | `allow_permission_changes` | `true` | Allows patch plans to declare chmod-style permission changes |
@@ -501,7 +501,10 @@ drwxr-xr-x  12 user user 4096 ...
 Twelve subdirectories and a few files, permissions 755/644, owned by user.
 ```
 
-Ask "list the files" again in the same session — `ls -la` is in the whitelist now, so it runs straight through without another confirmation.
+Ask "list the files" again in the same resumed conversation thread — `ls -la`
+can run straight through without another confirmation if it was allowed for
+that conversation. Starting `/new` or a different saved session does not inherit
+that permission.
 
 ### Scenario 2: destructive command (CONFIRM every time)
 

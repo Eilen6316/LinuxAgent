@@ -47,6 +47,7 @@ class AgentState(TypedDict, total=False):
     safety_reason: str | None
     safety_capabilities: tuple[str, ...]
     safety_can_whitelist: bool
+    command_permissions: tuple[str, ...]
 
     # Populated by HITL batch detector (services layer).
     batch_hosts: tuple[str, ...]
@@ -66,6 +67,7 @@ def initial_state(
     *,
     source: CommandSource = CommandSource.USER,
     history: list[BaseMessage] | None = None,
+    command_permissions: tuple[str, ...] = (),
 ) -> AgentState:
     """Convenience: seed an empty :class:`AgentState` for a single turn."""
     prior_messages = [] if history is None else list(history)
@@ -92,6 +94,7 @@ def initial_state(
         safety_reason=None,
         safety_capabilities=(),
         safety_can_whitelist=True,
+        command_permissions=command_permissions,
         batch_hosts=(),
         remote_profiles=(),
         remote_preflight_commands=(),

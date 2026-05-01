@@ -25,7 +25,7 @@ class UserInterface(ABC):
         The returned mapping is fed back to the graph via
         ``Command(resume=...)``. It must contain at least::
 
-            {"decision": "yes" | "no" | "non_tty_auto_deny" | "timeout",
+            {"decision": "yes" | "yes_all" | "no" | "non_tty_auto_deny" | "timeout",
              "latency_ms": int}
 
         When running without a controlling TTY the implementation must return
