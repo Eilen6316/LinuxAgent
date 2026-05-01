@@ -11,7 +11,7 @@ from typing import Any
 from langchain_core.tools import BaseTool
 
 from ..sandbox import SandboxProfile
-from ..security import redact_text
+from ..security import redact_record, redact_text
 
 SANDBOX_METADATA_KEY = "linuxagent_sandbox"
 
@@ -77,14 +77,14 @@ async def invoke_tool_with_sandbox(
         )
     except Exception as exc:  # noqa: BLE001 - tool failures are returned to the model
         status = _error_status(exc)
-        content = _structured_error(tool.name, status, str(exc))
+        content = _structured_error(tool.name, status, _redacted_output(str(exc)))
         return ToolRunResult(
             content=content,
             event=_tool_event(tool, args, "error", status, content),
             output_chars=len(content),
         )
 
-    content = redact_text(_tool_output_to_str(raw_result)).text
+    content = _redacted_output(raw_result)
     limit = min(limits.max_output_chars, max(remaining_total_chars, 0))
     content, truncated = _truncate(content, limit)
     status = "truncated" if truncated else "allowed"
@@ -113,6 +113,20 @@ def _tool_output_to_str(result: Any) -> str:
     if isinstance(result, str):
         return result
     return json.dumps(result, ensure_ascii=False, default=str)
+
+
+def _redacted_output(result: Any) -> str:
+    if isinstance(result, str):
+        return redact_text(result).text
+    if isinstance(result, dict):
+        return json.dumps(redact_record(result), ensure_ascii=False, default=str)
+    if isinstance(result, list):
+        return json.dumps(
+            [redact_record({"value": item})["value"] for item in result],
+            ensure_ascii=False,
+            default=str,
+        )
+    return redact_text(_tool_output_to_str(result)).text
 
 
 def _truncate(content: str, limit: int) -> tuple[str, bool]:

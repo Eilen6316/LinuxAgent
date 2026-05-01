@@ -204,6 +204,76 @@ async def test_complete_with_tools_redacts_tool_output() -> None:
     assert "password=***redacted***" in events[1]["output_preview"]
 
 
+async def test_complete_with_tools_redacts_structured_tool_output() -> None:
+    events: list[dict[str, Any]] = []
+
+    @tool
+    async def read_structured_secret() -> dict[str, str]:
+        """Return structured sensitive data."""
+        return {"password": "hunter2", "token": "plain-token", "status": "ok"}
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "read_structured_secret",
+                        "args": {},
+                        "id": "1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="read")],
+        [read_structured_secret],
+        tool_observer=events.append,
+    )
+
+    assert "hunter2" not in events[1]["output_preview"]
+    assert "plain-token" not in events[1]["output_preview"]
+    assert '"password": "***redacted***"' in events[1]["output_preview"]
+    assert '"token": "***redacted***"' in events[1]["output_preview"]
+
+
+async def test_complete_with_tools_redacts_tool_exception_message() -> None:
+    events: list[dict[str, Any]] = []
+
+    @tool
+    async def failing_tool() -> str:
+        """Raise sensitive error text."""
+        raise ValueError("password=hunter2 token=plain-token")
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "failing_tool", "args": {}, "id": "1", "type": "tool_call"}],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="read")],
+        [failing_tool],
+        tool_observer=events.append,
+    )
+
+    assert events[1]["phase"] == "error"
+    assert "hunter2" not in events[1]["output_preview"]
+    assert "plain-token" not in events[1]["output_preview"]
+    assert "password=***redacted***" in events[1]["output_preview"]
+    assert "token=***redacted***" in events[1]["output_preview"]
+
+
 async def test_complete_with_tools_times_out_tool_call() -> None:
     events: list[dict[str, Any]] = []
 
