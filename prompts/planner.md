@@ -62,7 +62,7 @@ schema. Do not include markdown or prose:
   "goal": "short operator goal",
   "commands": [
     {{
-      "command": "single shell command",
+      "command": "single argv-safe command string",
       "purpose": "why this command is needed",
       "read_only": true,
       "target_hosts": []
@@ -91,9 +91,12 @@ installation when the user also asked for configuration, password changes,
 service startup, or verification. Prefer non-interactive package-manager flags
 and non-interactive administration commands over terminal clients.
 
-Each command string is executed without a shell. Do not use OS command chaining,
-pipes, redirects, command substitution, or fallback operators such as `||`;
-represent each fallback as a separate command step.
+Each command string is parsed with `shlex` and executed as an argv list without
+a shell. Do not use OS command chaining, pipes, redirects, environment
+assignment prefixes, command substitution, or fallback operators such as `||`;
+represent each fallback as a separate command step. Do not add shell
+redirections like `2>&1`; stdout and stderr are captured separately by the
+executor.
 
 For static local file creation, code edits, config edits, script edits, or other
 file mutations whose final content is fully known at planning time, prefer a

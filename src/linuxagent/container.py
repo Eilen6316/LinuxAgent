@@ -32,7 +32,7 @@ from .intelligence import (
     PatternAnalyzer,
     RecommendationEngine,
 )
-from .interfaces import LLMProvider
+from .interfaces import ExecutionResult, LLMProvider
 from .policy import PolicyEngine, runtime_policy_config
 from .providers import provider_factory
 from .runbooks import RunbookEngine, find_runbooks_dir, load_runbooks
@@ -313,6 +313,11 @@ class Container:
             if stream in {"stdout", "stderr"}:
                 text = str(event.get("text") or "")
                 await self.ui().print_raw(text, stderr=stream == "stderr")
+                return
+            if stream == "result":
+                result = event.get("result")
+                if isinstance(result, ExecutionResult):
+                    await self.ui().print_execution_result(result)
 
         return observe
 

@@ -110,6 +110,14 @@ def _multi_command_plan_json(commands: list[str]) -> str:
     return json.dumps(payload)
 
 
+async def _print_result_events(ui: _UI, event: dict[str, Any]) -> None:
+    if event.get("type") != "command" or event.get("phase") != "result":
+        return
+    result = event.get("result")
+    if isinstance(result, ExecutionResult):
+        await ui.print_execution_result(result)
+
+
 class _Monitoring:
     async def start(self) -> None:
         return None
@@ -197,6 +205,34 @@ async def test_agent_runtime_continues_runbook_guided_plan_after_first_confirm(
     analysis_prompt = str(provider.complete_messages[-1][-1].content)
     assert "/bin/echo first" in analysis_prompt
     assert "/bin/echo second" in analysis_prompt
+
+
+@pytest.mark.integration
+async def test_agent_runtime_prints_command_results_from_runtime_events(
+    tmp_path: Path,
+) -> None:
+    provider = _Provider(
+        [
+            _multi_command_plan_json(["/bin/echo first", "/bin/echo second"]),
+            "visible analysis",
+        ]
+    )
+    ui = _UI({"decision": "yes_all", "latency_ms": 1})
+    agent = _agent(
+        tmp_path,
+        provider=provider,
+        ui=ui,
+        runtime_observer=lambda event: _print_result_events(ui, event),
+    )
+
+    result = await agent.run_turn("visible execution", thread_id="visible-execution")
+
+    assert result["execution_results_visible"] is True
+    assert [item.command for item in ui.execution_results] == [
+        "/bin/echo first",
+        "/bin/echo second",
+    ]
+    assert ui.printed == ["visible analysis"]
 
 
 @pytest.mark.integration
@@ -291,6 +327,7 @@ def _agent(
     cluster_service: ClusterService | None = None,
     runbook_engine: RunbookEngine | None = None,
     command_plan_config: CommandPlanConfig | None = None,
+    runtime_observer: Any | None = None,
 ) -> LinuxAgent:
     command_service = CommandService(
         LinuxCommandExecutor(
@@ -306,6 +343,7 @@ def _agent(
             cluster_service=cluster_service,
             runbook_engine=runbook_engine,
             command_plan_config=command_plan_config or CommandPlanConfig(),
+            runtime_observer=runtime_observer,
         )
     )
     return LinuxAgent(

@@ -98,6 +98,7 @@ def _graph(
     file_patch_config: FilePatchConfig | None = None,
     tools: tuple[Any, ...] = (),
     tool_observer: Any | None = None,
+    runtime_observer: Any | None = None,
     checkpointer: Any | None = None,
     security_config: SecurityConfig | None = None,
 ):
@@ -115,6 +116,7 @@ def _graph(
         runbook_engine=runbook_engine,
         file_patch_config=file_patch_config or FilePatchConfig(),
         tool_observer=tool_observer,
+        runtime_observer=runtime_observer,
     )
     return build_agent_graph(deps), provider
 
@@ -976,7 +978,7 @@ async def test_graph_cluster_execution_blocks_remote_shell_syntax_before_confirm
     )
 
     assert "已阻止执行" in str(result["messages"][-1].content)
-    assert "remote shell metacharacter" in str(result["messages"][-1].content)
+    assert "argv-safe" in str(result["messages"][-1].content)
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
 
@@ -1278,6 +1280,29 @@ async def test_graph_blocks_non_json_command_plan(tmp_path) -> None:
 
     assert "已阻止执行" in str(result["messages"][-1].content)
     assert "JSON CommandPlan" in str(result["messages"][-1].content)
+
+
+async def test_graph_retries_command_plan_with_shell_syntax(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [
+            command_plan_json("ps aux --sort=-%cpu | head -6"),
+            command_plan_json("ps -eo pid,ppid,pcpu,pmem,comm,args --sort=-pcpu"),
+        ],
+    )
+    config = {"configurable": {"thread_id": "shell-syntax-plan-retry"}}
+
+    await graph.ainvoke(
+        initial_state("show top cpu process", source=CommandSource.USER), config=config
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["pending_command"] == (
+        "ps -eo pid,ppid,pcpu,pmem,comm,args --sort=-pcpu"
+    )
+    retry_prompt = str(provider.complete_messages[-1][-1].content)
+    assert "argv-safe" in retry_prompt
+    assert "ps aux --sort=-%cpu | head -6" in retry_prompt
 
 
 async def test_graph_retries_tool_planning_parse_errors_into_file_patch_plan(

@@ -66,6 +66,37 @@ def test_parse_command_plan_accepts_cluster_wildcard_target() -> None:
     assert plan.primary.target_hosts == ("*",)
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "ps aux --sort=-%cpu | head -6",
+        "dpkg -l nginx 2>/dev/null || rpm -q nginx",
+        "rpm -q nginx; ls /usr/sbin/nginx",
+        "nginx -v 2>&1",
+        "echo $(date)",
+        "echo `date`",
+        "FOO=bar env",
+    ],
+)
+def test_parse_command_plan_rejects_shell_syntax(command: str) -> None:
+    with pytest.raises(CommandPlanParseError, match="argv-safe"):
+        parse_command_plan(command_plan_json(command))
+
+
+def test_parse_command_plan_allows_quoted_python_code_with_semicolon() -> None:
+    plan = parse_command_plan(command_plan_json("python3 -c 'import pathlib; print(1)'"))
+
+    assert plan.primary.command == "python3 -c 'import pathlib; print(1)'"
+
+
+def test_parse_command_plan_rejects_shell_syntax_in_verification_commands() -> None:
+    payload = json.loads(command_plan_json("/bin/echo ok"))
+    payload["verification_commands"] = ["ps aux | head -5"]
+
+    with pytest.raises(CommandPlanParseError, match="argv-safe"):
+        parse_command_plan(json.dumps(payload))
+
+
 def test_parse_command_plan_rejects_non_json_text() -> None:
     with pytest.raises(CommandPlanParseError, match="JSON CommandPlan"):
         parse_command_plan("/bin/echo legacy")

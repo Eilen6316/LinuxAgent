@@ -21,7 +21,7 @@ from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
 from .common import span, trace_id
 from .events import RuntimeEventObserver, notify_event
-from .execution import analysis_context, run_command, synthetic_result
+from .execution import analysis_context, notify_command_result, run_command, synthetic_result
 from .intent import make_parse_intent_node
 from .payloads import build_confirm_payload, decision, latency_ms, may_whitelist, permissions
 from .runbook_planning import next_plan_step_update
@@ -252,7 +252,10 @@ def make_execute_node(
         except Exception as exc:  # noqa: BLE001 - graph returns error state instead of crashing
             result = synthetic_result(command, 1, "", str(exc))
         await _record_command_execution(audit, state, result, current_trace_id)
+        await notify_command_result(runtime_observer, current_trace_id, result)
         update: AgentState = {"trace_id": current_trace_id, "execution_result": result}
+        if runtime_observer is not None:
+            update["execution_results_visible"] = True
         plan = state.get("command_plan")
         if plan is not None:
             update["runbook_results"] = (*state.get("runbook_results", ()), result)

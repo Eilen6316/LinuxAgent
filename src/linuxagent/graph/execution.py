@@ -65,6 +65,26 @@ async def run_command(
     return await _run_local_command(state, command, command_service, trace_id, event_observer)
 
 
+async def notify_command_result(
+    observer: RuntimeEventObserver | None,
+    trace_id: str,
+    result: ExecutionResult,
+) -> None:
+    if observer is None:
+        return
+    await notify_event(
+        observer,
+        {
+            "type": "command",
+            "phase": "result",
+            "command": result.command,
+            "trace_id": trace_id,
+            "exit_code": result.exit_code,
+            "result": result,
+        },
+    )
+
+
 async def _run_local_command(
     state: AgentState,
     command: str,

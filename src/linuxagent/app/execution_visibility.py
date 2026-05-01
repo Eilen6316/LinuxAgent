@@ -8,6 +8,8 @@ from ..interfaces import ExecutionResult, UserInterface
 
 
 async def print_execution_results(ui: UserInterface, state: dict[str, Any]) -> None:
+    if state.get("execution_results_visible"):
+        return
     printer = getattr(ui, "print_execution_result", None)
     if not callable(printer):
         return

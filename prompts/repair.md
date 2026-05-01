@@ -10,6 +10,8 @@ Failed command results:
 The previous plan did not complete successfully. Return only a JSON CommandPlan
 with the next recovery commands needed to finish the original request. Do not
 end with analysis. Do not repeat failed commands unless you changed the command.
-Do not chain OS commands with `||`, `&&`, pipes, redirects, or command
+Each command string is parsed with `shlex` and executed as an argv list without
+a shell. Do not chain OS commands with `||`, `&&`, pipes, redirects,
+environment assignment prefixes, shell redirections like `2>&1`, or command
 substitution; put fallbacks in separate command steps. Prefer non-interactive
 administration commands over terminal clients.

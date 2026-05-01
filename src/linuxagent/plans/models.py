@@ -4,11 +4,33 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
+_SHELL_CONTROL_TOKENS = frozenset(
+    {
+        "|",
+        "||",
+        "&",
+        "&&",
+        ";",
+        "(",
+        ")",
+        "<",
+        ">",
+        "<<",
+        ">>",
+        "<>",
+        "<&",
+        ">&",
+        "<<-",
+        ">|",
+    }
+)
+_SHELL_ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*")
 
 
 class CommandPlanParseError(ValueError):
@@ -34,6 +56,11 @@ class PlannedCommand(BaseModel):
     purpose: str = Field(min_length=1)
     read_only: bool
     target_hosts: tuple[str, ...] = ()
+
+    @field_validator("command")
+    @classmethod
+    def _command_is_argv_safe(cls, command: str) -> str:
+        return _validate_argv_safe_command(command)
 
 
 class CommandPlan(BaseModel):
@@ -69,7 +96,7 @@ class CommandPlan(BaseModel):
     )
     @classmethod
     def _strip_empty_items(cls, items: tuple[str, ...]) -> tuple[str, ...]:
-        return tuple(item.strip() for item in items if item.strip())
+        return tuple(_validate_argv_safe_command(item.strip()) for item in items if item.strip())
 
     @property
     def primary(self) -> PlannedCommand:
@@ -125,6 +152,33 @@ def _coerce_command_item(item: Any) -> Any:
     if isinstance(item, dict) and isinstance(item.get("command"), str):
         return item["command"]
     return item
+
+
+def _validate_argv_safe_command(command: str) -> str:
+    tokens = _shell_tokens(command)
+    if not tokens:
+        raise ValueError("command must not be empty")
+    offending = next((token for token in tokens if token in _SHELL_CONTROL_TOKENS), None)
+    if offending is not None:
+        raise ValueError(
+            f"command must be argv-safe; shell control operator {offending!r} is not supported"
+        )
+    if any("`" in token for token in tokens):
+        raise ValueError("command must be argv-safe; shell backtick substitution is not supported")
+    if _SHELL_ENV_ASSIGNMENT.fullmatch(tokens[0]):
+        raise ValueError(
+            "command must be argv-safe; leading environment assignments are not supported"
+        )
+    return command
+
+
+def _shell_tokens(command: str) -> list[str]:
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        return list(lexer)
+    except ValueError as exc:
+        raise ValueError(f"command shell syntax is invalid: {exc}") from exc
 
 
 def _format_validation_error(exc: ValidationError, model_name: str = "CommandPlan") -> str:

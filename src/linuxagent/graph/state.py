@@ -60,6 +60,7 @@ class AgentState(TypedDict, total=False):
     # Populated after confirm_node / execute_node.
     user_confirmed: bool
     execution_result: ExecutionResult | None
+    execution_results_visible: bool
 
     # Audit correlation ID — one per HITL round-trip.
     audit_id: str | None
@@ -106,5 +107,6 @@ def initial_state(
         remote_preflight_commands=(),
         user_confirmed=False,
         execution_result=None,
+        execution_results_visible=False,
         audit_id=None,
     )

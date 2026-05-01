@@ -247,6 +247,10 @@ async def _recover_plan_parse_error(
     error: str,
     rejected_response: str,
 ) -> CommandPlan | FilePatchPlan | NoChangePlan | AgentState:
+    if _should_retry_parse_error(error):
+        return await _retry_plan_or_error(
+            context, messages, user_text, current_trace_id, error, rejected_response
+        )
     if _should_fallback_to_direct_answer(error):
         return await _fallback_direct_answer(
             context.provider,
@@ -262,6 +266,10 @@ async def _recover_plan_parse_error(
     return await _retry_plan_or_error(
         context, messages, user_text, current_trace_id, error, rejected_response
     )
+
+
+def _should_retry_parse_error(error: str) -> bool:
+    return "argv-safe" in error
 
 
 async def _route_intent(
@@ -336,6 +344,8 @@ async def _retry_plan_or_error(
     )
     if isinstance(retry_plan, CommandPlan | FilePatchPlan | NoChangePlan):
         return retry_plan
+    if _should_retry_parse_error(error) and not _should_retry_parse_error(retry_plan):
+        return _parse_error_update(current_trace_id, error)
     if _should_fallback_to_direct_answer(retry_plan):
         return await _fallback_direct_answer(
             context.provider,
