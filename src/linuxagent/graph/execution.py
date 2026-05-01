@@ -7,8 +7,12 @@ from collections.abc import Mapping
 from ..config.models import ClusterHost
 from ..execution_display import execution_display_text
 from ..interfaces import ExecutionResult
+from ..security import redact_text
 from ..services import ClusterService, CommandService
+from .events import RuntimeEventObserver, notify_event
 from .state import AgentState
+
+STREAM_CHUNK_MAX_CHARS = 8000
 
 
 def synthetic_result(command: str, exit_code: int, stdout: str, stderr: str) -> ExecutionResult:
@@ -39,6 +43,7 @@ async def run_command(
     cluster_service: ClusterService | None,
     *,
     trace_id: str,
+    event_observer: RuntimeEventObserver | None = None,
 ) -> ExecutionResult:
     selected_hosts = state.get("selected_hosts", ())
     if selected_hosts and cluster_service is not None:
@@ -59,7 +64,46 @@ async def run_command(
         )
     if state.get("matched_rule") == "INTERACTIVE":
         return await command_service.run_interactive(command)
-    return await command_service.run(command)
+    if event_observer is None:
+        return await command_service.run(command)
+    await notify_event(event_observer, {"type": "command", "phase": "start", "command": command})
+    result = await command_service.run_streaming(
+        command,
+        on_stdout=lambda text: _stream_command_output(event_observer, command, "stdout", text),
+        on_stderr=lambda text: _stream_command_output(event_observer, command, "stderr", text),
+    )
+    await notify_event(
+        event_observer,
+        {
+            "type": "command",
+            "phase": "finish",
+            "command": command,
+            "exit_code": result.exit_code,
+        },
+    )
+    return result
+
+
+async def _stream_command_output(
+    observer: RuntimeEventObserver,
+    command: str,
+    stream: str,
+    text: str,
+) -> None:
+    redacted = redact_text(text)
+    output = redacted.text
+    if len(output) > STREAM_CHUNK_MAX_CHARS:
+        output = f"{output[:STREAM_CHUNK_MAX_CHARS]}\n[stream chunk truncated]"
+    await notify_event(
+        observer,
+        {
+            "type": "command",
+            "phase": stream,
+            "command": command,
+            "text": output,
+            "redacted_count": redacted.count,
+        },
+    )
 
 
 def aggregate_cluster_results(

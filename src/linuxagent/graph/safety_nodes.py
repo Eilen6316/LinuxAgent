@@ -14,6 +14,7 @@ from ..interfaces import CommandSource, SafetyLevel
 from ..services import ClusterService, CommandService
 from ..telemetry import TelemetryRecorder
 from .common import span, trace_id
+from .events import RuntimeEventObserver, notify_event
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -23,6 +24,7 @@ def make_safety_check_node(
     command_service: CommandService,
     cluster_service: ClusterService | None = None,
     telemetry: TelemetryRecorder | None = None,
+    runtime_observer: RuntimeEventObserver | None = None,
 ) -> Node:
     async def safety_check_node(state: AgentState) -> AgentState:
         current_trace_id = trace_id(state)
@@ -30,6 +32,10 @@ def make_safety_check_node(
         if not command:
             return _empty_command_update(current_trace_id, state)
         source = state.get("command_source") or CommandSource.USER
+        await notify_event(
+            runtime_observer,
+            {"type": "activity", "phase": "policy", "command": command},
+        )
         with span(telemetry, "policy.evaluate", current_trace_id, {"command_source": source.value}):
             verdict = command_service.classify(command, source=source)
         sandbox_preview = _sandbox_preview(command_service, command, source)

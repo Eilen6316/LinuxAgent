@@ -61,6 +61,7 @@ class _FakeUI:
         self.resume_choice: str | None = None
         self.resume_selector_enabled = False
         self.resume_sessions: list[Any] = []
+        self.activity_visible: bool | None = None
 
     async def input_stream(self):
         for item in self._inputs:
@@ -75,6 +76,9 @@ class _FakeUI:
 
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
         self.raw_printed.append((text, stderr))
+
+    def set_activity_visible(self, visible: bool) -> None:
+        self.activity_visible = visible
 
     async def wait_for_cancel(self) -> str:
         if self.cancel_immediately:
@@ -328,6 +332,16 @@ async def test_history_slash_command_is_removed(tmp_path) -> None:
 
     assert graph.calls == []
     assert "未知命令" in "\n".join(agent.ui.printed)  # type: ignore[attr-defined]
+
+
+async def test_trace_slash_command_toggles_activity_output(tmp_path) -> None:
+    ui = _FakeUI(inputs=["/trace off", "/exit"])
+    agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui)
+
+    await agent.run(thread_id="cli")
+
+    assert ui.activity_visible is False
+    assert ui.printed == ["Trace/activity output is now hidden."]
 
 
 async def test_resume_switches_to_saved_session_context(tmp_path) -> None:

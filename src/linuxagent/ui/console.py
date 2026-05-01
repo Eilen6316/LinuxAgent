@@ -48,6 +48,7 @@ class ConsoleUI(UserInterface):
         self._theme = theme
         self._prompt_symbol = prompt_symbol
         self._history_path = history_path or (Path.home() / ".linuxagent" / "prompt_history")
+        self._activity_visible = True
         self._prompt_session = PromptSessionManager(
             theme=theme,
             prompt_symbol=prompt_symbol,
@@ -90,6 +91,13 @@ class ConsoleUI(UserInterface):
         style = "green" if result.exit_code == 0 else "red"
         title = f"Command result · exit {result.exit_code}"
         self._console.print(Panel(Text(display.text), title=title, border_style=style))
+
+    async def print_activity(self, text: str) -> None:
+        if self._activity_visible:
+            self._console.print(Text(text, style="dim"))
+
+    def set_activity_visible(self, visible: bool) -> None:
+        self._activity_visible = visible
 
     def supports_resume_selector(self) -> bool:
         return sys.stdin.isatty()

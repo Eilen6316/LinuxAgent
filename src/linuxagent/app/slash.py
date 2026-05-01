@@ -10,6 +10,7 @@ def slash_help() -> str:
         "/resume - 查看本机保存的会话；随后输入编号恢复\n"
         "/new 或 /clear - 开启一个空上下文新对话\n"
         "/tools - 查看可用工具入口\n"
+        "/trace on|off - 显示或隐藏活动状态\n"
         "/exit 或 /quit - 退出"
     )
 

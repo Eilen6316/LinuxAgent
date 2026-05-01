@@ -41,6 +41,14 @@ class UserInterface(ABC):
         del stderr
         await self.print(text)
 
+    async def print_activity(self, text: str) -> None:
+        """Display a high-level runtime activity event."""
+        await self.print_raw(f"{text}\n")
+
+    def set_activity_visible(self, visible: bool) -> None:
+        """Toggle high-level runtime activity event visibility."""
+        del visible
+
     def supports_resume_selector(self) -> bool:
         """Return true when the UI can present an interactive resume picker."""
         return False

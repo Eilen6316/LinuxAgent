@@ -36,6 +36,7 @@ from ..services import ClusterService
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
 from .common import span, trace_id
+from .events import RuntimeEventObserver, notify_event
 from .runbook_planning import build_runbook_guidance
 from .state import AgentState
 
@@ -68,6 +69,7 @@ class IntentNodeContext:
     tools: tuple[BaseTool, ...]
     telemetry: TelemetryRecorder | None
     tool_observer: ToolEventObserver | None
+    runtime_observer: RuntimeEventObserver | None
     tool_runtime_limits: ToolRuntimeLimits
 
 
@@ -79,6 +81,7 @@ def make_parse_intent_node(
     telemetry: TelemetryRecorder | None = None,
     runbook_engine: RunbookEngine | None = None,
     tool_observer: ToolEventObserver | None = None,
+    runtime_observer: RuntimeEventObserver | None = None,
     tool_runtime_limits: ToolRuntimeLimits | None = None,
 ) -> Node:
     context = IntentNodeContext(
@@ -91,6 +94,7 @@ def make_parse_intent_node(
         tools=tools,
         telemetry=telemetry,
         tool_observer=tool_observer,
+        runtime_observer=runtime_observer,
         tool_runtime_limits=tool_runtime_limits or ToolRuntimeLimits(),
     )
 
@@ -104,6 +108,7 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     current_trace_id = trace_id(state)
     messages = list(state.get("messages", []))
     user_text = _last_message_text(messages)
+    await notify_event(context.runtime_observer, {"type": "activity", "phase": "classify"})
     intent = await _route_intent(
         context.provider,
         context.intent_router_prompt,
@@ -114,6 +119,7 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     )
     if intent.mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY}:
         return _direct_response_update(current_trace_id, intent.answer)
+    await notify_event(context.runtime_observer, {"type": "activity", "phase": "plan"})
     outcome = await _build_command_plan(context, messages, user_text, current_trace_id)
     if isinstance(outcome, CommandPlan):
         return _plan_update(current_trace_id, user_text, outcome, context.cluster_service)

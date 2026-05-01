@@ -61,6 +61,7 @@ def _add_planning_nodes(graph: Any, deps: GraphDependencies) -> None:
                 telemetry=deps.telemetry,
                 runbook_engine=deps.runbook_engine,
                 tool_observer=deps.tool_observer,
+                runtime_observer=deps.runtime_observer,
                 tool_runtime_limits=deps.tool_runtime_limits,
             )
         ),
@@ -68,12 +69,24 @@ def _add_planning_nodes(graph: Any, deps: GraphDependencies) -> None:
     graph.add_node(
         "safety_check",
         _langgraph_node(
-            make_safety_check_node(deps.command_service, deps.cluster_service, deps.telemetry)
+            make_safety_check_node(
+                deps.command_service,
+                deps.cluster_service,
+                deps.telemetry,
+                deps.runtime_observer,
+            )
         ),
     )
     graph.add_node(
         "confirm",
-        _langgraph_node(make_confirm_node(deps.audit, deps.command_service, deps.telemetry)),
+        _langgraph_node(
+            make_confirm_node(
+                deps.audit,
+                deps.command_service,
+                deps.telemetry,
+                deps.runtime_observer,
+            )
+        ),
     )
 
 
@@ -106,7 +119,11 @@ def _add_execution_nodes(graph: Any, deps: GraphDependencies) -> None:
         "execute",
         _langgraph_node(
             make_execute_node(
-                deps.command_service, deps.audit, deps.cluster_service, deps.telemetry
+                deps.command_service,
+                deps.audit,
+                deps.cluster_service,
+                deps.telemetry,
+                deps.runtime_observer,
             )
         ),
     )
@@ -118,11 +135,15 @@ def _add_execution_nodes(graph: Any, deps: GraphDependencies) -> None:
                 deps.provider,
                 max_repair_attempts=deps.command_plan_config.max_repair_attempts,
                 telemetry=deps.telemetry,
+                runtime_observer=deps.runtime_observer,
             )
         ),
     )
     graph.add_node(
-        "analyze", _langgraph_node(make_analyze_result_node(deps.provider, deps.telemetry))
+        "analyze",
+        _langgraph_node(
+            make_analyze_result_node(deps.provider, deps.telemetry, deps.runtime_observer)
+        ),
     )
 
 

@@ -14,6 +14,7 @@ from ..plans import CommandPlanParseError, parse_command_plan
 from ..prompts_loader import build_repair_prompt
 from ..telemetry import TelemetryRecorder
 from .common import span, trace_id
+from .events import RuntimeEventObserver, notify_event
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -25,11 +26,13 @@ def make_repair_plan_node(
     *,
     max_repair_attempts: int = DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS,
     telemetry: TelemetryRecorder | None = None,
+    runtime_observer: RuntimeEventObserver | None = None,
 ) -> Node:
     prompt = build_repair_prompt()
 
     async def repair_plan_node(state: AgentState) -> AgentState:
         current_trace_id = trace_id(state)
+        await notify_event(runtime_observer, {"type": "activity", "phase": "repair_plan"})
         prompt_messages = prompt.format_messages(
             runbook_guidance="No runbook guidance is available for repair planning.",
             original_request=_last_human_text(state.get("messages", [])),

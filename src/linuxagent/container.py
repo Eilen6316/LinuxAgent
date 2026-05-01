@@ -163,6 +163,7 @@ class Container:
                     command_plan_config=self._config.command_plan,
                     file_patch_config=self._config.file_patch,
                     tool_observer=self._tool_event_observer(),
+                    runtime_observer=self._runtime_event_observer(),
                     tool_runtime_limits=self.tool_runtime_limits(),
                 )
             ),
@@ -300,6 +301,19 @@ class Container:
 
         return observe
 
+    def _runtime_event_observer(self) -> Callable[[dict[str, Any]], Any]:
+        async def observe(event: dict[str, Any]) -> None:
+            message = _runtime_event_message(event)
+            if message:
+                await self.ui().print_activity(message)
+                return
+            stream = event.get("phase")
+            if stream in {"stdout", "stderr"}:
+                text = str(event.get("text") or "")
+                await self.ui().print_raw(text, stderr=stream == "stderr")
+
+        return observe
+
     def ui(self) -> ConsoleUI:
         return self._cached(
             "ui",
@@ -341,6 +355,37 @@ def _tool_event_message(event: dict[str, Any]) -> str | None:
             f"{tool_name}: {event.get('output_preview') or 'unknown error'}"
         )
     return None
+
+
+def _runtime_event_message(event: dict[str, Any]) -> str | None:
+    event_type = str(event.get("type") or "")
+    phase = str(event.get("phase") or "")
+    if event_type == "command":
+        return _command_event_message(phase, event)
+    if event_type == "activity":
+        return _activity_event_message(phase)
+    return None
+
+
+def _command_event_message(phase: str, event: dict[str, Any]) -> str | None:
+    command = str(event.get("command") or "")
+    if phase == "start":
+        return f"LinuxAgent 正在执行命令：{command}"
+    if phase == "finish":
+        return f"LinuxAgent 命令结束：exit {event.get('exit_code')}"
+    return None
+
+
+def _activity_event_message(phase: str) -> str | None:
+    labels = {
+        "classify": "LinuxAgent 正在分类意图",
+        "plan": "LinuxAgent 正在规划命令",
+        "policy": "LinuxAgent 正在评估安全策略",
+        "waiting_confirm": "LinuxAgent 正在等待确认",
+        "repair_plan": "LinuxAgent 正在生成修复方案",
+        "analyze": "LinuxAgent 正在分析执行结果",
+    }
+    return labels.get(phase)
 
 
 def _tool_start_message(tool_name: str, args: dict[str, Any]) -> str:

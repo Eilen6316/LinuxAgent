@@ -20,6 +20,7 @@ from ..interfaces import CommandSource, UserInterface
 from ..services import ChatService, ClusterService, CommandService, MonitoringService
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
+from .graph_config import graph_config
 from .resume import (
     ResumeSessionItem,
     render_resumed_session,
@@ -28,8 +29,7 @@ from .resume import (
     session_title,
 )
 from .slash import slash_help, tools_help
-
-GRAPH_LIMIT = 100
+from .trace import handle_trace_command
 
 
 @dataclass
@@ -82,7 +82,7 @@ class LinuxAgent:
                 await self.cluster_service.close()
 
     async def run_turn(self, user_input: str, *, thread_id: str) -> dict[str, Any]:
-        config = _graph_config(thread_id)
+        config = graph_config(thread_id)
         self.context_manager.replace(await self._history(config))
         history = self.context_manager.snapshot()
         state: Any = initial_state(
@@ -182,6 +182,9 @@ class LinuxAgent:
             case "/tools":
                 await self.ui.print(tools_help(self.tool_names))
                 return thread_id
+            case "/trace":
+                await handle_trace_command(self.ui, rest)
+                return thread_id
             case "/resume":
                 return await self._handle_resume_command(rest.strip(), thread_id) or thread_id
             case "/new" | "/clear":
@@ -255,7 +258,7 @@ class LinuxAgent:
         return items
 
     async def _resume_status(self, thread_id: str) -> str:
-        config = _graph_config(thread_id)
+        config = graph_config(thread_id)
         interrupts = await self._interrupts({}, config)
         if not interrupts:
             return ""
@@ -265,7 +268,7 @@ class LinuxAgent:
         return "pending confirm"
 
     async def _resume_pending_work(self, thread_id: str) -> None:
-        config = _graph_config(thread_id)
+        config = graph_config(thread_id)
         state: Any = {}
         while True:
             interrupts = await self._interrupts(state, config)
@@ -293,7 +296,3 @@ class LinuxAgent:
     def _persist_active_history(self, thread_id: str) -> None:
         active = self.context_manager.snapshot()
         self.chat_service.replace_session(thread_id, active, title=session_title(active))
-
-
-def _graph_config(thread_id: str) -> RunnableConfig:
-    return {"configurable": {"thread_id": thread_id}, "recursion_limit": GRAPH_LIMIT}

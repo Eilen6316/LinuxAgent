@@ -92,6 +92,12 @@ class _FakeCommandService:
         self.calls.append(f"run:{command}")
         return _result(command, stdout="normal")
 
+    async def run_streaming(self, command: str, *, on_stdout, on_stderr) -> ExecutionResult:
+        self.calls.append(f"stream:{command}")
+        await on_stdout("password=hunter2\n")
+        await on_stderr("stderr token=plain-token\n")
+        return _result(command, stdout="password=hunter2", stderr="token=plain-token")
+
     async def run_interactive(self, command: str) -> ExecutionResult:
         self.calls.append(f"interactive:{command}")
         return _result(command, stdout="interactive")
@@ -128,6 +134,26 @@ async def test_run_command_uses_normal_and_interactive_paths() -> None:
     assert normal.stdout == "normal"
     assert interactive.stdout == "interactive"
     assert service.calls == ["run:uptime", "interactive:top"]
+
+
+async def test_run_command_streams_redacted_output_to_observer() -> None:
+    events = []
+    service = _FakeCommandService()
+
+    result = await run_command(
+        {},
+        "cat secrets",
+        service,  # type: ignore[arg-type]
+        None,
+        trace_id="trace-1",
+        event_observer=events.append,
+    )
+
+    assert result.stdout == "password=hunter2"
+    assert service.calls == ["stream:cat secrets"]
+    assert [event["phase"] for event in events] == ["start", "stdout", "stderr", "finish"]
+    assert "hunter2" not in events[1]["text"]
+    assert "plain-token" not in events[2]["text"]
 
 
 async def test_run_command_aggregates_cluster_execution() -> None:
