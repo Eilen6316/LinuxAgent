@@ -231,4 +231,5 @@ def _workspace_spec(
         max_output_chars=limits.max_output_chars,
         max_matches=max_matches,
         timeout_seconds=limits.timeout_seconds,
+        read_files=True,
     )

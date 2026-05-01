@@ -6,7 +6,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-87.43%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-87.45%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -174,9 +174,11 @@ The planner can first inspect the environment with read-only tools:
   system context when needed.
 
 Tool calls run through the tool sandbox runtime before output reaches the model:
+each tool carries explicit permissions (`read_files`, `write_files`,
+`execute_commands`, `system_inspect`, `network_access`, and `hitl` mode),
 workspace/log roots are checked, per-tool timeouts and output limits are
-applied, oversized output is marked as truncated, and tool errors are returned as
-structured model-visible events while telemetry records `allowed`, `denied`,
+applied, oversized output is marked as truncated, and tool errors are returned
+as structured model-visible events while telemetry records `allowed`, `denied`,
 `timeout`, or `truncated`.
 
 The terminal shows observable tool activity such as `LinuxAgent is reading
@@ -265,12 +267,12 @@ Current documented baseline from `make test` on 2026-05-01:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 516 passing |
+| Unit tests | 518 passing |
 | Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
 | Sandbox boundary suite | covered by `make sandbox` |
 | Harness scenarios | 17 HITL / runbook / cluster / sandbox scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 87.43% (`--cov-fail-under=80`) |
+| Coverage | 87.45% (`--cov-fail-under=80`) |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 

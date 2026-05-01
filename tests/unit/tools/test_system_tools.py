@@ -192,5 +192,27 @@ def test_system_tools_expose_sandbox_metadata(tmp_path) -> None:
 
     sandbox = (tool.metadata or {})["linuxagent_sandbox"]
     assert sandbox["profile"] == "read_only"
+    assert sandbox["permissions"]["read_files"] is True
+    assert sandbox["permissions"]["system_inspect"] is True
+    assert sandbox["permissions"]["execute_commands"] is False
     assert sandbox["allowed_roots"] == [str(tmp_path)]
     assert sandbox["timeout_seconds"] == 1.5
+
+
+def test_execute_command_tool_declares_policy_gated_execution() -> None:
+    tool = make_execute_command_tool(_executor())
+
+    permissions = (tool.metadata or {})["linuxagent_sandbox"]["permissions"]
+
+    assert permissions["execute_commands"] is True
+    assert permissions["network_access"] is True
+    assert permissions["hitl"] == "policy_gated"
+
+
+def test_get_system_info_tool_declares_system_inspect() -> None:
+    tool = make_get_system_info_tool()
+
+    permissions = (tool.metadata or {})["linuxagent_sandbox"]["permissions"]
+
+    assert permissions["system_inspect"] is True
+    assert permissions["read_files"] is False

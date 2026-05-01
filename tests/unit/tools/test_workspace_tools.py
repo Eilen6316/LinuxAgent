@@ -141,5 +141,9 @@ def test_workspace_tools_expose_sandbox_metadata(tmp_path) -> None:
     metadata = tool.metadata or {}
     sandbox = metadata["linuxagent_sandbox"]
     assert sandbox["profile"] == "read_only"
+    assert sandbox["permissions"]["read_files"] is True
+    assert sandbox["permissions"]["write_files"] is False
+    assert sandbox["permissions"]["execute_commands"] is False
+    assert sandbox["permissions"]["hitl"] == "none"
     assert sandbox["allowed_roots"] == [str(tmp_path)]
     assert sandbox["timeout_seconds"] == 1.5

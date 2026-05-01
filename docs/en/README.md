@@ -7,7 +7,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-87.43%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-87.45%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -66,7 +66,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | Current documented baseline: 516 unit tests passing at 87.43% coverage, plus HITL YAML scenarios, 8 integration smoke tests, and optional Anthropic compatibility verification |
+| Testability | Current documented baseline: 518 unit tests passing at 87.45% coverage, plus HITL YAML scenarios, 8 integration smoke tests, and optional Anthropic compatibility verification |
 
 ---
 
@@ -236,8 +236,8 @@ batch confirmation, and audit metadata.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **Current documented baseline: 516 passing; Anthropic compatibility can be verified when the extra is installed** |
-| Coverage | 0 | **87.43%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
+| Unit tests | 0 | **Current documented baseline: 518 passing; Anthropic compatibility can be verified when the extra is installed** |
+| Coverage | 0 | **87.45%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI checks command, SSH, HITL, code-structure, and sandbox bypass red lines |
 
@@ -449,17 +449,20 @@ redirection.
    `get_system_info`, `list_dir`, `read_file(path, offset, limit)`,
    `search_files(pattern, root)`, and `search_logs(pattern, log_file)`. Search
    patterns are literal text, not regular expressions.
-2. The terminal shows observable tool activity such as `LinuxAgent is reading
+2. Every LLM tool carries sandbox metadata with explicit permissions:
+   `read_files`, `write_files`, `execute_commands`, `system_inspect`,
+   `network_access`, and `hitl` mode.
+3. The terminal shows observable tool activity such as `LinuxAgent is reading
    /tmp/disk_info.sh`; tool failures are surfaced clearly.
-3. The model must return a structured `FilePatchPlan` with `request_intent`,
+4. The model must return a structured `FilePatchPlan` with `request_intent`,
    target files, unified diff, risk summary, verification commands, and optional
    permission changes.
-4. Before writing, LinuxAgent shows a diff confirmation panel with per-file
+5. Before writing, LinuxAgent shows a diff confirmation panel with per-file
    `+N / -M` stats, compact code snippets, elevated-risk paths, permission
    changes, and verification commands.
-5. Small diffs are not shown twice. Large diffs are paged, and extra review is
+6. Small diffs are not shown twice. Large diffs are paged, and extra review is
    requested only when hidden pages exist.
-6. Multi-file patches can be accepted per file, so the operator can apply only
+7. Multi-file patches can be accepted per file, so the operator can apply only
    the files they approve.
 
 After approval, LinuxAgent applies the patch transactionally. It validates

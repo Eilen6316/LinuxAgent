@@ -60,7 +60,7 @@ def make_pattern_analyzer_tool(analyzer: PatternAnalyzer) -> BaseTool:
             "is_interactive": result.is_interactive,
         }
 
-    return _attach_intelligence_sandbox(analyze_command_pattern)
+    return _attach_intelligence_sandbox(analyze_command_pattern, network_access=False)
 
 
 def build_intelligence_tools(
@@ -79,12 +79,13 @@ def build_intelligence_tools(
     ]
 
 
-def _attach_intelligence_sandbox(tool: BaseTool) -> BaseTool:
+def _attach_intelligence_sandbox(tool: BaseTool, *, network_access: bool = True) -> BaseTool:
     return attach_tool_sandbox(
         tool,
         ToolSandboxSpec(
             profile=SandboxProfile.READ_ONLY,
             max_output_chars=INTELLIGENCE_TOOL_MAX_OUTPUT_CHARS,
             timeout_seconds=INTELLIGENCE_TOOL_TIMEOUT_SECONDS,
+            network_access=network_access,
         ),
     )

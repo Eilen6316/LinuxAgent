@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,12 @@ from ..security import redact_record, redact_text
 SANDBOX_METADATA_KEY = "linuxagent_sandbox"
 
 
+class ToolHITLMode(StrEnum):
+    NONE = "none"
+    POLICY_GATED = "policy_gated"
+    REQUIRED = "required"
+
+
 @dataclass(frozen=True)
 class ToolSandboxSpec:
     profile: SandboxProfile
@@ -24,10 +31,24 @@ class ToolSandboxSpec:
     max_output_chars: int | None = None
     max_matches: int | None = None
     timeout_seconds: float | None = None
+    read_files: bool = False
+    write_files: bool = False
+    execute_commands: bool = False
+    system_inspect: bool = False
+    network_access: bool = False
+    hitl: ToolHITLMode = ToolHITLMode.NONE
 
     def to_record(self) -> dict[str, object]:
         return {
             "profile": self.profile.value,
+            "permissions": {
+                "read_files": self.read_files,
+                "write_files": self.write_files,
+                "execute_commands": self.execute_commands,
+                "system_inspect": self.system_inspect,
+                "network_access": self.network_access,
+                "hitl": self.hitl.value,
+            },
             "allowed_roots": [str(root) for root in self.allowed_roots],
             "max_file_bytes": self.max_file_bytes,
             "max_output_chars": self.max_output_chars,

@@ -9,7 +9,7 @@ from .intelligence_tools import (
     make_pattern_analyzer_tool,
     make_similar_commands_tool,
 )
-from .sandbox import ToolRuntimeLimits, ToolSandboxSpec, attach_tool_sandbox
+from .sandbox import ToolHITLMode, ToolRuntimeLimits, ToolSandboxSpec, attach_tool_sandbox
 from .system_tools import (
     LogFileAccessError,
     build_system_tools,
@@ -27,6 +27,7 @@ from .workspace_tools import (
 
 __all__ = [
     "LogFileAccessError",
+    "ToolHITLMode",
     "ToolRuntimeLimits",
     "ToolSandboxSpec",
     "WorkspaceAccessError",

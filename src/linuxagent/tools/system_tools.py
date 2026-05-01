@@ -20,7 +20,7 @@ from ..interfaces import CommandExecutor, CommandSource
 from ..sandbox import SandboxProfile
 from ..security import guard_execution_result, redact_text
 from ..services import evaluate_alerts
-from .sandbox import ToolSandboxSpec, attach_tool_sandbox
+from .sandbox import ToolHITLMode, ToolSandboxSpec, attach_tool_sandbox
 
 DEFAULT_LOG_ROOTS: tuple[Path, ...] = (Path("/var/log"),)
 MAX_LOG_FILE_BYTES = 1_048_576
@@ -68,6 +68,9 @@ def make_execute_command_tool(
             profile=SandboxProfile.PRIVILEGED_PASSTHROUGH,
             max_output_chars=limits.max_output_chars,
             timeout_seconds=limits.timeout_seconds,
+            execute_commands=True,
+            network_access=True,
+            hitl=ToolHITLMode.POLICY_GATED,
         ),
     )
 
@@ -119,6 +122,7 @@ def make_get_system_info_tool(
             profile=SandboxProfile.SYSTEM_INSPECT,
             max_output_chars=limits.max_output_chars,
             timeout_seconds=limits.timeout_seconds,
+            system_inspect=True,
         ),
     )
 
@@ -218,6 +222,8 @@ def _log_tool_spec(
         max_output_chars=limits.max_output_chars,
         max_matches=limits.max_matches,
         timeout_seconds=limits.timeout_seconds,
+        read_files=True,
+        system_inspect=True,
     )
 
 
