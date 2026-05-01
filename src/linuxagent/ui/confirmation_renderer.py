@@ -153,6 +153,12 @@ class ConfirmationRenderer:
         hosts = payload.get("batch_hosts") or []
         if hosts:
             table.add_row("Batch hosts", ", ".join(str(host) for host in hosts))
+        profiles = payload.get("remote_profiles") or []
+        rendered = [
+            _remote_profile_line(profile) for profile in profiles if isinstance(profile, dict)
+        ]
+        if rendered:
+            table.add_row("Remote profiles", "\n".join(rendered))
 
     def _add_patch_risk_rows(self, table: Table, payload: dict[str, Any]) -> None:
         if payload.get("risk_level") == "high":
@@ -197,3 +203,12 @@ def _patch_title_style(payload: dict[str, Any]) -> str:
     if payload.get("risk_level") == "high":
         return "bright_red"
     return "bright_yellow"
+
+
+def _remote_profile_line(profile: dict[str, Any]) -> str:
+    sudo = "sudo" if profile.get("allow_sudo") else "no sudo"
+    return (
+        f"{profile.get('host')}: profile={profile.get('profile')} "
+        f"user={profile.get('username')} cwd={profile.get('remote_cwd')} "
+        f"env={profile.get('environment')} {sudo}"
+    )

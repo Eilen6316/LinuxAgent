@@ -30,6 +30,11 @@ not be treated as an autonomous production remediator.
 - [ ] API provider, model, base URL, and timeout are explicitly reviewed.
 - [ ] Runtime policy overrides are reviewed for your environment.
 - [ ] SSH targets are registered in `~/.ssh/known_hosts`.
+- [ ] Cluster hosts use a low-privilege SSH account, not root.
+- [ ] Remote profiles set an expected `remote_cwd`, and production profiles
+      prefer `environment: clean`.
+- [ ] Any sudo access is restricted with `sudo -n` and a minimal command
+      allowlist.
 - [ ] Audit log path is on durable local storage.
 - [ ] `linuxagent audit verify` is part of incident review practice.
 - [ ] Operators understand that `--yes` does not bypass command-level approval.
@@ -63,6 +68,8 @@ linuxagent audit verify
 - Prefer read-only prompts for the first rollout.
 - Start with a small host group before enabling cluster operations broadly.
 - Keep batch confirmation threshold low for production.
+- Keep SSH `remote_profile.allow_sudo: false` unless an explicit sudoers entry
+  and `sudo_allowlist` are reviewed together.
 - Review `matched_rule`, `risk_score`, and `capabilities` during approvals.
 - Treat blocked commands as policy feedback, not as failures to work around.
 
@@ -70,7 +77,8 @@ linuxagent audit verify
 
 - Audit logs are local files; ship them to your own log pipeline if centralized
   retention is required.
-- The project does not sandbox commands after approval.
+- Local OS sandboxing does not protect SSH targets; remote protection is
+  least-privilege account design plus audit and confirmation.
 - LLM analysis can be wrong; it is a summary aid, not the source of truth.
 - The Anthropic provider is optional and requires the extra dependency.
 - Windows is not supported.

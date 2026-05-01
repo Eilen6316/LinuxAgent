@@ -32,6 +32,7 @@ from ..config.models import ClusterConfig, ClusterHost
 from ..interfaces import ExecutionResult
 from ..telemetry import TelemetryRecorder
 from .remote_command import RemoteCommandError, validate_remote_command
+from .remote_profile import build_remote_execution
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -145,13 +146,17 @@ class SSHManager:
     # -- Internals --------------------------------------------------------
 
     def _execute_sync(self, host: ClusterHost, command: str) -> ExecutionResult:
+        try:
+            remote_command = validate_remote_command(command)
+            remote_execution = build_remote_execution(host, remote_command)
+        except RemoteCommandError as exc:
+            raise SSHRemoteCommandError(str(exc)) from exc
         client = self._get_or_connect(host)
         start = time.monotonic()
-        # Remote command execution: the command has already been classified by
-        # executors.safety.is_safe(); passing it verbatim to a pre-existing
-        # authenticated SSH channel is the intended behaviour.
+        # Paramiko sends the command through the remote shell; only the generated
+        # profile wrapper may contain shell operators.
         _, stdout, stderr = client.exec_command(  # nosec B601
-            command, timeout=self._config.timeout
+            remote_execution.shell_command, timeout=self._config.timeout
         )
         exit_code = stdout.channel.recv_exit_status()
         out_bytes = stdout.read()
@@ -163,6 +168,7 @@ class SSHManager:
             stdout=out_bytes.decode("utf-8", errors="replace"),
             stderr=err_bytes.decode("utf-8", errors="replace"),
             duration=duration,
+            remote=remote_execution.with_exit_code(exit_code),
         )
 
     def _get_or_connect(self, host: ClusterHost) -> paramiko.SSHClient:

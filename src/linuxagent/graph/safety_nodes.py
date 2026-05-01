@@ -8,6 +8,7 @@ from typing import Any
 from langgraph.types import Command
 
 from ..cluster.remote_command import RemoteCommandError, validate_remote_command
+from ..config.models import ClusterHost
 from ..interfaces import CommandSource, SafetyLevel
 from ..services import ClusterService, CommandService
 from ..telemetry import TelemetryRecorder
@@ -37,14 +38,19 @@ def make_safety_check_node(
         source = state.get("command_source") or CommandSource.USER
         with span(telemetry, "policy.evaluate", current_trace_id, {"command_source": source.value}):
             verdict = command_service.classify(command, source=source)
-        remote_error = _remote_command_error(command, state, cluster_service)
+        selected = _selected_cluster_hosts(state, cluster_service)
+        remote_error = _remote_command_error(command, selected)
         if remote_error is not None:
             return _remote_error_update(current_trace_id, remote_error, verdict)
-        batch_hosts = _batch_hosts(state, cluster_service)
+        batch_hosts = _batch_hosts(selected, cluster_service)
+        remote_profiles = _remote_profiles(selected, cluster_service)
+        remote_preflight = _remote_preflight_commands(selected, cluster_service)
         level = verdict.level
         if batch_hosts and level is SafetyLevel.SAFE:
             level = SafetyLevel.CONFIRM
-        return _safety_update(current_trace_id, verdict, level, batch_hosts)
+        return _safety_update(
+            current_trace_id, verdict, level, batch_hosts, remote_profiles, remote_preflight
+        )
 
     return safety_check_node
 
@@ -59,11 +65,18 @@ def _remote_error_update(trace: str, remote_error: str, verdict: Any) -> AgentSt
         "safety_capabilities": verdict.capabilities,
         "safety_can_whitelist": _can_whitelist(verdict),
         "batch_hosts": (),
+        "remote_profiles": (),
+        "remote_preflight_commands": (),
     }
 
 
 def _safety_update(
-    trace: str, verdict: Any, level: SafetyLevel, batch_hosts: tuple[str, ...]
+    trace: str,
+    verdict: Any,
+    level: SafetyLevel,
+    batch_hosts: tuple[str, ...],
+    remote_profiles: tuple[dict[str, object], ...],
+    remote_preflight_commands: tuple[dict[str, object], ...],
 ) -> AgentState:
     return {
         "trace_id": trace,
@@ -78,6 +91,8 @@ def _safety_update(
         "safety_capabilities": verdict.capabilities,
         "safety_can_whitelist": _can_whitelist(verdict),
         "batch_hosts": batch_hosts,
+        "remote_profiles": remote_profiles,
+        "remote_preflight_commands": remote_preflight_commands,
     }
 
 
@@ -85,25 +100,48 @@ def _can_whitelist(verdict: Any) -> bool:
     return bool(getattr(verdict, "can_whitelist", True))
 
 
-def _batch_hosts(state: AgentState, cluster_service: ClusterService | None) -> tuple[str, ...]:
+def _selected_cluster_hosts(
+    state: AgentState, cluster_service: ClusterService | None
+) -> tuple[ClusterHost, ...]:
     if cluster_service is None:
         return ()
     selected_hosts = state.get("selected_hosts", ())
-    selected = cluster_service.resolve_host_names(selected_hosts)
-    if not selected or not cluster_service.requires_batch_confirm(selected):
+    return cluster_service.resolve_host_names(selected_hosts)
+
+
+def _batch_hosts(
+    selected: tuple[ClusterHost, ...], cluster_service: ClusterService | None
+) -> tuple[str, ...]:
+    if (
+        cluster_service is None
+        or not selected
+        or not cluster_service.requires_batch_confirm(selected)
+    ):
         return ()
     return tuple(host.name for host in selected)
 
 
+def _remote_profiles(
+    selected: tuple[ClusterHost, ...], cluster_service: ClusterService | None
+) -> tuple[dict[str, object], ...]:
+    if cluster_service is None or not selected:
+        return ()
+    return cluster_service.remote_profiles(selected)
+
+
+def _remote_preflight_commands(
+    selected: tuple[ClusterHost, ...], cluster_service: ClusterService | None
+) -> tuple[dict[str, object], ...]:
+    if cluster_service is None or not selected:
+        return ()
+    return cluster_service.remote_preflight_commands(selected)
+
+
 def _remote_command_error(
     command: str,
-    state: AgentState,
-    cluster_service: ClusterService | None,
+    selected: tuple[ClusterHost, ...],
 ) -> str | None:
-    if cluster_service is None:
-        return None
-    selected_hosts = state.get("selected_hosts", ())
-    if not selected_hosts or not cluster_service.resolve_host_names(selected_hosts):
+    if not selected:
         return None
     try:
         validate_remote_command(command)

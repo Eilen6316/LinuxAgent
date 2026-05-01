@@ -40,6 +40,18 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
             resource_limits={"cpu_seconds": None},
             fallback_reason="sandbox disabled",
         ),
+        remote={
+            "type": "ssh",
+            "hosts": [
+                {
+                    "host": "a",
+                    "profile": "default",
+                    "remote_cwd": ".",
+                    "username": "ops",
+                    "exit_code": 0,
+                }
+            ],
+        },
         file_patch={
             "files_changed": ["demo.sh"],
             "permission_changes": [{"path": "demo.sh", "mode": "0755"}],
@@ -62,6 +74,8 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
     assert lines[2]["duration_ms"] == 250
     assert lines[2]["sandbox"]["runner"] == "noop"
     assert lines[2]["sandbox"]["enforced"] is False
+    assert lines[2]["remote"]["hosts"][0]["host"] == "a"
+    assert lines[2]["remote"]["hosts"][0]["profile"] == "default"
     assert lines[2]["file_patch"]["files_changed"] == ["demo.sh"]
     assert lines[2]["file_patch"]["rollback_outcome"] == "not_needed"
     assert all(line["trace_id"] is None for line in lines)

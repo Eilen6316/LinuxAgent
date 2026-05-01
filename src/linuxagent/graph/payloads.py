@@ -22,6 +22,8 @@ def build_confirm_payload(state: AgentState, audit_id: str) -> dict[str, Any]:
         "matched_rule": state.get("matched_rule"),
         "command_source": (state.get("command_source") or CommandSource.USER).value,
         "batch_hosts": list(state.get("batch_hosts", ())),
+        "remote_profiles": list(state.get("remote_profiles", ())),
+        "remote_preflight_commands": list(state.get("remote_preflight_commands", ())),
         "is_destructive": _is_destructive(command or "", state.get("safety_capabilities", ())),
         "can_whitelist": state.get("safety_can_whitelist", True),
         **_plan_payload(state.get("command_plan"), state.get("runbook_step_index", 0)),

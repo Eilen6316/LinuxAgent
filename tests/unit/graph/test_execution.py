@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from linuxagent.config.models import ClusterHost
 from linuxagent.graph.execution import aggregate_cluster_results, analysis_context, run_command
 from linuxagent.interfaces import ExecutionResult
 
@@ -32,6 +33,29 @@ def test_aggregate_cluster_results_merges_successes_and_failures() -> None:
     assert "[db-1] exit_code=1" in result.stdout
     assert "[db-1] stderr: down" in result.stderr
     assert "[cache-1] error: ssh failed" in result.stderr
+    assert result.remote is not None
+    assert result.remote["hosts"][2]["error_class"] == "RuntimeError"
+
+
+def test_aggregate_cluster_results_records_remote_profiles() -> None:
+    hosts = (
+        ClusterHost(name="web-1", hostname="192.0.2.10", username="ops"),
+        ClusterHost(name="db-1", hostname="192.0.2.11", username="ops"),
+    )
+
+    result = aggregate_cluster_results(
+        "uptime",
+        {"web-1": _result("uptime"), "db-1": RuntimeError("ssh failed")},
+        hosts=hosts,
+    )
+
+    assert result.remote is not None
+    records = result.remote["hosts"]
+    assert records[0]["host"] == "web-1"
+    assert records[0]["username"] == "ops"
+    assert records[0]["exit_code"] == 0
+    assert records[1]["host"] == "db-1"
+    assert records[1]["error_class"] == "RuntimeError"
 
 
 def test_analysis_context_uses_single_result_without_runbook() -> None:

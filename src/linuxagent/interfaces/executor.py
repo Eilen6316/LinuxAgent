@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 from ..sandbox.models import SandboxResult
 
@@ -51,6 +52,7 @@ class ExecutionResult:
     stderr: str
     duration: float
     sandbox: SandboxResult | None = None
+    remote: dict[str, Any] | None = None
 
 
 class CommandExecutor(ABC):

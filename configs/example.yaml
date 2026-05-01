@@ -122,14 +122,21 @@ cluster:
   # The default of 2 catches even a tiny dev+prod pair by design.
   batch_confirm_threshold: 2
   timeout: 60.0
+  known_hosts_path: ~/.ssh/known_hosts
   hosts: []
   # Example:
   # hosts:
   #   - name: web-prod-1
-  #     hostname: 10.0.0.11
+  #     hostname: 192.0.2.11
   #     port: 22
   #     username: ops
   #     key_filename: ~/.ssh/id_ed25519
+  #     remote_profile:
+  #       name: ops-readonly
+  #       remote_cwd: /srv/app
+  #       environment: clean        # inherit | clean
+  #       allow_sudo: false
+  #       sudo_allowlist: []        # allow_sudo=true requires explicit commands
 
 audit:
   # Audit log cannot be disabled (R-HITL-06). Path can change, presence cannot.

@@ -179,6 +179,7 @@ async def _record_command_execution(
         trace_id=current_trace_id,
         batch_hosts=state.get("batch_hosts", ()),
         sandbox=result.sandbox,
+        remote=result.remote,
     )
 
 

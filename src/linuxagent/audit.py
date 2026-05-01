@@ -83,6 +83,7 @@ class AuditLog:
         trace_id: str | None = None,
         batch_hosts: tuple[str, ...] = (),
         sandbox: SandboxResult | None = None,
+        remote: dict[str, Any] | None = None,
         file_patch: dict[str, Any] | None = None,
     ) -> None:
         record: dict[str, Any] = {
@@ -96,6 +97,8 @@ class AuditLog:
         }
         if sandbox is not None:
             record["sandbox"] = sandbox.to_record()
+        if remote is not None:
+            record["remote"] = remote
         if file_patch is not None:
             record["file_patch"] = file_patch
         self.append(record)

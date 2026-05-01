@@ -304,11 +304,28 @@ def test_render_confirm_shows_batch_hosts() -> None:
     console = Console(record=True, width=120)
     ui = ConsoleUI(console=console)
 
-    ui._render_confirm({"command": "uptime", "batch_hosts": ["web-1", "db-1"]})
+    ui._render_confirm(
+        {
+            "command": "uptime",
+            "batch_hosts": ["web-1", "db-1"],
+            "remote_profiles": [
+                {
+                    "host": "web-1",
+                    "profile": "ops-ro",
+                    "username": "ops",
+                    "remote_cwd": "/srv/app",
+                    "environment": "clean",
+                    "allow_sudo": False,
+                }
+            ],
+        }
+    )
 
     rendered = console.export_text()
     assert "Batch hosts" in rendered
     assert "web-1, db-1" in rendered
+    assert "Remote profiles" in rendered
+    assert "profile=ops-ro" in rendered
 
 
 def test_render_confirm_shows_destructive_warning() -> None:

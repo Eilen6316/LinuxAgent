@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..cluster import SSHError, SSHManager
+from ..cluster.remote_profile import preflight_commands
 from ..config.models import ClusterConfig, ClusterHost
 from ..interfaces import ExecutionResult
 
@@ -39,6 +40,16 @@ class ClusterService:
             return ()
         wanted = {name.casefold() for name in names}
         return tuple(host for host in self.hosts if wanted.intersection(_aliases(host)))
+
+    def remote_profiles(self, hosts: tuple[ClusterHost, ...]) -> tuple[dict[str, object], ...]:
+        return tuple(host.remote_profile_record() for host in hosts)
+
+    def remote_preflight_commands(
+        self, hosts: tuple[ClusterHost, ...]
+    ) -> tuple[dict[str, object], ...]:
+        return tuple(
+            {"host": host.name, "commands": list(preflight_commands(host))} for host in hosts
+        )
 
     async def close(self) -> None:
         await self.ssh.close()

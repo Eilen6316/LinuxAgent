@@ -37,6 +37,14 @@ class _FakeClusterService:
         del hosts
         return self.batch
 
+    def remote_profiles(self, hosts: tuple[SimpleNamespace, ...]) -> tuple[dict[str, object], ...]:
+        return tuple({"host": host.name, "profile": "default"} for host in hosts)
+
+    def remote_preflight_commands(
+        self, hosts: tuple[SimpleNamespace, ...]
+    ) -> tuple[dict[str, object], ...]:
+        return tuple({"host": host.name, "commands": ["whoami", "pwd"]} for host in hosts)
+
 
 async def test_safety_node_blocks_empty_command_with_plan_error() -> None:
     node = make_safety_check_node(_FakeCommandService())  # type: ignore[arg-type]
@@ -63,6 +71,10 @@ async def test_safety_node_upgrades_safe_batch_to_confirm() -> None:
     assert result["safety_level"] is SafetyLevel.CONFIRM
     assert result["matched_rule"] == "BATCH_CONFIRM"
     assert result["batch_hosts"] == ("web-1", "web-2")
+    assert result["remote_profiles"] == (
+        {"host": "web-1", "profile": "default"},
+        {"host": "web-2", "profile": "default"},
+    )
 
 
 async def test_safety_node_blocks_remote_shell_syntax_before_confirm() -> None:

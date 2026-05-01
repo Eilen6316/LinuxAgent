@@ -19,8 +19,8 @@ but to make model-driven operations explicit, reviewable, and auditable.
 |---|---|
 | User terminal | The local operator is trusted to approve or deny commands |
 | LLM provider | Not trusted with secrets or final authority |
-| Local subprocess | Executes with the invoking user's privileges; the Plan 1 no-op sandbox records metadata only |
-| SSH target | Must already be trusted through `known_hosts` |
+| Local subprocess | Executes with the invoking user's privileges; configured sandbox runners may add local process or OS boundaries |
+| SSH target | Must already be trusted through `known_hosts`; local OS sandboxing does not protect the remote host |
 | Config file | Trusted only if owned by the user and `chmod 600` |
 | Audit log | Append-only best effort with hash-chain tamper detection |
 
@@ -32,17 +32,19 @@ but to make model-driven operations explicit, reviewable, and auditable.
 | User accidentally approves broad batch execution | Batch confirmation for host count greater than or equal to the configured threshold |
 | LLM output bypasses safety through quoting or shell syntax | `shlex` token facts plus raw embedded-danger checks |
 | Remote command expands unexpectedly through shell features | SSH cluster mode rejects shell chaining, redirects, command substitution, and variable expansion |
+| Remote SSH command runs with excessive privileges | Cluster remote profiles record cwd, environment policy, sudo policy, and audit metadata; recommended deployment uses low-privilege users |
 | Unknown SSH host enables MITM | `RejectPolicy` and `load_system_host_keys()` by default |
 | Secrets leak through logs or command output | `SecretStr`, config permission checks, output guard, redaction before LLM-facing analysis paths |
 | Audit log tampering hides an approval | Hash-chained JSONL records and `linuxagent audit verify` |
 | Non-interactive automation silently approves work | No-TTY confirmation requests auto-deny |
 | Overly broad dependencies increase supply-chain risk | Major-version bounds plus release constraints file and build verification |
-| Operators assume sandbox isolation is active | `sandbox.enabled=true` is rejected while only the no-op runner exists; audit/telemetry marks `enforced=false` |
+| Operators assume sandbox isolation is active | No-op and passthrough runners mark `enforced=false`; SSH protection is a least-privilege boundary, not local sandbox inheritance |
 
 ## Out of Scope
 
-- Sandboxing arbitrary commands after the operator approves them. Plan 1 only
-  records sandbox profile metadata; enforcing runners are future work.
+- Providing strong isolation for SSH targets. Remote execution relies on account
+  privileges, sudoers, known_hosts, confirmation, and audit rather than a remote
+  agent or container sandbox.
 - Preventing a malicious local root user from modifying files.
 - Replacing host intrusion detection, EDR, SIEM, or privileged access
   management.
@@ -67,6 +69,8 @@ Changes in these areas require focused tests and careful review:
 - Use a dedicated low-privilege OS account for routine operations.
 - Keep `config.yaml` local, owned by the operator, and `chmod 600`.
 - Register SSH host keys out of band before cluster use.
+- Configure `cluster.hosts[].remote_profile` with an expected cwd and keep sudo
+  disabled unless a minimal sudoers rule is reviewed.
 - Review audit logs after high-impact sessions.
 - Keep runtime policies environment-specific and test them with harness
   scenarios before production use.

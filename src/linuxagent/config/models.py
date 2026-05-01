@@ -182,6 +182,66 @@ class SandboxConfig(BaseModel):
         return self
 
 
+class ClusterRemoteProfile(BaseModel):
+    model_config = _FROZEN
+
+    name: str = "default"
+    remote_cwd: str = "."
+    environment: Literal["inherit", "clean"] = "inherit"
+    allow_sudo: bool = False
+    sudo_allowlist: tuple[str, ...] = ()
+
+    @field_validator("name", "remote_cwd")
+    @classmethod
+    def _strip_required_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("remote profile fields cannot be empty")
+        return stripped
+
+    @field_validator("sudo_allowlist")
+    @classmethod
+    def _validate_sudo_allowlist(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        cleaned = tuple(item.strip() for item in value if item.strip())
+        if len(cleaned) != len(value):
+            raise ValueError("sudo_allowlist entries cannot be empty")
+        return cleaned
+
+    @field_validator("remote_cwd")
+    @classmethod
+    def _reject_remote_cwd_shell_syntax(cls, value: str) -> str:
+        forbidden = frozenset("\n\r;&|<>(){}$`\\")
+        if any(char in forbidden for char in value):
+            raise ValueError("remote_cwd cannot contain shell control syntax")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_sudo_policy(self) -> ClusterRemoteProfile:
+        if self.sudo_allowlist and not self.allow_sudo:
+            raise ValueError("sudo_allowlist requires allow_sudo=true")
+        if self.allow_sudo and not self.sudo_allowlist:
+            raise ValueError("allow_sudo=true requires a sudo_allowlist")
+        return self
+
+    @property
+    def is_default_boundary(self) -> bool:
+        return (
+            self.remote_cwd == "."
+            and self.environment == "inherit"
+            and not self.allow_sudo
+            and not self.sudo_allowlist
+        )
+
+    def to_record(self) -> dict[str, Any]:
+        return {
+            "profile": self.name,
+            "remote_cwd": self.remote_cwd,
+            "environment": self.environment,
+            "allow_sudo": self.allow_sudo,
+            "sudo_allowlist": list(self.sudo_allowlist),
+        }
+
+
 class ClusterHost(BaseModel):
     model_config = _FROZEN
 
@@ -190,6 +250,16 @@ class ClusterHost(BaseModel):
     port: int = Field(default=22, ge=1, le=65535)
     username: str
     key_filename: OptionalUserPath = None
+    remote_profile: ClusterRemoteProfile = Field(default_factory=ClusterRemoteProfile)
+
+    def remote_profile_record(self) -> dict[str, Any]:
+        return {
+            "host": self.name,
+            "hostname": self.hostname,
+            "port": self.port,
+            "username": self.username,
+            **self.remote_profile.to_record(),
+        }
 
 
 class ClusterConfig(BaseModel):

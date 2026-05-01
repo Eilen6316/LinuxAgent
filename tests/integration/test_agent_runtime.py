@@ -13,7 +13,12 @@ from langchain_core.messages import BaseMessage
 from linuxagent.app import LinuxAgent
 from linuxagent.audit import AuditLog
 from linuxagent.cluster.remote_command import RemoteCommandError, validate_remote_command
-from linuxagent.config.models import ClusterConfig, ClusterHost, SecurityConfig
+from linuxagent.config.models import (
+    ClusterConfig,
+    ClusterHost,
+    ClusterRemoteProfile,
+    SecurityConfig,
+)
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph
 from linuxagent.intelligence import ContextManager
@@ -211,7 +216,12 @@ async def test_agent_runtime_batch_confirm_executes_cluster_command(tmp_path: Pa
             batch_confirm_threshold=2,
             hosts=(
                 ClusterHost(name="a", hostname="a.invalid", username="ops"),
-                ClusterHost(name="b", hostname="b.invalid", username="ops"),
+                ClusterHost(
+                    name="b",
+                    hostname="b.invalid",
+                    username="ops",
+                    remote_profile=ClusterRemoteProfile(name="ops-clean", remote_cwd="/srv/app"),
+                ),
             ),
         ),
         _FakeSSH(),  # type: ignore[arg-type]
@@ -221,6 +231,8 @@ async def test_agent_runtime_batch_confirm_executes_cluster_command(tmp_path: Pa
     await agent.run_turn("run echo on all hosts", thread_id="runtime-batch")
 
     assert ui.interrupts[0]["batch_hosts"] == ["a", "b"]
+    assert ui.interrupts[0]["remote_profiles"][1]["profile"] == "ops-clean"
+    assert ui.interrupts[0]["remote_profiles"][1]["remote_cwd"] == "/srv/app"
     assert ui.printed == ["cluster analysis"]
     analysis_prompt = str(provider.complete_messages[-1][-1].content)
     assert "a:/bin/echo cluster" in analysis_prompt

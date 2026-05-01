@@ -146,7 +146,7 @@ not ask the LLM to explain or generate a reply for that turn.
 | YAML runbooks | Common ops procedures are injected as planner guidance, not pre-LLM hard routes |
 | Learner memory | Successful command patterns are persisted locally after secret redaction |
 | LangGraph HITL | Confirmation uses `interrupt()` and checkpointing rather than inline `input()` |
-| SSH cluster guard | Batch confirmation plus remote shell metacharacter blocking |
+| SSH cluster guard | Batch confirmation, remote shell metacharacter blocking, remote profile audit |
 | Output protection | Command results are redacted and bounded before model-facing analysis |
 | Hash-chained audit | `linuxagent audit verify` detects local audit-log tampering |
 | Reproducible release | `constraints.txt`, wheel verification, and packaged config/prompt/runbook checks |
@@ -218,7 +218,7 @@ closed while explicit passthrough profiles remain auditable passthrough.
 | First LLM-generated command | `CONFIRM` |
 | Destructive command | `CONFIRM` every time; never session-whitelisted |
 | Command targeting root or sensitive paths | `BLOCK` when matched by policy |
-| SSH batch across two or more hosts | Explicit batch confirmation |
+| SSH batch across two or more hosts | Explicit batch confirmation with target hosts and remote profiles |
 | Non-TTY confirmation request | Auto-deny |
 | Unknown SSH host | Reject by default |
 | Default sandbox runner | Records profile metadata only; no process isolation |
@@ -227,6 +227,10 @@ closed while explicit passthrough profiles remain auditable passthrough.
 LinuxAgent is **not** an autonomous remediator. The current default `noop`
 sandbox runner is also not a command sandbox; it is intended for controlled
 operator-in-the-loop use. See [Production Readiness](docs/en/production-readiness.md) and [Threat Model](docs/en/threat-model.md).
+
+SSH execution is not protected by local OS sandboxing. Configure cluster hosts
+with least-privilege users, pre-registered `known_hosts`, a remote working
+directory, and explicit sudo allowlists when sudo is required.
 
 ## Built-In Runbooks
 

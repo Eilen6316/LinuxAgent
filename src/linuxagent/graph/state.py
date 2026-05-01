@@ -50,6 +50,8 @@ class AgentState(TypedDict, total=False):
 
     # Populated by HITL batch detector (services layer).
     batch_hosts: tuple[str, ...]
+    remote_profiles: tuple[dict[str, object], ...]
+    remote_preflight_commands: tuple[dict[str, object], ...]
 
     # Populated after confirm_node / execute_node.
     user_confirmed: bool
@@ -91,6 +93,8 @@ def initial_state(
         safety_capabilities=(),
         safety_can_whitelist=True,
         batch_hosts=(),
+        remote_profiles=(),
+        remote_preflight_commands=(),
         user_confirmed=False,
         execution_result=None,
         audit_id=None,

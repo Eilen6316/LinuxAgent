@@ -59,6 +59,7 @@ sandbox:
 cluster:
   batch_confirm_threshold: 2
   timeout: 60.0
+  known_hosts_path: ~/.ssh/known_hosts
   hosts: []
 
 audit:

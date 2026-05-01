@@ -25,7 +25,7 @@ from linuxagent.cluster.ssh_manager import (
     SSHUnknownHostError,
     _is_alive,
 )
-from linuxagent.config.models import ClusterConfig, ClusterHost
+from linuxagent.config.models import ClusterConfig, ClusterHost, ClusterRemoteProfile
 
 
 def _host() -> ClusterHost:
@@ -35,6 +35,39 @@ def _host() -> ClusterHost:
         port=22,
         username="ops",
     )
+
+
+class _ExitChannel:
+    def recv_exit_status(self) -> int:
+        return 0
+
+
+class _RemoteOutput:
+    channel = _ExitChannel()
+
+    def __init__(self, payload: bytes = b"") -> None:
+        self._payload = payload
+
+    def read(self) -> bytes:
+        return self._payload
+
+
+class _RecordingClient(paramiko.SSHClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.commands: list[str] = []
+
+    def exec_command(
+        self, command: str, **_kwargs: Any
+    ) -> tuple[None, _RemoteOutput, _RemoteOutput]:  # type: ignore[override]
+        self.commands.append(command)
+        return None, _RemoteOutput(b"ok"), _RemoteOutput()
+
+
+def _install_recording_client(monkeypatch: pytest.MonkeyPatch, mgr: SSHManager) -> _RecordingClient:
+    client = _RecordingClient()
+    monkeypatch.setattr(mgr, "_get_or_connect", lambda _host: client)
+    return client
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +161,92 @@ def test_tcp_failure_is_translated(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_client(monkeypatch, mgr, OSError("connection refused"))
     with pytest.raises(SSHConnectionError, match="failed to connect"):
         mgr._execute_sync(_host(), "uname -a")
+
+
+def test_default_remote_profile_sends_raw_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    mgr = SSHManager(ClusterConfig())
+    client = _install_recording_client(monkeypatch, mgr)
+
+    result = mgr._execute_sync(_host(), "echo 'hello world'")
+
+    assert client.commands == ["echo 'hello world'"]
+    assert result.command == "echo 'hello world'"
+    assert result.remote is not None
+    assert result.remote["profile"] == "default"
+    assert result.remote["command_sent"] == "echo 'hello world'"
+
+
+def test_remote_profile_wraps_cwd_and_clean_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mgr = SSHManager(ClusterConfig())
+    client = _install_recording_client(monkeypatch, mgr)
+    host = _host().model_copy(
+        update={
+            "remote_profile": ClusterRemoteProfile(
+                name="ops-clean", remote_cwd="/srv/app", environment="clean"
+            )
+        }
+    )
+
+    result = mgr._execute_sync(host, "systemctl status nginx")
+
+    assert client.commands == [
+        "cd /srv/app && env -i "
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin "
+        "systemctl status nginx"
+    ]
+    assert result.remote is not None
+    assert result.remote["profile"] == "ops-clean"
+    assert result.remote["remote_cwd"] == "/srv/app"
+
+
+def test_remote_profile_rejects_sudo_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mgr = SSHManager(ClusterConfig())
+    monkeypatch.setattr(
+        mgr,
+        "_get_or_connect",
+        lambda _host: (_ for _ in ()).throw(AssertionError("must not connect")),
+    )
+
+    with pytest.raises(SSHRemoteCommandError, match="sudo is not allowed"):
+        mgr._execute_sync(_host(), "sudo -n systemctl status nginx")
+
+
+def test_remote_profile_allows_sudo_allowlisted_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mgr = SSHManager(ClusterConfig())
+    client = _install_recording_client(monkeypatch, mgr)
+    host = _host().model_copy(
+        update={
+            "remote_profile": ClusterRemoteProfile(
+                name="ops-sudo", allow_sudo=True, sudo_allowlist=("systemctl",)
+            )
+        }
+    )
+
+    result = mgr._execute_sync(host, "sudo -n systemctl status nginx")
+
+    assert client.commands == ["sudo -n systemctl status nginx"]
+    assert result.remote is not None
+    assert result.remote["allow_sudo"] is True
+
+
+def test_remote_profile_rejects_sudo_outside_allowlist() -> None:
+    mgr = SSHManager(ClusterConfig())
+    host = _host().model_copy(
+        update={
+            "remote_profile": ClusterRemoteProfile(
+                name="ops-sudo", allow_sudo=True, sudo_allowlist=("systemctl",)
+            )
+        }
+    )
+
+    with pytest.raises(SSHRemoteCommandError, match="allowlist"):
+        mgr._execute_sync(host, "sudo -n reboot")
 
 
 # ---------------------------------------------------------------------------

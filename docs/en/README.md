@@ -216,7 +216,10 @@ A CI red-line check `! grep -rn "AutoAddPolicy" src/linuxagent/` prevents accide
 Remote execution is also narrower than local execution. Cluster commands are
 accepted only as simple argv-like commands; shell sequencing, pipes,
 redirects, command substitution, and variable expansion are blocked before
-confirmation and again before SSH connection setup.
+confirmation and again before SSH connection setup. Local OS sandboxing does
+not extend across SSH; the remote boundary is host scoping, least-privilege
+users, remote working directories, sudo allowlists, host-key verification,
+batch confirmation, and audit metadata.
 
 ### Safety model
 
@@ -225,7 +228,7 @@ confirmation and again before SSH connection setup.
 | First model-generated command | runs directly | forced CONFIRM (`LLM_FIRST_RUN`) |
 | Re-running an approved command | every run re-prompts | whitelisted within the session, cleared on exit |
 | Destructive commands | string blacklist | token match + raw scan + subcommand regex, **never** whitelisted |
-| Batch cluster operations | silent spread | hosts ≥ `cluster.batch_confirm_threshold` (default 2) forces CONFIRM; shell syntax is blocked before SSH |
+| Batch cluster operations | silent spread | hosts ≥ `cluster.batch_confirm_threshold` (default 2) forces CONFIRM; shell syntax is blocked before SSH; payload shows remote profiles |
 | Non-interactive environment | can be bypassed | no-TTY confirm auto-returns `non_tty_auto_deny` |
 | Audit trail | optional | hash-chained HITL events appended to `~/.linuxagent/audit.log` at `0o600`, verifiable with `linuxagent audit verify` |
 
@@ -370,7 +373,11 @@ linuxagent check
 | `sandbox.tools` | `max_file_bytes` | `1048576` | Maximum file size read by workspace/log search tools |
 | `sandbox.tools` | `max_matches` | `200` | Maximum search/list matches exposed to the model |
 | `cluster` | `batch_confirm_threshold` | `2` | Host count that triggers batch confirm |
+| `cluster` | `known_hosts_path` | `~/.ssh/known_hosts` | Additional known-hosts file loaded before system host keys |
 | `cluster` | `hosts` | `[]` | Cluster host list |
+| `cluster.hosts[].remote_profile` | `remote_cwd` | `.` | Remote working directory policy for SSH execution |
+| `cluster.hosts[].remote_profile` | `environment` | `inherit` | `inherit` preserves current behavior; `clean` sends a minimal PATH environment |
+| `cluster.hosts[].remote_profile` | `allow_sudo` | `false` | Allows sudo only when paired with a non-empty `sudo_allowlist` |
 | `audit` | `path` | `~/.linuxagent/audit.log` | Audit log location; **audit cannot be disabled** |
 | `telemetry` | `exporter` | `local` | Local JSONL spans by default; `none` disables writes |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | Local telemetry path |
@@ -542,15 +549,28 @@ Add hosts to `config.yaml`:
 ```yaml
 cluster:
   batch_confirm_threshold: 2
+  known_hosts_path: ~/.ssh/known_hosts
   hosts:
     - name: web-1
-      hostname: 10.0.0.11
+      hostname: 192.0.2.11
       username: ops
       key_filename: ~/.ssh/id_ed25519
+      remote_profile:
+        name: ops-readonly
+        remote_cwd: /srv/app
+        environment: clean
+        allow_sudo: false
+        sudo_allowlist: []
     - name: web-2
-      hostname: 10.0.0.12
+      hostname: 192.0.2.12
       username: ops
       key_filename: ~/.ssh/id_ed25519
+      remote_profile:
+        name: ops-readonly
+        remote_cwd: /srv/app
+        environment: clean
+        allow_sudo: false
+        sudo_allowlist: []
 ```
 
 Then:
@@ -565,6 +585,7 @@ linuxagent ❯ run uptime on all hosts
 │ Safety      CONFIRM                 │
 │ Rule        BATCH_CONFIRM           │
 │ Batch hosts web-1, web-2            │
+│ Remote profiles web-1: profile=ops-readonly user=ops cwd=/srv/app env=clean no sudo │
 ╰──────────────────────────────────────╯
 Allow this operation? [y/N]: y
 
@@ -659,6 +680,9 @@ A: No. `AuditConfig` exposes only `path`, with no `enabled` field.
 
 **Q: How do I SSH in a fresh environment where `known_hosts` is empty?**
 A: Pre-register host keys first, for example with `ssh-keyscan -H your-host.example.com >> ~/.ssh/known_hosts`. LinuxAgent always rejects unknown SSH host keys.
+
+**Q: Does the local sandbox protect remote SSH commands?**
+A: No. Use `cluster.hosts[].remote_profile` to document and enforce the remote cwd, clean environment, and sudo allowlist. Run SSH as a low-privilege user and keep host keys pre-registered.
 
 **Q: Can I use my own OpenAI-compatible gateway?**
 A: Yes. Set `api.provider: openai_compatible`, point `api.base_url` to the gateway URL, and set `api.model` to a supported model. Shortcuts `glm`, `qwen`, `kimi`, `minimax`, `gemini`, and `hunyuan` use the same OpenAI-compatible path. If the gateway rejects `max_completion_tokens`, set `api.token_parameter: max_tokens`.

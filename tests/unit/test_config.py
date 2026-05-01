@@ -124,6 +124,64 @@ def test_batch_threshold_must_be_positive() -> None:
         AppConfig.model_validate({"cluster": {"batch_confirm_threshold": 0}})
 
 
+def test_cluster_host_remote_profile_defaults_preserve_current_behavior() -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "cluster": {
+                "hosts": [
+                    {
+                        "name": "web-1",
+                        "hostname": "192.0.2.10",
+                        "username": "ops",
+                    }
+                ]
+            }
+        }
+    )
+
+    host = cfg.cluster.hosts[0]
+    assert host.remote_profile.is_default_boundary is True
+    assert host.remote_profile.remote_cwd == "."
+    assert host.remote_profile.environment == "inherit"
+    assert host.remote_profile.allow_sudo is False
+
+
+def test_cluster_remote_profile_rejects_invalid_sudo_policy() -> None:
+    with pytest.raises(ValidationError, match="allow_sudo=true"):
+        AppConfig.model_validate(
+            {
+                "cluster": {
+                    "hosts": [
+                        {
+                            "name": "web-1",
+                            "hostname": "192.0.2.10",
+                            "username": "ops",
+                            "remote_profile": {"sudo_allowlist": ["systemctl"]},
+                        }
+                    ]
+                }
+            }
+        )
+
+
+def test_cluster_remote_profile_rejects_remote_cwd_shell_syntax() -> None:
+    with pytest.raises(ValidationError, match="remote_cwd"):
+        AppConfig.model_validate(
+            {
+                "cluster": {
+                    "hosts": [
+                        {
+                            "name": "web-1",
+                            "hostname": "192.0.2.10",
+                            "username": "ops",
+                            "remote_profile": {"remote_cwd": "/srv/app; rm -rf /"},
+                        }
+                    ]
+                }
+            }
+        )
+
+
 def test_policy_path_expands_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     cfg = AppConfig.model_validate({"policy": {"path": "~/.config/linuxagent/policy.yaml"}})

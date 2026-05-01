@@ -12,7 +12,13 @@ from langgraph.types import Command
 
 from linuxagent.audit import AuditLog
 from linuxagent.cluster.remote_command import RemoteCommandError, validate_remote_command
-from linuxagent.config.models import ClusterConfig, ClusterHost, FilePatchConfig, SecurityConfig
+from linuxagent.config.models import (
+    ClusterConfig,
+    ClusterHost,
+    ClusterRemoteProfile,
+    FilePatchConfig,
+    SecurityConfig,
+)
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.graph.checkpoint import PersistentMemorySaver
@@ -804,7 +810,14 @@ async def test_graph_cluster_request_records_batch_hosts(tmp_path) -> None:
     cfg = ClusterConfig(
         batch_confirm_threshold=2,
         hosts=(
-            ClusterHost(name="a", hostname="a.invalid", username="ops"),
+            ClusterHost(
+                name="a",
+                hostname="a.invalid",
+                username="ops",
+                remote_profile=ClusterRemoteProfile(
+                    name="ops-ro", remote_cwd="/srv/app", environment="clean"
+                ),
+            ),
             ClusterHost(name="b", hostname="b.invalid", username="ops"),
         ),
     )
@@ -820,6 +833,11 @@ async def test_graph_cluster_request_records_batch_hosts(tmp_path) -> None:
     )
     snapshot = await graph.aget_state(config)
     assert tuple(snapshot.values["batch_hosts"]) == ("a", "b")
+    remote_profiles = tuple(snapshot.values["remote_profiles"])
+    assert remote_profiles[0]["host"] == "a"
+    assert remote_profiles[0]["profile"] == "ops-ro"
+    assert remote_profiles[0]["remote_cwd"] == "/srv/app"
+    assert remote_profiles[0]["environment"] == "clean"
 
 
 async def test_graph_cluster_execution_blocks_remote_shell_syntax_before_confirm(tmp_path) -> None:
