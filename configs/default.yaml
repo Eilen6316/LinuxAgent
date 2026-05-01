@@ -71,6 +71,7 @@ audit:
 ui:
   theme: auto
   max_chat_history: 20
+  history_path: ~/.linuxagent/history.json
   checkpoint_path: ~/.linuxagent/checkpoints.json
   prompt_symbol: "❯"
 
@@ -93,15 +94,21 @@ telemetry:
 
 analytics:
   enabled: false
+  data_path: ~/.linuxagent/analytics.json
 
 log_analysis:
   enabled: true
+  default_log_paths:
+    - /var/log/syslog
+    - /var/log/messages
   max_lines: 10000
 
 intelligence:
   enabled: true
+  tools_enabled:
   context_window: 50
   embedding_model: text-embedding-3-small
+  embedding_cache_dir: ~/.cache/linuxagent/embeddings
   default_command_candidates:
     - ls -la
     - df -h

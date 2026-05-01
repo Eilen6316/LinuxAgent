@@ -159,6 +159,7 @@ telemetry:
 ui:
   theme: auto                  # auto | light | dark
   max_chat_history: 20
+  history_path: ~/.linuxagent/history.json
   checkpoint_path: ~/.linuxagent/checkpoints.json
   prompt_symbol: "❯"
 
@@ -175,17 +176,25 @@ monitoring:
 
 analytics:
   enabled: false
+  data_path: ~/.linuxagent/analytics.json
 
 log_analysis:
   enabled: true
+  default_log_paths:
+    - /var/log/syslog
+    - /var/log/messages
   max_lines: 10000
 
 intelligence:
   enabled: true
+  # Null keeps provider-specific default behavior: OpenAI-compatible providers
+  # can expose intelligence tools, while non-embedding defaults can skip them.
+  tools_enabled:
   context_window: 50
   # Embedding model used for semantic command/log search.
   # MUST be an API-hosted model — local pytorch models are banned.
   embedding_model: text-embedding-3-small
+  embedding_cache_dir: ~/.cache/linuxagent/embeddings
   # Seed candidates used only before learner memory has successful commands.
   default_command_candidates:
     - ls -la

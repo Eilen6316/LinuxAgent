@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from linuxagent.config.loader import (
@@ -16,6 +17,58 @@ from linuxagent.config.loader import (
 from linuxagent.config.models import AppConfig, AuditConfig, ClusterConfig, LLMProviderName
 from linuxagent.sandbox import SandboxProfile, SandboxRunnerKind
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_REQUIRED_PATHS = (
+    ("api", "provider"),
+    ("api", "base_url"),
+    ("api", "model"),
+    ("api", "api_key"),
+    ("api", "token_parameter"),
+    ("security", "session_whitelist_enabled"),
+    ("policy", "path"),
+    ("policy", "include_builtin"),
+    ("command_plan", "max_repair_attempts"),
+    ("file_patch", "allow_roots"),
+    ("file_patch", "high_risk_roots"),
+    ("file_patch", "allow_permission_changes"),
+    ("file_patch", "max_repair_attempts"),
+    ("sandbox", "enabled"),
+    ("sandbox", "runner"),
+    ("sandbox", "default_profile"),
+    ("sandbox", "allowed_roots"),
+    ("sandbox", "network"),
+    ("sandbox", "limits", "output_bytes"),
+    ("sandbox", "tools", "max_file_bytes"),
+    ("sandbox", "tools", "max_output_chars"),
+    ("cluster", "batch_confirm_threshold"),
+    ("cluster", "known_hosts_path"),
+    ("cluster", "hosts"),
+    ("audit", "path"),
+    ("telemetry", "enabled"),
+    ("telemetry", "exporter"),
+    ("telemetry", "path"),
+    ("ui", "theme"),
+    ("ui", "max_chat_history"),
+    ("ui", "history_path"),
+    ("ui", "checkpoint_path"),
+    ("ui", "prompt_symbol"),
+    ("logging", "level"),
+    ("logging", "format"),
+    ("monitoring", "enabled"),
+    ("analytics", "enabled"),
+    ("analytics", "data_path"),
+    ("log_analysis", "enabled"),
+    ("log_analysis", "default_log_paths"),
+    ("log_analysis", "max_lines"),
+    ("intelligence", "enabled"),
+    ("intelligence", "tools_enabled"),
+    ("intelligence", "context_window"),
+    ("intelligence", "embedding_model"),
+    ("intelligence", "embedding_cache_dir"),
+    ("intelligence", "default_command_candidates"),
+)
+CONFIG_PROVIDER_NAMES = tuple(provider.value for provider in LLMProviderName)
+
 
 def _write_secure(directory: Path, body: str) -> Path:
     path = directory / "config.yaml"
@@ -24,7 +77,42 @@ def _write_secure(directory: Path, body: str) -> Path:
     return path
 
 
+def _load_yaml(path: Path) -> dict[str, object]:
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    return data
+
+
+def _has_path(data: dict[str, object], path: tuple[str, ...]) -> bool:
+    current: object = data
+    for part in path:
+        if not isinstance(current, dict) or part not in current:
+            return False
+        current = current[part]
+    return True
+
+
 # ---- Model-level tests --------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["default.yaml", "example.yaml"])
+def test_config_yaml_samples_cover_key_fields(name: str) -> None:
+    path = REPO_ROOT / "configs" / name
+    data = _load_yaml(path)
+
+    missing = [
+        ".".join(key_path) for key_path in CONFIG_REQUIRED_PATHS if not _has_path(data, key_path)
+    ]
+    assert missing == []
+    AppConfig.model_validate(data)
+
+
+@pytest.mark.parametrize("name", ["default.yaml", "example.yaml"])
+def test_config_yaml_samples_document_supported_providers(name: str) -> None:
+    text = (REPO_ROOT / "configs" / name).read_text(encoding="utf-8")
+
+    missing = [provider for provider in CONFIG_PROVIDER_NAMES if provider not in text]
+    assert missing == []
 
 
 def test_defaults_populate_every_section() -> None:
