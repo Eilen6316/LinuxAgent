@@ -1,9 +1,9 @@
 """POSIX command executor — no shell, ever.
 
-All subprocess invocations pass a pre-tokenised argv list to
-``asyncio.create_subprocess_exec``. No code path spawns a shell: no string
-argument to ``subprocess.run``, no ``os.system`` / ``os.popen``, no shell
-keyword. Repo-wide grep enforces this in CI (R-SEC-01).
+All local process creation is delegated to a ``SandboxRunner`` with a
+pre-tokenised argv list. No code path spawns a shell: no string argument to
+``subprocess.run``, no ``os.system`` / ``os.popen``, no shell keyword.
+Repo-wide red-line checks enforce this in CI (R-SEC-01/R-SEC-06).
 
 Safety classification is delegated to :mod:`.safety`; whitelist lookup and
 promotion is delegated to :mod:`.session_whitelist`. The executor itself

@@ -1,8 +1,10 @@
 """Command executor interface and sentinel result types.
 
-Implementations must invoke subprocesses directly with list arguments
-rather than spawning through a shell (R-SEC-01), and must classify commands
-via token-level analysis using ``shlex`` (R-SEC-02).
+Implementations are responsible for command token semantics, safety
+classification, and result shaping. Local process creation must be delegated
+to a ``SandboxRunner`` with list argv, never to direct shell/subprocess calls
+(R-SEC-01/R-SEC-06). Command classification must use token-level analysis via
+``shlex`` (R-SEC-02).
 """
 
 from __future__ import annotations
