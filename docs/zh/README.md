@@ -298,7 +298,7 @@ api:
 其他字段全部用默认值即可（默认 provider 为 DeepSeek，可改为 `openai` / `openai_compatible` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo`）。
 
 API 中转站或第三方 OpenAI 兼容端点可用 `openai_compatible`，也可用
-`glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` 快捷 provider：
+`qwen` / `kimi` / `glm` / `minimax` / `gemini` / `hunyuan` 快捷 provider：
 
 ```yaml
 api:
@@ -311,6 +311,23 @@ api:
 
 Anthropic 格式中转站可用 `provider: anthropic_compatible` 并填写自己的
 `base_url`；小米 MiMo 可用 `provider: xiaomi_mimo`。
+
+### Provider 速查表
+
+| Provider | 协议 | 常用 `base_url` | Token 参数 |
+|---|---|---|---|
+| `deepseek` | OpenAI 兼容 | `https://api.deepseek.com/v1` | `max_completion_tokens` |
+| `openai` | OpenAI | `https://api.openai.com/v1` | `max_completion_tokens` |
+| `openai_compatible` | OpenAI 兼容中转站 | 中转站自己的 `/v1` 地址 | 通常为 `max_tokens` |
+| `qwen` | OpenAI 兼容 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `max_tokens` |
+| `kimi` | OpenAI 兼容 | `https://api.moonshot.ai/v1` | `max_tokens` |
+| `glm` | OpenAI 兼容 | `https://open.bigmodel.cn/api/paas/v4` | `max_tokens` |
+| `minimax` | OpenAI 兼容 | `https://api.minimax.io/v1` | `max_tokens` |
+| `gemini` | OpenAI 兼容 | `https://generativelanguage.googleapis.com/v1beta/openai/` | `max_tokens` |
+| `hunyuan` | OpenAI 兼容 | `https://api.hunyuan.cloud.tencent.com/v1` | `max_tokens` |
+| `anthropic` | Anthropic | provider 默认值 | n/a |
+| `anthropic_compatible` | Anthropic 兼容中转站 | 中转站自己的地址 | n/a |
+| `xiaomi_mimo` | Anthropic 兼容 | 中转站自己的地址 | n/a |
 
 ### 验证配置
 
