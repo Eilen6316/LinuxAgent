@@ -9,7 +9,7 @@ expected_interrupts:
   - type: confirm_command
     matched_rule: LLM_FIRST_RUN
 resume:
-  decision: yes
+  decision: "yes"
   latency_ms: 100
 expected:
   command_executed: true

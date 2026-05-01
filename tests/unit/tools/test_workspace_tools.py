@@ -12,7 +12,6 @@ from linuxagent.tools import (
     make_read_file_tool,
     make_search_files_tool,
 )
-from linuxagent.tools.regex_guard import UnsafeRegexError
 
 
 def test_read_file_returns_line_window(tmp_path) -> None:
@@ -46,7 +45,7 @@ def test_list_dir_returns_sorted_entries(tmp_path) -> None:
     assert output == ["pkg/", "README.md"]
 
 
-def test_search_files_finds_regex_matches(tmp_path) -> None:
+def test_search_files_finds_literal_matches(tmp_path) -> None:
     (tmp_path / "app.py").write_text("alpha\nneedle = True\n", encoding="utf-8")
     (tmp_path / "notes.txt").write_text("needle here\n", encoding="utf-8")
     tool = make_search_files_tool(FilePatchConfig(allow_roots=(tmp_path,)))
@@ -56,12 +55,13 @@ def test_search_files_finds_regex_matches(tmp_path) -> None:
     assert output == ["app.py:2:needle = True", "notes.txt:1:needle here"]
 
 
-def test_search_files_rejects_nested_quantifier_regex(tmp_path) -> None:
-    (tmp_path / "app.py").write_text("aaaaaaaaaaaaaaaa\n", encoding="utf-8")
+def test_search_files_treats_regex_metacharacters_as_literal_text(tmp_path) -> None:
+    (tmp_path / "app.py").write_text("aaaaaaaaaaaaaaaa\nliteral (a|aa)+$\n", encoding="utf-8")
     tool = make_search_files_tool(FilePatchConfig(allow_roots=(tmp_path,)))
 
-    with pytest.raises(UnsafeRegexError, match="nested quantifiers"):
-        tool.invoke({"root": str(tmp_path), "pattern": "(a+)+$", "max_matches": 1})
+    output = tool.invoke({"root": str(tmp_path), "pattern": "(a|aa)+$", "max_matches": 1})
+
+    assert output == ["app.py:2:literal (a|aa)+$"]
 
 
 def test_build_workspace_tools_exposes_expected_names(tmp_path) -> None:

@@ -42,13 +42,14 @@ text=True, check=True)` to fetch `date` output and update the file; do not use
 shell redirects, pipes, heredocs, command substitution, or command chaining.
 When editing existing files or writing code against current repository content,
 use read-only workspace tools such as `read_file`, `list_dir`, and
-`search_files` before producing a FilePatchPlan. Compare the user's requested
-capability against the current file content before proposing changes. If the
-existing implementation already satisfies the request, do not create a no-op or
-cosmetic patch; return a NoChangePlan. If only part of the request is missing,
-preserve the existing file's structure, language, style, comments, and working
-logic, then produce the smallest diff that adds the missing behavior. Avoid
-rewriting, reformatting, renumbering, or translating unrelated code and text.
+`search_files` before producing a FilePatchPlan. `search_files` patterns are
+literal text, not regular expressions. Compare the user's requested capability
+against the current file content before proposing changes. If the existing
+implementation already satisfies the request, do not create a no-op or cosmetic
+patch; return a NoChangePlan. If only part of the request is missing, preserve
+the existing file's structure, language, style, comments, and working logic,
+then produce the smallest diff that adds the missing behavior. Avoid rewriting,
+reformatting, renumbering, or translating unrelated code and text.
 If an artifact creation request reaches this planner without a target path,
 filename, target directory, or clear chat_history destination, do not invent one.
 Return no file mutation plan; ask a clarifying question before planning.

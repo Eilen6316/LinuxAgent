@@ -146,8 +146,8 @@ read-only tools:
 
 - `read_file(path, offset, limit)`
 - `list_dir(path)`
-- `search_files(pattern, root)`
-- `search_logs(pattern, log_file, max_matches)`
+- `search_files(pattern, root)` for literal text search
+- `search_logs(pattern, log_file, max_matches)` for literal text search
 - `get_system_info()`
 
 All workspace file reads reuse `file_patch.allow_roots`; the default roots are

@@ -8,7 +8,7 @@ inputs:
 expected_interrupts:
   - type: confirm_command
 resume:
-  decision: yes
+  decision: "yes"
   latency_ms: 25
 expected:
   command_executed: true
@@ -16,6 +16,6 @@ expected:
   audit_log_contains:
     - event: confirm_begin
     - event: confirm_decision
-      decision: yes
+      decision: "yes"
     - event: command_executed
       command: /bin/echo audited

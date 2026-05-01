@@ -13,7 +13,6 @@ from linuxagent.tools import (
     make_get_system_info_tool,
     make_search_logs_tool,
 )
-from linuxagent.tools.regex_guard import UnsafeRegexError
 
 
 def _executor() -> LinuxCommandExecutor:
@@ -142,13 +141,14 @@ def test_search_logs_rejects_invalid_limit(tmp_path) -> None:
         tool.invoke({"pattern": "ERROR", "log_file": str(log_file), "max_matches": 0})
 
 
-def test_search_logs_rejects_nested_quantifier_regex(tmp_path) -> None:
+def test_search_logs_treats_regex_metacharacters_as_literal_text(tmp_path) -> None:
     log_file = tmp_path / "app.log"
-    log_file.write_text("aaaaaaaaaaaaaaaa\n", encoding="utf-8")
+    log_file.write_text("aaaaaaaaaaaaaaaa\nliteral (a|aa)+$\n", encoding="utf-8")
     tool = make_search_logs_tool((tmp_path,))
 
-    with pytest.raises(UnsafeRegexError, match="nested quantifiers"):
-        tool.invoke({"pattern": "(a+)+$", "log_file": str(log_file)})
+    out = tool.invoke({"pattern": "(a|aa)+$", "log_file": str(log_file)})
+
+    assert out == ["2:literal (a|aa)+$"]
 
 
 def test_search_logs_rejects_file_outside_allowed_roots(tmp_path) -> None:

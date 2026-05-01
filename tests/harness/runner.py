@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import tempfile
@@ -10,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import pytest
 import yaml
 from langchain_core.messages import BaseMessage
 from langgraph.types import Command
@@ -213,13 +213,32 @@ def _load_scenarios(path: Path) -> list[Scenario]:
             name=doc["scenario"],
             inputs=doc.get("inputs", []),
             provider_responses=list(doc.get("provider_responses", [])),
-            expected=dict(doc.get("expected", {})),
-            expected_interrupts=list(doc.get("expected_interrupts", [])),
-            resume=doc.get("resume"),
+            expected=dict(_normalize_decisions(doc.get("expected", {}))),
+            expected_interrupts=list(_normalize_decisions(doc.get("expected_interrupts", []))),
+            resume=_normalize_decisions(doc.get("resume")),
             setup=dict(doc.get("setup", {})),
         )
         for doc in raw_docs
     ]
+
+
+def _normalize_decisions(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _normalize_decision_value(raw) if key == "decision" else _normalize_decisions(raw)
+            for key, raw in value.items()
+        }
+    if isinstance(value, list):
+        return [_normalize_decisions(item) for item in value]
+    return value
+
+
+def _normalize_decision_value(value: Any) -> Any:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return value
 
 
 def _scenario_paths(scenario_dir: Path) -> list[Path]:
@@ -231,7 +250,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scenarios", type=Path, required=True)
     args = parser.parse_args(argv)
     os.environ["LINUXAGENT_HARNESS_SCENARIOS"] = str(args.scenarios)
-    return pytest.main(["-q", "tests/harness/test_scenarios.py"])
+    asyncio.run(HarnessRunner().run_all(args.scenarios))
+    return 0
 
 
 if __name__ == "__main__":

@@ -430,7 +430,8 @@ redirection.
 
 1. The planner can first inspect real context with read-only tools:
    `get_system_info`, `list_dir`, `read_file(path, offset, limit)`,
-   `search_files(pattern, root)`, and `search_logs`.
+   `search_files(pattern, root)`, and `search_logs(pattern, log_file)`. Search
+   patterns are literal text, not regular expressions.
 2. The terminal shows observable tool activity such as `LinuxAgent is reading
    /tmp/disk_info.sh`; tool failures are surfaced clearly.
 3. The model must return a structured `FilePatchPlan` with `request_intent`,

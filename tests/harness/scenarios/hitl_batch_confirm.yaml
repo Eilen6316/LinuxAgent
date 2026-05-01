@@ -13,7 +13,7 @@ expected_interrupts:
   - type: confirm_command
     matched_rule: BATCH_CONFIRM
 resume:
-  decision: yes
+  decision: "yes"
   latency_ms: 300
 expected:
   command_executed: true

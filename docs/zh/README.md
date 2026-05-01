@@ -419,7 +419,8 @@ linuxagent ❯ !ls -la
 LinuxAgent 不会直接让模型拼 shell 命令覆盖文件，而是进入文件 patch 流程：
 
 1. planner 可先调用只读工具探测环境和文件内容：`get_system_info`、`list_dir`、
-   `read_file(path, offset, limit)`、`search_files(pattern, root)`、`search_logs`。
+   `read_file(path, offset, limit)`、`search_files(pattern, root)`、
+   `search_logs(pattern, log_file)`；搜索 pattern 按普通文本处理，不执行正则。
 2. 终端会显示可观测状态，例如 `LinuxAgent 正在读取文件 /tmp/disk_info.sh`；
    工具失败也会显示清晰原因。
 3. 模型必须返回结构化 `FilePatchPlan`，包含 `request_intent`、目标文件、

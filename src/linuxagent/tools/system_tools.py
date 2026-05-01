@@ -19,10 +19,10 @@ from ..config.models import MonitoringConfig
 from ..interfaces import CommandExecutor, CommandSource
 from ..security import guard_execution_result, redact_text
 from ..services import evaluate_alerts
-from .regex_guard import compile_safe_search_regex
 
 DEFAULT_LOG_ROOTS: tuple[Path, ...] = (Path("/var/log"),)
 MAX_LOG_FILE_BYTES = 1_048_576
+MAX_LOG_SEARCH_QUERY_CHARS = 256
 
 
 def make_execute_command_tool(executor: CommandExecutor) -> BaseTool:
@@ -108,14 +108,14 @@ def make_search_logs_tool(
     *,
     max_file_bytes: int = MAX_LOG_FILE_BYTES,
 ) -> BaseTool:
-    """Expose bounded regex search over a local text log file."""
+    """Expose bounded literal search over a local text log file."""
 
     @tool
     def search_logs(pattern: str, log_file: str, max_matches: int = 50) -> list[str]:
-        """Search a text log file for a regular-expression pattern.
+        """Search a text log file for literal text.
 
         Args:
-            pattern: Python regular expression to search for.
+            pattern: Literal text to search for.
             log_file: Path to the log file to read.
             max_matches: Maximum number of matching lines to return.
 
@@ -125,7 +125,7 @@ def make_search_logs_tool(
         if max_matches < 1:
             raise ValueError("max_matches must be >= 1")
 
-        compiled = compile_safe_search_regex(pattern)
+        query = _log_search_query(pattern)
         path = _resolve_allowed_log_file(Path(log_file).expanduser(), allowed_roots)
         if path.stat().st_size > max_file_bytes:
             raise LogFileAccessError(f"log file exceeds max size ({max_file_bytes} bytes): {path}")
@@ -133,7 +133,7 @@ def make_search_logs_tool(
         with path.open("r", encoding="utf-8", errors="replace") as handle:
             for line_number, line in enumerate(handle, start=1):
                 text = line.rstrip("\n")
-                if compiled.search(text):
+                if query in text.casefold():
                     redacted = redact_text(text)
                     matches.append(f"{line_number}:{redacted.text}")
                     if len(matches) >= max_matches:
@@ -155,6 +155,15 @@ def build_system_tools(
         make_get_system_info_tool(monitoring_config),
         make_search_logs_tool(allowed_log_roots),
     ]
+
+
+def _log_search_query(pattern: str) -> str:
+    query = pattern.strip()
+    if not query:
+        raise ValueError("search pattern must not be blank")
+    if len(query) > MAX_LOG_SEARCH_QUERY_CHARS:
+        raise ValueError(f"search pattern exceeds max length ({MAX_LOG_SEARCH_QUERY_CHARS})")
+    return query.casefold()
 
 
 def _resolve_allowed_log_file(path: Path, allowed_roots: tuple[Path, ...]) -> Path:

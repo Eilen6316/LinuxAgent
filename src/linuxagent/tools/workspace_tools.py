@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from langchain_core.tools import BaseTool, tool
 
 from ..config.models import FilePatchConfig
-from .regex_guard import compile_safe_search_regex
 
 MAX_READ_CHARS = 120_000
 MAX_SEARCH_FILE_BYTES = 1_048_576
 MAX_SEARCH_MATCHES = 200
+MAX_SEARCH_QUERY_CHARS = 256
 DEFAULT_READ_LIMIT = 200
 MAX_READ_LIMIT = 2_000
 MAX_LIST_ENTRIES = 500
@@ -60,15 +59,12 @@ def make_list_dir_tool(config: FilePatchConfig) -> BaseTool:
 def make_search_files_tool(config: FilePatchConfig) -> BaseTool:
     @tool
     def search_files(pattern: str, root: str = ".", max_matches: int = 50) -> list[str]:
-        """Search text files under configured workspace roots with a regex."""
+        """Search text files under configured workspace roots for literal text."""
         target = _resolve_allowed_path(Path(root), config)
         if not target.is_dir():
             raise WorkspaceAccessError(f"root is not a directory: {target}")
-        return _search_tree(
-            compile_safe_search_regex(pattern),
-            target,
-            _bounded_limit(max_matches, MAX_SEARCH_MATCHES),
-        )
+        query = _search_query(pattern)
+        return _search_tree(query, target, _bounded_limit(max_matches, MAX_SEARCH_MATCHES))
 
     return search_files
 
@@ -88,21 +84,30 @@ def _read_text_window(path: Path, offset: int, limit: int) -> str:
     return "\n".join(lines)
 
 
-def _search_tree(pattern: re.Pattern[str], root: Path, max_matches: int) -> list[str]:
+def _search_query(pattern: str) -> str:
+    query = pattern.strip()
+    if not query:
+        raise ValueError("search pattern must not be blank")
+    if len(query) > MAX_SEARCH_QUERY_CHARS:
+        raise ValueError(f"search pattern exceeds max length ({MAX_SEARCH_QUERY_CHARS})")
+    return query.casefold()
+
+
+def _search_tree(query: str, root: Path, max_matches: int) -> list[str]:
     matches: list[str] = []
     for path in sorted(root.rglob("*")):
         if len(matches) >= max_matches:
             break
         if _searchable_file(path):
-            matches.extend(_search_file(pattern, root, path, max_matches - len(matches)))
+            matches.extend(_search_file(query, root, path, max_matches - len(matches)))
     return matches
 
 
-def _search_file(pattern: re.Pattern[str], root: Path, path: Path, remaining: int) -> list[str]:
+def _search_file(query: str, root: Path, path: Path, remaining: int) -> list[str]:
     matches: list[str] = []
     with path.open("r", encoding="utf-8", errors="replace") as handle:
         for line_number, line in enumerate(handle, start=1):
-            if pattern.search(line):
+            if query in line.casefold():
                 relpath = path.relative_to(root)
                 matches.append(f"{relpath}:{line_number}:{line.rstrip()}")
                 if len(matches) >= remaining:

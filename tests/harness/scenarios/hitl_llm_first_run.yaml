@@ -11,7 +11,7 @@ expected_interrupts:
     command_source: llm
     matched_rule: LLM_FIRST_RUN
 resume:
-  decision: yes
+  decision: "yes"
   latency_ms: 1200
 expected:
   command_executed: true
@@ -20,6 +20,6 @@ expected:
     - event: confirm_begin
       command_source: llm
     - event: confirm_decision
-      decision: yes
+      decision: "yes"
     - event: command_executed
       exit_code: 0

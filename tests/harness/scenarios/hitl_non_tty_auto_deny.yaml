@@ -7,10 +7,10 @@ inputs:
 expected_interrupts:
   - type: confirm_command
 resume:
-  decision: non_tty_auto_deny
+  decision: "non_tty_auto_deny"
   latency_ms: 0
 expected:
   command_executed: false
   audit_log_contains:
     - event: confirm_decision
-      decision: non_tty_auto_deny
+      decision: "non_tty_auto_deny"

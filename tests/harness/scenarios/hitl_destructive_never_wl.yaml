@@ -12,7 +12,7 @@ expected_interrupts:
   - type: confirm_command
     is_destructive: true
 resume:
-  decision: yes
+  decision: "yes"
   latency_ms: 200
 expected:
   command_executed: true
