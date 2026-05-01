@@ -360,6 +360,42 @@ def test_apply_rolls_back_content_when_later_write_fails(tmp_path: Path) -> None
     assert exc_info.value.transaction.rollback_outcome == "succeeded"
 
 
+def test_apply_rolls_back_created_parent_directories_when_later_write_fails(
+    tmp_path: Path,
+) -> None:
+    created = tmp_path / "newdir" / "created.txt"
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("blocks mkdir\n", encoding="utf-8")
+    payload = {
+        "plan_type": "file_patch",
+        "goal": "create then fail",
+        "files_changed": [str(created), str(blocker / "two.txt")],
+        "unified_diff": "\n".join(
+            [
+                "--- /dev/null",
+                f"+++ {created}",
+                "@@ -0,0 +1 @@",
+                "+created",
+                "--- /dev/null",
+                f"+++ {blocker / 'two.txt'}",
+                "@@ -0,0 +1 @@",
+                "+two",
+                "",
+            ]
+        ),
+    }
+    plan = parse_file_patch_plan(json.dumps(payload))
+
+    with pytest.raises(FilePatchApplyError) as exc_info:
+        apply_file_patch_plan(plan, FilePatchConfig(allow_roots=(tmp_path,)))
+
+    assert not created.exists()
+    assert not created.parent.exists()
+    assert blocker.read_text(encoding="utf-8") == "blocks mkdir\n"
+    assert exc_info.value.transaction is not None
+    assert exc_info.value.transaction.rollback_outcome == "succeeded"
+
+
 def test_missing_permission_target_blocks_before_writing(tmp_path: Path) -> None:
     target = tmp_path / "hello.sh"
     missing = tmp_path / "missing.sh"

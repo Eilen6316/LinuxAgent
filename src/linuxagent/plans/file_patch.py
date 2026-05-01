@@ -384,6 +384,7 @@ class FilePatchTransaction:
             tempfile.mkdtemp(prefix=".linuxagent-patch-", dir=str(self._sandbox_root))
         )
         self._backups: list[FilePatchBackupRecord] = []
+        self._created_dirs: list[Path] = []
 
     def apply(self) -> PatchApplyResult:
         changed: tuple[Path, ...] = ()
@@ -456,7 +457,9 @@ class FilePatchTransaction:
         if update.delete:
             update.target.unlink(missing_ok=True)
             return update.target
+        missing_dirs = _missing_parent_dirs(update.target)
         update.target.parent.mkdir(parents=True, exist_ok=True)
+        self._created_dirs.extend(missing_dirs)
         _atomic_write_text(update.target, _join_lines(list(update.new_lines)))
         return update.target
 
@@ -471,6 +474,8 @@ class FilePatchTransaction:
                 else:
                     with suppress(FileNotFoundError, NotADirectoryError):
                         backup.target.unlink(missing_ok=True)
+            for directory in reversed(self._created_dirs):
+                directory.rmdir()
         except Exception:
             return "failed"
         return "succeeded"
@@ -558,8 +563,19 @@ def _transaction_root(updates: tuple[_PlannedFileUpdate, ...]) -> Path:
     if not updates:
         return Path.cwd()
     root = updates[0].target.parent
+    while not root.exists() and root.parent != root:
+        root = root.parent
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def _missing_parent_dirs(path: Path) -> tuple[Path, ...]:
+    current = path.parent
+    missing: list[Path] = []
+    while not current.exists() and current.parent != current:
+        missing.append(current)
+        current = current.parent
+    return tuple(reversed(missing))
 
 
 def _atomic_write_text(path: Path, content: str) -> None:
