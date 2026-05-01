@@ -10,6 +10,7 @@ from typing import Any
 from prompt_toolkit.document import Document
 from rich.console import Console
 
+from linuxagent.interfaces import ExecutionResult
 from linuxagent.ui import ConsoleUI
 from linuxagent.ui.console import SlashCommandCompleter
 
@@ -425,3 +426,19 @@ async def test_console_print_treats_model_output_as_plain_text() -> None:
 
     rendered = console.export_text()
     assert "[bold]Rocky[/bold] **Linux**" in rendered
+
+
+async def test_console_print_execution_result_can_omit_streamed_output() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_execution_result(
+        ExecutionResult("/bin/echo marker", 0, "stdout-body\n", "", 0.1),
+        include_output=False,
+    )
+
+    rendered = console.export_text()
+    assert "Command result · exit 0" in rendered
+    assert "/bin/echo marker" in rendered
+    assert "stdout-body" not in rendered
+    assert "[streamed above]" in rendered

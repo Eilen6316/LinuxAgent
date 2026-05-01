@@ -22,3 +22,19 @@ def test_execution_display_redacts_and_marks_truncation() -> None:
     assert "***redacted***" in display.text
     assert display.truncated is True
     assert "output truncated" in display.text
+
+
+def test_execution_display_can_omit_streamed_output() -> None:
+    result = ExecutionResult(
+        command="/bin/echo marker",
+        exit_code=0,
+        stdout="stdout-body\n",
+        stderr="",
+        duration=0.1,
+    )
+
+    display = execution_display_text(result, include_output=False)
+
+    assert "command: /bin/echo marker" in display.text
+    assert "stdout-body" not in display.text
+    assert "[streamed above]" in display.text

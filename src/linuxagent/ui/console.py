@@ -86,8 +86,10 @@ class ConsoleUI(UserInterface):
         rendered = Text(text, style="red") if stderr else Text(text)
         self._console.print(rendered, end="")
 
-    async def print_execution_result(self, result: ExecutionResult) -> None:
-        display = execution_display_text(result)
+    async def print_execution_result(
+        self, result: ExecutionResult, *, include_output: bool = True
+    ) -> None:
+        display = execution_display_text(result, include_output=include_output)
         style = "green" if result.exit_code == 0 else "red"
         title = f"Command result · exit {result.exit_code}"
         self._console.print(Panel(Text(display.text), title=title, border_style=style))

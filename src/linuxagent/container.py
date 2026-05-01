@@ -64,6 +64,7 @@ class Container:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
         self._singletons: dict[str, object] = {}
+        self._streamed_outputs: set[tuple[str, str]] = set()
 
     @property
     def config(self) -> AppConfig:
@@ -312,12 +313,16 @@ class Container:
             stream = event.get("phase")
             if stream in {"stdout", "stderr"}:
                 text = str(event.get("text") or "")
+                if text:
+                    self._streamed_outputs.add(_command_event_key(event))
                 await self.ui().print_raw(text, stderr=stream == "stderr")
                 return
             if stream == "result":
                 result = event.get("result")
                 if isinstance(result, ExecutionResult):
-                    await self.ui().print_execution_result(result)
+                    streamed = _command_event_key(event) in self._streamed_outputs
+                    self._streamed_outputs.discard(_command_event_key(event))
+                    await self.ui().print_execution_result(result, include_output=not streamed)
 
         return observe
 
@@ -385,6 +390,10 @@ def _tool_event_message(event: dict[str, Any]) -> str | None:
             f"{tool_name}: {event.get('output_preview') or 'unknown error'}"
         )
     return None
+
+
+def _command_event_key(event: dict[str, Any]) -> tuple[str, str]:
+    return (str(event.get("trace_id") or ""), str(event.get("command") or ""))
 
 
 def _runtime_event_message(event: dict[str, Any]) -> str | None:

@@ -22,7 +22,10 @@ def execution_display_text(
     result: ExecutionResult,
     *,
     max_chars: int = EXECUTION_DISPLAY_MAX_CHARS,
+    include_output: bool = True,
 ) -> ExecutionDisplay:
+    stdout = result.stdout.rstrip() if include_output else "[streamed above]"
+    stderr = result.stderr.rstrip() if include_output else "[streamed above]"
     raw = "\n".join(
         (
             f"command: {result.command}",
@@ -31,9 +34,9 @@ def execution_display_text(
             f"sandbox: {_sandbox_line(result)}",
             f"remote: {_remote_line(result.remote)}",
             "stdout:",
-            result.stdout.rstrip(),
+            stdout,
             "stderr:",
-            result.stderr.rstrip(),
+            stderr,
         )
     )
     redacted = redact_text(raw)
