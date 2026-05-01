@@ -51,9 +51,9 @@ api:
   token_parameter: max_tokens
 ```
 
-`glm` / `kimi` / `minimax` / `gemini` 快捷 provider 走同一条
+`glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` 快捷 provider 走同一条
 OpenAI-compatible 路径。Anthropic 格式中转站可在安装 Anthropic extra 后使用
-`provider: anthropic_compatible`。
+`provider: anthropic_compatible`；小米 MiMo 可用 `provider: xiaomi_mimo`。
 
 不要用 `.env` 存密钥。v4 只允许环境变量指向配置路径，不承载密钥值。
 

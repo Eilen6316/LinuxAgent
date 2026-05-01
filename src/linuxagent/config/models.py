@@ -39,11 +39,14 @@ class LLMProviderName(StrEnum):
     OPENAI_COMPATIBLE = "openai_compatible"
     DEEPSEEK = "deepseek"
     GLM = "glm"
+    QWEN = "qwen"
     KIMI = "kimi"
     MINIMAX = "minimax"
     GEMINI = "gemini"
+    HUNYUAN = "hunyuan"
     ANTHROPIC = "anthropic"
     ANTHROPIC_COMPATIBLE = "anthropic_compatible"
+    XIAOMI_MIMO = "xiaomi_mimo"
 
 
 class APIConfig(BaseModel):
@@ -71,6 +74,12 @@ class APIConfig(BaseModel):
             return LLMProviderName.KIMI
         if value == "zhipu":
             return LLMProviderName.GLM
+        if value in {"tongyi", "dashscope"}:
+            return LLMProviderName.QWEN
+        if value in {"tencent_hunyuan", "tencent-hunyuan"}:
+            return LLMProviderName.HUNYUAN
+        if value in {"mimo", "xiaomi", "xiaomi-mimo"}:
+            return LLMProviderName.XIAOMI_MIMO
         return value
 
     def require_key(self) -> str:

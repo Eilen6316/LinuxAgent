@@ -52,9 +52,10 @@ api:
   token_parameter: max_tokens
 ```
 
-Provider shortcuts `glm`, `kimi`, `minimax`, and `gemini` use the same
-OpenAI-compatible path. Anthropic-format relays can use
-`provider: anthropic_compatible` after installing the Anthropic extra.
+Provider shortcuts `glm`, `qwen`, `kimi`, `minimax`, `gemini`, and `hunyuan`
+use the same OpenAI-compatible path. Anthropic-format relays can use
+`provider: anthropic_compatible` after installing the Anthropic extra; Xiaomi
+MiMo can use `provider: xiaomi_mimo`.
 
 Do not use `.env` for secrets. v4 only allows environment variables to point to
 configuration paths, not to carry secret values.

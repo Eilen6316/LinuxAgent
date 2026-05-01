@@ -57,7 +57,7 @@ api:
 
 For API relays or third-party OpenAI-compatible endpoints, use
 `openai_compatible` or one of the shortcuts `glm`, `kimi`, `minimax`, or
-`gemini`:
+`gemini`, `qwen`, or `hunyuan`:
 
 ```yaml
 api:
@@ -69,7 +69,7 @@ api:
 ```
 
 Anthropic-format relays can use `provider: anthropic_compatible` with their own
-`base_url`.
+`base_url`; Xiaomi MiMo can use `provider: xiaomi_mimo`.
 
 Run:
 

@@ -41,7 +41,7 @@ def _build_chat_model(config: APIConfig) -> Any:
             "Anthropic support requires the optional extra: pip install 'linuxagent[anthropic]'"
         )
     kwargs: dict[str, Any] = {}
-    if config.provider is LLMProviderName.ANTHROPIC_COMPATIBLE:
+    if config.provider in (LLMProviderName.ANTHROPIC_COMPATIBLE, LLMProviderName.XIAOMI_MIMO):
         kwargs["anthropic_api_url"] = config.base_url
     return ChatAnthropic(
         model_name=config.model,

@@ -18,14 +18,20 @@ def provider_factory(config: APIConfig) -> BaseLLMProvider:
             LLMProviderName.OPENAI
             | LLMProviderName.OPENAI_COMPATIBLE
             | LLMProviderName.GLM
+            | LLMProviderName.QWEN
             | LLMProviderName.KIMI
             | LLMProviderName.MINIMAX
             | LLMProviderName.GEMINI
+            | LLMProviderName.HUNYUAN
         ):
             return OpenAIProvider(config)
         case LLMProviderName.DEEPSEEK:
             return DeepSeekProvider(config)
-        case LLMProviderName.ANTHROPIC | LLMProviderName.ANTHROPIC_COMPATIBLE:
+        case (
+            LLMProviderName.ANTHROPIC
+            | LLMProviderName.ANTHROPIC_COMPATIBLE
+            | LLMProviderName.XIAOMI_MIMO
+        ):
             if not _anthropic_available():
                 raise ProviderUnsupportedError(
                     "Anthropic support requires the optional extra: "

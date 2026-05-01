@@ -36,9 +36,11 @@ def test_openai_compatible_route() -> None:
     "provider",
     [
         LLMProviderName.GLM,
+        LLMProviderName.QWEN,
         LLMProviderName.KIMI,
         LLMProviderName.MINIMAX,
         LLMProviderName.GEMINI,
+        LLMProviderName.HUNYUAN,
     ],
 )
 def test_openai_compatible_shortcut_routes(provider: LLMProviderName) -> None:
@@ -76,6 +78,12 @@ def test_anthropic_compatible_raises_when_extra_missing(
         provider_factory(_cfg(LLMProviderName.ANTHROPIC_COMPATIBLE))
 
 
+def test_xiaomi_mimo_raises_when_extra_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("linuxagent.providers.factory._anthropic_available", lambda: False)
+    with pytest.raises(ProviderUnsupportedError, match="anthropic"):
+        provider_factory(_cfg(LLMProviderName.XIAOMI_MIMO))
+
+
 def test_anthropic_compatible_passes_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
@@ -96,6 +104,28 @@ def test_anthropic_compatible_passes_base_url(monkeypatch: pytest.MonkeyPatch) -
 
     assert isinstance(provider, AnthropicProvider)
     assert captured["anthropic_api_url"] == "https://anthropic-relay.example.com"
+
+
+def test_xiaomi_mimo_passes_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeChatAnthropic:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr("linuxagent.providers.factory._anthropic_available", lambda: True)
+    monkeypatch.setattr(anthropic_module, "ChatAnthropic", _FakeChatAnthropic)
+    cfg = APIConfig(
+        provider=LLMProviderName.XIAOMI_MIMO,
+        api_key="sk-test",
+        base_url="https://mimo-relay.example.com",
+        model="mimo",
+    )
+
+    provider = provider_factory(cfg)
+
+    assert isinstance(provider, AnthropicProvider)
+    assert captured["anthropic_api_url"] == "https://mimo-relay.example.com"
 
 
 def test_openai_provider_uses_configured_token_parameter(

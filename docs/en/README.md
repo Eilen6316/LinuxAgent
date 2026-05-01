@@ -299,11 +299,11 @@ api:
   api_key: "sk-replace-me"   # required
 ```
 
-All other fields can stay at their defaults (default provider is DeepSeek; switch to `openai`, `openai_compatible`, `glm`, `kimi`, `minimax`, `gemini`, `anthropic`, or `anthropic_compatible` as needed).
+All other fields can stay at their defaults (default provider is DeepSeek; switch to `openai`, `openai_compatible`, `glm`, `qwen`, `kimi`, `minimax`, `gemini`, `hunyuan`, `anthropic`, `anthropic_compatible`, or `xiaomi_mimo` as needed).
 
 For API relays or third-party OpenAI-compatible endpoints, use
 `openai_compatible` or one of the shortcuts `glm`, `kimi`, `minimax`, or
-`gemini`:
+`gemini`, `qwen`, or `hunyuan`:
 
 ```yaml
 api:
@@ -315,7 +315,7 @@ api:
 ```
 
 Anthropic-format relays can use `provider: anthropic_compatible` with their own
-`base_url`.
+`base_url`; Xiaomi MiMo can use `provider: xiaomi_mimo`.
 
 ### Validate
 
@@ -330,7 +330,7 @@ linuxagent check
 
 | Section | Field | Default | Description |
 |---|---|---|---|
-| `api` | `provider` | `deepseek` | `openai` / `openai_compatible` / `deepseek` / `glm` / `kimi` / `minimax` / `gemini` / `anthropic` / `anthropic_compatible` |
+| `api` | `provider` | `deepseek` | `openai` / `openai_compatible` / `deepseek` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo` |
 | `api` | `base_url` | `https://api.deepseek.com/v1` | OpenAI-compatible endpoint |
 | `api` | `model` | `deepseek-chat` | Model name |
 | `api` | `api_key` | `""` | **Required**; `SecretStr`, never printed |
@@ -628,10 +628,10 @@ A: No. `AuditConfig` exposes only `path`, with no `enabled` field.
 A: Construct `SSHManager(config, allow_unknown_hosts=True)` in code. The CLI does not expose this flag on purpose — it's opt-in to avoid accidental MITM exposure.
 
 **Q: Can I use my own OpenAI-compatible gateway?**
-A: Yes. Set `api.provider: openai_compatible`, point `api.base_url` to the gateway URL, and set `api.model` to a supported model. Shortcuts `glm`, `kimi`, `minimax`, and `gemini` use the same OpenAI-compatible path. If the gateway rejects `max_completion_tokens`, set `api.token_parameter: max_tokens`.
+A: Yes. Set `api.provider: openai_compatible`, point `api.base_url` to the gateway URL, and set `api.model` to a supported model. Shortcuts `glm`, `qwen`, `kimi`, `minimax`, `gemini`, and `hunyuan` use the same OpenAI-compatible path. If the gateway rejects `max_completion_tokens`, set `api.token_parameter: max_tokens`.
 
 **Q: Can I use an Anthropic-compatible gateway?**
-A: Yes. Install the Anthropic extra and set `api.provider: anthropic_compatible`, `api.base_url`, `api.model`, and `api.api_key`.
+A: Yes. Install the Anthropic extra and set `api.provider: anthropic_compatible`, `api.base_url`, `api.model`, and `api.api_key`. Xiaomi MiMo can use `api.provider: xiaomi_mimo`.
 
 ---
 

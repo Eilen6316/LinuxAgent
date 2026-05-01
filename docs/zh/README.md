@@ -295,10 +295,10 @@ api:
   api_key: "sk-replace-me"   # 必填
 ```
 
-其他字段全部用默认值即可（默认 provider 为 DeepSeek，可改为 `openai` / `openai_compatible` / `glm` / `kimi` / `minimax` / `gemini` / `anthropic` / `anthropic_compatible`）。
+其他字段全部用默认值即可（默认 provider 为 DeepSeek，可改为 `openai` / `openai_compatible` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo`）。
 
 API 中转站或第三方 OpenAI 兼容端点可用 `openai_compatible`，也可用
-`glm` / `kimi` / `minimax` / `gemini` 快捷 provider：
+`glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` 快捷 provider：
 
 ```yaml
 api:
@@ -310,7 +310,7 @@ api:
 ```
 
 Anthropic 格式中转站可用 `provider: anthropic_compatible` 并填写自己的
-`base_url`。
+`base_url`；小米 MiMo 可用 `provider: xiaomi_mimo`。
 
 ### 验证配置
 
@@ -325,7 +325,7 @@ linuxagent check
 
 | 段 | 字段 | 默认值 | 说明 |
 |---|---|---|---|
-| `api` | `provider` | `deepseek` | 可选 `openai` / `openai_compatible` / `deepseek` / `glm` / `kimi` / `minimax` / `gemini` / `anthropic` / `anthropic_compatible` |
+| `api` | `provider` | `deepseek` | 可选 `openai` / `openai_compatible` / `deepseek` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo` |
 | `api` | `base_url` | `https://api.deepseek.com/v1` | OpenAI 兼容端点 |
 | `api` | `model` | `deepseek-chat` | 模型名 |
 | `api` | `api_key` | `""` | **必填**；`SecretStr`，不出现在 repr/日志 |
@@ -611,10 +611,10 @@ A：不能。`AuditConfig` 只有 `path` 字段，没有 `enabled`。
 A：在代码里构造 `SSHManager(config, allow_unknown_hosts=True)`；当前 CLI 暂未暴露此开关，避免误用。
 
 **Q：可以用自己的 OpenAI 兼容网关吗？**
-A：可以。设置 `api.provider: openai_compatible`，把 `api.base_url` 换成网关地址，`api.model` 换成它支持的模型名。`glm` / `kimi` / `minimax` / `gemini` 也走同一条 OpenAI-compatible 路径。如果网关不接受 `max_completion_tokens`，设置 `api.token_parameter: max_tokens`。
+A：可以。设置 `api.provider: openai_compatible`，把 `api.base_url` 换成网关地址，`api.model` 换成它支持的模型名。`glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` 也走同一条 OpenAI-compatible 路径。如果网关不接受 `max_completion_tokens`，设置 `api.token_parameter: max_tokens`。
 
 **Q：可以用 Anthropic 兼容网关吗？**
-A：可以。安装 Anthropic extra 后，设置 `api.provider: anthropic_compatible`、`api.base_url`、`api.model` 和 `api.api_key`。
+A：可以。安装 Anthropic extra 后，设置 `api.provider: anthropic_compatible`、`api.base_url`、`api.model` 和 `api.api_key`。小米 MiMo 可用 `api.provider: xiaomi_mimo`。
 
 ---
 

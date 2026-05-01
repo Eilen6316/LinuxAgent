@@ -15,7 +15,7 @@
 #   5. configs/default.yaml                   (packaged, lowest)
 
 api:
-  # Provider: openai | openai_compatible | deepseek | glm | kimi | minimax | gemini | anthropic | anthropic_compatible
+  # Provider: openai | openai_compatible | deepseek | glm | qwen | kimi | minimax | gemini | hunyuan | anthropic | anthropic_compatible | xiaomi_mimo
   # Use *_compatible providers for API relays or third-party compatible endpoints.
   provider: deepseek
   # OpenAI-compatible endpoints include DeepSeek, Together, local Ollama, etc.
@@ -46,10 +46,15 @@ api:
   # api_key: "sk-ant-REPLACE-ME"
 
   # Provider shortcuts using OpenAI-compatible protocols:
-  # GLM/Zhipu:   provider: glm      base_url: https://open.bigmodel.cn/api/paas/v4
-  # Kimi:        provider: kimi     base_url: https://api.moonshot.ai/v1
-  # MiniMax:     provider: minimax  base_url: https://api.minimax.io/v1
-  # Gemini:      provider: gemini   base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+  # GLM/Zhipu:       provider: glm      base_url: https://open.bigmodel.cn/api/paas/v4
+  # Qwen/DashScope:  provider: qwen     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  # Kimi/Moonshot:   provider: kimi     base_url: https://api.moonshot.ai/v1
+  # MiniMax:         provider: minimax  base_url: https://api.minimax.io/v1
+  # Gemini:          provider: gemini   base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+  # Hunyuan/Tencent: provider: hunyuan  base_url: https://api.hunyuan.cloud.tencent.com/v1
+  # Xiaomi MiMo uses Anthropic-compatible protocol:
+  # provider: xiaomi_mimo
+  # base_url: https://mimo-relay.example.com
 
 security:
   command_timeout: 30.0

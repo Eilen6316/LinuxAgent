@@ -2,7 +2,7 @@
 # DO NOT put real secrets here. User overrides live in ./config.yaml (gitignored, chmod 600).
 
 api:
-  provider: deepseek          # openai | openai_compatible | deepseek | glm | kimi | minimax | gemini | anthropic | anthropic_compatible
+  provider: deepseek          # openai | openai_compatible | deepseek | glm | qwen | kimi | minimax | gemini | hunyuan | anthropic | anthropic_compatible | xiaomi_mimo
   base_url: https://api.deepseek.com/v1
   model: deepseek-chat
   api_key: ""                 # MUST be set in user ./config.yaml
