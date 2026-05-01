@@ -24,6 +24,7 @@ from linuxagent.providers.errors import (
     ProviderRateLimitError,
     ProviderTimeoutError,
 )
+from linuxagent.tools import ToolRuntimeLimits
 
 
 def _cfg(**overrides: object) -> APIConfig:
@@ -139,6 +140,99 @@ async def test_complete_with_tools_emits_tool_observer_events() -> None:
     assert events[0]["tool_name"] == "lookup_status"
     assert events[0]["args"] == {"service": "nginx"}
     assert "nginx is active" in events[1]["output_preview"]
+
+
+async def test_complete_with_tools_truncates_tool_output() -> None:
+    events: list[dict[str, Any]] = []
+
+    @tool
+    async def read_big() -> str:
+        """Return oversized text."""
+        return "x" * 80
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "read_big", "args": {}, "id": "1", "type": "tool_call"}],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="read")],
+        [read_big],
+        tool_observer=events.append,
+        tool_runtime_limits=ToolRuntimeLimits(max_output_chars=20, max_total_output_chars=20),
+    )
+
+    assert events[1]["status"] == "truncated"
+    assert events[1]["truncated"] is True
+    assert events[1]["output_chars"] <= 20
+
+
+async def test_complete_with_tools_times_out_tool_call() -> None:
+    events: list[dict[str, Any]] = []
+
+    @tool
+    async def slow_tool() -> str:
+        """Sleep longer than the configured tool timeout."""
+        await asyncio.sleep(0.05)
+        return "late"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "slow_tool", "args": {}, "id": "1", "type": "tool_call"}],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="slow")],
+        [slow_tool],
+        tool_observer=events.append,
+        tool_runtime_limits=ToolRuntimeLimits(timeout_seconds=0.001),
+    )
+
+    assert events[1]["phase"] == "error"
+    assert events[1]["status"] == "timeout"
+
+
+async def test_complete_with_tools_uses_configured_max_rounds() -> None:
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "lookup_status",
+                        "args": {"service": "nginx"},
+                        "id": "1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    with pytest.raises(ProviderError, match="tool loop exceeded"):
+        await provider.complete_with_tools(
+            [HumanMessage(content="check nginx")],
+            [lookup_status],
+            tool_runtime_limits=ToolRuntimeLimits(max_rounds=1),
+        )
 
 
 class _RetryingToolModel(_ToolCallingModel):

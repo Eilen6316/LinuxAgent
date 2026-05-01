@@ -15,17 +15,22 @@ from pathlib import Path
 import psutil
 from langchain_core.tools import BaseTool, tool
 
-from ..config.models import MonitoringConfig
+from ..config.models import MonitoringConfig, SandboxToolConfig
 from ..interfaces import CommandExecutor, CommandSource
+from ..sandbox import SandboxProfile
 from ..security import guard_execution_result, redact_text
 from ..services import evaluate_alerts
+from .sandbox import ToolSandboxSpec, attach_tool_sandbox
 
 DEFAULT_LOG_ROOTS: tuple[Path, ...] = (Path("/var/log"),)
 MAX_LOG_FILE_BYTES = 1_048_576
 MAX_LOG_SEARCH_QUERY_CHARS = 256
 
 
-def make_execute_command_tool(executor: CommandExecutor) -> BaseTool:
+def make_execute_command_tool(
+    executor: CommandExecutor,
+    tool_config: SandboxToolConfig | None = None,
+) -> BaseTool:
     """Expose :meth:`CommandExecutor.execute` as a safety-gated tool.
 
     The tool will not spawn a BLOCKed command; callers must route CONFIRM
@@ -56,10 +61,21 @@ def make_execute_command_tool(executor: CommandExecutor) -> BaseTool:
         result = await executor.execute(command)
         return guard_execution_result(result).text
 
-    return execute_command
+    limits = tool_config or SandboxToolConfig()
+    return attach_tool_sandbox(
+        execute_command,
+        ToolSandboxSpec(
+            profile=SandboxProfile.PRIVILEGED_PASSTHROUGH,
+            max_output_chars=limits.max_output_chars,
+            timeout_seconds=limits.timeout_seconds,
+        ),
+    )
 
 
-def make_get_system_info_tool(monitoring_config: MonitoringConfig | None = None) -> BaseTool:
+def make_get_system_info_tool(
+    monitoring_config: MonitoringConfig | None = None,
+    tool_config: SandboxToolConfig | None = None,
+) -> BaseTool:
     """Expose host resource snapshot (platform / CPU / memory / disk)."""
 
     @tool
@@ -96,7 +112,15 @@ def make_get_system_info_tool(monitoring_config: MonitoringConfig | None = None)
         ]
         return snapshot
 
-    return get_system_info
+    limits = tool_config or SandboxToolConfig()
+    return attach_tool_sandbox(
+        get_system_info,
+        ToolSandboxSpec(
+            profile=SandboxProfile.SYSTEM_INSPECT,
+            max_output_chars=limits.max_output_chars,
+            timeout_seconds=limits.timeout_seconds,
+        ),
+    )
 
 
 class LogFileAccessError(ValueError):
@@ -107,8 +131,11 @@ def make_search_logs_tool(
     allowed_roots: tuple[Path, ...] = DEFAULT_LOG_ROOTS,
     *,
     max_file_bytes: int = MAX_LOG_FILE_BYTES,
+    tool_config: SandboxToolConfig | None = None,
 ) -> BaseTool:
     """Expose bounded literal search over a local text log file."""
+    limits = tool_config or SandboxToolConfig()
+    effective_max_file_bytes = min(max_file_bytes, limits.max_file_bytes)
 
     @tool
     def search_logs(pattern: str, log_file: str, max_matches: int = 50) -> list[str]:
@@ -122,25 +149,18 @@ def make_search_logs_tool(
         Returns:
             Matching lines prefixed with their 1-based line number.
         """
-        if max_matches < 1:
-            raise ValueError("max_matches must be >= 1")
+        return _search_log_matches(
+            pattern,
+            Path(log_file),
+            max_matches,
+            allowed_roots,
+            effective_max_file_bytes,
+            limits,
+        )
 
-        query = _log_search_query(pattern)
-        path = _resolve_allowed_log_file(Path(log_file).expanduser(), allowed_roots)
-        if path.stat().st_size > max_file_bytes:
-            raise LogFileAccessError(f"log file exceeds max size ({max_file_bytes} bytes): {path}")
-        matches: list[str] = []
-        with path.open("r", encoding="utf-8", errors="replace") as handle:
-            for line_number, line in enumerate(handle, start=1):
-                text = line.rstrip("\n")
-                if query in text.casefold():
-                    redacted = redact_text(text)
-                    matches.append(f"{line_number}:{redacted.text}")
-                    if len(matches) >= max_matches:
-                        break
-        return matches
-
-    return search_logs
+    return attach_tool_sandbox(
+        search_logs, _log_tool_spec(allowed_roots, limits, effective_max_file_bytes)
+    )
 
 
 def build_system_tools(
@@ -148,13 +168,57 @@ def build_system_tools(
     *,
     allowed_log_roots: tuple[Path, ...] = DEFAULT_LOG_ROOTS,
     monitoring_config: MonitoringConfig | None = None,
+    tool_config: SandboxToolConfig | None = None,
 ) -> list[BaseTool]:
     """Assemble the default tool set the agent is granted."""
+    limits = tool_config or SandboxToolConfig()
     return [
-        make_execute_command_tool(executor),
-        make_get_system_info_tool(monitoring_config),
-        make_search_logs_tool(allowed_log_roots),
+        make_execute_command_tool(executor, limits),
+        make_get_system_info_tool(monitoring_config, limits),
+        make_search_logs_tool(allowed_log_roots, tool_config=limits),
     ]
+
+
+def _search_log_matches(
+    pattern: str,
+    log_file: Path,
+    max_matches: int,
+    allowed_roots: tuple[Path, ...],
+    max_file_bytes: int,
+    limits: SandboxToolConfig,
+) -> list[str]:
+    if max_matches < 1:
+        raise ValueError("max_matches must be >= 1")
+
+    query = _log_search_query(pattern)
+    path = _resolve_allowed_log_file(log_file.expanduser(), allowed_roots)
+    if path.stat().st_size > max_file_bytes:
+        raise LogFileAccessError(f"log file exceeds max size ({max_file_bytes} bytes): {path}")
+    matches: list[str] = []
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            text = line.rstrip("\n")
+            if query in text.casefold():
+                redacted = redact_text(text)
+                matches.append(f"{line_number}:{redacted.text}")
+                if len(matches) >= min(max_matches, limits.max_matches):
+                    break
+    return matches
+
+
+def _log_tool_spec(
+    allowed_roots: tuple[Path, ...],
+    limits: SandboxToolConfig,
+    max_file_bytes: int,
+) -> ToolSandboxSpec:
+    return ToolSandboxSpec(
+        profile=SandboxProfile.READ_ONLY,
+        allowed_roots=allowed_roots,
+        max_file_bytes=max_file_bytes,
+        max_output_chars=limits.max_output_chars,
+        max_matches=limits.max_matches,
+        timeout_seconds=limits.timeout_seconds,
+    )
 
 
 def _log_search_query(pattern: str) -> str:

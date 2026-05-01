@@ -34,6 +34,7 @@ from ..plans import (
 from ..prompts_loader import build_file_patch_repair_prompt
 from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
+from ..tools import ToolRuntimeLimits
 from .common import span, trace_id
 from .execution import synthetic_result
 from .intent import ToolEventObserver, tool_event_observer
@@ -136,8 +137,10 @@ def make_repair_file_patch_node(
     tools: tuple[BaseTool, ...] = (),
     telemetry: TelemetryRecorder | None = None,
     tool_observer: ToolEventObserver | None = None,
+    tool_runtime_limits: ToolRuntimeLimits | None = None,
 ) -> Node:
     prompt = build_file_patch_repair_prompt()
+    runtime_limits = tool_runtime_limits or ToolRuntimeLimits()
 
     async def repair_file_patch_node(state: AgentState) -> Command[Any]:
         current_trace_id = trace_id(state)
@@ -149,17 +152,17 @@ def make_repair_file_patch_node(
             failure_context=_patch_failure_context(state, config),
         )
         try:
-            proposed = await _complete_repair_plan(
-                provider, prompt_messages, tools, telemetry, tool_observer, current_trace_id
-            )
-            plan = await _complete_valid_repair_plan(
+            plan = await _complete_repair_candidate_plan(
                 provider,
                 prompt,
                 state,
                 config,
                 current_trace_id,
-                proposed,
+                prompt_messages,
+                tools,
+                tool_observer,
                 telemetry,
+                runtime_limits,
             )
         except (
             CommandPlanParseError,
@@ -175,6 +178,38 @@ def make_repair_file_patch_node(
         return _repair_success_command(state, current_trace_id, plan)
 
     return repair_file_patch_node
+
+
+async def _complete_repair_candidate_plan(
+    provider: LLMProvider,
+    prompt: Any,
+    state: AgentState,
+    config: FilePatchConfig,
+    current_trace_id: str,
+    prompt_messages: list[BaseMessage],
+    tools: tuple[BaseTool, ...],
+    tool_observer: ToolEventObserver | None,
+    telemetry: TelemetryRecorder | None,
+    runtime_limits: ToolRuntimeLimits,
+) -> CommandPlan | FilePatchPlan | NoChangePlan:
+    proposed = await _complete_repair_plan(
+        provider,
+        prompt_messages,
+        tools,
+        telemetry,
+        tool_observer,
+        current_trace_id,
+        runtime_limits,
+    )
+    return await _complete_valid_repair_plan(
+        provider,
+        prompt,
+        state,
+        config,
+        current_trace_id,
+        proposed,
+        telemetry,
+    )
 
 
 def _repair_success_command(
@@ -280,6 +315,7 @@ async def _complete_repair_plan(
     telemetry: TelemetryRecorder | None,
     observer: ToolEventObserver | None,
     current_trace_id: str,
+    tool_runtime_limits: ToolRuntimeLimits,
 ) -> str:
     if not tools:
         return (await provider.complete(prompt_messages)).strip()
@@ -287,6 +323,7 @@ async def _complete_repair_plan(
         await provider.complete_with_tools(
             prompt_messages,
             list(tools),
+            tool_runtime_limits=tool_runtime_limits,
             tool_observer=tool_event_observer(telemetry, observer, current_trace_id),
         )
     ).strip()

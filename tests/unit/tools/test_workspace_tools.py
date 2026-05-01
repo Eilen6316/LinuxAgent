@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from linuxagent.config.models import FilePatchConfig
+from linuxagent.config.models import FilePatchConfig, SandboxToolConfig
 from linuxagent.tools import (
     WorkspaceAccessError,
     build_workspace_tools,
@@ -55,6 +55,18 @@ def test_search_files_finds_literal_matches(tmp_path) -> None:
     assert output == ["app.py:2:needle = True", "notes.txt:1:needle here"]
 
 
+def test_search_files_applies_configured_match_limit(tmp_path) -> None:
+    (tmp_path / "a.txt").write_text("needle\nneedle\nneedle\n", encoding="utf-8")
+    tool = make_search_files_tool(
+        FilePatchConfig(allow_roots=(tmp_path,)),
+        SandboxToolConfig(max_matches=2),
+    )
+
+    output = tool.invoke({"root": str(tmp_path), "pattern": "needle", "max_matches": 50})
+
+    assert output == ["a.txt:1:needle", "a.txt:2:needle"]
+
+
 def test_search_files_treats_regex_metacharacters_as_literal_text(tmp_path) -> None:
     (tmp_path / "app.py").write_text("aaaaaaaaaaaaaaaa\nliteral (a|aa)+$\n", encoding="utf-8")
     tool = make_search_files_tool(FilePatchConfig(allow_roots=(tmp_path,)))
@@ -68,3 +80,16 @@ def test_build_workspace_tools_exposes_expected_names(tmp_path) -> None:
     tools = build_workspace_tools(FilePatchConfig(allow_roots=(tmp_path,)))
 
     assert [tool.name for tool in tools] == ["read_file", "list_dir", "search_files"]
+
+
+def test_workspace_tools_expose_sandbox_metadata(tmp_path) -> None:
+    tool = make_read_file_tool(
+        FilePatchConfig(allow_roots=(tmp_path,)),
+        SandboxToolConfig(timeout_seconds=1.5),
+    )
+
+    metadata = tool.metadata or {}
+    sandbox = metadata["linuxagent_sandbox"]
+    assert sandbox["profile"] == "read_only"
+    assert sandbox["allowed_roots"] == [str(tmp_path)]
+    assert sandbox["timeout_seconds"] == 1.5

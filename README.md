@@ -164,9 +164,16 @@ The planner can first inspect the environment with read-only tools:
 
 - `read_file(path, offset, limit)` reads a bounded window from an allowed file.
 - `list_dir(path)` lists an allowed directory.
-- `search_files(pattern, root)` searches literal text under an allowed root.
+- `search_files(pattern, root)` searches literal text under an allowed root; regex
+  metacharacters are treated as ordinary text.
 - `get_system_info`, `search_logs`, and safety-gated `execute_command` provide
   system context when needed.
+
+Tool calls run through the tool sandbox runtime before output reaches the model:
+workspace/log roots are checked, per-tool timeouts and output limits are
+applied, oversized output is marked as truncated, and tool errors are returned as
+structured model-visible events while telemetry records `allowed`, `denied`,
+`timeout`, or `truncated`.
 
 The terminal shows observable tool activity such as `LinuxAgent is reading
 ...` / `LinuxAgent is listing ...`. Patch confirmation shows per-file stats,

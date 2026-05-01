@@ -18,6 +18,7 @@ from ..runbooks import RunbookEngine
 from ..security import guard_execution_result
 from ..services import ClusterService, CommandService
 from ..telemetry import TelemetryRecorder
+from ..tools import ToolRuntimeLimits
 from .common import span, trace_id
 from .execution import analysis_context, run_command, synthetic_result
 from .intent import make_parse_intent_node
@@ -52,6 +53,7 @@ class GraphDependencies:
     runbook_engine: RunbookEngine | None = None
     file_patch_config: FilePatchConfig = field(default_factory=FilePatchConfig)
     tool_observer: ToolEventObserver | None = None
+    tool_runtime_limits: ToolRuntimeLimits = field(default_factory=ToolRuntimeLimits)
 
 
 def make_confirm_node(

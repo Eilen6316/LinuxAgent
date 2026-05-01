@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from linuxagent.config.models import MonitoringConfig, SecurityConfig
+from linuxagent.config.models import MonitoringConfig, SandboxToolConfig, SecurityConfig
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.tools import (
     LogFileAccessError,
@@ -133,6 +133,16 @@ def test_search_logs_returns_numbered_matches(tmp_path) -> None:
     assert out == ["2:ERROR failed"]
 
 
+def test_search_logs_applies_configured_match_limit(tmp_path) -> None:
+    log_file = tmp_path / "app.log"
+    log_file.write_text("ERROR one\nERROR two\nERROR three\n", encoding="utf-8")
+    tool = make_search_logs_tool((tmp_path,), tool_config=SandboxToolConfig(max_matches=2))
+
+    out = tool.invoke({"pattern": "ERROR", "log_file": str(log_file), "max_matches": 50})
+
+    assert out == ["1:ERROR one", "2:ERROR two"]
+
+
 def test_search_logs_rejects_invalid_limit(tmp_path) -> None:
     log_file = tmp_path / "app.log"
     log_file.write_text("ERROR\n", encoding="utf-8")
@@ -172,3 +182,15 @@ def test_search_logs_redacts_matching_lines(tmp_path) -> None:
     out = tool.invoke({"pattern": "ERROR", "log_file": str(log_file)})
 
     assert out == ["1:ERROR password=***redacted***"]
+
+
+def test_system_tools_expose_sandbox_metadata(tmp_path) -> None:
+    tool = make_search_logs_tool(
+        (tmp_path,),
+        tool_config=SandboxToolConfig(timeout_seconds=1.5),
+    )
+
+    sandbox = (tool.metadata or {})["linuxagent_sandbox"]
+    assert sandbox["profile"] == "read_only"
+    assert sandbox["allowed_roots"] == [str(tmp_path)]
+    assert sandbox["timeout_seconds"] == 1.5

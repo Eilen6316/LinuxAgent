@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -39,6 +38,7 @@ from tenacity import (
 
 from ..config.models import APIConfig
 from ..interfaces import LLMProvider
+from ..tools.sandbox import ToolRuntimeLimits, invoke_tool_with_sandbox, tool_sandbox_record
 from .errors import (
     ProviderConnectionError,
     ProviderError,
@@ -111,19 +111,27 @@ class BaseLLMProvider(LLMProvider):
         if not tools:
             return await self.complete(messages, **kwargs)
         tool_observer = _pop_tool_observer(kwargs)
+        tool_limits = _pop_tool_runtime(kwargs)
 
         bound_model = self._model.bind_tools(tools)
         history = list(messages)
         tool_map = {tool.name: tool for tool in tools}
+        total_tool_output_chars = 0
 
-        for _ in range(3):
+        for _ in range(tool_limits.max_rounds):
             result = await self._invoke_with_retry(bound_model, history, **kwargs)
             ai_message = _coerce_ai_message(result)
             history.append(ai_message)
             if not ai_message.tool_calls:
                 return _content_to_str(ai_message.content)
 
-            tool_messages = await _execute_tool_calls(ai_message, tool_map, tool_observer)
+            tool_messages, total_tool_output_chars = await _execute_tool_calls(
+                ai_message,
+                tool_map,
+                tool_observer,
+                tool_limits,
+                total_tool_output_chars,
+            )
             history.extend(tool_messages)
 
         raise ProviderError("tool loop exceeded max rounds")
@@ -231,8 +239,11 @@ async def _execute_tool_calls(
     ai_message: AIMessage,
     tool_map: dict[str, BaseTool],
     observer: ToolObserver | None,
-) -> list[ToolMessage]:
+    limits: ToolRuntimeLimits,
+    prior_output_chars: int,
+) -> tuple[list[ToolMessage], int]:
     outputs: list[ToolMessage] = []
+    total_output_chars = 0
     for call in ai_message.tool_calls:
         tool_name = call["name"]
         tool_call_id = call["id"]
@@ -248,21 +259,21 @@ async def _execute_tool_calls(
             continue
         started = time.monotonic()
         args = dict(call.get("args", {}))
-        await _notify_tool_observer(observer, _tool_event("start", tool_name, args))
-        try:
-            result = await tool.ainvoke(args)
-            content = _tool_output_to_str(result)
-            await _notify_tool_observer(
-                observer,
-                _tool_event("end", tool_name, args, content, started=started),
-            )
-        except Exception as exc:  # noqa: BLE001 - tool failures feed back into the model loop
-            logger.debug("tool call failed for %s", tool_name, exc_info=exc)
-            content = f"tool error: {exc}"
-            await _notify_tool_observer(
-                observer,
-                _tool_event("error", tool_name, args, str(exc), started=started),
-            )
+        await _notify_tool_observer(observer, _tool_event("start", tool_name, args, tool=tool))
+        remaining = limits.max_total_output_chars - prior_output_chars - total_output_chars
+        result = await invoke_tool_with_sandbox(
+            tool,
+            args,
+            limits=limits,
+            remaining_total_chars=remaining,
+        )
+        content = result.content
+        total_output_chars += result.output_chars
+        event = dict(result.event)
+        event["duration_ms"] = int((time.monotonic() - started) * 1000)
+        if event.get("phase") == "error":
+            logger.debug("tool call failed for %s: %s", tool_name, event.get("output_preview"))
+        await _notify_tool_observer(observer, event)
         outputs.append(
             ToolMessage(
                 content=content,
@@ -270,7 +281,7 @@ async def _execute_tool_calls(
                 tool_call_id=tool_call_id,
             )
         )
-    return outputs
+    return outputs, prior_output_chars + total_output_chars
 
 
 def _pop_tool_observer(kwargs: dict[str, Any]) -> ToolObserver | None:
@@ -280,6 +291,17 @@ def _pop_tool_observer(kwargs: dict[str, Any]) -> ToolObserver | None:
     if not callable(observer):
         raise TypeError("tool_observer must be callable")
     return cast(ToolObserver, observer)
+
+
+def _pop_tool_runtime(kwargs: dict[str, Any]) -> ToolRuntimeLimits:
+    raw = kwargs.pop("tool_runtime_limits", kwargs.pop("tool_runtime", None))
+    if raw is None:
+        return ToolRuntimeLimits()
+    if isinstance(raw, ToolRuntimeLimits):
+        return raw
+    if isinstance(raw, dict):
+        return ToolRuntimeLimits(**raw)
+    raise TypeError("tool_runtime_limits must be ToolRuntimeLimits or dict")
 
 
 async def _notify_tool_observer(observer: ToolObserver | None, event: dict[str, Any]) -> None:
@@ -297,16 +319,18 @@ def _tool_event(
     output: str | None = None,
     *,
     started: float | None = None,
+    tool: BaseTool | None = None,
 ) -> dict[str, Any]:
-    event: dict[str, Any] = {"phase": phase, "tool_name": tool_name, "args": args}
+    event: dict[str, Any] = {
+        "phase": phase,
+        "status": "started",
+        "tool_name": tool_name,
+        "args": args,
+    }
+    if tool is not None:
+        event["sandbox"] = tool_sandbox_record(tool)
     if output is not None:
         event["output_preview"] = output[:500]
     if started is not None:
         event["duration_ms"] = int((time.monotonic() - started) * 1000)
     return event
-
-
-def _tool_output_to_str(result: Any) -> str:
-    if isinstance(result, str):
-        return result
-    return json.dumps(result, ensure_ascii=False, default=str)

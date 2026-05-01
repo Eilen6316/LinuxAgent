@@ -358,6 +358,12 @@ linuxagent check
 | `sandbox` | `runner` | `noop` | 兼容 runner，只记录 metadata，不隔离进程 |
 | `sandbox` | `default_profile` | `system_inspect` | 没有更强 policy capability 时记录的默认 profile |
 | `sandbox` | `network` | `inherit` | 请求的网络策略 metadata |
+| `sandbox.tools` | `max_rounds` | `3` | 每次 planner 请求允许的最大 tool-calling 轮数 |
+| `sandbox.tools` | `timeout_seconds` | `5.0` | 单次工具调用超时 |
+| `sandbox.tools` | `max_output_chars` | `20000` | 单次工具输出截断阈值 |
+| `sandbox.tools` | `max_total_output_chars` | `60000` | 单次 planner 请求的累计工具输出预算 |
+| `sandbox.tools` | `max_file_bytes` | `1048576` | workspace/log 搜索工具可读取的单文件大小上限 |
+| `sandbox.tools` | `max_matches` | `200` | 暴露给模型的最大搜索/列表结果数 |
 | `cluster` | `batch_confirm_threshold` | `2` | 批量确认阈值（主机数） |
 | `cluster` | `hosts` | `[]` | 集群主机列表 |
 | `audit` | `path` | `~/.linuxagent/audit.log` | 审计日志位置；**审计无法关闭** |

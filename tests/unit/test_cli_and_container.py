@@ -8,6 +8,7 @@ import logging
 import runpy
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -250,11 +251,12 @@ def test_container_reports_invalid_policy_yaml(tmp_path: Path) -> None:
 def test_container_passes_monitoring_config_to_system_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: dict[str, MonitoringConfig] = {}
+    captured: dict[str, Any] = {}
 
     def fake_build_system_tools(executor, **kwargs):
         del executor
         captured["monitoring_config"] = kwargs["monitoring_config"]
+        captured["tool_config"] = kwargs["tool_config"]
         return []
 
     monkeypatch.setattr(container_module, "build_system_tools", fake_build_system_tools)
@@ -263,13 +265,15 @@ def test_container_passes_monitoring_config_to_system_tools(
 
     assert runtime.system_tools() == []
     assert captured["monitoring_config"].cpu_threshold == 12.0
+    assert captured["tool_config"] == cfg.sandbox.tools
 
 
 def test_container_adds_workspace_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
-    def fake_build_workspace_tools(config):
+    def fake_build_workspace_tools(config, tool_config):
         captured["allow_roots"] = config.allow_roots
+        captured["tool_config"] = tool_config
         return [SimpleNamespace(name="read_file")]
 
     monkeypatch.setattr(container_module, "build_workspace_tools", fake_build_workspace_tools)
@@ -283,6 +287,7 @@ def test_container_adds_workspace_tools(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
     assert [tool.name for tool in runtime.tools() if tool.name == "read_file"] == ["read_file"]
     assert captured["allow_roots"] == (tmp_path,)
+    assert captured["tool_config"] == cfg.sandbox.tools
 
 
 def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> None:

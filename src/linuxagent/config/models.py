@@ -148,6 +148,17 @@ class SandboxResourceLimitsConfig(BaseModel):
         }
 
 
+class SandboxToolConfig(BaseModel):
+    model_config = _FROZEN
+
+    max_rounds: int = Field(default=3, ge=1, le=10)
+    timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+    max_output_chars: int = Field(default=20000, ge=1000, le=200000)
+    max_total_output_chars: int = Field(default=60000, ge=1000, le=500000)
+    max_file_bytes: int = Field(default=1048576, ge=1024, le=104857600)
+    max_matches: int = Field(default=200, ge=1, le=10000)
+
+
 class SandboxConfig(BaseModel):
     model_config = _FROZEN
 
@@ -162,6 +173,7 @@ class SandboxConfig(BaseModel):
     network: SandboxNetworkPolicy = SandboxNetworkPolicy.INHERIT
     network_allowlist: tuple[str, ...] = ()
     limits: SandboxResourceLimitsConfig = Field(default_factory=SandboxResourceLimitsConfig)
+    tools: SandboxToolConfig = Field(default_factory=SandboxToolConfig)
 
     @model_validator(mode="after")
     def _reject_enabled_noop(self) -> SandboxConfig:

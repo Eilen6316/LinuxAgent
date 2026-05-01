@@ -363,6 +363,12 @@ linuxagent check
 | `sandbox` | `runner` | `noop` | Compatibility runner that records metadata only; it does not isolate processes |
 | `sandbox` | `default_profile` | `system_inspect` | Default profile recorded for commands without stronger policy capabilities |
 | `sandbox` | `network` | `inherit` | Requested network policy metadata |
+| `sandbox.tools` | `max_rounds` | `3` | Maximum tool-calling rounds per planner request |
+| `sandbox.tools` | `timeout_seconds` | `5.0` | Per-tool runtime timeout |
+| `sandbox.tools` | `max_output_chars` | `20000` | Per-tool output budget before truncation |
+| `sandbox.tools` | `max_total_output_chars` | `60000` | Cumulative tool output budget per planner request |
+| `sandbox.tools` | `max_file_bytes` | `1048576` | Maximum file size read by workspace/log search tools |
+| `sandbox.tools` | `max_matches` | `200` | Maximum search/list matches exposed to the model |
 | `cluster` | `batch_confirm_threshold` | `2` | Host count that triggers batch confirm |
 | `cluster` | `hosts` | `[]` | Cluster host list |
 | `audit` | `path` | `~/.linuxagent/audit.log` | Audit log location; **audit cannot be disabled** |

@@ -17,6 +17,7 @@ from .models import (
     MonitoringConfig,
     SandboxConfig,
     SandboxResourceLimitsConfig,
+    SandboxToolConfig,
     SecurityConfig,
     UIConfig,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "MonitoringConfig",
     "SandboxConfig",
     "SandboxResourceLimitsConfig",
+    "SandboxToolConfig",
     "SecurityConfig",
     "UIConfig",
     "load_config",

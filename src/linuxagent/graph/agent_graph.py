@@ -61,6 +61,7 @@ def _add_planning_nodes(graph: Any, deps: GraphDependencies) -> None:
                 telemetry=deps.telemetry,
                 runbook_engine=deps.runbook_engine,
                 tool_observer=deps.tool_observer,
+                tool_runtime_limits=deps.tool_runtime_limits,
             )
         ),
     )
@@ -94,6 +95,7 @@ def _add_file_patch_nodes(graph: Any, deps: GraphDependencies) -> None:
                 tools=deps.tools,
                 telemetry=deps.telemetry,
                 tool_observer=deps.tool_observer,
+                tool_runtime_limits=deps.tool_runtime_limits,
             )
         ),
     )

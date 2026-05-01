@@ -34,6 +34,7 @@ from ..providers.errors import ProviderError
 from ..runbooks import RunbookEngine
 from ..services import ClusterService
 from ..telemetry import TelemetryRecorder
+from ..tools import ToolRuntimeLimits
 from .common import span, trace_id
 from .runbook_planning import build_runbook_guidance
 from .state import AgentState
@@ -67,6 +68,7 @@ class IntentNodeContext:
     tools: tuple[BaseTool, ...]
     telemetry: TelemetryRecorder | None
     tool_observer: ToolEventObserver | None
+    tool_runtime_limits: ToolRuntimeLimits
 
 
 def make_parse_intent_node(
@@ -77,6 +79,7 @@ def make_parse_intent_node(
     telemetry: TelemetryRecorder | None = None,
     runbook_engine: RunbookEngine | None = None,
     tool_observer: ToolEventObserver | None = None,
+    tool_runtime_limits: ToolRuntimeLimits | None = None,
 ) -> Node:
     context = IntentNodeContext(
         provider=provider,
@@ -88,6 +91,7 @@ def make_parse_intent_node(
         tools=tools,
         telemetry=telemetry,
         tool_observer=tool_observer,
+        tool_runtime_limits=tool_runtime_limits or ToolRuntimeLimits(),
     )
 
     async def parse_intent_node(state: AgentState) -> AgentState:
@@ -186,6 +190,7 @@ async def _complete_plan_candidate(
             proposed = await context.provider.complete_with_tools(
                 prompt_messages,
                 list(context.tools),
+                tool_runtime_limits=context.tool_runtime_limits,
                 tool_observer=tool_event_observer(
                     context.telemetry, context.tool_observer, current_trace_id
                 ),
@@ -216,7 +221,8 @@ def _record_tool_event(
     if telemetry is None:
         return
     phase = str(event.get("phase") or "unknown")
-    status = "error" if phase == "error" else "ok"
+    tool_status = str(event.get("status") or "")
+    status = "error" if phase == "error" or tool_status in {"denied", "timeout", "error"} else "ok"
     error = str(event.get("output_preview")) if phase == "error" else None
     telemetry.event(
         "tool.call",

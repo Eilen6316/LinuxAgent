@@ -108,6 +108,13 @@ sandbox:
     memory_mb:
     process_count:
     output_bytes:
+  tools:
+    max_rounds: 3
+    timeout_seconds: 5.0
+    max_output_chars: 20000
+    max_total_output_chars: 60000
+    max_file_bytes: 1048576
+    max_matches: 200
 
 cluster:
   # Any command sent to >= this many hosts triggers R-HITL-02 batch confirm.

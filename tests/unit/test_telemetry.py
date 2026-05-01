@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from linuxagent.graph.intent import tool_event_observer
 from linuxagent.telemetry import TelemetryRecorder, new_trace_id
 
 
@@ -55,6 +56,27 @@ def test_telemetry_records_tool_event(tmp_path) -> None:
     assert record["name"] == "tool.call"
     assert record["attributes"]["tool_name"] == "read_file"
     assert record["attributes"]["args"]["path"] == "README.md"
+
+
+async def test_tool_event_observer_records_structured_status(tmp_path) -> None:
+    recorder = TelemetryRecorder(tmp_path / "telemetry.jsonl")
+    observer = tool_event_observer(recorder, None, "trace-1")
+
+    await observer(
+        {
+            "phase": "error",
+            "status": "denied",
+            "tool_name": "read_file",
+            "args": {"path": "/etc/shadow"},
+            "output_preview": "outside allowed roots",
+        }
+    )
+
+    record = json.loads((tmp_path / "telemetry.jsonl").read_text(encoding="utf-8"))
+    assert record["name"] == "tool.call"
+    assert record["status"] == "error"
+    assert record["attributes"]["status"] == "denied"
+    assert record["error"] == "outside allowed roots"
 
 
 def test_telemetry_disabled_does_not_create_file(tmp_path) -> None:

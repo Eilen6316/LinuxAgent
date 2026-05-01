@@ -39,7 +39,12 @@ from .runbooks import RunbookEngine, find_runbooks_dir, load_runbooks
 from .sandbox import NoopSandboxRunner, SandboxRunner
 from .services import ChatService, ClusterService, CommandService, MonitoringService
 from .telemetry import TelemetryRecorder
-from .tools import build_intelligence_tools, build_system_tools, build_workspace_tools
+from .tools import (
+    ToolRuntimeLimits,
+    build_intelligence_tools,
+    build_system_tools,
+    build_workspace_tools,
+)
 from .ui import ConsoleUI
 
 if TYPE_CHECKING:
@@ -144,6 +149,7 @@ class Container:
                     runbook_engine=self.runbook_engine(),
                     file_patch_config=self._config.file_patch,
                     tool_observer=self._tool_event_observer(),
+                    tool_runtime_limits=self.tool_runtime_limits(),
                 )
             ),
         )
@@ -221,6 +227,7 @@ class Container:
                     {path.parent for path in self._config.log_analysis.default_log_paths}
                 ),
                 monitoring_config=self._config.monitoring,
+                tool_config=self._config.sandbox.tools,
             ),
         )
 
@@ -257,9 +264,18 @@ class Container:
             "tools",
             lambda: [
                 *self.system_tools(),
-                *build_workspace_tools(self._config.file_patch),
+                *build_workspace_tools(self._config.file_patch, self._config.sandbox.tools),
                 *self.intelligence_tools(),
             ],
+        )
+
+    def tool_runtime_limits(self) -> ToolRuntimeLimits:
+        tools = self._config.sandbox.tools
+        return ToolRuntimeLimits(
+            max_rounds=tools.max_rounds,
+            timeout_seconds=tools.timeout_seconds,
+            max_output_chars=tools.max_output_chars,
+            max_total_output_chars=tools.max_total_output_chars,
         )
 
     def _tool_event_observer(self) -> Callable[[dict[str, Any]], Any]:

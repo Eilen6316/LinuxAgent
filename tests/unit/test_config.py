@@ -154,6 +154,8 @@ def test_sandbox_config_defaults_to_noop_metadata_mode() -> None:
     assert cfg.sandbox.enabled is False
     assert cfg.sandbox.runner is SandboxRunnerKind.NOOP
     assert cfg.sandbox.network == "inherit"
+    assert cfg.sandbox.tools.max_rounds == 3
+    assert cfg.sandbox.tools.max_output_chars == 20000
     assert cfg.sandbox.limits.to_record() == {
         "cpu_seconds": None,
         "memory_mb": None,
@@ -186,6 +188,20 @@ def test_sandbox_config_validates_profile_and_limits() -> None:
 def test_sandbox_config_rejects_invalid_limits() -> None:
     with pytest.raises(ValidationError, match="cpu_seconds"):
         AppConfig.model_validate({"sandbox": {"limits": {"cpu_seconds": 0}}})
+
+
+def test_sandbox_tool_config_validates_runtime_limits() -> None:
+    cfg = AppConfig.model_validate(
+        {"sandbox": {"tools": {"max_rounds": 4, "timeout_seconds": 2.5}}}
+    )
+
+    assert cfg.sandbox.tools.max_rounds == 4
+    assert cfg.sandbox.tools.timeout_seconds == 2.5
+
+
+def test_sandbox_tool_config_rejects_invalid_rounds() -> None:
+    with pytest.raises(ValidationError, match="max_rounds"):
+        AppConfig.model_validate({"sandbox": {"tools": {"max_rounds": 0}}})
 
 
 # ---- Loader tests -------------------------------------------------------
