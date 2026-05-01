@@ -43,13 +43,17 @@ class LocalProcessSandboxRunner:
     def name(self) -> SandboxRunnerKind:
         return SandboxRunnerKind.LOCAL
 
+    @property
+    def compatibility_mode(self) -> bool:
+        return self._compatibility_mode or not self._enabled
+
     def describe(self, request: SandboxRequest) -> SandboxResult:
         self._validate_request(request)
         return SandboxResult(
             requested_profile=request.profile,
             runner=self.name,
             enabled=self._enabled,
-            enforced=self._enabled and request.profile in _PASSTHROUGH_PROFILES,
+            enforced=False,
             root=str(request.cwd),
             network=request.network,
             resource_limits=request.resource_limits,
@@ -68,19 +72,19 @@ class LocalProcessSandboxRunner:
         process = await _spawn_process(
             request,
             interactive=interactive,
-            compatibility_mode=self._compatibility_mode,
+            compatibility_mode=self.compatibility_mode,
         )
         if interactive:
             exit_code = await _wait_interactive(
                 process,
                 request.timeout,
-                compatibility_mode=self._compatibility_mode,
+                compatibility_mode=self.compatibility_mode,
             )
             return SandboxRunResult(exit_code, "", "", sandbox)
         stdout, stderr, exit_code = await _collect_output(
             process,
             request,
-            compatibility_mode=self._compatibility_mode,
+            compatibility_mode=self.compatibility_mode,
             on_stdout=on_stdout,
             on_stderr=on_stderr,
         )
@@ -99,7 +103,7 @@ class LocalProcessSandboxRunner:
             raise SandboxUnavailableError(
                 f"runner local cannot enforce network policy {request.network.value}"
             )
-        _validate_cwd(request.cwd, request.allowed_roots)
+        validate_cwd_allowed(request.cwd, request.allowed_roots)
 
 
 _PASSTHROUGH_PROFILES = {
@@ -302,7 +306,7 @@ async def _drain_after_kill(process: Process) -> None:
         return
 
 
-def _validate_cwd(cwd: Path, roots: tuple[Path, ...]) -> None:
+def validate_cwd_allowed(cwd: Path, roots: tuple[Path, ...]) -> None:
     resolved = cwd.resolve()
     allowed = tuple(root.resolve() for root in roots)
     if not any(_is_relative_to(resolved, root) for root in allowed):

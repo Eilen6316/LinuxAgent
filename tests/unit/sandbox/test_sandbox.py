@@ -90,6 +90,7 @@ async def test_local_runner_allows_explicit_passthrough_profile(tmp_path: Path) 
     assert result.stdout.strip() == "hello"
     assert result.sandbox.runner is SandboxRunnerKind.LOCAL
     assert result.sandbox.enabled is True
+    assert result.sandbox.enforced is False
 
 
 async def test_local_runner_rejects_unsupported_network_policy(tmp_path: Path) -> None:
@@ -137,18 +138,37 @@ async def test_local_runner_cleans_environment(monkeypatch: pytest.MonkeyPatch) 
     assert result.stdout.strip() == "missing"
 
 
-async def test_local_runner_enforces_output_limit() -> None:
+async def test_disabled_local_runner_preserves_process_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LINUXAGENT_LOCAL_DISABLED_ENV_TEST", "visible")
     runner = LocalProcessSandboxRunner(enabled=False)
+
+    result = await runner.run(_request(("/usr/bin/env",)))
+
+    assert "LINUXAGENT_LOCAL_DISABLED_ENV_TEST=visible" in result.stdout
+    assert result.sandbox.enabled is False
+    assert result.sandbox.enforced is False
+
+
+async def test_local_runner_enforces_output_limit() -> None:
+    runner = LocalProcessSandboxRunner(enabled=True)
     code = "print('x' * 4096)"
 
-    result = await runner.run(_request((sys.executable, "-c", code), limits={"output_bytes": 1024}))
+    result = await runner.run(
+        _request(
+            (sys.executable, "-c", code),
+            profile=SandboxProfile.PRIVILEGED_PASSTHROUGH,
+            limits={"output_bytes": 1024},
+        )
+    )
 
     assert len(result.stdout.encode("utf-8")) <= 1024
     assert "sandbox output limit exceeded" in result.stderr
 
 
 async def test_local_runner_timeout_kills_process_group(tmp_path: Path) -> None:
-    runner = LocalProcessSandboxRunner(enabled=False)
+    runner = LocalProcessSandboxRunner(enabled=True)
     marker = tmp_path / "child-survived"
     child_code = (
         f"import pathlib,time; time.sleep(1); pathlib.Path({str(marker)!r}).write_text('x')"
@@ -160,7 +180,13 @@ async def test_local_runner_timeout_kills_process_group(tmp_path: Path) -> None:
     )
 
     with pytest.raises(TimeoutError):
-        await runner.run(_request((sys.executable, "-c", parent_code), timeout=0.2))
+        await runner.run(
+            _request(
+                (sys.executable, "-c", parent_code),
+                profile=SandboxProfile.PRIVILEGED_PASSTHROUGH,
+                timeout=0.2,
+            )
+        )
     await _sleep(1.2)
 
     assert not marker.exists()
@@ -184,6 +210,26 @@ def test_bubblewrap_rejects_unsupported_network_policy(tmp_path: Path) -> None:
                 ("/bin/echo", "hello"),
                 profile=SandboxProfile.READ_ONLY,
                 network=SandboxNetworkPolicy.ALLOWLIST,
+            )
+        )
+
+
+def test_bubblewrap_rejects_cwd_outside_allowed_roots(tmp_path: Path) -> None:
+    executable = tmp_path / "bwrap"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside"
+    allowed.mkdir()
+    outside.mkdir()
+    runner = BubblewrapSandboxRunner(enabled=True, executable=executable)
+
+    with pytest.raises(SandboxUnavailableError, match="outside configured sandbox roots"):
+        runner.describe(
+            _request(
+                ("/bin/echo", "hello"),
+                profile=SandboxProfile.READ_ONLY,
+                cwd=outside,
+                allowed_roots=(allowed,),
             )
         )
 

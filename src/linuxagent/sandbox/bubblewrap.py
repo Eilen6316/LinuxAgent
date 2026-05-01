@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from .local import LocalProcessSandboxRunner
+from .local import LocalProcessSandboxRunner, validate_cwd_allowed
 from .models import (
     SandboxNetworkPolicy,
     SandboxOutputCallback,
@@ -39,6 +39,7 @@ class BubblewrapSandboxRunner:
         if executable is None:
             raise SandboxUnavailableError("bubblewrap executable not found")
         self._validate_network(request)
+        validate_cwd_allowed(request.cwd, request.allowed_roots)
         return SandboxResult(
             requested_profile=request.profile,
             runner=self.name,
