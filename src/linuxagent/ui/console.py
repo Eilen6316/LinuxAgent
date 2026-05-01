@@ -15,10 +15,11 @@ from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm
 from rich.text import Text
 
 from ..interfaces import UserInterface
+from .approval_selector import ApprovalOption, ApprovalSelector
 from .confirmation_renderer import ConfirmationRenderer
 from .diff_renderer import (
     DiffRenderer,
@@ -133,24 +134,8 @@ class ConsoleUI(UserInterface):
             _review_file_patch_diff(payload, self._console)
         if payload.get("type") == "confirm_file_patch" and len(files) > 1:
             return _file_patch_approval_response(files)
-        if _can_allow_conversation(payload):
-            choice = Prompt.ask(
-                "[bold]Allow this operation?[/] "
-                "([green]a[/]=allow all in this conversation/resume)",
-                choices=["y", "n", "a"],
-                default="n",
-                show_choices=False,
-            )
-            if choice == "a":
-                return {
-                    "decision": "yes_all",
-                    "permissions": {
-                        "allow": [
-                            f"Bash({item['command']})" for item in _permission_candidates(payload)
-                        ]
-                    },
-                }
-            return {"decision": "yes" if choice == "y" else "no"}
+        if payload.get("type") == "confirm_command":
+            return _command_approval_response(payload)
         approved = Confirm.ask("[bold]Allow this operation?[/]", default=False)
         return {"decision": "yes" if approved else "no"}
 
@@ -166,6 +151,47 @@ def _file_patch_approval_response(files: tuple[str, ...]) -> dict[str, Any]:
     if selected == files:
         return {"decision": "yes"}
     return {"decision": "yes", "selected_files": list(selected)}
+
+
+def _command_approval_response(payload: dict[str, Any]) -> dict[str, Any]:
+    decision = ApprovalSelector(_approval_options(payload)).choose()
+    if decision == "yes_all":
+        return {
+            "decision": "yes_all",
+            "permissions": {
+                "allow": [f"Bash({item['command']})" for item in _permission_candidates(payload)]
+            },
+        }
+    return {"decision": "yes" if decision == "yes" else "no"}
+
+
+def _approval_options(payload: dict[str, Any]) -> tuple[ApprovalOption, ...]:
+    options = [
+        ApprovalOption(
+            "y",
+            "yes",
+            "接受 / Yes",
+            "只允许这一次操作；下次类似操作还会继续询问。",
+        )
+    ]
+    if _can_allow_conversation(payload):
+        options.append(
+            ApprovalOption(
+                "a",
+                "yes_all",
+                "接受，本对话/恢复中不再询问 / Yes, don't ask again",
+                "允许当前计划中的匹配命令，仅在当前对话和 /resume 这个对话时生效。",
+            )
+        )
+    options.append(
+        ApprovalOption(
+            "n",
+            "no",
+            "不接受 / No",
+            "拒绝这次操作；LinuxAgent 不会执行它。",
+        )
+    )
+    return tuple(options)
 
 
 def _can_allow_conversation(payload: dict[str, Any]) -> bool:

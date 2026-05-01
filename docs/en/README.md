@@ -7,7 +7,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-87.45%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-86.94%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -66,7 +66,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | Current documented baseline: 518 unit tests passing at 87.45% coverage, plus HITL YAML scenarios, 8 integration smoke tests, and optional Anthropic compatibility verification |
+| Testability | Current documented baseline: 522 unit tests passing at 86.94% coverage, plus HITL YAML scenarios, 8 integration smoke tests, and optional Anthropic compatibility verification |
 
 ---
 
@@ -89,9 +89,9 @@ you: find services listening on port 8080
  │                 │     Safety:  CONFIRM
  │                 │     Rule:    LLM_FIRST_RUN
  │                 │     Source:  llm
- │                 │   > Allow this operation? [y/N]
+ │                 │   > approval menu: Yes / Yes, don't ask again / No
  └────────┬────────┘
-          ▼ y
+          ▼ Yes
  ┌─────────────────┐
  │     execute     │   asyncio.create_subprocess_exec(*argv)
  └────────┬────────┘
@@ -236,8 +236,8 @@ batch confirmation, and audit metadata.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **Current documented baseline: 518 passing; Anthropic compatibility can be verified when the extra is installed** |
-| Coverage | 0 | **87.45%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
+| Unit tests | 0 | **Current documented baseline: 522 passing; Anthropic compatibility can be verified when the extra is installed** |
+| Coverage | 0 | **86.94%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI checks command, SSH, HITL, code-structure, and sandbox bypass red lines |
 
@@ -496,7 +496,10 @@ linuxagent ❯ list files in the current directory
 │          runner=noop enforced=no    │
 │ Network  inherit                    │
 ╰──────────────────────────────────────╯
-Allow this operation? [y/N]: y
+Allow this operation?
+❯ 1. Accept / Yes
+  2. Accept, don't ask again in this conversation/resume / Yes, don't ask again
+  3. Do not accept / No
 
 [output]
 total 52
@@ -527,7 +530,9 @@ linuxagent ❯ delete the /tmp/old_backup directory
 │ Destructive yes - approval will not │
 │             be whitelisted          │
 ╰──────────────────────────────────────╯
-Allow this operation? [y/N]: y
+Allow this operation?
+❯ 1. Accept / Yes
+  2. Do not accept / No
 ```
 
 Even after approval, running the same command again will prompt again — `rm` never enters the whitelist.
@@ -596,7 +601,9 @@ linuxagent ❯ run uptime on all hosts
 │ Batch hosts web-1, web-2            │
 │ Remote profiles web-1: profile=ops-readonly user=ops cwd=/srv/app env=clean no sudo │
 ╰──────────────────────────────────────╯
-Allow this operation? [y/N]: y
+Allow this operation?
+❯ 1. Accept / Yes
+  2. Do not accept / No
 
 [web-1] exit_code=0
 [web-1] stdout:  10:23:11 up 14 days,  3:02,  2 users,  load average: 0.12, 0.08, 0.06

@@ -6,7 +6,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-87.45%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-86.94%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -124,11 +124,12 @@ shown number or use the interactive picker to resume that saved session. If the
 selected session stopped at a HITL confirmation, LinuxAgent reloads the local
 checkpoint and reopens the confirmation flow. Use `/new` to reset context inside
 a running CLI session and `/tools` to see available slash/tool entry points.
-Typing `/` opens the slash-command completion menu.
-When a multi-command LLM plan is confirmed, the prompt may offer
-`a=allow all`; that permission is scoped to the current conversation thread and
-the same thread when resumed with `/resume`. New conversations do not inherit
-it, and destructive or `never_whitelist` policy matches still ask every time.
+Typing `/` opens the slash-command completion menu. Command confirmations use
+an arrow-key menu with `Yes`, `Yes, don't ask again`, and `No` when conversation
+permissions are allowed. `Yes, don't ask again` is scoped to the current
+conversation thread and the same thread when resumed with `/resume`. New
+conversations do not inherit it, and destructive or `never_whitelist` policy
+matches still ask every time.
 Input beginning with `!` is direct command mode: LinuxAgent executes the
 operator-authored command, streams stdout/stderr live, and records both
 `!<command>` and the system result into the active conversation context. It does
@@ -267,12 +268,12 @@ Current documented baseline from `make test` on 2026-05-01:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 518 passing |
+| Unit tests | 522 passing |
 | Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
 | Sandbox boundary suite | covered by `make sandbox` |
 | Harness scenarios | 17 HITL / runbook / cluster / sandbox scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 87.45% (`--cov-fail-under=80`) |
+| Coverage | 86.94% (`--cov-fail-under=80`) |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 

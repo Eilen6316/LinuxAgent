@@ -267,14 +267,16 @@ def test_file_patch_approval_does_not_reexpand_full_diff(monkeypatch) -> None:
 
 
 def test_command_approval_can_allow_all_in_conversation(monkeypatch) -> None:
-    asked: list[str] = []
+    seen_options: list[tuple[str, str]] = []
 
-    def fake_prompt(message: str, **kwargs: Any) -> str:
-        del kwargs
-        asked.append(message)
-        return "a"
+    class FakeSelector:
+        def __init__(self, options: tuple[Any, ...]) -> None:
+            seen_options.extend((option.decision, option.label) for option in options)
 
-    monkeypatch.setattr("linuxagent.ui.console.Prompt.ask", fake_prompt)
+        def choose(self) -> str:
+            return "yes_all"
+
+    monkeypatch.setattr("linuxagent.ui.console.ApprovalSelector", FakeSelector)
     ui = ConsoleUI()
 
     response = ui._approval_response(
@@ -294,13 +296,26 @@ def test_command_approval_can_allow_all_in_conversation(monkeypatch) -> None:
             "allow": ["Bash(cat /etc/os-release)", "Bash(nginx -v)"],
         },
     }
-    assert "allow all in this conversation/resume" in asked[0]
+    assert seen_options == [
+        ("yes", "接受 / Yes"),
+        ("yes_all", "接受，本对话/恢复中不再询问 / Yes, don't ask again"),
+        ("no", "不接受 / No"),
+    ]
 
 
 def test_command_approval_does_not_offer_allow_all_for_destructive_command(
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", lambda message, *, default: True)
+    seen_decisions: list[str] = []
+
+    class FakeSelector:
+        def __init__(self, options: tuple[Any, ...]) -> None:
+            seen_decisions.extend(option.decision for option in options)
+
+        def choose(self) -> str:
+            return "yes"
+
+    monkeypatch.setattr("linuxagent.ui.console.ApprovalSelector", FakeSelector)
     ui = ConsoleUI()
 
     response = ui._approval_response(
@@ -313,6 +328,7 @@ def test_command_approval_does_not_offer_allow_all_for_destructive_command(
     )
 
     assert response == {"decision": "yes"}
+    assert seen_decisions == ["yes", "no"]
 
 
 def test_file_patch_approval_applies_all_when_all_files_confirmed(monkeypatch) -> None:
