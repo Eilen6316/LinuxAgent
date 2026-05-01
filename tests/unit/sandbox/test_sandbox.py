@@ -211,6 +211,37 @@ async def test_local_runner_timeout_kills_process_group(tmp_path: Path) -> None:
     assert not marker.exists()
 
 
+async def test_local_runner_cancel_kills_process_group(tmp_path: Path) -> None:
+    runner = LocalProcessSandboxRunner(enabled=True)
+    marker = tmp_path / "child-survived-after-cancel"
+    child_code = (
+        f"import pathlib,time; time.sleep(1); pathlib.Path({str(marker)!r}).write_text('x')"
+    )
+    parent_code = (
+        "import subprocess,sys,time; "
+        f"subprocess.Popen([sys.executable, '-c', {child_code!r}]); "
+        "time.sleep(5)"
+    )
+
+    task = asyncio.create_task(
+        runner.run(
+            _request(
+                (sys.executable, "-c", parent_code),
+                profile=SandboxProfile.PRIVILEGED_PASSTHROUGH,
+                timeout=5.0,
+            )
+        )
+    )
+    await _sleep(0.2)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await _sleep(1.2)
+
+    assert not marker.exists()
+
+
 async def test_bubblewrap_unavailable_fails_closed_for_safe_profile(tmp_path: Path) -> None:
     runner = BubblewrapSandboxRunner(enabled=True, executable=tmp_path / "missing-bwrap")
 

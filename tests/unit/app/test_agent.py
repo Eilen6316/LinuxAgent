@@ -558,6 +558,75 @@ async def test_bang_command_requires_confirmation_for_confirm_policy(tmp_path) -
     assert ("ran\n", False) in ui.raw_printed
 
 
+async def test_bang_background_command_starts_waits_and_adds_context(tmp_path) -> None:
+    ui = _FakeUI(inputs=["!bg /bin/echo hello", "!wait 1", "/exit"])
+    chat_service = ChatService(tmp_path / "history.json", max_messages=10)
+    command_service = _command_service(
+        result=ExecutionResult("/bin/echo hello", 0, "hello\n", "", 0.1),
+    )
+    agent = _agent(
+        tmp_path,
+        ui=ui,
+        chat_service=chat_service,
+        command_service=command_service,
+    )
+
+    await agent.run(thread_id="cli")
+
+    assert "Started background terminal [1]" in ui.printed[0]
+    assert "Waited for background terminal [1]: succeeded" in ui.printed[1]
+    assert ("hello\n", False) in ui.raw_printed
+    assert ("\n[exit 0]\n", False) in ui.raw_printed
+    assert [message.content for message in chat_service.snapshot()] == [
+        "!/bin/echo hello",
+        (
+            "Shell command result (redacted):\n"
+            "command: /bin/echo hello\n"
+            "exit_code: 0\n"
+            "duration_seconds: 0.100\n"
+            "sandbox: none\n"
+            "remote: none\n"
+            "stdout:\n"
+            "hello\n"
+            "stderr:\n"
+            "\n"
+            "redacted_count: 0\n"
+            "truncated: false"
+        ),
+    ]
+
+
+async def test_bang_background_command_requires_confirmation(tmp_path) -> None:
+    ui = _FakeUI(inputs=["!bg python script.py", "!wait 1", "/exit"])
+    command_service = _command_service(
+        safety=SafetyResult(level=SafetyLevel.CONFIRM, matched_rule="INTERACTIVE"),
+        result=ExecutionResult("python script.py", 0, "ran\n", "", 0.1),
+    )
+    agent = _agent(tmp_path, ui=ui, command_service=command_service)
+
+    await agent.run(thread_id="cli")
+
+    assert ui.interrupts
+    assert ui.interrupts[0]["command"] == "python script.py"
+    assert "Started background terminal [1]" in ui.printed[0]
+    assert "Waited for background terminal [1]: succeeded" in ui.printed[1]
+    assert ("ran\n", False) in ui.raw_printed
+
+
+async def test_bang_background_tail_redacts_buffered_output(tmp_path) -> None:
+    ui = _FakeUI(inputs=["!bg /bin/cat secret", "!wait 1", "/exit"])
+    command_service = _command_service(
+        result=ExecutionResult("/bin/cat secret", 0, "password=hunter2\n", "", 0.1),
+    )
+    agent = _agent(tmp_path, ui=ui, command_service=command_service)
+
+    await agent.run(thread_id="cli")
+
+    raw_output = "".join(text for text, _stderr in ui.raw_printed)
+    assert "hunter2" not in raw_output
+    assert "***redacted***" in raw_output
+
+
 async def test_run_turn_prefers_checkpoint_history(tmp_path) -> None:
     history_path = tmp_path / "history.json"
     chat_service = ChatService(history_path, max_messages=10)

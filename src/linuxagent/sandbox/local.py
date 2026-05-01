@@ -184,6 +184,10 @@ async def _collect_output(
         _kill_process(process, compatibility_mode=compatibility_mode)
         await _drain_after_kill(process)
         raise
+    except asyncio.CancelledError:
+        _kill_process(process, compatibility_mode=compatibility_mode)
+        await _drain_after_kill(process)
+        raise
     return (
         "".join(stdout_parts),
         "".join(stderr_parts),
