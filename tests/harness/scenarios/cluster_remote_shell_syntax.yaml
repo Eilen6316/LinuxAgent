@@ -1,6 +1,6 @@
 scenario: "cluster remote shell syntax rejected"
 provider_responses:
-  - '{"goal":"cluster remote syntax","commands":[{"command":"echo ok; whoami","purpose":"attempt shell sequence remotely","read_only":true,"target_hosts":[]}],"risk_summary":"remote shell syntax","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - '{"goal":"cluster remote syntax","commands":[{"command":"echo ok; whoami","purpose":"attempt shell sequence remotely","read_only":true,"target_hosts":["*"]}],"risk_summary":"remote shell syntax","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
 setup:
   cluster_hosts:
     - name: host-a

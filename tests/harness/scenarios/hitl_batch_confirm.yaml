@@ -1,6 +1,6 @@
 scenario: "batch threshold enforces confirm"
 provider_responses:
-  - '{"goal":"batch uptime","commands":[{"command":"uptime","purpose":"check uptime","read_only":true,"target_hosts":[]}],"risk_summary":"read-only batch","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - '{"goal":"batch uptime","commands":[{"command":"uptime","purpose":"check uptime","read_only":true,"target_hosts":["*"]}],"risk_summary":"read-only batch","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
   - "批量执行完成"
 setup:
   cluster_hosts:

@@ -202,7 +202,9 @@ async def test_agent_runtime_denies_without_execution(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 async def test_agent_runtime_batch_confirm_executes_cluster_command(tmp_path: Path) -> None:
-    provider = _Provider([command_plan_json("/bin/echo cluster"), "cluster analysis"])
+    payload = json.loads(command_plan_json("/bin/echo cluster"))
+    payload["commands"][0]["target_hosts"] = ["*"]
+    provider = _Provider([json.dumps(payload), "cluster analysis"])
     ui = _UI()
     cluster_service = ClusterService(
         ClusterConfig(
