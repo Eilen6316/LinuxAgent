@@ -8,6 +8,7 @@ from langchain_core.tools import BaseTool, tool
 
 from ..config.models import FilePatchConfig, SandboxToolConfig
 from ..sandbox import SandboxProfile
+from ..security import redact_text
 from .sandbox import ToolSandboxSpec, attach_tool_sandbox
 
 MAX_READ_CHARS = 120_000
@@ -47,6 +48,7 @@ def make_read_file_tool(
         target = _resolve_allowed_path(Path(path), config)
         if not target.is_file():
             raise WorkspaceAccessError(f"path is not a file: {target}")
+        _ensure_readable_workspace_file(target, limits.max_file_bytes)
         return _read_text_window(
             target,
             max(offset, 0),
@@ -132,8 +134,9 @@ def _read_text_window(path: Path, offset: int, limit: int, max_chars: int) -> st
             if len(lines) >= limit or total_chars >= min(MAX_READ_CHARS, max_chars):
                 break
             text = line.rstrip("\n")
-            total_chars += len(text)
-            lines.append(f"{line_number + 1}:{text}")
+            redacted = redact_text(text)
+            total_chars += len(redacted.text)
+            lines.append(f"{line_number + 1}:{redacted.text}")
     return "\n".join(lines)
 
 
@@ -156,7 +159,7 @@ def _search_tree(
     for path in sorted(root.rglob("*")):
         if len(matches) >= max_matches:
             break
-        if _searchable_file(path, max_file_bytes):
+        if _searchable_file(path, root, max_file_bytes):
             matches.extend(_search_file(query, root, path, max_matches - len(matches)))
     return matches
 
@@ -167,13 +170,19 @@ def _search_file(query: str, root: Path, path: Path, remaining: int) -> list[str
         for line_number, line in enumerate(handle, start=1):
             if query in line.casefold():
                 relpath = path.relative_to(root)
-                matches.append(f"{relpath}:{line_number}:{line.rstrip()}")
+                redacted = redact_text(line.rstrip())
+                matches.append(f"{relpath}:{line_number}:{redacted.text}")
                 if len(matches) >= remaining:
                     break
     return matches
 
 
-def _searchable_file(path: Path, max_file_bytes: int) -> bool:
+def _searchable_file(path: Path, root: Path, max_file_bytes: int) -> bool:
+    if path.is_symlink():
+        raise WorkspaceAccessError(f"symlink entries are not readable: {path}")
+    resolved = path.resolve(strict=False)
+    if not (resolved == root or root in resolved.parents):
+        raise WorkspaceAccessError(f"path is outside search root: {resolved}")
     return path.is_file() and path.stat().st_size <= min(MAX_SEARCH_FILE_BYTES, max_file_bytes)
 
 
@@ -200,6 +209,13 @@ def _resolve_allowed_path(path: Path, config: FilePatchConfig) -> Path:
         allowed = ", ".join(str(root) for root in roots)
         raise WorkspaceAccessError(f"path is outside allowed roots ({allowed}): {resolved}")
     return resolved
+
+
+def _ensure_readable_workspace_file(path: Path, max_file_bytes: int) -> None:
+    if path.is_symlink():
+        raise WorkspaceAccessError(f"symlink entries are not readable: {path}")
+    if path.stat().st_size > max_file_bytes:
+        raise WorkspaceAccessError(f"file exceeds max size ({max_file_bytes} bytes): {path}")
 
 
 def _workspace_spec(

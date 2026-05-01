@@ -173,6 +173,37 @@ async def test_complete_with_tools_truncates_tool_output() -> None:
     assert events[1]["output_chars"] <= 20
 
 
+async def test_complete_with_tools_redacts_tool_output() -> None:
+    events: list[dict[str, Any]] = []
+
+    @tool
+    async def read_secret() -> str:
+        """Return sensitive text."""
+        return "api_key=sk-prodsecret1234567890 password=hunter2"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "read_secret", "args": {}, "id": "1", "type": "tool_call"}],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="read")],
+        [read_secret],
+        tool_observer=events.append,
+    )
+
+    assert "sk-prodsecret" not in events[1]["output_preview"]
+    assert "hunter2" not in events[1]["output_preview"]
+    assert "api_key=***redacted***" in events[1]["output_preview"]
+    assert "password=***redacted***" in events[1]["output_preview"]
+
+
 async def test_complete_with_tools_times_out_tool_call() -> None:
     events: list[dict[str, Any]] = []
 

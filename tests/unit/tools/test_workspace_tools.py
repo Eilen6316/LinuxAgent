@@ -33,6 +33,31 @@ def test_read_file_rejects_path_outside_allowed_roots(tmp_path) -> None:
         tool.invoke({"path": str(outside)})
 
 
+def test_read_file_redacts_sensitive_values(tmp_path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("api_key: sk-prodsecret1234567890\npassword=hunter2\n", encoding="utf-8")
+    tool = make_read_file_tool(FilePatchConfig(allow_roots=(tmp_path,)))
+
+    output = tool.invoke({"path": str(path)})
+
+    assert "sk-prodsecret" not in output
+    assert "hunter2" not in output
+    assert "api_key=***redacted***" in output
+    assert "password=***redacted***" in output
+
+
+def test_read_file_rejects_files_over_configured_size(tmp_path) -> None:
+    path = tmp_path / "large.txt"
+    path.write_text("x" * 2048, encoding="utf-8")
+    tool = make_read_file_tool(
+        FilePatchConfig(allow_roots=(tmp_path,)),
+        SandboxToolConfig(max_file_bytes=1024),
+    )
+
+    with pytest.raises(WorkspaceAccessError, match="max size"):
+        tool.invoke({"path": str(path)})
+
+
 def test_list_dir_returns_sorted_entries(tmp_path) -> None:
     root = tmp_path / "workspace"
     root.mkdir()
@@ -53,6 +78,31 @@ def test_search_files_finds_literal_matches(tmp_path) -> None:
     output = tool.invoke({"root": str(tmp_path), "pattern": "needle", "max_matches": 2})
 
     assert output == ["app.py:2:needle = True", "notes.txt:1:needle here"]
+
+
+def test_search_files_redacts_sensitive_matches(tmp_path) -> None:
+    (tmp_path / "config.txt").write_text(
+        "api_key=sk-prodsecret1234567890\npassword=hunter2\n", encoding="utf-8"
+    )
+    tool = make_search_files_tool(FilePatchConfig(allow_roots=(tmp_path,)))
+
+    output = tool.invoke({"root": str(tmp_path), "pattern": "password"})
+
+    assert output == ["config.txt:2:password=***redacted***"]
+
+
+def test_search_files_rejects_symlink_to_outside_allowed_root(tmp_path) -> None:
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside"
+    allowed.mkdir()
+    outside.mkdir()
+    secret = outside / "secret.txt"
+    secret.write_text("token=sk-prodsecret1234567890\n", encoding="utf-8")
+    (allowed / "link.txt").symlink_to(secret)
+    tool = make_search_files_tool(FilePatchConfig(allow_roots=(allowed,)))
+
+    with pytest.raises(WorkspaceAccessError, match="symlink"):
+        tool.invoke({"root": str(allowed), "pattern": "token"})
 
 
 def test_search_files_applies_configured_match_limit(tmp_path) -> None:

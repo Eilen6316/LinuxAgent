@@ -11,6 +11,7 @@ from typing import Any
 from langchain_core.tools import BaseTool
 
 from ..sandbox import SandboxProfile
+from ..security import redact_text
 
 SANDBOX_METADATA_KEY = "linuxagent_sandbox"
 
@@ -83,7 +84,7 @@ async def invoke_tool_with_sandbox(
             output_chars=len(content),
         )
 
-    content = _tool_output_to_str(raw_result)
+    content = redact_text(_tool_output_to_str(raw_result)).text
     limit = min(limits.max_output_chars, max(remaining_total_chars, 0))
     content, truncated = _truncate(content, limit)
     status = "truncated" if truncated else "allowed"
