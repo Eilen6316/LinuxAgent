@@ -9,6 +9,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from ..audit import AuditLog
+from ..execution_display import execution_display_text
 from ..intelligence import ContextManager
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult, UserInterface
 from ..services import CommandService
@@ -105,12 +106,7 @@ class DirectCommandRunner:
 def _context_output(result: ExecutionResult | None, safety: SafetyResult) -> str:
     if result is None:
         return f"Shell command was not executed: {safety.reason or safety.matched_rule or safety.level.value}"
-    parts = [f"Shell command exited with code {result.exit_code}."]
-    if result.stdout:
-        parts.append(f"stdout:\n{result.stdout.rstrip()}")
-    if result.stderr:
-        parts.append(f"stderr:\n{result.stderr.rstrip()}")
-    return "\n\n".join(parts)
+    return f"Shell command result (redacted):\n{execution_display_text(result).text}"
 
 
 def _is_destructive(command_service: CommandService, command: str) -> bool:

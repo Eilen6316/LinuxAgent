@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ..config.models import ClusterHost
+from ..execution_display import execution_display_text
 from ..interfaces import ExecutionResult
-from ..security import guard_execution_result
 from ..services import ClusterService, CommandService
 from .state import AgentState
 
@@ -20,7 +20,7 @@ def synthetic_result(command: str, exit_code: int, stdout: str, stderr: str) -> 
 def analysis_context(state: AgentState, result: ExecutionResult) -> str:
     runbook_results = state.get("runbook_results", ())
     if not runbook_results:
-        return guard_execution_result(result).text
+        return execution_display_text(result).text
     label = (
         "Runbook step results:"
         if state.get("selected_runbook") is not None
@@ -28,7 +28,7 @@ def analysis_context(state: AgentState, result: ExecutionResult) -> str:
     )
     sections = [label]
     for index, step_result in enumerate(runbook_results, start=1):
-        sections.append(f"\nStep {index}:\n{guard_execution_result(step_result).text}")
+        sections.append(f"\nStep {index}:\n{execution_display_text(step_result).text}")
     return "\n".join(sections)
 
 

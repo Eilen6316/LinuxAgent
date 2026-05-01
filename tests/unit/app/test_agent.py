@@ -480,7 +480,20 @@ async def test_bang_command_runs_without_graph_and_adds_context(tmp_path) -> Non
     assert ("hello\n", False) in ui.raw_printed
     assert [message.content for message in chat_service.snapshot()] == [
         "!/bin/echo hello",
-        "Shell command exited with code 0.\n\nstdout:\nhello",
+        (
+            "Shell command result (redacted):\n"
+            "command: /bin/echo hello\n"
+            "exit_code: 0\n"
+            "duration_seconds: 0.100\n"
+            "sandbox: none\n"
+            "remote: none\n"
+            "stdout:\n"
+            "hello\n"
+            "stderr:\n"
+            "\n"
+            "redacted_count: 0\n"
+            "truncated: false"
+        ),
     ]
 
 
@@ -498,7 +511,20 @@ async def test_bang_command_output_is_used_as_next_turn_context(tmp_path) -> Non
 
     assert [message.content for message in graph.calls[0]["messages"]] == [
         "!/bin/echo hello",
-        "Shell command exited with code 0.\n\nstdout:\nhello",
+        (
+            "Shell command result (redacted):\n"
+            "command: /bin/echo hello\n"
+            "exit_code: 0\n"
+            "duration_seconds: 0.100\n"
+            "sandbox: none\n"
+            "remote: none\n"
+            "stdout:\n"
+            "hello\n"
+            "stderr:\n"
+            "\n"
+            "redacted_count: 0\n"
+            "truncated: false"
+        ),
         "what happened",
     ]
 

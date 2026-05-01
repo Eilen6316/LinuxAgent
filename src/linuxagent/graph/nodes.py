@@ -16,7 +16,6 @@ from ..config.models import CommandPlanConfig, FilePatchConfig
 from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLevel
 from ..prompts_loader import build_analysis_prompt
 from ..runbooks import RunbookEngine
-from ..security import guard_execution_result
 from ..services import ClusterService, CommandService
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
@@ -294,12 +293,19 @@ def make_analyze_result_node(
         result = state.get("execution_result")
         if result is None:
             return {"messages": [AIMessage(content="没有执行结果可分析。")]}
-        prompt_messages = prompt.format_messages(result_context=analysis_context(state, result))
+        result_context = analysis_context(state, result)
+        prompt_messages = prompt.format_messages(result_context=result_context)
         try:
             with span(telemetry, "llm.complete", current_trace_id, {"node": "analyze"}):
                 analysis = await provider.complete(prompt_messages)
         except Exception:  # noqa: BLE001 - keep graph resilient when provider analysis fails
-            analysis = guard_execution_result(result).text
-        return {"trace_id": current_trace_id, "messages": [AIMessage(content=analysis)]}
+            analysis = result_context
+        return {
+            "trace_id": current_trace_id,
+            "messages": [
+                AIMessage(content=f"LinuxAgent execution result (redacted):\n{result_context}"),
+                AIMessage(content=analysis),
+            ],
+        }
 
     return analyze_result_node

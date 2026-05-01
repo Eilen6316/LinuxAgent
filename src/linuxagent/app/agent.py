@@ -19,6 +19,7 @@ from ..intelligence import ContextManager
 from ..interfaces import CommandSource, UserInterface
 from ..services import ChatService, ClusterService, CommandService, MonitoringService
 from .direct_command import DirectCommandRunner
+from .execution_visibility import print_execution_results
 from .resume import (
     ResumeSessionItem,
     render_resumed_session,
@@ -28,7 +29,7 @@ from .resume import (
 )
 from .slash import slash_help, tools_help
 
-GRAPH_RECURSION_LIMIT = 100
+GRAPH_LIMIT = 100
 
 
 @dataclass
@@ -101,6 +102,7 @@ class LinuxAgent:
                     if not self.context_manager.snapshot():
                         self.context_manager.add([HumanMessage(content=user_input)])
                     self._persist_active_history(thread_id)
+                    await print_execution_results(self.ui, result)
                     await self.ui.print(str(result["messages"][-1].content))
                 return result if isinstance(result, dict) else {}
             payload = interrupts[0].value
@@ -284,6 +286,7 @@ class LinuxAgent:
         if result.get("messages"):
             self.context_manager.replace(await self._history(config))
             self._persist_active_history(thread_id)
+            await print_execution_results(self.ui, result)
             await self.ui.print(str(result["messages"][-1].content))
         return True
 
@@ -293,7 +296,4 @@ class LinuxAgent:
 
 
 def _graph_config(thread_id: str) -> RunnableConfig:
-    return {
-        "configurable": {"thread_id": thread_id},
-        "recursion_limit": GRAPH_RECURSION_LIMIT,
-    }
+    return {"configurable": {"thread_id": thread_id}, "recursion_limit": GRAPH_LIMIT}

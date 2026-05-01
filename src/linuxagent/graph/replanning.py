@@ -8,10 +8,10 @@ from typing import Any
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.types import Command
 
+from ..execution_display import execution_display_text
 from ..interfaces import CommandSource, LLMProvider
 from ..plans import CommandPlanParseError, parse_command_plan
 from ..prompts_loader import build_repair_prompt
-from ..security import guard_execution_result
 from ..telemetry import TelemetryRecorder
 from .common import span, trace_id
 from .state import AgentState
@@ -92,7 +92,7 @@ def _current_plan_results(state: AgentState) -> tuple[Any, ...]:
 
 def _failure_context(state: AgentState) -> str:
     failures = [result for result in _current_plan_results(state) if result.exit_code != 0]
-    return "\n\n".join(guard_execution_result(result).text for result in failures)
+    return "\n\n".join(execution_display_text(result).text for result in failures)
 
 
 def _current_goal(state: AgentState) -> str:

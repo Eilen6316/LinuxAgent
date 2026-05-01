@@ -18,7 +18,8 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.text import Text
 
-from ..interfaces import UserInterface
+from ..execution_display import execution_display_text
+from ..interfaces import ExecutionResult, UserInterface
 from .approval_selector import ApprovalOption, ApprovalSelector
 from .confirmation_renderer import ConfirmationRenderer
 from .diff_renderer import (
@@ -83,6 +84,12 @@ class ConsoleUI(UserInterface):
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
         rendered = Text(text, style="red") if stderr else Text(text)
         self._console.print(rendered, end="")
+
+    async def print_execution_result(self, result: ExecutionResult) -> None:
+        display = execution_display_text(result)
+        style = "green" if result.exit_code == 0 else "red"
+        title = f"Command result · exit {result.exit_code}"
+        self._console.print(Panel(Text(display.text), title=title, border_style=style))
 
     def supports_resume_selector(self) -> bool:
         return sys.stdin.isatty()

@@ -63,6 +63,8 @@ def test_analysis_context_uses_single_result_without_runbook() -> None:
 
     assert "hunter2" not in text
     assert "***redacted***" in text
+    assert "duration_seconds" in text
+    assert "sandbox: none" in text
 
 
 def test_analysis_context_aggregates_command_step_results() -> None:

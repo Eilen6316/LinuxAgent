@@ -59,6 +59,7 @@ class _UI:
         self.response = {"decision": "yes", "latency_ms": 1} if response is None else response
         self.interrupts: list[dict[str, Any]] = []
         self.printed: list[str] = []
+        self.execution_results: list[ExecutionResult] = []
 
     async def input_stream(self) -> AsyncIterator[str]:
         if False:
@@ -70,6 +71,9 @@ class _UI:
 
     async def print(self, text: str) -> None:
         self.printed.append(text)
+
+    async def print_execution_result(self, result: ExecutionResult) -> None:
+        self.execution_results.append(result)
 
 
 def _router_response(mode: str, answer: str = "", reason: str = "test route") -> str:
@@ -148,8 +152,12 @@ async def test_agent_runtime_confirms_and_resumes_llm_command(tmp_path: Path) ->
 
     assert ui.interrupts[0]["type"] == "confirm_command"
     assert ui.interrupts[0]["command"] == "/bin/echo runtime"
+    assert [result.command for result in ui.execution_results] == ["/bin/echo runtime"]
     assert ui.printed == ["runtime analysis"]
     assert "runtime" in str(provider.complete_messages[-1][-1].content)
+    history_text = "\n".join(str(message.content) for message in agent.chat_service.snapshot())
+    assert "LinuxAgent execution result" in history_text
+    assert "/bin/echo runtime" in history_text
 
 
 @pytest.mark.integration
@@ -215,6 +223,13 @@ async def test_agent_runtime_stops_repairing_failed_command_plan_at_limit(
 
     assert ui.printed == ["failed command analysis"]
     assert [payload["command"] for payload in ui.interrupts] == ["/bin/false"]
+    repair_prompt = next(
+        str(messages[-1].content)
+        for messages in provider.complete_messages
+        if "Failed command results" in str(messages[-1].content)
+    )
+    assert "duration_seconds" in repair_prompt
+    assert "sandbox:" in repair_prompt
     analysis_prompt = str(provider.complete_messages[-1][-1].content)
     assert analysis_prompt.count("/bin/false") >= 3
 
