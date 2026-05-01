@@ -6,8 +6,8 @@ via a subclass of ``paramiko.SSHClient`` and assert the wrapper maps them
 to the right custom exception hierarchy. Real SSH lives in the optional
 integration suite (``make integration``).
 
-R-TEST-02 spirit: the policy decision (RejectPolicy vs WarningPolicy) is
-asserted directly on the client object rather than mocked out.
+R-TEST-02 spirit: the RejectPolicy decision is asserted directly on the client
+object rather than mocked out.
 """
 
 from __future__ import annotations
@@ -51,10 +51,10 @@ def test_default_policy_is_reject() -> None:
     )
 
 
-def test_opt_in_uses_warning_policy() -> None:
+def test_unknown_host_opt_in_still_uses_reject_policy() -> None:
     mgr = SSHManager(ClusterConfig(), allow_unknown_hosts=True)
     client = mgr._build_client()
-    assert isinstance(client._policy, paramiko.WarningPolicy)
+    assert isinstance(client._policy, paramiko.RejectPolicy)
 
 
 def test_auto_add_policy_never_used() -> None:

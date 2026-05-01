@@ -88,6 +88,45 @@ def test_whitelist_disabled_keeps_confirm() -> None:
     assert result.matched_rule == "LLM_FIRST_RUN"
 
 
+def test_runtime_never_whitelist_rule_blocks_session_whitelist_downgrade() -> None:
+    wl = SessionWhitelist()
+    assert wl.add("echo no") is True
+    engine = PolicyEngine(
+        PolicyConfig(
+            rules=(
+                PolicyRule(
+                    id="llm.first",
+                    legacy_rule="LLM_FIRST_RUN",
+                    level=SafetyLevel.CONFIRM,
+                    risk_score=40,
+                    capabilities=("llm.generated",),
+                    reason="llm command requires approval",
+                    match=PolicyMatch(llm_first_run=True),
+                ),
+                PolicyRule(
+                    id="custom.echo.confirm",
+                    legacy_rule="CUSTOM_NEVER_WHITELIST",
+                    level=SafetyLevel.CONFIRM,
+                    risk_score=80,
+                    capabilities=("custom.audit",),
+                    reason="custom policy requires approval every time",
+                    match=PolicyMatch(command=("echo",)),
+                    never_whitelist=True,
+                ),
+            )
+        )
+    )
+    ex = LinuxCommandExecutor(
+        SecurityConfig(command_timeout=5.0), whitelist=wl, policy_engine=engine
+    )
+
+    result = ex.is_safe("echo no", source=CommandSource.LLM)
+
+    assert result.level is SafetyLevel.CONFIRM
+    assert result.matched_rule == "LLM_FIRST_RUN"
+    assert result.can_whitelist is False
+
+
 def test_destructive_never_whitelisted_even_if_approved_via_plain_add() -> None:
     """R-HITL-03: destructive commands reject whitelist admission outright."""
     wl = SessionWhitelist()

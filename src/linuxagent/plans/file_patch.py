@@ -145,11 +145,11 @@ def apply_unified_diff(
     cwd: Path | None = None,
 ) -> PatchApplyResult:
     patches = _parse_file_patches(diff_text)
-    planned = _dry_run_file_updates(patches)
     safety = _evaluate_paths(_patch_paths(patches, permission_changes), config, cwd)
     safety = _with_permission_policy(safety, permission_changes, config)
     if not safety.allowed:
         raise FilePatchApplyError("; ".join(safety.reasons))
+    planned = _dry_run_file_updates(patches)
     _validate_permission_targets(planned, permission_changes, cwd)
     changed = _apply_file_updates(planned)
     permissions = _apply_permission_changes(permission_changes, config, cwd)
@@ -178,10 +178,11 @@ def evaluate_file_patch_plan(
     request_intent: Literal["create", "update", "unknown"] = "unknown",
 ) -> FilePatchSafetyReport:
     patches = _parse_file_patches(plan.unified_diff)
-    _dry_run_file_updates(patches)
     safety = _evaluate_paths(_patch_paths(patches, plan.permission_changes), config, cwd)
     safety = _with_permission_policy(safety, plan.permission_changes, config)
     safety = _with_create_intent_policy(safety, patches, request_intent)
+    if safety.allowed:
+        _dry_run_file_updates(patches)
     return _with_large_rewrite_policy(safety, patches)
 
 

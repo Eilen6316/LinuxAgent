@@ -32,6 +32,7 @@ def make_safety_check_node(
                 "matched_rule": "EMPTY",
                 "safety_reason": state.get("plan_error") or "no command proposed",
                 "safety_capabilities": (),
+                "safety_can_whitelist": False,
             }
         source = state.get("command_source") or CommandSource.USER
         with span(telemetry, "policy.evaluate", current_trace_id, {"command_source": source.value}):
@@ -45,6 +46,7 @@ def make_safety_check_node(
                 "safety_reason": remote_error,
                 "command_source": verdict.command_source,
                 "safety_capabilities": verdict.capabilities,
+                "safety_can_whitelist": _can_whitelist(verdict),
                 "batch_hosts": (),
             }
         batch_hosts = _batch_hosts(state, cluster_service)
@@ -55,15 +57,24 @@ def make_safety_check_node(
             "trace_id": current_trace_id,
             "safety_level": level,
             "matched_rule": (
-                "BATCH_CONFIRM" if batch_hosts and level is SafetyLevel.CONFIRM else verdict.matched_rule
+                "BATCH_CONFIRM"
+                if batch_hosts and level is SafetyLevel.CONFIRM
+                else verdict.matched_rule
             ),
-            "safety_reason": "batch command requires confirmation" if batch_hosts else verdict.reason,
+            "safety_reason": "batch command requires confirmation"
+            if batch_hosts
+            else verdict.reason,
             "command_source": verdict.command_source,
             "safety_capabilities": verdict.capabilities,
+            "safety_can_whitelist": _can_whitelist(verdict),
             "batch_hosts": batch_hosts,
         }
 
     return safety_check_node
+
+
+def _can_whitelist(verdict: Any) -> bool:
+    return bool(getattr(verdict, "can_whitelist", True))
 
 
 def _batch_hosts(state: AgentState, cluster_service: ClusterService | None) -> tuple[str, ...]:

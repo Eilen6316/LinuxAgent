@@ -73,6 +73,7 @@ def is_safe(
         command_source=decision.command_source,
         risk_score=decision.risk_score,
         capabilities=decision.capabilities,
+        can_whitelist=decision.can_whitelist,
     )
 
 

@@ -207,11 +207,8 @@ def record(self, command, result):
 **Current**: `RejectPolicy` + `load_system_host_keys()`; unknown hosts raise `SSHUnknownHostError`.
 
 ```python
-if self._allow_unknown_hosts:
-    # Explicit opt-in; WarningPolicy prints on each unknown host
-    client.set_missing_host_key_policy(paramiko.WarningPolicy())
-else:
-    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+client.load_system_host_keys()
+client.set_missing_host_key_policy(paramiko.RejectPolicy())
 ```
 
 A CI red-line check `! grep -rn "AutoAddPolicy" src/linuxagent/` prevents accidental regression.
@@ -642,7 +639,7 @@ A: Deliberately no. `--yes` only downgrades dialog-level confirmations; command-
 A: No. `AuditConfig` exposes only `path`, with no `enabled` field.
 
 **Q: How do I SSH in a fresh environment where `known_hosts` is empty?**
-A: Construct `SSHManager(config, allow_unknown_hosts=True)` in code. The CLI does not expose this flag on purpose — it's opt-in to avoid accidental MITM exposure.
+A: Pre-register host keys first, for example with `ssh-keyscan -H your-host.example.com >> ~/.ssh/known_hosts`. LinuxAgent always rejects unknown SSH host keys.
 
 **Q: Can I use my own OpenAI-compatible gateway?**
 A: Yes. Set `api.provider: openai_compatible`, point `api.base_url` to the gateway URL, and set `api.model` to a supported model. Shortcuts `glm`, `qwen`, `kimi`, `minimax`, `gemini`, and `hunyuan` use the same OpenAI-compatible path. If the gateway rejects `max_completion_tokens`, set `api.token_parameter: max_tokens`.

@@ -38,6 +38,7 @@ class SafetyResult:
     command_source: CommandSource = CommandSource.USER
     risk_score: int = 0
     capabilities: tuple[str, ...] = ()
+    can_whitelist: bool = True
 
 
 @dataclass(frozen=True)

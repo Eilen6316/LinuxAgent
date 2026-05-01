@@ -4,7 +4,7 @@ Key properties:
 
 - Silent auto-add of unknown host keys is banned; this module uses
   ``RejectPolicy`` and relies on the caller having populated ``known_hosts``
-  (or explicitly opted into ``WarningPolicy`` via the ``allow_unknown_hosts`` flag).
+  before connection.
 - Connections are pooled per ``(hostname, port, username)`` so repeated
   commands to the same host reuse one TCP/SSH session.
 - Paramiko is blocking; public methods are async and dispatch work to explicit
@@ -73,7 +73,8 @@ class SSHManager:
         telemetry: TelemetryRecorder | None = None,
     ) -> None:
         self._config = config
-        self._allow_unknown_hosts = allow_unknown_hosts
+        if allow_unknown_hosts:
+            logger.warning("allow_unknown_hosts is ignored; SSH always uses RejectPolicy")
         self._telemetry = telemetry
         self._pool: dict[tuple[str, int, str], paramiko.SSHClient] = {}
         self._lock = threading.Lock()
@@ -218,13 +219,7 @@ class SSHManager:
         if known_hosts.is_file():
             client.load_host_keys(str(known_hosts))
         client.load_system_host_keys()
-        if self._allow_unknown_hosts:
-            # Opt-in path gated by caller (e.g. first-time bootstrap in a lab).
-            # Still stricter than auto-add: every unknown host prints a warning
-            # that the operator must see. Silent auto-add remains forbidden.
-            client.set_missing_host_key_policy(paramiko.WarningPolicy())  # noqa: S507  # nosec B507
-        else:
-            client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
         return client
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from langchain_core.tools import BaseTool, tool
 
 from ..config.models import FilePatchConfig
+from .regex_guard import compile_safe_search_regex
 
 MAX_READ_CHARS = 120_000
 MAX_SEARCH_FILE_BYTES = 1_048_576
@@ -64,7 +65,9 @@ def make_search_files_tool(config: FilePatchConfig) -> BaseTool:
         if not target.is_dir():
             raise WorkspaceAccessError(f"root is not a directory: {target}")
         return _search_tree(
-            re.compile(pattern), target, _bounded_limit(max_matches, MAX_SEARCH_MATCHES)
+            compile_safe_search_regex(pattern),
+            target,
+            _bounded_limit(max_matches, MAX_SEARCH_MATCHES),
         )
 
     return search_files

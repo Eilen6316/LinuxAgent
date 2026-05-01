@@ -27,6 +27,7 @@ def test_policy_decision_exposes_capabilities_and_approval() -> None:
     assert "service.mutate" in decision.capabilities
     assert decision.matched_rules == ("DESTRUCTIVE",)
     assert decision.approval.required is True
+    assert decision.can_whitelist is False
 
 
 def test_policy_llm_first_run_adds_source_capability() -> None:
@@ -35,6 +36,41 @@ def test_policy_llm_first_run_adds_source_capability() -> None:
     assert decision.level is SafetyLevel.CONFIRM
     assert decision.matched_rules == ("LLM_FIRST_RUN",)
     assert "llm.generated" in decision.capabilities
+    assert decision.can_whitelist is True
+
+
+def test_policy_never_whitelist_considers_all_matched_rules() -> None:
+    engine = PolicyEngine(
+        PolicyConfig(
+            rules=(
+                PolicyRule(
+                    id="llm.first",
+                    legacy_rule="LLM_FIRST_RUN",
+                    level=SafetyLevel.CONFIRM,
+                    risk_score=40,
+                    capabilities=("llm.generated",),
+                    reason="llm command requires approval",
+                    match=PolicyMatch(llm_first_run=True),
+                ),
+                PolicyRule(
+                    id="custom.echo.confirm",
+                    legacy_rule="CUSTOM_NEVER_WHITELIST",
+                    level=SafetyLevel.CONFIRM,
+                    risk_score=80,
+                    capabilities=("custom.audit",),
+                    reason="custom policy requires approval every time",
+                    match=PolicyMatch(command=("echo",)),
+                    never_whitelist=True,
+                ),
+            )
+        )
+    )
+
+    decision = engine.evaluate("echo no", source=CommandSource.LLM)
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert decision.matched_rules == ("LLM_FIRST_RUN", "CUSTOM_NEVER_WHITELIST")
+    assert decision.can_whitelist is False
 
 
 def test_policy_config_loads_default_yaml() -> None:

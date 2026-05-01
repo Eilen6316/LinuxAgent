@@ -79,6 +79,7 @@ class LinuxCommandExecutor(CommandExecutor):
         if (
             result.level is SafetyLevel.CONFIRM
             and result.matched_rule == "LLM_FIRST_RUN"
+            and result.can_whitelist
             and self._config.session_whitelist_enabled
             and self._whitelist.contains(command)
         ):
@@ -260,6 +261,7 @@ def _safety_result(decision: PolicyDecision) -> SafetyResult:
         command_source=decision.command_source,
         risk_score=decision.risk_score,
         capabilities=decision.capabilities,
+        can_whitelist=decision.can_whitelist,
     )
 
 

@@ -9,7 +9,6 @@ state) and avoids the common trap of module-global dependencies.
 from __future__ import annotations
 
 import platform
-import re
 import sys
 from pathlib import Path
 
@@ -20,6 +19,7 @@ from ..config.models import MonitoringConfig
 from ..interfaces import CommandExecutor, CommandSource
 from ..security import guard_execution_result, redact_text
 from ..services import evaluate_alerts
+from .regex_guard import compile_safe_search_regex
 
 DEFAULT_LOG_ROOTS: tuple[Path, ...] = (Path("/var/log"),)
 MAX_LOG_FILE_BYTES = 1_048_576
@@ -125,7 +125,7 @@ def make_search_logs_tool(
         if max_matches < 1:
             raise ValueError("max_matches must be >= 1")
 
-        compiled = re.compile(pattern)
+        compiled = compile_safe_search_regex(pattern)
         path = _resolve_allowed_log_file(Path(log_file).expanduser(), allowed_roots)
         if path.stat().st_size > max_file_bytes:
             raise LogFileAccessError(f"log file exceeds max size ({max_file_bytes} bytes): {path}")

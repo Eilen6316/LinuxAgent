@@ -34,6 +34,7 @@ class PolicyDecision(BaseModel):
     reason: str | None = None
     approval: PolicyApproval = Field(default_factory=PolicyApproval)
     command_source: CommandSource = CommandSource.USER
+    can_whitelist: bool = True
 
     @property
     def matched_rule(self) -> str | None:

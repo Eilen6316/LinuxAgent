@@ -147,6 +147,39 @@ def test_evaluate_file_patch_plan_marks_allowed_high_risk_path(tmp_path: Path) -
     assert report.high_risk_paths == (target,)
 
 
+def test_evaluate_file_patch_plan_blocks_path_before_reading_target(tmp_path: Path) -> None:
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret-from-outside\n", encoding="utf-8")
+    diff = "\n".join(
+        [
+            f"--- {outside}",
+            f"+++ {outside}",
+            "@@ -1,1 +1,1 @@",
+            "-wrong-context",
+            "+replacement",
+            "",
+        ]
+    )
+    plan = parse_file_patch_plan(
+        json.dumps(
+            {
+                "plan_type": "file_patch",
+                "goal": "edit outside file",
+                "files_changed": [str(outside)],
+                "unified_diff": diff,
+            }
+        )
+    )
+
+    report = evaluate_file_patch_plan(plan, FilePatchConfig(allow_roots=(allowed,)))
+
+    assert report.allowed is False
+    assert any("allow_roots" in reason for reason in report.reasons)
+    assert not any("secret-from-outside" in reason for reason in report.reasons)
+    assert not any("wrong-context" in reason for reason in report.reasons)
+
+
 def test_evaluate_file_patch_plan_marks_large_rewrite_high_risk(tmp_path: Path) -> None:
     target = tmp_path / "disk_info.sh"
     original = [f"echo old-{index}" for index in range(1, 21)]

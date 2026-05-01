@@ -135,6 +135,7 @@ def _decision_from_matches(matches: list[PolicyRule], source: CommandSource) -> 
         reason=reason,
         approval=_approval_for(max_level, matched_rules),
         command_source=source,
+        can_whitelist=not any(rule.never_whitelist for rule in matches),
     )
 
 

@@ -23,6 +23,7 @@ def build_confirm_payload(state: AgentState, audit_id: str) -> dict[str, Any]:
         "command_source": (state.get("command_source") or CommandSource.USER).value,
         "batch_hosts": list(state.get("batch_hosts", ())),
         "is_destructive": _is_destructive(command or "", state.get("safety_capabilities", ())),
+        "can_whitelist": state.get("safety_can_whitelist", True),
         **_plan_payload(state.get("command_plan"), state.get("runbook_step_index", 0)),
         **_runbook_payload(state.get("selected_runbook"), state.get("runbook_step_index", 0)),
     }
@@ -32,6 +33,7 @@ def may_whitelist(state: AgentState, payload: dict[str, Any]) -> bool:
     return (
         state.get("command_source") is CommandSource.LLM
         and not payload["is_destructive"]
+        and bool(payload.get("can_whitelist", True))
         and not payload["batch_hosts"]
     )
 

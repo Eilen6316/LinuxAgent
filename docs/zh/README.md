@@ -204,11 +204,8 @@ def record(self, command, result):
 **当前算法**：`RejectPolicy` + `load_system_host_keys()`，未登记主机直接抛 `SSHUnknownHostError`
 
 ```python
-if self._allow_unknown_hosts:
-    # 需要显式 opt-in；WarningPolicy 每次连接打印警告
-    client.set_missing_host_key_policy(paramiko.WarningPolicy())
-else:
-    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+client.load_system_host_keys()
+client.set_missing_host_key_policy(paramiko.RejectPolicy())
 ```
 
 CI 有 `! grep -rn "AutoAddPolicy" src/linuxagent/` 红线门禁，代码层面杜绝回滚。
@@ -625,7 +622,7 @@ A：按设计不允许。`--yes` 只会降级对话级确认，命令级 CONFIRM
 A：不能。`AuditConfig` 只有 `path` 字段，没有 `enabled`。
 
 **Q：想让 LinuxAgent 在一个没有 `known_hosts` 的新环境里 SSH？**
-A：在代码里构造 `SSHManager(config, allow_unknown_hosts=True)`；当前 CLI 暂未暴露此开关，避免误用。
+A：先登记 host key，例如 `ssh-keyscan -H your-host.example.com >> ~/.ssh/known_hosts`。LinuxAgent 始终拒绝未知 SSH 主机密钥。
 
 **Q：可以用自己的 OpenAI 兼容网关吗？**
 A：可以。设置 `api.provider: openai_compatible`，把 `api.base_url` 换成网关地址，`api.model` 换成它支持的模型名。`glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` 也走同一条 OpenAI-compatible 路径。如果网关不接受 `max_completion_tokens`，设置 `api.token_parameter: max_tokens`。
