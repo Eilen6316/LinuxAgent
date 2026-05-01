@@ -191,7 +191,7 @@ Automatic patch repair defaults to two rounds and can be tuned with
 | Non-TTY confirmation request | Auto-deny |
 | Unknown SSH host | Reject by default |
 
-LinuxAgent is **not** an autonomous remediator or a command sandbox. It is intended for controlled operator-in-the-loop use. See [Production Readiness](docs/production-readiness.md) and [Threat Model](docs/threat-model.md).
+LinuxAgent is **not** an autonomous remediator or a command sandbox. It is intended for controlled operator-in-the-loop use. See [Production Readiness](docs/en/production-readiness.md) and [Threat Model](docs/en/threat-model.md).
 
 ## Built-In Runbooks
 
@@ -252,10 +252,10 @@ make verify-build
 | [Documentation index](docs/README.md) | All long-form docs in one place |
 | [docs/zh/README.md](docs/zh/README.md) | Full Chinese manual |
 | [docs/en/README.md](docs/en/README.md) | Full English manual |
-| [Quick Start](docs/quickstart.md) | Installation and first run |
-| [Migration Guide](docs/migration-v3-to-v4.md) | v3 to v4 breaking changes |
-| [Threat Model](docs/threat-model.md) | Assets, trust boundaries, and mitigations |
-| [Production Readiness](docs/production-readiness.md) | Where LinuxAgent is and is not appropriate |
+| [Quick Start](docs/en/quickstart.md) | Installation and first run |
+| [Migration Guide](docs/en/migration-v3-to-v4.md) | v3 to v4 breaking changes |
+| [Threat Model](docs/en/threat-model.md) | Assets, trust boundaries, and mitigations |
+| [Production Readiness](docs/en/production-readiness.md) | Where LinuxAgent is and is not appropriate |
 | [Security Policy](SECURITY.md) | Vulnerability reporting and supported versions |
 | [Contributing](CONTRIBUTING.md) | Contribution workflow and review expectations |
 | [Changelog](CHANGELOG.md) | Release history |

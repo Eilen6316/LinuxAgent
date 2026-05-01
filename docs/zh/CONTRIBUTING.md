@@ -5,7 +5,7 @@
 
 ## 开始之前
 
-1. 阅读 [中文完整文档](README.md)、[开发指南](../development.md)
+1. 阅读 [中文完整文档](README.md)、[开发指南](../en/development.md)
    和 [威胁模型](threat-model.md)。
 2. 创建虚拟环境并安装开发依赖：
 

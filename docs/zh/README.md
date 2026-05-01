@@ -651,7 +651,7 @@ make verify-build  # build + wheel 安装 + package data 检查
 linuxagent audit verify
 ```
 
-更多细节见 [开发指南](../development.md)。
+更多细节见 [开发指南](../en/development.md)。
 
 ---
 
@@ -671,9 +671,9 @@ git push origin v4.0.0     # 触发 release.yml
 
 ## 文档
 
-- [快速开始](../quickstart.md)
-- [开发指南](../development.md)
-- [发布指南](release.md) / [Release Guide](../release.md)
+- [快速开始](../en/quickstart.md)
+- [开发指南](../en/development.md)
+- [发布指南](release.md) / [Release Guide](../en/release.md)
 - [v3 到 v4.0.0 迁移指南（中文）](migration-v3-to-v4.md)
 - [威胁模型（中文）](threat-model.md)
 - [生产就绪清单（中文）](production-readiness.md)

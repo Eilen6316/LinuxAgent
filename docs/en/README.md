@@ -668,7 +668,7 @@ make verify-build  # build + wheel install + packaged data check
 linuxagent audit verify
 ```
 
-Details in [Development Guide](../development.md).
+Details in [Development Guide](development.md).
 
 ---
 
@@ -682,18 +682,18 @@ git tag v4.0.0
 git push origin v4.0.0     # triggers release.yml
 ```
 
-See [Release Guide](../release.md).
+See [Release Guide](release.md).
 
 ---
 
 ## Docs
 
-- [Quick Start](../quickstart.md)
-- [Development Guide](../development.md)
-- [Release Guide](../release.md) / [中文发布指南](../zh/release.md)
-- [Migration Guide: v3 to v4.0.0](../migration-v3-to-v4.md)
-- [Threat Model](../threat-model.md)
-- [Production Readiness](../production-readiness.md)
+- [Quick Start](quickstart.md)
+- [Development Guide](development.md)
+- [Release Guide](release.md) / [中文发布指南](../zh/release.md)
+- [Migration Guide: v3 to v4.0.0](migration-v3-to-v4.md)
+- [Threat Model](threat-model.md)
+- [Production Readiness](production-readiness.md)
 - [Release Notes](../releases/v4.0.0.md) / [中文发布说明](../zh/releases/v4.0.0.md)
 - [Changelog](../../CHANGELOG.md) / [中文更新日志](../zh/CHANGELOG.md)
 - [Security Policy](../../SECURITY.md) / [安全政策](../zh/SECURITY.md)
