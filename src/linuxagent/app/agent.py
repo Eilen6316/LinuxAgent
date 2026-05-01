@@ -1,5 +1,3 @@
-"""Thin LinuxAgent coordinator over LangGraph and UI."""
-
 from __future__ import annotations
 
 import asyncio
@@ -18,6 +16,7 @@ from ..graph.agent_graph import AgentGraph
 from ..intelligence import ContextManager
 from ..interfaces import CommandSource, UserInterface
 from ..services import ChatService, ClusterService, CommandService, MonitoringService
+from ..telemetry import TelemetryRecorder
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
 from .graph_config import graph_config
@@ -42,6 +41,7 @@ class LinuxAgent:
     context_manager: ContextManager
     monitoring_service: MonitoringService
     cluster_service: ClusterService | None = None
+    telemetry: TelemetryRecorder | None = None
     tool_names: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -54,6 +54,7 @@ class LinuxAgent:
             context_manager=self.context_manager,
             history_threads=self._history_threads,
             persist_history=self._persist_active_history,
+            telemetry=self.telemetry,
         )
 
     async def run(self, *, thread_id: str = "default") -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -15,6 +16,7 @@ from linuxagent.audit import AuditLog
 from linuxagent.intelligence import ContextManager
 from linuxagent.interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
 from linuxagent.services import ChatService, CommandService
+from linuxagent.telemetry import TelemetryRecorder
 
 
 def test_agent_file_stays_under_300_lines() -> None:
@@ -184,6 +186,7 @@ def _agent(
     chat_service: ChatService | None = None,
     context_manager: ContextManager | None = None,
     command_service: CommandService | None = None,
+    telemetry: TelemetryRecorder | None = None,
 ):
     return LinuxAgent(
         graph=graph or _FakeGraph([]),  # type: ignore[arg-type]
@@ -193,6 +196,7 @@ def _agent(
         audit=AuditLog(tmp_path / "audit.log"),
         context_manager=context_manager or ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
+        telemetry=telemetry,
     )
 
 
@@ -543,6 +547,21 @@ async def test_bang_command_output_is_used_as_next_turn_context(tmp_path) -> Non
     ]
 
 
+async def test_bang_command_stream_output_is_redacted_and_truncated(tmp_path) -> None:
+    ui = _FakeUI(inputs=["!/bin/cat secret", "/exit"])
+    command_service = _command_service(
+        result=ExecutionResult("/bin/cat secret", 0, f"password=hunter2\n{'x' * 9000}", "", 0.1)
+    )
+    agent = _agent(tmp_path, ui=ui, command_service=command_service)
+
+    await agent.run(thread_id="cli")
+
+    raw_output = "".join(text for text, _stderr in ui.raw_printed)
+    assert "hunter2" not in raw_output
+    assert "***redacted***" in raw_output
+    assert "[stream output truncated]" in raw_output
+
+
 async def test_bang_command_requires_confirmation_for_confirm_policy(tmp_path) -> None:
     ui = _FakeUI(inputs=["!python script.py", "/exit"])
     command_service = _command_service(
@@ -596,6 +615,38 @@ async def test_bang_background_command_starts_waits_and_adds_context(tmp_path) -
     ]
 
 
+async def test_bang_background_completion_adds_context_without_wait(tmp_path) -> None:
+    graph = _FakeGraph(
+        [{"messages": [HumanMessage(content="what happened"), AIMessage(content="done")]}]
+    )
+    ui = _FakeUI(inputs=["!bg /bin/echo hello", "what happened"])
+    command_service = _command_service(
+        result=ExecutionResult("/bin/echo hello", 0, "hello\n", "", 0.1),
+    )
+    agent = _agent(tmp_path, graph=graph, ui=ui, command_service=command_service)
+
+    await agent.run(thread_id="cli")
+
+    assert [message.content for message in graph.calls[0]["messages"]] == [
+        "!/bin/echo hello",
+        (
+            "Shell command result (redacted):\n"
+            "command: /bin/echo hello\n"
+            "exit_code: 0\n"
+            "duration_seconds: 0.100\n"
+            "sandbox: none\n"
+            "remote: none\n"
+            "stdout:\n"
+            "hello\n"
+            "stderr:\n"
+            "\n"
+            "redacted_count: 0\n"
+            "truncated: false"
+        ),
+        "what happened",
+    ]
+
+
 async def test_bang_background_command_requires_confirmation(tmp_path) -> None:
     ui = _FakeUI(inputs=["!bg python script.py", "!wait 1", "/exit"])
     command_service = _command_service(
@@ -625,6 +676,36 @@ async def test_bang_background_tail_redacts_buffered_output(tmp_path) -> None:
     raw_output = "".join(text for text, _stderr in ui.raw_printed)
     assert "hunter2" not in raw_output
     assert "***redacted***" in raw_output
+
+
+async def test_bang_background_records_lifecycle_audit_and_telemetry(tmp_path) -> None:
+    ui = _FakeUI(inputs=["!bg /bin/echo hello", "!wait 1", "/exit"])
+    telemetry = TelemetryRecorder(tmp_path / "telemetry.jsonl")
+    agent = _agent(
+        tmp_path,
+        ui=ui,
+        command_service=_command_service(
+            result=ExecutionResult("/bin/echo hello", 0, "hello\n", "", 0.1),
+        ),
+        telemetry=telemetry,
+    )
+
+    await agent.run(thread_id="cli")
+
+    audit_events = [
+        json.loads(line)["event"]
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    telemetry_names = [
+        json.loads(line)["name"]
+        for line in (tmp_path / "telemetry.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert {"background_job_start", "background_job_finish", "background_job_wait"} <= set(
+        audit_events
+    )
+    assert {"background.job.start", "background.job.finish", "background.job.wait"} <= set(
+        telemetry_names
+    )
 
 
 async def test_run_turn_prefers_checkpoint_history(tmp_path) -> None:

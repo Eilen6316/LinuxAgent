@@ -62,15 +62,32 @@ async def run_command(
             await cluster_service.run_on_hosts(command, resolved_hosts, trace_id=trace_id),
             hosts=resolved_hosts,
         )
+    return await _run_local_command(state, command, command_service, trace_id, event_observer)
+
+
+async def _run_local_command(
+    state: AgentState,
+    command: str,
+    command_service: CommandService,
+    trace_id: str,
+    event_observer: RuntimeEventObserver | None,
+) -> ExecutionResult:
     if state.get("matched_rule") == "INTERACTIVE":
         return await command_service.run_interactive(command)
     if event_observer is None:
         return await command_service.run(command)
-    await notify_event(event_observer, {"type": "command", "phase": "start", "command": command})
+    await notify_event(
+        event_observer,
+        {"type": "command", "phase": "start", "command": command, "trace_id": trace_id},
+    )
     result = await command_service.run_streaming(
         command,
-        on_stdout=lambda text: _stream_command_output(event_observer, command, "stdout", text),
-        on_stderr=lambda text: _stream_command_output(event_observer, command, "stderr", text),
+        on_stdout=lambda text: _stream_command_output(
+            event_observer, trace_id, command, "stdout", text
+        ),
+        on_stderr=lambda text: _stream_command_output(
+            event_observer, trace_id, command, "stderr", text
+        ),
     )
     await notify_event(
         event_observer,
@@ -78,6 +95,7 @@ async def run_command(
             "type": "command",
             "phase": "finish",
             "command": command,
+            "trace_id": trace_id,
             "exit_code": result.exit_code,
         },
     )
@@ -86,12 +104,14 @@ async def run_command(
 
 async def _stream_command_output(
     observer: RuntimeEventObserver,
+    trace_id: str,
     command: str,
     stream: str,
     text: str,
 ) -> None:
     redacted = redact_text(text)
     output = redacted.text
+    truncated = len(output) > STREAM_CHUNK_MAX_CHARS
     if len(output) > STREAM_CHUNK_MAX_CHARS:
         output = f"{output[:STREAM_CHUNK_MAX_CHARS]}\n[stream chunk truncated]"
     await notify_event(
@@ -100,8 +120,10 @@ async def _stream_command_output(
             "type": "command",
             "phase": stream,
             "command": command,
+            "trace_id": trace_id,
             "text": output,
             "redacted_count": redacted.count,
+            "truncated": truncated,
         },
     )
 

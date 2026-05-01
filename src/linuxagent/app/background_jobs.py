@@ -10,12 +10,11 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from ..interfaces import ExecutionResult
-from ..security.redaction import redact_text
 from ..services import CommandService
+from .stream_guard import GuardedStreamChunk, StreamOutputGuard
 
 JobStatus = Literal["running", "succeeded", "failed", "cancelled"]
 JobDoneCallback = Callable[["BackgroundJob"], Awaitable[None]]
-MAX_JOB_BUFFER_CHARS = 20000
 
 
 @dataclass
@@ -26,15 +25,18 @@ class BackgroundJob:
     status: JobStatus = "running"
     result: ExecutionResult | None = None
     error: str | None = None
+    context_recorded: bool = False
     on_done: JobDoneCallback | None = None
     _buffer: list[tuple[str, str]] = field(default_factory=list)
+    _output_guard: StreamOutputGuard = field(default_factory=StreamOutputGuard)
     _task: asyncio.Task[ExecutionResult] | None = None
     _done_notified: bool = False
 
-    def append(self, stream: str, text: str) -> None:
-        redacted = redact_text(text).text
-        self._buffer.append((stream, redacted))
-        self._trim_buffer()
+    def append(self, stream: str, text: str) -> GuardedStreamChunk:
+        chunk = self._output_guard.guard(text)
+        if chunk.text:
+            self._buffer.append((stream, chunk.text))
+        return chunk
 
     def output(self) -> str:
         return "".join(text for _stream, text in self._buffer)
@@ -47,10 +49,6 @@ class BackgroundJob:
         if self.error:
             suffix = f" error={self.error}"
         return f"[{self.id}] {self.status}{suffix} {elapsed:.1f}s :: {self.command}"
-
-    def _trim_buffer(self) -> None:
-        while sum(len(text) for _stream, text in self._buffer) > MAX_JOB_BUFFER_CHARS:
-            self._buffer.pop(0)
 
 
 class BackgroundJobManager:
