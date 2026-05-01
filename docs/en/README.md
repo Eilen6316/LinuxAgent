@@ -433,9 +433,9 @@ redirection.
    `search_files(pattern, root)`, and `search_logs`.
 2. The terminal shows observable tool activity such as `LinuxAgent is reading
    /tmp/disk_info.sh`; tool failures are surfaced clearly.
-3. The model must return a structured `FilePatchPlan` with target files,
-   unified diff, risk summary, verification commands, and optional permission
-   changes.
+3. The model must return a structured `FilePatchPlan` with `request_intent`,
+   target files, unified diff, risk summary, verification commands, and optional
+   permission changes.
 4. Before writing, LinuxAgent shows a diff confirmation panel with per-file
    `+N / -M` stats, compact code snippets, elevated-risk paths, permission
    changes, and verification commands.

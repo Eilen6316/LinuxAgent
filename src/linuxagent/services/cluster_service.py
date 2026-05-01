@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from ..cluster import SSHError, SSHManager
@@ -35,19 +34,6 @@ class ClusterService:
     ) -> dict[str, ExecutionResult | SSHError]:
         return await self.ssh.execute_many(hosts, command, trace_id=trace_id)
 
-    def select_hosts(self, user_text: str) -> tuple[ClusterHost, ...]:
-        if not self.hosts:
-            return ()
-        lowered = user_text.lower()
-        if _targets_all_hosts(lowered):
-            return self.hosts
-
-        selected: list[ClusterHost] = []
-        for host in self.hosts:
-            if any(_contains_alias(lowered, alias) for alias in _aliases(host)):
-                selected.append(host)
-        return tuple(selected)
-
     def resolve_host_names(self, names: tuple[str, ...]) -> tuple[ClusterHost, ...]:
         if not names:
             return ()
@@ -60,19 +46,3 @@ class ClusterService:
 
 def _aliases(host: ClusterHost) -> tuple[str, ...]:
     return (host.name.casefold(), host.hostname.casefold())
-
-
-def _contains_alias(text: str, alias: str) -> bool:
-    return re.search(rf"(?<![A-Za-z0-9_.-]){re.escape(alias)}(?![A-Za-z0-9_.-])", text) is not None
-
-
-def _targets_all_hosts(text: str) -> bool:
-    patterns = (
-        "all hosts",
-        "all servers",
-        "every host",
-        "every server",
-        "across the cluster",
-        "cluster-wide",
-    )
-    return any(pattern in text for pattern in patterns)

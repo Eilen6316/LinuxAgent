@@ -26,6 +26,7 @@ def test_parse_file_patch_plan_accepts_json_object(tmp_path: Path) -> None:
     plan = parse_file_patch_plan(file_patch_plan_json(str(path), "#!/bin/sh\necho hi\n"))
 
     assert plan.plan_type == "file_patch"
+    assert plan.request_intent == "create"
     assert plan.files_changed == (str(path),)
     assert "+echo hi" in plan.unified_diff
 

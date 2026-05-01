@@ -156,10 +156,13 @@ def _multi_command_plan_json(commands: list[str]) -> str:
     return json.dumps(payload)
 
 
-def _file_patch_plan_from_diff(path: Path, diff_lines: list[str]) -> str:
+def _file_patch_plan_from_diff(
+    path: Path, diff_lines: list[str], *, request_intent: str = "update"
+) -> str:
     payload = {
         "plan_type": "file_patch",
         "goal": "edit existing file",
+        "request_intent": request_intent,
         "files_changed": [str(path)],
         "unified_diff": "\n".join(diff_lines) + "\n",
         "risk_summary": "test patch",
@@ -675,6 +678,7 @@ async def test_graph_repairs_create_request_that_updates_existing_file(tmp_path)
             " echo existing",
             "+echo disk",
         ],
+        request_intent="create",
     )
     repaired_plan = file_patch_plan_json(str(alternate), "#!/bin/sh\necho disk\n")
     graph, _provider = _graph(tmp_path, [unsafe_update, repaired_plan, "analysis ok"])
@@ -806,7 +810,7 @@ async def test_graph_cluster_request_records_batch_hosts(tmp_path) -> None:
     )
     graph, _provider = _graph(
         tmp_path,
-        [command_plan_json("/bin/echo hi")],
+        [_command_plan_json_with_hosts("/bin/echo hi", ["*"])],
         cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
     )
     config = {"configurable": {"thread_id": "cluster"}}
@@ -828,7 +832,7 @@ async def test_graph_cluster_execution_blocks_remote_shell_syntax_before_confirm
     )
     graph, _provider = _graph(
         tmp_path,
-        [command_plan_json("echo ok; whoami")],
+        [_command_plan_json_with_hosts("echo ok; whoami", ["*"])],
         cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
     )
     config = {"configurable": {"thread_id": "cluster-shell-syntax"}}
@@ -853,7 +857,7 @@ async def test_graph_named_host_request_selects_only_matched_hosts(tmp_path) -> 
     )
     graph, _provider = _graph(
         tmp_path,
-        [command_plan_json("/bin/echo hi")],
+        [_command_plan_json_with_hosts("/bin/echo hi", ["web-1"])],
         cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
     )
     config = {"configurable": {"thread_id": "named-host"}}
@@ -873,7 +877,7 @@ async def test_graph_chinese_remote_request_selects_configured_host(tmp_path) ->
     )
     graph, _provider = _graph(
         tmp_path,
-        [command_plan_json("free -m")],
+        [_command_plan_json_with_hosts("free -m", ["web1"])],
         cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
     )
     config = {"configurable": {"thread_id": "chinese-remote-host"}}

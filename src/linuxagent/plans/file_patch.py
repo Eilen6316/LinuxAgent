@@ -71,6 +71,7 @@ class FilePatchPlan(BaseModel):
 
     plan_type: Literal["file_patch"] = "file_patch"
     goal: str = Field(min_length=1)
+    request_intent: Literal["create", "update", "unknown"] = "unknown"
     files_changed: tuple[str, ...] = Field(min_length=1)
     unified_diff: str = Field(min_length=1)
     risk_summary: str = ""
@@ -725,13 +726,20 @@ def _format_validation_error(exc: ValidationError) -> str:
     return "invalid FilePatchPlan: " + "; ".join(parts)
 
 
-def file_patch_plan_json(path: str, body: str, *, goal: str = "Apply file patch") -> str:
+def file_patch_plan_json(
+    path: str,
+    body: str,
+    *,
+    goal: str = "Apply file patch",
+    request_intent: Literal["create", "update", "unknown"] = "create",
+) -> str:
     line_count = len(body.splitlines())
     diff_lines = ["--- /dev/null", f"+++ {path}", f"@@ -0,0 +1,{line_count} @@"]
     diff_lines.extend(f"+{line}" for line in body.splitlines())
     payload: dict[str, Any] = {
         "plan_type": "file_patch",
         "goal": goal,
+        "request_intent": request_intent,
         "files_changed": [path],
         "unified_diff": "\n".join(diff_lines) + "\n",
         "risk_summary": "Creates or updates local files after confirmation.",

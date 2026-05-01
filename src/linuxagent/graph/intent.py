@@ -7,7 +7,7 @@ import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool
@@ -421,18 +421,19 @@ def _plan_update(
         "plan_result_start_index": 0,
         "plan_error": None,
         "command_source": CommandSource.LLM,
-        "selected_hosts": _selected_hosts_for_plan(user_text, plan, cluster_service),
+        "selected_hosts": _selected_hosts_for_plan(plan, cluster_service),
         "direct_response": False,
     }
 
 
 def _file_patch_update(current_trace_id: str, user_text: str, plan: FilePatchPlan) -> AgentState:
+    del user_text
     return {
         "trace_id": current_trace_id,
         "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
         "command_plan": None,
         "file_patch_plan": plan,
-        "file_patch_request_intent": _file_patch_request_intent(user_text),
+        "file_patch_request_intent": plan.request_intent,
         "file_patch_repair_attempts": 0,
         "file_patch_selected_files": (),
         "selected_runbook": None,
@@ -444,42 +445,6 @@ def _file_patch_update(current_trace_id: str, user_text: str, plan: FilePatchPla
         "selected_hosts": (),
         "direct_response": False,
     }
-
-
-def _file_patch_request_intent(user_text: str) -> Literal["create", "update", "unknown"]:
-    normalized = user_text.casefold()
-    create_markers = (
-        "新建",
-        "创建",
-        "生成",
-        "写一个",
-        "写个",
-        "新增一个",
-        "create",
-        "generate",
-        "write a",
-        "write an",
-        "new file",
-        "new script",
-    )
-    update_markers = (
-        "修改",
-        "更新",
-        "补一条",
-        "补充",
-        "添加",
-        "再添加",
-        "edit",
-        "update",
-        "modify",
-        "append",
-        "add ",
-    )
-    if any(marker in normalized for marker in update_markers):
-        return "update"
-    if any(marker in normalized for marker in create_markers):
-        return "create"
-    return "unknown"
 
 
 def _last_message_text(messages: list[BaseMessage]) -> str:
@@ -568,14 +533,7 @@ async def _complete_retry_plan(
         return (await provider.complete(retry_messages)).strip()
 
 
-def _select_host_names(user_text: str, cluster_service: ClusterService | None) -> tuple[str, ...]:
-    if cluster_service is None:
-        return ()
-    return tuple(host.name for host in cluster_service.select_hosts(user_text))
-
-
 def _selected_hosts_for_plan(
-    user_text: str,
     plan: CommandPlan,
     cluster_service: ClusterService | None,
 ) -> tuple[str, ...]:
@@ -583,8 +541,10 @@ def _selected_hosts_for_plan(
         return ()
     requested_hosts = tuple(host.strip() for host in plan.primary.target_hosts if host.strip())
     if not requested_hosts:
-        return _select_host_names(user_text, cluster_service)
-    remote_hosts = tuple(host for host in requested_hosts if not _is_local_target(host))
+        return ()
+    if "*" in requested_hosts:
+        return tuple(host.name for host in cluster_service.hosts)
+    remote_hosts = tuple(host for host in requested_hosts if not _is_local_identifier(host))
     if not remote_hosts:
         return ()
     resolved = cluster_service.resolve_host_names(remote_hosts)
@@ -593,18 +553,10 @@ def _selected_hosts_for_plan(
     return remote_hosts
 
 
-def _is_local_target(host: str) -> bool:
+def _is_local_identifier(host: str) -> bool:
     normalized = host.strip().casefold().replace("_", "-")
     return normalized in {
         "localhost",
         "127.0.0.1",
         "::1",
-        "local",
-        "local-host",
-        "this-host",
-        "current-host",
-        "本机",
-        "本地",
-        "当前主机",
-        "当前服务器",
     }

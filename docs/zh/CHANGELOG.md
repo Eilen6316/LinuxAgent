@@ -18,8 +18,8 @@ LinuxAgent 的重要变更记录在这里。
 ### Fixed
 
 - 当带工具的计划生成返回自然语言而不是严格 JSON `CommandPlan` 时，会无工具重试一次。
-- `localhost` / `本机` 一类 `CommandPlan.target_hosts` 保持本地执行，不再误走
-  未解析的 SSH 集群目标。
+- `CommandPlan.target_hosts` 改为结构化远程目标来源：空列表表示本地，
+  `["*"]` 表示所有已配置集群主机。
 - DeepSeek 默认不再启用依赖 embedding 的 intelligence tools，除非显式配置。
 - LLM 多命令计划现在会在每一步成功后继续执行后续计划步骤，不再第一条命令后提前结束。
 

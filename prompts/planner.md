@@ -80,6 +80,10 @@ Do not mark mutation commands as read-only. Do not rely on your own risk
 labels for execution approval; every command will be re-evaluated by policy.
 `preflight_checks`, `verification_commands`, and `rollback_commands` must be
 arrays of strings, not command objects. Put executable steps in `commands`.
+Use `target_hosts` as structured execution scope: leave it empty for local
+execution, put exact configured host names or hostnames for remote execution,
+and use `["*"]` only when the user explicitly asks to target every configured
+cluster host.
 For multi-part requests, the commands array must cover every requested outcome
 before the turn can be considered complete. Do not stop at package download or
 installation when the user also asked for configuration, password changes,
@@ -99,6 +103,7 @@ before any file is changed. Return only this JSON object:
 {{
   "plan_type": "file_patch",
   "goal": "short file mutation goal",
+  "request_intent": "create",
   "files_changed": ["path/to/file"],
   "unified_diff": "--- old/path\n+++ new/path\n@@ -1,1 +1,1 @@\n-old line\n+new line\n",
   "risk_summary": "short risk summary",
@@ -115,6 +120,9 @@ before any file is changed. Return only this JSON object:
 }}
 ```
 
+Set `request_intent` to `create` when the user asked for a new file, `update`
+when the user asked to edit an existing file, and `unknown` when the request
+does not clearly specify either.
 For new files, use `--- /dev/null` and `+++ /absolute/or/relative/path` in the
 unified diff. When the user asks to create a new file, first inspect the target
 directory; if your preferred filename already exists, choose a clear unused

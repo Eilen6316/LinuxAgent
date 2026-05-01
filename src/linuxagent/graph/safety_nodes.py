@@ -39,38 +39,46 @@ def make_safety_check_node(
             verdict = command_service.classify(command, source=source)
         remote_error = _remote_command_error(command, state, cluster_service)
         if remote_error is not None:
-            return {
-                "trace_id": current_trace_id,
-                "safety_level": SafetyLevel.BLOCK,
-                "matched_rule": "REMOTE_SHELL_SYNTAX",
-                "safety_reason": remote_error,
-                "command_source": verdict.command_source,
-                "safety_capabilities": verdict.capabilities,
-                "safety_can_whitelist": _can_whitelist(verdict),
-                "batch_hosts": (),
-            }
+            return _remote_error_update(current_trace_id, remote_error, verdict)
         batch_hosts = _batch_hosts(state, cluster_service)
         level = verdict.level
         if batch_hosts and level is SafetyLevel.SAFE:
             level = SafetyLevel.CONFIRM
-        return {
-            "trace_id": current_trace_id,
-            "safety_level": level,
-            "matched_rule": (
-                "BATCH_CONFIRM"
-                if batch_hosts and level is SafetyLevel.CONFIRM
-                else verdict.matched_rule
-            ),
-            "safety_reason": "batch command requires confirmation"
-            if batch_hosts
-            else verdict.reason,
-            "command_source": verdict.command_source,
-            "safety_capabilities": verdict.capabilities,
-            "safety_can_whitelist": _can_whitelist(verdict),
-            "batch_hosts": batch_hosts,
-        }
+        return _safety_update(current_trace_id, verdict, level, batch_hosts)
 
     return safety_check_node
+
+
+def _remote_error_update(trace: str, remote_error: str, verdict: Any) -> AgentState:
+    return {
+        "trace_id": trace,
+        "safety_level": SafetyLevel.BLOCK,
+        "matched_rule": "REMOTE_SHELL_SYNTAX",
+        "safety_reason": remote_error,
+        "command_source": verdict.command_source,
+        "safety_capabilities": verdict.capabilities,
+        "safety_can_whitelist": _can_whitelist(verdict),
+        "batch_hosts": (),
+    }
+
+
+def _safety_update(
+    trace: str, verdict: Any, level: SafetyLevel, batch_hosts: tuple[str, ...]
+) -> AgentState:
+    return {
+        "trace_id": trace,
+        "safety_level": level,
+        "matched_rule": (
+            "BATCH_CONFIRM"
+            if batch_hosts and level is SafetyLevel.CONFIRM
+            else verdict.matched_rule
+        ),
+        "safety_reason": "batch command requires confirmation" if batch_hosts else verdict.reason,
+        "command_source": verdict.command_source,
+        "safety_capabilities": verdict.capabilities,
+        "safety_can_whitelist": _can_whitelist(verdict),
+        "batch_hosts": batch_hosts,
+    }
 
 
 def _can_whitelist(verdict: Any) -> bool:

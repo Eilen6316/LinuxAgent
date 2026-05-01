@@ -40,6 +40,7 @@ markdown, prose, or raw shell commands. Use exactly this top-level shape:
 {{
   "plan_type": "file_patch",
   "goal": "short file mutation goal",
+  "request_intent": "update",
   "files_changed": ["path/to/file"],
   "unified_diff": "--- path/to/file\n+++ path/to/file\n@@ -1,1 +1,2 @@\n existing line\n+new line\n",
   "risk_summary": "short risk summary",

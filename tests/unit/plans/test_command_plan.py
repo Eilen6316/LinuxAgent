@@ -57,6 +57,15 @@ def test_parse_command_plan_accepts_command_objects_in_string_lists() -> None:
     assert plan.rollback_commands == ("rm ./disk_info.sh",)
 
 
+def test_parse_command_plan_accepts_cluster_wildcard_target() -> None:
+    payload = json.loads(command_plan_json("/bin/uptime"))
+    payload["commands"][0]["target_hosts"] = ["*"]
+
+    plan = parse_command_plan(json.dumps(payload))
+
+    assert plan.primary.target_hosts == ("*",)
+
+
 def test_parse_command_plan_rejects_non_json_text() -> None:
     with pytest.raises(CommandPlanParseError, match="JSON CommandPlan"):
         parse_command_plan("/bin/echo legacy")

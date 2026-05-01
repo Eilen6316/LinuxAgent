@@ -155,7 +155,9 @@ not ask the LLM to explain or generate a reply for that turn.
 Requests such as "create a shell script", "update this Python file", or "edit
 this config" do not bypass the safety model. LinuxAgent asks the planner for a
 structured `FilePatchPlan`, then validates and previews the unified diff before
-writing anything.
+writing anything. The plan carries a structured `request_intent` field
+(`create`, `update`, or `unknown`) instead of relying on Python keyword
+matching.
 
 The planner can first inspect the environment with read-only tools:
 

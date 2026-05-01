@@ -131,11 +131,18 @@ still a normal validated `CommandPlan` or `FilePatchPlan`, so policy, HITL,
 execution or patch confirmation, audit, and analysis continue through the same
 path as other LLM-generated plans.
 
+Remote scope is structured data, not Python natural-language matching:
+`commands[].target_hosts` is empty for local execution, contains exact configured
+host names or hostnames for selected SSH targets, and uses `["*"]` for every
+configured cluster host.
+
 ## File Patches And Workspace Tools
 
 Artifact and mutation requests are represented as `FilePatchPlan`, not shell
-redirection. The planner can inspect real state before producing a patch through
-bounded read-only tools:
+redirection. `FilePatchPlan.request_intent` carries `create`, `update`, or
+`unknown` so safety checks do not infer intent from user-language keywords. The
+planner can inspect real state before producing a patch through bounded
+read-only tools:
 
 - `read_file(path, offset, limit)`
 - `list_dir(path)`
