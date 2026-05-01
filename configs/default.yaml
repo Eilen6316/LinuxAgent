@@ -22,6 +22,9 @@ policy:
   path:                         # optional user policy YAML path
   include_builtin: true          # true = built-ins + user overrides; false = user rules only
 
+command_plan:
+  max_repair_attempts: 2         # 0 disables automatic failed-command replanning
+
 file_patch:
   allow_roots:
     - .

@@ -577,6 +577,7 @@ def _repair_command_update(
         "file_patch_request_intent": "unknown",
         "file_patch_repair_attempts": 0,
         "file_patch_max_repair_attempts": _max_repair_attempts(state),
+        "command_repair_attempts": 0,
         "file_patch_selected_files": (),
         "selected_runbook": None,
         "runbook_step_index": 0,

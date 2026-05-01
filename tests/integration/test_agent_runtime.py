@@ -17,6 +17,7 @@ from linuxagent.config.models import (
     ClusterConfig,
     ClusterHost,
     ClusterRemoteProfile,
+    CommandPlanConfig,
     SecurityConfig,
 )
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
@@ -191,6 +192,34 @@ async def test_agent_runtime_continues_runbook_guided_plan_after_first_confirm(
 
 
 @pytest.mark.integration
+async def test_agent_runtime_stops_repairing_failed_command_plan_at_limit(
+    tmp_path: Path,
+) -> None:
+    provider = _Provider(
+        [
+            command_plan_json("/bin/false"),
+            command_plan_json("/bin/false"),
+            command_plan_json("/bin/false"),
+            "failed command analysis",
+        ]
+    )
+    ui = _UI()
+    agent = _agent(
+        tmp_path,
+        provider=provider,
+        ui=ui,
+        command_plan_config=CommandPlanConfig(max_repair_attempts=2),
+    )
+
+    await agent.run_turn("repair loop", thread_id="runtime-repair-limit")
+
+    assert ui.printed == ["failed command analysis"]
+    assert [payload["command"] for payload in ui.interrupts] == ["/bin/false"]
+    analysis_prompt = str(provider.complete_messages[-1][-1].content)
+    assert analysis_prompt.count("/bin/false") >= 3
+
+
+@pytest.mark.integration
 async def test_agent_runtime_denies_without_execution(tmp_path: Path) -> None:
     provider = _Provider([command_plan_json("/bin/echo denied")])
     ui = _UI({"decision": "non_tty_auto_deny", "latency_ms": 0})
@@ -246,6 +275,7 @@ def _agent(
     ui: _UI,
     cluster_service: ClusterService | None = None,
     runbook_engine: RunbookEngine | None = None,
+    command_plan_config: CommandPlanConfig | None = None,
 ) -> LinuxAgent:
     command_service = CommandService(
         LinuxCommandExecutor(
@@ -260,6 +290,7 @@ def _agent(
             audit=AuditLog(tmp_path / "audit.log"),
             cluster_service=cluster_service,
             runbook_engine=runbook_engine,
+            command_plan_config=command_plan_config or CommandPlanConfig(),
         )
     )
     return LinuxAgent(

@@ -352,6 +352,7 @@ linuxagent check
 | `security` | `command_timeout` | `30.0` | 本地命令最长执行时间 |
 | `security` | `max_command_length` | `2048` | 单条命令字符上限 |
 | `security` | `session_whitelist_enabled` | `true` | 对话级命令权限开关 |
+| `command_plan` | `max_repair_attempts` | `2` | 命令计划失败后的自动重规划轮数；`0` 表示关闭命令 repair |
 | `file_patch` | `allow_roots` | `[".", "/tmp"]` | 文件 patch 允许读写的根目录 |
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | 命中后以高风险 diff 确认展示 |
 | `file_patch` | `allow_permission_changes` | `true` | 是否允许 patch 计划声明权限位变更 |

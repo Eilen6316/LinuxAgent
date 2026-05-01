@@ -160,6 +160,7 @@ class Container:
                     tools=tuple(self.tools()),
                     telemetry=self.telemetry(),
                     runbook_engine=self.runbook_engine(),
+                    command_plan_config=self._config.command_plan,
                     file_patch_config=self._config.file_patch,
                     tool_observer=self._tool_event_observer(),
                     tool_runtime_limits=self.tool_runtime_limits(),

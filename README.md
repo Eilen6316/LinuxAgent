@@ -208,6 +208,8 @@ key directories are highlighted as high risk, and permission changes such as
 `0755` for generated scripts appear explicitly in the confirmation panel.
 Automatic patch repair defaults to two rounds and can be tuned with
 `file_patch.max_repair_attempts` (`0` disables automatic patch repair).
+Failed command-plan repair is separately capped by
+`command_plan.max_repair_attempts` (`0` disables failed-command replanning).
 
 ## Sandbox Status
 

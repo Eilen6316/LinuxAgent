@@ -72,6 +72,11 @@ policy:
   # full policy set with user rules.
   include_builtin: true
 
+command_plan:
+  # Maximum number of automatic replanning rounds after a command plan fails.
+  # Set to 0 to disable failed-command repair fallback.
+  max_repair_attempts: 2
+
 file_patch:
   # FilePatchPlan can only write below these roots. Relative paths resolve from
   # the current working directory when LinuxAgent starts.

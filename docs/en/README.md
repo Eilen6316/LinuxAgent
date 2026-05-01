@@ -358,6 +358,7 @@ linuxagent check
 | `security` | `command_timeout` | `30.0` | Max local command runtime |
 | `security` | `max_command_length` | `2048` | Per-command character cap |
 | `security` | `session_whitelist_enabled` | `true` | Toggle conversation-scoped command permissions |
+| `command_plan` | `max_repair_attempts` | `2` | Automatic failed-command replanning rounds; `0` disables command repair |
 | `file_patch` | `allow_roots` | `[".", "/tmp"]` | Roots where file patch tools may read and write |
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | Matching paths are shown as elevated-risk patch confirmations |
 | `file_patch` | `allow_permission_changes` | `true` | Allows patch plans to declare chmod-style permission changes |

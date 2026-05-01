@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from langchain_core.messages import AIMessage
 
 from ..interfaces import SafetyLevel
@@ -50,6 +52,17 @@ async def route_after_execute(state: AgentState) -> str:
     if should_repair_plan(state):
         return "REPAIR_PLAN"
     return "ANALYZE"
+
+
+def make_route_after_execute(max_repair_attempts: int) -> Callable[[AgentState], Awaitable[str]]:
+    async def route(state: AgentState) -> str:
+        if has_next_plan_step(state):
+            return "CONTINUE_RUNBOOK"
+        if should_repair_plan(state, max_repair_attempts=max_repair_attempts):
+            return "REPAIR_PLAN"
+        return "ANALYZE"
+
+    return route
 
 
 async def route_after_file_patch_apply(state: AgentState) -> str:

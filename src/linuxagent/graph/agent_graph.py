@@ -23,10 +23,10 @@ from .nodes import (
 )
 from .replanning import make_repair_plan_node
 from .routing import (
+    make_route_after_execute,
     respond_block_node,
     respond_node,
     respond_refused_node,
-    route_after_execute,
     route_after_file_patch_apply,
     route_after_parse,
     route_by_safety,
@@ -39,7 +39,7 @@ AgentGraph: TypeAlias = Any
 def build_agent_graph(deps: GraphDependencies) -> AgentGraph:
     graph = StateGraph(AgentState)
     _add_graph_nodes(graph, deps)
-    _add_graph_edges(graph)
+    _add_graph_edges(graph, deps)
     return graph.compile(checkpointer=deps.checkpointer or MemorySaver())
 
 
@@ -112,7 +112,14 @@ def _add_execution_nodes(graph: Any, deps: GraphDependencies) -> None:
     )
     graph.add_node("advance_runbook", _langgraph_node(make_advance_runbook_node()))
     graph.add_node(
-        "repair_plan", _langgraph_node(make_repair_plan_node(deps.provider, deps.telemetry))
+        "repair_plan",
+        _langgraph_node(
+            make_repair_plan_node(
+                deps.provider,
+                max_repair_attempts=deps.command_plan_config.max_repair_attempts,
+                telemetry=deps.telemetry,
+            )
+        ),
     )
     graph.add_node(
         "analyze", _langgraph_node(make_analyze_result_node(deps.provider, deps.telemetry))
@@ -125,7 +132,7 @@ def _add_response_nodes(graph: Any) -> None:
     graph.add_node("respond_refused", _langgraph_node(respond_refused_node))
 
 
-def _add_graph_edges(graph: Any) -> None:
+def _add_graph_edges(graph: Any, deps: GraphDependencies) -> None:
     graph.add_edge(START, "parse_intent")
     graph.add_conditional_edges(
         "parse_intent",
@@ -143,7 +150,7 @@ def _add_graph_edges(graph: Any) -> None:
     )
     graph.add_conditional_edges(
         "execute",
-        route_after_execute,
+        make_route_after_execute(deps.command_plan_config.max_repair_attempts),
         {
             "CONTINUE_RUNBOOK": "advance_runbook",
             "REPAIR_PLAN": "repair_plan",

@@ -42,6 +42,29 @@ async def test_route_after_execute_repairs_exhausted_failed_plan() -> None:
     assert route == "REPAIR_PLAN"
 
 
+async def test_route_after_execute_analyzes_when_command_repair_limit_reached() -> None:
+    plan = parse_command_plan(command_plan_json("/bin/false"))
+    result = ExecutionResult(
+        command="/bin/false",
+        exit_code=1,
+        stdout="",
+        stderr="failed",
+        duration=0,
+    )
+
+    route = await route_after_execute(
+        {
+            "command_plan": plan,
+            "runbook_step_index": 0,
+            "runbook_results": (result,),
+            "plan_result_start_index": 0,
+            "command_repair_attempts": 2,
+        }
+    )
+
+    assert route == "ANALYZE"
+
+
 async def test_response_nodes_render_operator_messages() -> None:
     blocked = await respond_block_node({"safety_reason": "danger"})
     refused = await respond_refused_node({"pending_command": "rm -rf /tmp/demo"})

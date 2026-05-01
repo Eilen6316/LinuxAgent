@@ -12,7 +12,7 @@ from langchain_core.tools import BaseTool
 from langgraph.types import Command, interrupt
 
 from ..audit import AuditLog
-from ..config.models import FilePatchConfig
+from ..config.models import CommandPlanConfig, FilePatchConfig
 from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLevel
 from ..prompts_loader import build_analysis_prompt
 from ..runbooks import RunbookEngine
@@ -52,6 +52,7 @@ class GraphDependencies:
     tools: tuple[BaseTool, ...] = ()
     telemetry: TelemetryRecorder | None = None
     runbook_engine: RunbookEngine | None = None
+    command_plan_config: CommandPlanConfig = field(default_factory=CommandPlanConfig)
     file_patch_config: FilePatchConfig = field(default_factory=FilePatchConfig)
     tool_observer: ToolEventObserver | None = None
     tool_runtime_limits: ToolRuntimeLimits = field(default_factory=ToolRuntimeLimits)

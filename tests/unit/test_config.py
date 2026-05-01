@@ -206,6 +206,12 @@ def test_file_patch_config_supports_file_patch_options(tmp_path: Path) -> None:
     assert cfg.file_patch.max_repair_attempts == 4
 
 
+def test_command_plan_config_supports_repair_limit() -> None:
+    cfg = AppConfig.model_validate({"command_plan": {"max_repair_attempts": 0}})
+
+    assert cfg.command_plan.max_repair_attempts == 0
+
+
 def test_sandbox_config_defaults_to_noop_metadata_mode() -> None:
     cfg = AppConfig.model_validate({})
 

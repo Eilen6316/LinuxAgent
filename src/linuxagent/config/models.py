@@ -115,6 +115,12 @@ class PolicyRuntimeConfig(BaseModel):
     include_builtin: bool = True
 
 
+class CommandPlanConfig(BaseModel):
+    model_config = _FROZEN
+
+    max_repair_attempts: int = Field(default=2, ge=0, le=10)
+
+
 class FilePatchConfig(BaseModel):
     model_config = _FROZEN
 
@@ -367,6 +373,7 @@ class AppConfig(BaseModel):
     api: APIConfig = Field(default_factory=APIConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     policy: PolicyRuntimeConfig = Field(default_factory=PolicyRuntimeConfig)
+    command_plan: CommandPlanConfig = Field(default_factory=CommandPlanConfig)
     file_patch: FilePatchConfig = Field(default_factory=FilePatchConfig)
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     cluster: ClusterConfig = Field(default_factory=ClusterConfig)

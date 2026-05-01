@@ -17,10 +17,13 @@ from .common import span, trace_id
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
+DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS = 2
 
 
 def make_repair_plan_node(
     provider: LLMProvider,
+    *,
+    max_repair_attempts: int = DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS,
     telemetry: TelemetryRecorder | None = None,
 ) -> Node:
     prompt = build_repair_prompt()
@@ -46,6 +49,8 @@ def make_repair_plan_node(
             "selected_runbook": None,
             "runbook_step_index": 0,
             "plan_result_start_index": len(state.get("runbook_results", ())),
+            "command_repair_attempts": state.get("command_repair_attempts", 0) + 1,
+            "command_max_repair_attempts": max_repair_attempts,
             "plan_error": None,
             "command_source": CommandSource.LLM,
             "selected_hosts": (),
@@ -62,9 +67,16 @@ def make_repair_plan_node(
     return repair_plan_node
 
 
-def should_repair_plan(state: AgentState) -> bool:
+def should_repair_plan(
+    state: AgentState,
+    *,
+    max_repair_attempts: int = DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS,
+) -> bool:
     plan = state.get("command_plan")
     if plan is None:
+        return False
+    attempts = state.get("command_repair_attempts", 0)
+    if attempts >= max_repair_attempts:
         return False
     return any(result.exit_code != 0 for result in _current_plan_results(state))
 
