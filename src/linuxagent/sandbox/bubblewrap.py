@@ -24,7 +24,8 @@ class BubblewrapSandboxRunner:
     def __init__(self, *, enabled: bool = False, executable: Path | None = None) -> None:
         self._enabled = enabled
         self._executable = executable
-        self._local = LocalProcessSandboxRunner(enabled=False)
+        self._compat_local = LocalProcessSandboxRunner(enabled=False)
+        self._controlled_local = LocalProcessSandboxRunner(enabled=True)
 
     @property
     def name(self) -> SandboxRunnerKind:
@@ -63,7 +64,7 @@ class BubblewrapSandboxRunner:
         if not sandbox.enforced or executable is None:
             return await self._run_local(request, sandbox, on_stdout, on_stderr, interactive)
         wrapped = _wrap_request(request, executable)
-        result = await self._local.run(
+        result = await self._controlled_local.run(
             wrapped,
             on_stdout=on_stdout,
             on_stderr=on_stderr,
@@ -79,7 +80,7 @@ class BubblewrapSandboxRunner:
         on_stderr: SandboxOutputCallback | None,
         interactive: bool,
     ) -> SandboxRunResult:
-        result = await self._local.run(
+        result = await self._compat_local.run(
             request,
             on_stdout=on_stdout,
             on_stderr=on_stderr,
@@ -163,8 +164,8 @@ def _wrap_request(request: SandboxRequest, executable: Path) -> SandboxRequest:
         argv=argv,
         cwd=Path("/"),
         timeout=request.timeout,
-        profile=request.profile,
-        network=request.network,
+        profile=SandboxProfile.PRIVILEGED_PASSTHROUGH,
+        network=SandboxNetworkPolicy.INHERIT,
         network_allowlist=request.network_allowlist,
         resource_limits=request.resource_limits,
         allowed_roots=(Path("/"),),

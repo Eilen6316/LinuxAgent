@@ -247,6 +247,45 @@ async def test_bubblewrap_allows_explicit_passthrough_without_probe(tmp_path: Pa
     assert result.sandbox.fallback_reason == "profile permits privileged passthrough"
 
 
+async def test_bubblewrap_run_path_keeps_local_process_controls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("LINUXAGENT_BWRAP_ENV_TEST", "visible")
+    executable = tmp_path / "bwrap"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "import sys\n"
+        "separator = sys.argv.index('--')\n"
+        "os.execvp(sys.argv[separator + 1], sys.argv[separator + 1:])\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    runner = BubblewrapSandboxRunner(enabled=True, executable=executable)
+    code = (
+        "import os; "
+        "print(os.environ.get('LINUXAGENT_BWRAP_ENV_TEST', 'missing')); "
+        "print('x' * 4096)"
+    )
+
+    result = await runner.run(
+        _request(
+            (sys.executable, "-c", code),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+            limits={"output_bytes": 1024},
+        )
+    )
+
+    assert result.sandbox.runner is SandboxRunnerKind.BUBBLEWRAP
+    assert result.sandbox.enforced is True
+    assert "missing" in result.stdout
+    assert "visible" not in result.stdout
+    assert len(result.stdout.encode("utf-8")) <= 1024
+    assert "sandbox output limit exceeded" in result.stderr
+
+
 def test_profile_mapping_prefers_destructive_capabilities() -> None:
     safety = SafetyResult(
         SafetyLevel.CONFIRM,
