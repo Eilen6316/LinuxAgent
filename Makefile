@@ -3,12 +3,13 @@
 
 PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo python; fi)
 
-.PHONY: help install test integration optional-anthropic lint type security harness build verify-build clean
+.PHONY: help install test sandbox integration optional-anthropic lint type security harness build verify-build clean
 
 help:
 	@echo "Targets:"
 	@echo "  install    Editable install with dev extras"
 	@echo "  test       pytest tests/unit/ with coverage"
+	@echo "  sandbox    sandbox boundary regression tests"
 	@echo "  integration optional integration tests"
 	@echo "  optional-anthropic verify Anthropic extra compatibility"
 	@echo "  lint       ruff check"
@@ -24,6 +25,18 @@ install:
 
 test:
 	$(PYTHON) -m pytest tests/unit/ --cov=linuxagent --cov-report=term-missing --cov-fail-under=80
+
+sandbox:
+	$(PYTHON) -m pytest \
+		tests/unit/sandbox/ \
+		tests/unit/tools/test_workspace_tools.py \
+		tests/unit/tools/test_system_tools.py \
+		tests/unit/plans/test_file_patch.py \
+		tests/unit/executors/test_linux_executor.py \
+		tests/unit/cluster/test_ssh_manager.py \
+		tests/unit/services/test_cluster_service.py \
+		tests/unit/test_audit.py \
+		tests/unit/test_config.py
 
 integration:
 	$(PYTHON) -m pytest tests/integration/ -m integration --integration
@@ -52,11 +65,13 @@ security:
 	@! grep -rnE '^[[:space:]]*except:[[:space:]]*$$' src/linuxagent/
 	@echo "--> R-HITL-05 input() in graph nodes"
 	@if [ -d src/linuxagent/graph ]; then ! grep -rn "input(" src/linuxagent/graph/; fi
+	@echo "--> sandbox bypass red-lines"
+	@$(PYTHON) scripts/check_sandbox_rules.py
 	@echo "--> bandit"
 	@$(PYTHON) -m bandit -q -r src/linuxagent/ -ll
 
 harness:
-	$(PYTHON) -m tests.harness.runner --scenarios tests/harness/scenarios/
+	LINUXAGENT_HARNESS_SCENARIOS=tests/harness/scenarios $(PYTHON) -m pytest tests/harness/test_scenarios.py
 
 build:
 	@$(PYTHON) -c "import hatchling.build" >/dev/null 2>&1 || { \

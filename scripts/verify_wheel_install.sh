@@ -36,6 +36,7 @@ fi
 linuxagent --help >/dev/null
 python - <<'PY'
 from importlib import resources
+import yaml
 
 root = resources.files("linuxagent")
 required = [
@@ -52,4 +53,14 @@ if missing:
     raise SystemExit(f"missing packaged data: {missing}")
 if len(runbooks) != 11:
     raise SystemExit(f"expected 11 packaged runbooks, found {len(runbooks)}: {runbooks}")
+config = yaml.safe_load((root / "_data" / "default.yaml").read_text(encoding="utf-8"))
+for section in ("sandbox", "file_patch", "cluster", "policy"):
+    if section not in config:
+        raise SystemExit(f"missing packaged default config section: {section}")
+sandbox = config["sandbox"]
+if "tools" not in sandbox or "limits" not in sandbox:
+    raise SystemExit("packaged sandbox config is missing tools or limits")
+cluster = config["cluster"]
+if "known_hosts_path" not in cluster:
+    raise SystemExit("packaged cluster config is missing known_hosts_path")
 PY

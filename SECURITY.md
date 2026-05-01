@@ -42,13 +42,33 @@ Include:
 
 ## Security Boundaries
 
-LinuxAgent is designed as a human-confirmed operations assistant, not a sandbox.
+LinuxAgent is designed as a human-confirmed operations assistant. Sandbox
+profiles constrain impact after policy and HITL, but they do not grant
+execution authority and do not make blocked commands safe.
 The project assumes:
 
 - The local user account is trusted to approve or reject operations.
 - `config.yaml` is local, owned by the current user, and `chmod 600`.
 - Unknown SSH hosts are not trusted by default.
 - Commands are still executed with the privileges of the invoking user.
+- Remote SSH targets are protected through least-privilege accounts, sudo
+  allowlists, host-key verification, batch confirmation, and audit rather than
+  local OS sandbox inheritance.
 
-See [Threat Model](docs/threat-model.md) and
-[Production Readiness](docs/production-readiness.md) for operational guidance.
+## Security Review Checklist
+
+For changes touching execution, tools, file patches, SSH, audit, or sandbox
+runners, reviewers should check:
+
+- sandbox bypass: local process creation still goes through `SandboxRunner`.
+- tool wrapping: every LLM-facing LangChain tool has `ToolSandboxSpec` metadata
+  and model-facing output redaction.
+- fallback behavior: no-op and passthrough paths report `enforced=false`; safe
+  profiles fail closed when the selected runner cannot enforce them.
+- audit completeness: sandbox, file patch, and SSH remote metadata are recorded
+  where applicable.
+- package data: `make verify-build` confirms config, policy, prompts, runbooks,
+  and sandbox config sections are present in the wheel.
+
+See [Threat Model](docs/en/threat-model.md) and
+[Production Readiness](docs/en/production-readiness.md) for operational guidance.

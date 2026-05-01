@@ -1,0 +1,27 @@
+scenario: "sandbox local runner timeout is audited"
+provider_responses:
+  - '{"goal":"timeout command","commands":[{"command":"/bin/sleep 5","purpose":"trigger timeout","read_only":true,"target_hosts":[]}],"risk_summary":"timeout harness","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - "timeout analysis"
+setup:
+  security:
+    command_timeout: 0.1
+  sandbox:
+    enabled: true
+    runner: local
+    default_profile: privileged_passthrough
+inputs:
+  - role: human
+    content: "run a command that times out"
+expected_interrupts:
+  - type: confirm_command
+resume:
+  decision: "yes"
+  latency_ms: 10
+expected:
+  command_executed: true
+  exit_code: 1
+  response_contains:
+    - "timeout analysis"
+  audit_log_contains:
+    - event: command_executed
+      exit_code: 1

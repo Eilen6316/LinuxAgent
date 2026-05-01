@@ -5,13 +5,47 @@ provider_responses:
 setup:
   cluster_hosts:
     - name: host-a
+      remote_profile:
+        name: ops-readonly
+        remote_cwd: /srv/app
+        environment: clean
+        allow_sudo: false
+        sudo_allowlist: []
     - name: host-b
+      remote_profile:
+        name: ops-readonly
+        remote_cwd: /srv/app
+        environment: clean
+        allow_sudo: false
+        sudo_allowlist: []
 inputs:
   - role: human
     content: "run uptime on all hosts"
 expected_interrupts:
   - type: confirm_command
     matched_rule: BATCH_CONFIRM
+    batch_hosts:
+      - host-a
+      - host-b
+    remote_profiles:
+      - host: host-a
+        hostname: host-a.invalid
+        port: 22
+        username: ops
+        profile: ops-readonly
+        remote_cwd: /srv/app
+        environment: clean
+        allow_sudo: false
+        sudo_allowlist: []
+      - host: host-b
+        hostname: host-b.invalid
+        port: 22
+        username: ops
+        profile: ops-readonly
+        remote_cwd: /srv/app
+        environment: clean
+        allow_sudo: false
+        sudo_allowlist: []
 resume:
   decision: "yes"
   latency_ms: 90

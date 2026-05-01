@@ -17,12 +17,27 @@ from langgraph.types import Command
 
 from linuxagent.audit import AuditLog
 from linuxagent.cluster.remote_command import RemoteCommandError, validate_remote_command
-from linuxagent.config.models import ClusterConfig, ClusterHost, SecurityConfig
+from linuxagent.config.models import (
+    ClusterConfig,
+    ClusterHost,
+    ClusterRemoteProfile,
+    FilePatchConfig,
+    SandboxConfig,
+    SecurityConfig,
+)
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.interfaces import ExecutionResult
 from linuxagent.runbooks import RunbookEngine, load_runbooks
+from linuxagent.sandbox import (
+    BubblewrapSandboxRunner,
+    LocalProcessSandboxRunner,
+    NoopSandboxRunner,
+    SandboxRunnerKind,
+)
 from linuxagent.services import ClusterService, CommandService
+from linuxagent.tools import ToolRuntimeLimits, build_workspace_tools
+from linuxagent.tools.sandbox import invoke_tool_with_sandbox
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -99,26 +114,48 @@ class HarnessRunner:
     async def run_scenario(self, scenario: Scenario) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
+            scenario = _resolve_scenario_placeholders(scenario, tmp_path)
             audit = AuditLog(tmp_path / "audit.log")
             whitelist = SessionWhitelist()
             for command in scenario.setup.get("session_whitelist", []):
                 whitelist.add(command)
+            _write_setup_files(scenario.setup.get("files", []))
 
+            file_patch_config = _file_patch_config(scenario.setup.get("file_patch", {}))
+            sandbox_config = _sandbox_config(scenario.setup.get("sandbox", {}))
+            security_config = _security_config(scenario.setup.get("security", {}))
+            tool_runtime_limits = _tool_runtime_limits(sandbox_config)
+            tool_events = await _run_tool_probes(
+                scenario.setup.get("tool_probes", ()),
+                file_patch_config,
+                sandbox_config,
+                tool_runtime_limits,
+            )
             cluster_service = _cluster_service(scenario.setup.get("cluster_hosts", []))
             runbook_engine = None
             if scenario.setup.get("runbooks_enabled", False):
                 runbook_engine = RunbookEngine(load_runbooks(_REPO_ROOT / "runbooks"))
+            executor = LinuxCommandExecutor(
+                security_config,
+                whitelist=whitelist,
+                sandbox_config=sandbox_config,
+                sandbox_runner=_sandbox_runner(sandbox_config),
+            )
             graph = build_agent_graph(
                 GraphDependencies(
                     provider=_FakeProvider(scenario.provider_responses),
-                    command_service=CommandService(
-                        LinuxCommandExecutor(
-                            SecurityConfig(command_timeout=5.0), whitelist=whitelist
-                        )
-                    ),
+                    command_service=CommandService(executor),
                     audit=audit,
                     cluster_service=cluster_service,
                     runbook_engine=runbook_engine,
+                    file_patch_config=file_patch_config,
+                    tools=tuple(build_workspace_tools(file_patch_config, sandbox_config.tools))
+                    if scenario.setup.get("workspace_tools", False)
+                    else (),
+                    tool_observer=tool_events.append
+                    if scenario.setup.get("workspace_tools", False)
+                    else None,
+                    tool_runtime_limits=tool_runtime_limits,
                 )
             )
             thread_id = scenario.name.replace(" ", "-")
@@ -143,14 +180,20 @@ class HarnessRunner:
                 if scenario.resume is not None:
                     result = await graph.ainvoke(Command(resume=scenario.resume), config=config)
 
-            self._assert_expected(scenario, result, audit.path)
+            self._assert_expected(scenario, result, audit.path, tool_events)
 
     async def run_all(self, scenario_dir: Path) -> None:
         for path in _scenario_paths(scenario_dir):
             for scenario in _load_scenarios(path):
                 await self.run_scenario(scenario)
 
-    def _assert_expected(self, scenario: Scenario, result: Any, audit_path: Path) -> None:
+    def _assert_expected(
+        self,
+        scenario: Scenario,
+        result: Any,
+        audit_path: Path,
+        tool_events: list[dict[str, Any]],
+    ) -> None:
         expected = scenario.expected
         execution_result = result.get("execution_result") if isinstance(result, dict) else None
 
@@ -177,10 +220,15 @@ class HarnessRunner:
                 json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()
             ]
             for expected_event in expected["audit_log_contains"]:
-                if not any(
-                    all(line.get(k) == v for k, v in expected_event.items()) for line in audit_lines
-                ):
+                if not any(_contains_subset(line, expected_event) for line in audit_lines):
                     raise AssertionError(f"{scenario.name}: audit log missing {expected_event!r}")
+        if "tool_events" in expected:
+            for expected_event in expected["tool_events"]:
+                if not any(_contains_subset(event, expected_event) for event in tool_events):
+                    raise AssertionError(f"{scenario.name}: tool event missing {expected_event!r}")
+        if "files" in expected:
+            for spec in expected["files"]:
+                _assert_expected_file(scenario.name, spec)
 
 
 def _first_human_input(inputs: list[dict[str, str]]) -> str:
@@ -190,7 +238,7 @@ def _first_human_input(inputs: list[dict[str, str]]) -> str:
     raise ValueError("scenario must contain at least one human input")
 
 
-def _cluster_service(host_specs: list[dict[str, str]]) -> ClusterService | None:
+def _cluster_service(host_specs: list[dict[str, Any]]) -> ClusterService | None:
     if not host_specs:
         return None
     config = ClusterConfig(
@@ -199,11 +247,136 @@ def _cluster_service(host_specs: list[dict[str, str]]) -> ClusterService | None:
                 name=host["name"],
                 hostname=host.get("hostname", f"{host['name']}.invalid"),
                 username=host.get("username", "ops"),
+                remote_profile=ClusterRemoteProfile.model_validate(host.get("remote_profile", {})),
             )
             for host in host_specs
         )
     )
     return ClusterService(config, _FakeSSH())  # type: ignore[arg-type]
+
+
+def _file_patch_config(raw: dict[str, Any]) -> FilePatchConfig:
+    return FilePatchConfig.model_validate(_path_config(raw))
+
+
+def _sandbox_config(raw: dict[str, Any]) -> SandboxConfig:
+    return SandboxConfig.model_validate(_path_config(raw))
+
+
+def _security_config(raw: dict[str, Any]) -> SecurityConfig:
+    return SecurityConfig.model_validate(raw)
+
+
+def _path_config(raw: dict[str, Any]) -> dict[str, Any]:
+    return {key: _path_config_value(value) for key, value in raw.items()}
+
+
+def _path_config_value(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_path_config_value(item) for item in value]
+    if isinstance(value, dict):
+        return _path_config(value)
+    return value
+
+
+def _tool_runtime_limits(config: SandboxConfig) -> ToolRuntimeLimits:
+    return ToolRuntimeLimits(
+        max_rounds=config.tools.max_rounds,
+        timeout_seconds=config.tools.timeout_seconds,
+        max_output_chars=config.tools.max_output_chars,
+        max_total_output_chars=config.tools.max_total_output_chars,
+    )
+
+
+def _sandbox_runner(config: SandboxConfig):
+    if config.runner is SandboxRunnerKind.LOCAL:
+        return LocalProcessSandboxRunner(enabled=config.enabled)
+    if config.runner is SandboxRunnerKind.BUBBLEWRAP:
+        return BubblewrapSandboxRunner(enabled=config.enabled)
+    return NoopSandboxRunner(enabled=config.enabled)
+
+
+async def _run_tool_probes(
+    probes: list[dict[str, Any]],
+    file_patch_config: FilePatchConfig,
+    sandbox_config: SandboxConfig,
+    limits: ToolRuntimeLimits,
+) -> list[dict[str, Any]]:
+    if not probes:
+        return []
+    tools = {
+        tool.name: tool for tool in build_workspace_tools(file_patch_config, sandbox_config.tools)
+    }
+    events: list[dict[str, Any]] = []
+    for probe in probes:
+        tool = tools[str(probe["tool"])]
+        result = await invoke_tool_with_sandbox(
+            tool,
+            dict(probe.get("args", {})),
+            limits=limits,
+            remaining_total_chars=limits.max_total_output_chars,
+        )
+        events.append(result.event)
+    return events
+
+
+def _write_setup_files(files: list[dict[str, Any]]) -> None:
+    for spec in files:
+        path = Path(spec["path"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(spec.get("content", "")), encoding="utf-8")
+
+
+def _assert_expected_file(scenario_name: str, spec: dict[str, Any]) -> None:
+    path = Path(spec["path"])
+    if "exists" in spec and path.exists() is not bool(spec["exists"]):
+        raise AssertionError(f"{scenario_name}: file {path} exists mismatch")
+    if "content" in spec:
+        if not path.exists():
+            raise AssertionError(f"{scenario_name}: file {path} is missing")
+        actual = path.read_text(encoding="utf-8")
+        if actual != spec["content"]:
+            raise AssertionError(f"{scenario_name}: file {path} content mismatch")
+
+
+def _contains_subset(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return False
+        return all(
+            key in actual and _contains_subset(actual[key], value)
+            for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(expected) > len(actual):
+            return False
+        return all(
+            any(_contains_subset(item, expected_item) for item in actual)
+            for expected_item in expected
+        )
+    return actual == expected
+
+
+def _resolve_scenario_placeholders(scenario: Scenario, tmp_path: Path) -> Scenario:
+    return Scenario(
+        name=scenario.name,
+        inputs=_resolve_placeholders(scenario.inputs, tmp_path),
+        provider_responses=_resolve_placeholders(scenario.provider_responses, tmp_path),
+        expected=_resolve_placeholders(scenario.expected, tmp_path),
+        expected_interrupts=_resolve_placeholders(scenario.expected_interrupts, tmp_path),
+        resume=_resolve_placeholders(scenario.resume, tmp_path),
+        setup=_resolve_placeholders(scenario.setup, tmp_path),
+    )
+
+
+def _resolve_placeholders(value: Any, tmp_path: Path) -> Any:
+    if isinstance(value, str):
+        return value.replace("{tmp}", str(tmp_path))
+    if isinstance(value, dict):
+        return {key: _resolve_placeholders(raw, tmp_path) for key, raw in value.items()}
+    if isinstance(value, list):
+        return [_resolve_placeholders(item, tmp_path) for item in value]
+    return value
 
 
 def _load_scenarios(path: Path) -> list[Scenario]:
@@ -250,8 +423,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scenarios", type=Path, required=True)
     args = parser.parse_args(argv)
     os.environ["LINUXAGENT_HARNESS_SCENARIOS"] = str(args.scenarios)
-    asyncio.run(HarnessRunner().run_all(args.scenarios))
+    _run_cli(HarnessRunner().run_all(args.scenarios))
     return 0
+
+
+def _run_cli(coro: Any) -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(coro)
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
 
 
 if __name__ == "__main__":

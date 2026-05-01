@@ -1,0 +1,19 @@
+scenario: "sandbox file patch outside allow roots is blocked"
+provider_responses:
+  - '{"plan_type":"file_patch","goal":"write outside allowed root","request_intent":"create","files_changed":["{tmp}/outside/blocked.sh"],"unified_diff":"--- /dev/null\n+++ {tmp}/outside/blocked.sh\n@@ -0,0 +1 @@\n+blocked\n","risk_summary":"outside root","verification_commands":[],"permission_changes":[],"rollback_diff":"","expected_side_effects":["filesystem.write"]}'
+setup:
+  file_patch:
+    allow_roots:
+      - "{tmp}/allowed"
+    high_risk_roots: []
+    max_repair_attempts: 0
+inputs:
+  - role: human
+    content: "create a file outside the workspace"
+expected:
+  command_executed: false
+  response_contains:
+    - "allow_roots"
+  files:
+    - path: "{tmp}/outside/blocked.sh"
+      exists: false

@@ -252,15 +252,16 @@ step still goes through normal policy, HITL, audit, and analysis flow.
 
 ## Quality Gate
 
-Current documented baseline from `make test` on 2026-04-30:
+Current documented baseline from `make test` on 2026-05-01:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 396 passing |
+| Unit tests | 501 passing |
 | Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
-| Harness scenarios | 12 HITL / runbook / cluster scenarios |
+| Sandbox boundary suite | covered by `make sandbox` |
+| Harness scenarios | 17 HITL / runbook / cluster / sandbox scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 87.06% (`--cov-fail-under=80`) |
+| Coverage | 87.61% (`--cov-fail-under=80`) |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 
@@ -268,6 +269,7 @@ Useful commands:
 
 ```bash
 make test
+make sandbox
 make lint
 make type
 make security

@@ -10,6 +10,11 @@ from ..intelligence import (
     PatternAnalyzer,
     RecommendationEngine,
 )
+from ..sandbox import SandboxProfile
+from .sandbox import ToolSandboxSpec, attach_tool_sandbox
+
+INTELLIGENCE_TOOL_TIMEOUT_SECONDS = 5.0
+INTELLIGENCE_TOOL_MAX_OUTPUT_CHARS = 20000
 
 
 def make_command_recommendations_tool(engine: RecommendationEngine) -> BaseTool:
@@ -19,7 +24,7 @@ def make_command_recommendations_tool(engine: RecommendationEngine) -> BaseTool:
         recommendations = await engine.recommend(context, limit=limit)
         return [f"{item.command} ({item.reason})" for item in recommendations]
 
-    return get_command_recommendations
+    return _attach_intelligence_sandbox(get_command_recommendations)
 
 
 def make_similar_commands_tool(enhancer: NLPEnhancer, candidates: list[str]) -> BaseTool:
@@ -29,7 +34,7 @@ def make_similar_commands_tool(enhancer: NLPEnhancer, candidates: list[str]) -> 
         scored = await enhancer.find_similar_commands(query, candidates, top_k=top_k)
         return [f"{command} score={score:.3f}" for command, score in scored]
 
-    return get_similar_commands
+    return _attach_intelligence_sandbox(get_similar_commands)
 
 
 def make_knowledge_base_tool(kb: KnowledgeBase) -> BaseTool:
@@ -39,7 +44,7 @@ def make_knowledge_base_tool(kb: KnowledgeBase) -> BaseTool:
         hits = await kb.search(query, k=k)
         return [f"{hit.document.id}: {hit.document.content}" for hit in hits]
 
-    return search_knowledge_base
+    return _attach_intelligence_sandbox(search_knowledge_base)
 
 
 def make_pattern_analyzer_tool(analyzer: PatternAnalyzer) -> BaseTool:
@@ -55,7 +60,7 @@ def make_pattern_analyzer_tool(analyzer: PatternAnalyzer) -> BaseTool:
             "is_interactive": result.is_interactive,
         }
 
-    return analyze_command_pattern
+    return _attach_intelligence_sandbox(analyze_command_pattern)
 
 
 def build_intelligence_tools(
@@ -72,3 +77,14 @@ def build_intelligence_tools(
         make_pattern_analyzer_tool(pattern_analyzer),
         make_similar_commands_tool(nlp_enhancer, command_candidates),
     ]
+
+
+def _attach_intelligence_sandbox(tool: BaseTool) -> BaseTool:
+    return attach_tool_sandbox(
+        tool,
+        ToolSandboxSpec(
+            profile=SandboxProfile.READ_ONLY,
+            max_output_chars=INTELLIGENCE_TOOL_MAX_OUTPUT_CHARS,
+            timeout_seconds=INTELLIGENCE_TOOL_TIMEOUT_SECONDS,
+        ),
+    )

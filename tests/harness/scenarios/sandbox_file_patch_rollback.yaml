@@ -1,0 +1,36 @@
+scenario: "sandbox file patch rollback removes partial writes"
+provider_responses:
+  - '{"plan_type":"file_patch","goal":"create then fail","request_intent":"update","files_changed":["{tmp}/allowed/newdir/created.txt","{tmp}/allowed/stale.txt"],"unified_diff":"--- /dev/null\n+++ {tmp}/allowed/newdir/created.txt\n@@ -0,0 +1 @@\n+created\n--- {tmp}/allowed/stale.txt\n+++ {tmp}/allowed/stale.txt\n@@ -1,1 +1,1 @@\n-expected\n+updated\n","risk_summary":"rollback harness","verification_commands":[],"permission_changes":[],"rollback_diff":"","expected_side_effects":["filesystem.write"]}'
+  - "rollback analysis"
+setup:
+  file_patch:
+    allow_roots:
+      - "{tmp}/allowed"
+    high_risk_roots: []
+    max_repair_attempts: 0
+  files:
+    - path: "{tmp}/allowed/stale.txt"
+      content: "actual\n"
+inputs:
+  - role: human
+    content: "apply a patch that will fail halfway"
+expected_interrupts:
+  - type: confirm_file_patch
+resume:
+  decision: "yes"
+  latency_ms: 25
+expected:
+  command_executed: true
+  exit_code: 1
+  response_contains:
+    - "rollback analysis"
+  audit_log_contains:
+    - event: command_executed
+      exit_code: 1
+      file_patch:
+        rollback_outcome: succeeded
+  files:
+    - path: "{tmp}/allowed/newdir/created.txt"
+      exists: false
+    - path: "{tmp}/allowed/stale.txt"
+      content: "actual\n"

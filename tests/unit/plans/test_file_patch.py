@@ -458,7 +458,10 @@ def test_apply_rejects_socket_target(tmp_path: Path) -> None:
     target = tmp_path / "agent.sock"
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
-        server.bind(str(target))
+        try:
+            server.bind(str(target))
+        except PermissionError as exc:
+            pytest.skip(f"AF_UNIX socket bind is unavailable in this sandbox: {exc}")
         diff = "\n".join([f"--- {target}", f"+++ {target}", "@@ -1 +1 @@", "-old", "+new", ""])
 
         with pytest.raises(FilePatchApplyError, match="regular file"):

@@ -1,0 +1,26 @@
+scenario: "sandbox workspace tool denies outside read"
+provider_responses:
+  - '{"mode":"DIRECT_ANSWER","answer":"tool boundary checked","reason":"harness probe"}'
+setup:
+  file_patch:
+    allow_roots:
+      - "{tmp}/allowed"
+  files:
+    - path: "{tmp}/outside/secret.txt"
+      content: "api_key=sk-prodsecret1234567890\n"
+  tool_probes:
+    - tool: read_file
+      args:
+        path: "{tmp}/outside/secret.txt"
+inputs:
+  - role: human
+    content: "check tool boundary"
+expected:
+  command_executed: false
+  response_contains:
+    - "tool boundary checked"
+  tool_events:
+    - tool_name: read_file
+      status: denied
+      sandbox:
+        profile: read_only

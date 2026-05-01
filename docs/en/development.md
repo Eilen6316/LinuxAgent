@@ -29,9 +29,10 @@ Run locally:
 
 ```bash
 pytest tests/unit/ --cov=linuxagent --cov-fail-under=80
+make sandbox
 make integration
 make optional-anthropic
-python -m tests.harness.runner --scenarios tests/harness/scenarios
+make harness
 make verify-build
 ```
 
@@ -58,6 +59,26 @@ These are enforced both locally and in CI:
 - no `AutoAddPolicy`
 - no bare `except:`
 - no `input()` calls inside `src/linuxagent/graph/`
+- no direct subprocess creation outside `src/linuxagent/sandbox/`
+- no unwrapped LangChain tools exposed to the LLM
+
+`make security` runs `scripts/check_code_rules.py`,
+`scripts/check_sandbox_rules.py`, grep red-lines, and Bandit.
+
+## Sandbox Release Checklist
+
+Before a release or security-sensitive merge, review:
+
+- sandbox bypass: local execution still reaches commands only through
+  `SandboxRunner`.
+- tool completeness: every LLM-facing tool has `ToolSandboxSpec` metadata,
+  timeout/output budgets, and redacted output.
+- audit completeness: command, file patch, local sandbox, and SSH remote
+  metadata are recorded where applicable.
+- fallback behavior: disabled/no-op paths report `enforced=false`; unavailable
+  safe profiles fail closed.
+- packaging: `make verify-build` confirms config, policy, prompts, runbooks,
+  and sandbox config sections are present in the wheel.
 
 ## SSH Remote Execution
 

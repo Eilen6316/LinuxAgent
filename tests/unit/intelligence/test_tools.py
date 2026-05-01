@@ -47,6 +47,9 @@ async def test_build_intelligence_tools_registers_all() -> None:
         "analyze_command_pattern",
         "get_similar_commands",
     }
+    assert all(
+        (tool.metadata or {})["linuxagent_sandbox"]["profile"] == "read_only" for tool in tools
+    )
     similar = await next(tool for tool in tools if tool.name == "get_similar_commands").ainvoke(
         {"query": "disk", "top_k": 1}
     )

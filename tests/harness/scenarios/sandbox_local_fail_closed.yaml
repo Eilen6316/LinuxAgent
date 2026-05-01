@@ -1,0 +1,25 @@
+scenario: "sandbox unavailable safe profile fails closed"
+provider_responses:
+  - '{"goal":"fail closed","commands":[{"command":"/bin/echo should-not-run","purpose":"safe profile unavailable","read_only":true,"target_hosts":[]}],"risk_summary":"safe sandbox unavailable","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - "fail closed analysis"
+setup:
+  sandbox:
+    enabled: true
+    runner: local
+    default_profile: read_only
+inputs:
+  - role: human
+    content: "run echo under unavailable sandbox"
+expected_interrupts:
+  - type: confirm_command
+resume:
+  decision: "yes"
+  latency_ms: 10
+expected:
+  command_executed: true
+  exit_code: 1
+  response_contains:
+    - "fail closed analysis"
+  audit_log_contains:
+    - event: command_executed
+      exit_code: 1

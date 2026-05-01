@@ -236,10 +236,10 @@ batch confirmation, and audit metadata.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **Current documented baseline: 396 passing; Anthropic compatibility can be verified when the extra is installed** |
-| Coverage | 0 | **87.06%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
+| Unit tests | 0 | **Current documented baseline: 501 passing; Anthropic compatibility can be verified when the extra is installed** |
+| Coverage | 0 | **87.61%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
-| Red-line gates | none | CI greps `shell=True` / `AutoAddPolicy` / bare `except:` / `input(` in graph nodes |
+| Red-line gates | none | CI checks command, SSH, HITL, code-structure, and sandbox bypass red lines |
 
 Runtime policy overrides can be enabled in `config.yaml`:
 
@@ -702,6 +702,7 @@ make optional-anthropic  # optional Anthropic extra compatibility
 make lint      # ruff check
 make type      # mypy --strict
 make security  # red-line grep + bandit
+make sandbox   # sandbox boundary regression suite
 make harness   # YAML scenario harness
 make build     # wheel + sdist
 make verify-build  # build + wheel install + packaged data check
@@ -715,8 +716,9 @@ Details in [Development Guide](development.md).
 ## Release
 
 ```bash
-python -m tests.harness.runner --scenarios tests/harness/scenarios
+make harness
 make integration  # optional, when local environment permits
+make sandbox
 make verify-build
 git tag v4.0.0
 git push origin v4.0.0     # triggers release.yml
