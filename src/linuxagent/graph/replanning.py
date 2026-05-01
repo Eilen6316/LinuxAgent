@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -42,6 +43,10 @@ def make_repair_plan_node(
                 current_trace_id,
                 telemetry,
             )
+        except CommandPlanParseError as exc:
+            return _repair_error(current_trace_id, str(exc))
+        try:
+            plan = _remove_successful_commands(plan, state)
         except CommandPlanParseError as exc:
             return _repair_error(current_trace_id, str(exc))
         return {
@@ -146,12 +151,56 @@ def _failure_context(
 ) -> str:
     failures = [result for result in _current_plan_results(state) if result.exit_code != 0]
     parts = [execution_display_text(result).text for result in failures]
+    successful = _successful_command_lines(state)
+    if successful:
+        parts.append(
+            "Already successful commands. Do not repeat these in the repair plan:\n"
+            + "\n".join(successful)
+        )
     if validation_error:
         parts.append(
             "Previous repair response was rejected by validation:\n"
             f"{validation_error}\n\nRejected response:\n{rejected_response[:2000]}"
         )
     return "\n\n".join(parts)
+
+
+def _remove_successful_commands(plan: CommandPlan, state: AgentState) -> CommandPlan:
+    successful = _successful_command_keys(state)
+    if not successful:
+        return plan
+    commands = tuple(
+        command for command in plan.commands if _command_key(command.command) not in successful
+    )
+    if len(commands) == len(plan.commands):
+        return plan
+    if not commands:
+        raise CommandPlanParseError("repair plan only repeated already successful commands")
+    return plan.model_copy(update={"commands": commands})
+
+
+def _successful_command_lines(state: AgentState) -> list[str]:
+    return [
+        f"- {result.command}" for result in _current_plan_results(state) if result.exit_code == 0
+    ]
+
+
+def _successful_command_keys(state: AgentState) -> set[str]:
+    return {
+        key
+        for result in _current_plan_results(state)
+        if result.exit_code == 0
+        for key in (_command_key(result.command),)
+        if key
+    }
+
+
+def _command_key(command: str) -> str:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return command.strip()
+    return " ".join(tokens)
 
 
 def _current_goal(state: AgentState) -> str:

@@ -1590,6 +1590,37 @@ async def test_graph_retries_invalid_repair_command_plan(tmp_path) -> None:
     assert "rpm -q nginx 2>/dev/null || echo missing" in retry_prompt
 
 
+async def test_graph_repair_plan_does_not_repeat_successful_commands(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _multi_command_plan_json(
+                ["/bin/echo os-version", "/bin/false", "/bin/echo top-process"]
+            ),
+            _multi_command_plan_json(
+                ["/bin/echo os-version", "/bin/echo nginx-check", "/bin/echo top-process"]
+            ),
+        ],
+    )
+    config = {"configurable": {"thread_id": "repair-skips-successes"}}
+
+    await graph.ainvoke(
+        initial_state("check os nginx and top process", source=CommandSource.USER),
+        config=config,
+    )
+    await graph.ainvoke(Command(resume={"decision": "yes_all", "latency_ms": 1}), config=config)
+    snapshot = await graph.aget_state(config)
+
+    assert snapshot.tasks[0].interrupts[0].value["command"] == "/bin/echo nginx-check"
+    assert [command.command for command in snapshot.values["command_plan"].commands] == [
+        "/bin/echo nginx-check"
+    ]
+    repair_prompt = str(provider.complete_messages[-1][-1].content)
+    assert "Already successful commands" in repair_prompt
+    assert "/bin/echo os-version" in repair_prompt
+    assert "/bin/echo top-process" in repair_prompt
+
+
 async def test_graph_rechecks_policy_for_later_runbook_guided_steps(tmp_path) -> None:
     graph, _provider = _graph(
         tmp_path,
