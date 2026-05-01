@@ -17,7 +17,7 @@ import shlex
 import sys
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..config.models import SandboxConfig, SecurityConfig
@@ -30,10 +30,17 @@ from ..interfaces import (
     SafetyResult,
 )
 from ..policy import DEFAULT_POLICY_ENGINE, PolicyDecision, PolicyEngine
-from ..sandbox.models import SandboxRequest, SandboxRunner, SandboxUnavailableError
+from ..sandbox.models import (
+    SandboxRequest,
+    SandboxRunner,
+    SandboxRunResult,
+    SandboxUnavailableError,
+)
 from ..sandbox.noop import NoopSandboxRunner
 from ..sandbox.profiles import profile_for_safety
 from .session_whitelist import SessionWhitelist
+
+COMMAND_OUTPUT_LIMIT_MESSAGE = "\n[truncated: command output limit exceeded]\n"
 
 
 class CommandTimeoutError(RuntimeError):
@@ -51,6 +58,24 @@ class CommandBlockedError(RuntimeError):
 @dataclass(frozen=True)
 class _SpawnPayload:
     request: SandboxRequest
+
+
+@dataclass
+class _CallbackBudget:
+    limit: int | None
+    used: int = 0
+    exhausted: bool = False
+
+    def take(self, text: str) -> str:
+        if self.limit is None or self.exhausted:
+            return text if not self.exhausted else ""
+        remaining = max(self.limit - self.used, 0)
+        if len(text) <= remaining:
+            self.used += len(text)
+            return text
+        self.used = self.limit
+        self.exhausted = True
+        return f"{text[:remaining]}{COMMAND_OUTPUT_LIMIT_MESSAGE}"
 
 
 class LinuxCommandExecutor(CommandExecutor):
@@ -150,7 +175,10 @@ class LinuxCommandExecutor(CommandExecutor):
         payload = self._prepare(command)
         start = time.monotonic()
         try:
-            result = await self._sandbox_runner.run(payload.request)
+            result = _apply_command_output_limit(
+                await self._sandbox_runner.run(payload.request),
+                self._config.output_bytes,
+            )
         except TimeoutError as exc:
             raise CommandTimeoutError(
                 f"command timed out after {payload.request.timeout}s: {command!r}"
@@ -180,7 +208,10 @@ class LinuxCommandExecutor(CommandExecutor):
 
         start = time.monotonic()
         try:
-            result = await self._sandbox_runner.run(payload.request, interactive=True)
+            result = _apply_command_output_limit(
+                await self._sandbox_runner.run(payload.request, interactive=True),
+                self._config.output_bytes,
+            )
         except TimeoutError as exc:
             raise CommandTimeoutError(
                 f"command timed out after {payload.request.timeout}s: {command!r}"
@@ -205,11 +236,15 @@ class LinuxCommandExecutor(CommandExecutor):
         """Run ``command`` while streaming stdout/stderr chunks."""
         payload = self._prepare(command)
         start = time.monotonic()
+        callback_budget = _CallbackBudget(self._config.output_bytes)
         try:
-            result = await self._sandbox_runner.run(
-                payload.request,
-                on_stdout=on_stdout,
-                on_stderr=on_stderr,
+            result = _apply_command_output_limit(
+                await self._sandbox_runner.run(
+                    payload.request,
+                    on_stdout=_limited_callback(on_stdout, callback_budget),
+                    on_stderr=_limited_callback(on_stderr, callback_budget),
+                ),
+                self._config.output_bytes,
             )
         except TimeoutError as exc:
             raise CommandTimeoutError(
@@ -361,3 +396,32 @@ def _has_destructive_capability(capabilities: tuple[str, ...]) -> bool:
         "privilege.sudo",
     )
     return any(capability.startswith(destructive_prefixes) for capability in capabilities)
+
+
+def _limited_callback(callback: OutputCallback, budget: _CallbackBudget) -> OutputCallback:
+    async def emit(text: str) -> None:
+        limited = budget.take(text)
+        if limited:
+            await callback(limited)
+
+    return emit
+
+
+def _apply_command_output_limit(result: SandboxRunResult, limit: int | None) -> SandboxRunResult:
+    if limit is None:
+        return result
+    stdout = result.stdout
+    stderr = result.stderr
+    if len(stdout) + len(stderr) <= limit:
+        return result
+    stdout, stderr = _truncate_stdout_stderr(stdout, stderr, limit)
+    return replace(result, stdout=stdout, stderr=stderr)
+
+
+def _truncate_stdout_stderr(stdout: str, stderr: str, limit: int) -> tuple[str, str]:
+    stdout_budget = min(len(stdout), limit)
+    stderr_budget = max(limit - stdout_budget, 0)
+    limited_stdout = stdout[:stdout_budget]
+    limited_stderr = stderr[:stderr_budget]
+    limited_stderr = f"{limited_stderr}{COMMAND_OUTPUT_LIMIT_MESSAGE}"
+    return limited_stdout, limited_stderr

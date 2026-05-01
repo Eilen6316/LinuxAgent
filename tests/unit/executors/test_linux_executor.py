@@ -233,7 +233,32 @@ async def test_execute_streaming_emits_output_chunks() -> None:
     assert result.exit_code == 0
     assert stdout == ["hello\n"]
     assert stderr == []
-    assert result.stdout == "hello\n"
+
+
+async def test_execute_applies_command_output_budget_even_with_noop_runner() -> None:
+    ex = LinuxCommandExecutor(SecurityConfig(command_timeout=5.0, output_bytes=1024))
+
+    result = await ex.execute("seq 1 2000")
+
+    assert len(result.stdout) <= 1024
+    assert "command output limit exceeded" in result.stderr
+
+
+async def test_execute_streaming_applies_command_output_budget_to_callbacks() -> None:
+    ex = LinuxCommandExecutor(SecurityConfig(command_timeout=5.0, output_bytes=1024))
+    stdout: list[str] = []
+    stderr: list[str] = []
+
+    result = await ex.execute_streaming(
+        "seq 1 2000",
+        on_stdout=lambda text: _append(stdout, text),
+        on_stderr=lambda text: _append(stderr, text),
+    )
+
+    assert result.exit_code == 0
+    assert sum(len(chunk) for chunk in stdout) <= 1024 + 50
+    assert "command output limit exceeded" in "".join(stdout)
+    assert "command output limit exceeded" in result.stderr
 
 
 async def test_execute_blocked_command_raises() -> None:

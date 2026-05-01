@@ -1564,6 +1564,32 @@ async def test_graph_replans_after_exhausted_failed_plan(tmp_path) -> None:
     assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
+async def test_graph_retries_invalid_repair_command_plan(tmp_path) -> None:
+    invalid_repair = command_plan_json("rpm -q nginx 2>/dev/null || echo missing")
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _multi_command_plan_json(["/bin/false"]),
+            invalid_repair,
+            _multi_command_plan_json(["rpm -q nginx"]),
+        ],
+    )
+    config = {"configurable": {"thread_id": "invalid-repair-command-plan"}}
+
+    await graph.ainvoke(
+        initial_state("check nginx after failure", source=CommandSource.USER),
+        config=config,
+    )
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+    snapshot = await graph.aget_state(config)
+
+    assert snapshot.tasks[0].interrupts[0].value["command"] == "rpm -q nginx"
+    retry_prompt = str(provider.complete_messages[-1][-1].content)
+    assert "Previous repair response was rejected" in retry_prompt
+    assert "argv-safe" in retry_prompt
+    assert "rpm -q nginx 2>/dev/null || echo missing" in retry_prompt
+
+
 async def test_graph_rechecks_policy_for_later_runbook_guided_steps(tmp_path) -> None:
     graph, _provider = _graph(
         tmp_path,

@@ -105,6 +105,7 @@ class SecurityConfig(BaseModel):
 
     command_timeout: float = Field(default=30.0, gt=0, le=3600)
     max_command_length: int = Field(default=2048, ge=1, le=8192)
+    output_bytes: int | None = Field(default=65536, ge=1024, le=104857600)
     session_whitelist_enabled: bool = True
 
 

@@ -16,6 +16,7 @@ api:
 security:
   command_timeout: 30.0
   max_command_length: 2048
+  output_bytes: 65536              # total stdout+stderr capture budget for command context/UI
   session_whitelist_enabled: true
 
 policy:

@@ -10,7 +10,7 @@ from langgraph.types import Command
 
 from ..execution_display import execution_display_text
 from ..interfaces import CommandSource, LLMProvider
-from ..plans import CommandPlanParseError, parse_command_plan
+from ..plans import CommandPlan, CommandPlanParseError, parse_command_plan
 from ..prompts_loader import build_repair_prompt
 from ..telemetry import TelemetryRecorder
 from .common import span, trace_id
@@ -19,6 +19,7 @@ from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS = 2
+MAX_REPAIR_PLAN_PARSE_RETRIES = 2
 
 
 def make_repair_plan_node(
@@ -33,16 +34,14 @@ def make_repair_plan_node(
     async def repair_plan_node(state: AgentState) -> AgentState:
         current_trace_id = trace_id(state)
         await notify_event(runtime_observer, {"type": "activity", "phase": "repair_plan"})
-        prompt_messages = prompt.format_messages(
-            runbook_guidance="No runbook guidance is available for repair planning.",
-            original_request=_last_human_text(state.get("messages", [])),
-            current_goal=_current_goal(state),
-            failure_context=_failure_context(state),
-        )
-        with span(telemetry, "llm.complete", current_trace_id, {"node": "repair_plan"}):
-            proposed = (await provider.complete(prompt_messages)).strip()
         try:
-            plan = parse_command_plan(proposed)
+            plan = await _complete_valid_repair_plan(
+                provider,
+                prompt,
+                state,
+                current_trace_id,
+                telemetry,
+            )
         except CommandPlanParseError as exc:
             return _repair_error(current_trace_id, str(exc))
         return {
@@ -70,6 +69,52 @@ def make_repair_plan_node(
     return repair_plan_node
 
 
+async def _complete_valid_repair_plan(
+    provider: LLMProvider,
+    prompt: Any,
+    state: AgentState,
+    current_trace_id: str,
+    telemetry: TelemetryRecorder | None,
+) -> CommandPlan:
+    error = ""
+    rejected_response = ""
+    for attempt in range(MAX_REPAIR_PLAN_PARSE_RETRIES + 1):
+        proposed = await _complete_repair_plan(
+            provider, prompt, state, current_trace_id, telemetry, error, rejected_response
+        )
+        try:
+            return parse_command_plan(proposed)
+        except CommandPlanParseError as exc:
+            error = str(exc)
+            rejected_response = proposed
+            if attempt >= MAX_REPAIR_PLAN_PARSE_RETRIES:
+                raise
+    raise CommandPlanParseError(error or "repair planning failed")
+
+
+async def _complete_repair_plan(
+    provider: LLMProvider,
+    prompt: Any,
+    state: AgentState,
+    current_trace_id: str,
+    telemetry: TelemetryRecorder | None,
+    validation_error: str,
+    rejected_response: str,
+) -> str:
+    prompt_messages = prompt.format_messages(
+        runbook_guidance="No runbook guidance is available for repair planning.",
+        original_request=_last_human_text(state.get("messages", [])),
+        current_goal=_current_goal(state),
+        failure_context=_failure_context(
+            state,
+            validation_error=validation_error,
+            rejected_response=rejected_response,
+        ),
+    )
+    with span(telemetry, "llm.complete", current_trace_id, {"node": "repair_plan"}):
+        return (await provider.complete(prompt_messages)).strip()
+
+
 def should_repair_plan(
     state: AgentState,
     *,
@@ -93,9 +138,20 @@ def _current_plan_results(state: AgentState) -> tuple[Any, ...]:
     return () if result is None else (result,)
 
 
-def _failure_context(state: AgentState) -> str:
+def _failure_context(
+    state: AgentState,
+    *,
+    validation_error: str = "",
+    rejected_response: str = "",
+) -> str:
     failures = [result for result in _current_plan_results(state) if result.exit_code != 0]
-    return "\n\n".join(execution_display_text(result).text for result in failures)
+    parts = [execution_display_text(result).text for result in failures]
+    if validation_error:
+        parts.append(
+            "Previous repair response was rejected by validation:\n"
+            f"{validation_error}\n\nRejected response:\n{rejected_response[:2000]}"
+        )
+    return "\n\n".join(parts)
 
 
 def _current_goal(state: AgentState) -> str:

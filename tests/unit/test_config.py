@@ -24,6 +24,7 @@ CONFIG_REQUIRED_PATHS = (
     ("api", "model"),
     ("api", "api_key"),
     ("api", "token_parameter"),
+    ("security", "output_bytes"),
     ("security", "session_whitelist_enabled"),
     ("policy", "path"),
     ("policy", "include_builtin"),

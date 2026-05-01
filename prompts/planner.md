@@ -40,6 +40,8 @@ instead of a FilePatchPlan. Use argv-safe commands only. For example, use
 `python3 -c` with `pathlib` and `subprocess.run(["date"], capture_output=True,
 text=True, check=True)` to fetch `date` output and update the file; do not use
 shell redirects, pipes, heredocs, command substitution, or command chaining.
+For process inspection, prefer narrow process output such as
+`ps -eo pid,ppid,pcpu,pmem,comm,args --sort=-pcpu` over broad `ps aux` output.
 When editing existing files or writing code against current repository content,
 use read-only workspace tools such as `read_file`, `list_dir`, and
 `search_files` before producing a FilePatchPlan. `search_files` patterns are
