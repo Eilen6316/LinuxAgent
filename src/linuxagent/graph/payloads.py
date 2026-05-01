@@ -24,6 +24,7 @@ def build_confirm_payload(state: AgentState, audit_id: str) -> dict[str, Any]:
         "batch_hosts": list(state.get("batch_hosts", ())),
         "remote_profiles": list(state.get("remote_profiles", ())),
         "remote_preflight_commands": list(state.get("remote_preflight_commands", ())),
+        "sandbox_preview": state.get("sandbox_preview"),
         "is_destructive": _is_destructive(command or "", state.get("safety_capabilities", ())),
         "can_whitelist": state.get("safety_can_whitelist", True),
         "permission_candidates": _permission_candidates(state),

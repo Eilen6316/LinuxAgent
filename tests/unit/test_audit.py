@@ -22,6 +22,15 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
         matched_rule="LLM_FIRST_RUN",
         command_source="llm",
         batch_hosts=("a", "b"),
+        sandbox_preview={
+            "requested_profile": "system_inspect",
+            "runner": "noop",
+            "enabled": False,
+            "enforced": False,
+            "network": "inherit",
+            "cwd": str(tmp_path),
+            "allowed_roots": [str(tmp_path)],
+        },
     )
     await audit.record_decision(audit_id, decision="yes", latency_ms=12)
     await audit.record_execution(
@@ -69,6 +78,8 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
         "command_executed",
     ]
     assert lines[0]["batch_hosts"] == ["a", "b"]
+    assert lines[0]["sandbox_preview"]["runner"] == "noop"
+    assert lines[0]["sandbox_preview"]["cwd"] == str(tmp_path)
     assert lines[1]["decision"] == "yes"
     assert lines[2]["exit_code"] == 0
     assert lines[2]["duration_ms"] == 250

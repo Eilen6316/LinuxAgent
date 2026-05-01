@@ -46,6 +46,7 @@ class ConfirmationRenderer:
         table.add_row("Safety", str(payload.get("safety_level") or "?"))
         table.add_row("Rule", str(payload.get("matched_rule") or "?"))
         table.add_row("Source", str(payload.get("command_source") or "?"))
+        self._add_sandbox_rows(table, payload)
         self._add_optional_rows(table, payload, ("risk_summary",))
         self._add_list_rows(
             table,
@@ -160,6 +161,22 @@ class ConfirmationRenderer:
         if rendered:
             table.add_row("Remote profiles", "\n".join(rendered))
 
+    def _add_sandbox_rows(self, table: Table, payload: dict[str, Any]) -> None:
+        sandbox = payload.get("sandbox_preview")
+        if not isinstance(sandbox, dict):
+            return
+        table.add_row("Sandbox", _sandbox_summary(sandbox))
+        table.add_row("Sandbox cwd", str(sandbox.get("cwd") or sandbox.get("root") or "?"))
+        roots = _allowed_roots_summary(sandbox)
+        if roots:
+            table.add_row("Allowed roots", roots)
+        network = _network_summary(sandbox)
+        if network:
+            table.add_row("Network", network)
+        fallback = sandbox.get("fallback_reason")
+        if fallback:
+            table.add_row("Sandbox note", str(fallback))
+
     def _add_patch_risk_rows(self, table: Table, payload: dict[str, Any]) -> None:
         if payload.get("risk_level") == "high":
             table.add_row("Elevated risk", "yes - elevated file patch risk requires review")
@@ -203,6 +220,38 @@ def _patch_title_style(payload: dict[str, Any]) -> str:
     if payload.get("risk_level") == "high":
         return "bright_red"
     return "bright_yellow"
+
+
+def _sandbox_summary(sandbox: dict[str, Any]) -> str:
+    return (
+        f"profile={sandbox.get('requested_profile') or '?'} "
+        f"runner={sandbox.get('runner') or '?'} "
+        f"enabled={_yes_no(sandbox.get('enabled'))} "
+        f"enforced={_yes_no(sandbox.get('enforced'))}"
+    )
+
+
+def _network_summary(sandbox: dict[str, Any]) -> str:
+    policy = sandbox.get("network")
+    allowlist = sandbox.get("network_allowlist") or []
+    if not allowlist:
+        return str(policy or "")
+    return f"{policy} allow={', '.join(str(item) for item in allowlist)}"
+
+
+def _allowed_roots_summary(sandbox: dict[str, Any]) -> str:
+    roots = sandbox.get("allowed_roots") or []
+    if not isinstance(roots, list | tuple):
+        return ""
+    return ", ".join(str(root) for root in roots)
+
+
+def _yes_no(value: Any) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "?"
 
 
 def _remote_profile_line(profile: dict[str, Any]) -> str:

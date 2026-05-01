@@ -28,17 +28,11 @@ def make_safety_check_node(
         current_trace_id = trace_id(state)
         command = state.get("pending_command")
         if not command:
-            return {
-                "trace_id": current_trace_id,
-                "safety_level": SafetyLevel.BLOCK,
-                "matched_rule": "EMPTY",
-                "safety_reason": state.get("plan_error") or "no command proposed",
-                "safety_capabilities": (),
-                "safety_can_whitelist": False,
-            }
+            return _empty_command_update(current_trace_id, state)
         source = state.get("command_source") or CommandSource.USER
         with span(telemetry, "policy.evaluate", current_trace_id, {"command_source": source.value}):
             verdict = command_service.classify(command, source=source)
+        sandbox_preview = _sandbox_preview(command_service, command, source)
         selected = _selected_cluster_hosts(state, cluster_service)
         remote_error = _remote_command_error(command, selected)
         if remote_error is not None:
@@ -64,9 +58,22 @@ def make_safety_check_node(
             remote_preflight,
             matched_rule=_matched_rule(verdict, level, batch_hosts),
             reason=_safety_reason(verdict, level, batch_hosts),
+            sandbox_preview=sandbox_preview,
         )
 
     return safety_check_node
+
+
+def _empty_command_update(trace: str, state: AgentState) -> AgentState:
+    return {
+        "trace_id": trace,
+        "safety_level": SafetyLevel.BLOCK,
+        "matched_rule": "EMPTY",
+        "safety_reason": state.get("plan_error") or "no command proposed",
+        "safety_capabilities": (),
+        "safety_can_whitelist": False,
+        "sandbox_preview": None,
+    }
 
 
 def _remote_error_update(trace: str, remote_error: str, verdict: Any) -> AgentState:
@@ -78,6 +85,7 @@ def _remote_error_update(trace: str, remote_error: str, verdict: Any) -> AgentSt
         "command_source": verdict.command_source,
         "safety_capabilities": verdict.capabilities,
         "safety_can_whitelist": _can_whitelist(verdict),
+        "sandbox_preview": None,
         "batch_hosts": (),
         "remote_profiles": (),
         "remote_preflight_commands": (),
@@ -94,6 +102,7 @@ def _safety_update(
     *,
     matched_rule: str | None,
     reason: str | None,
+    sandbox_preview: dict[str, object] | None,
 ) -> AgentState:
     return {
         "trace_id": trace,
@@ -103,6 +112,7 @@ def _safety_update(
         "command_source": verdict.command_source,
         "safety_capabilities": verdict.capabilities,
         "safety_can_whitelist": _can_whitelist(verdict),
+        "sandbox_preview": sandbox_preview,
         "batch_hosts": batch_hosts,
         "remote_profiles": remote_profiles,
         "remote_preflight_commands": remote_preflight_commands,
@@ -134,6 +144,18 @@ def _permission_adjusted_level(
 def _conversation_permissions_enabled(command_service: CommandService) -> bool:
     executor = getattr(command_service, "executor", None)
     return bool(getattr(executor, "session_whitelist_enabled", True))
+
+
+def _sandbox_preview(
+    command_service: CommandService,
+    command: str,
+    source: CommandSource,
+) -> dict[str, object] | None:
+    preview = getattr(command_service, "sandbox_preview", None)
+    if not callable(preview):
+        return None
+    result = preview(command, source=source)
+    return result if isinstance(result, dict) else None
 
 
 def _matched_rule(

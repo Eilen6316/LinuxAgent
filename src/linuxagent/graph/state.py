@@ -8,7 +8,7 @@ update).
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph.message import add_messages
@@ -48,6 +48,7 @@ class AgentState(TypedDict, total=False):
     safety_capabilities: tuple[str, ...]
     safety_can_whitelist: bool
     command_permissions: tuple[str, ...]
+    sandbox_preview: dict[str, Any] | None
 
     # Populated by HITL batch detector (services layer).
     batch_hosts: tuple[str, ...]
@@ -95,6 +96,7 @@ def initial_state(
         safety_capabilities=(),
         safety_can_whitelist=True,
         command_permissions=command_permissions,
+        sandbox_preview=None,
         batch_hosts=(),
         remote_profiles=(),
         remote_preflight_commands=(),

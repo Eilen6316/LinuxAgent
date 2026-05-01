@@ -113,6 +113,16 @@ def test_render_confirm_shows_basic_command_fields() -> None:
             "risk_summary": "read-only",
             "preflight_checks": ["pwd"],
             "verification_commands": ["ls -la"],
+            "sandbox_preview": {
+                "requested_profile": "system_inspect",
+                "runner": "noop",
+                "enabled": False,
+                "enforced": False,
+                "network": "inherit",
+                "cwd": str(Path.cwd()),
+                "allowed_roots": [str(Path.cwd())],
+                "fallback_reason": "sandbox disabled",
+            },
         }
     )
 
@@ -121,6 +131,9 @@ def test_render_confirm_shows_basic_command_fields() -> None:
     assert "ls -la" in rendered
     assert "LLM_FIRST_RUN" in rendered
     assert "read-only" in rendered
+    assert "profile=system_inspect" in rendered
+    assert "runner=noop" in rendered
+    assert "sandbox disabled" in rendered
 
 
 def test_render_file_patch_confirm_shows_planned_diff() -> None:

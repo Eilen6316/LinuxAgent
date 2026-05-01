@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from ..intelligence import CommandLearner
 from ..interfaces import (
@@ -51,6 +52,18 @@ class CommandService:
         source: CommandSource = CommandSource.USER,
     ) -> SafetyResult:
         return self._executor.is_safe(command, source=source)
+
+    def sandbox_preview(
+        self,
+        command: str,
+        *,
+        source: CommandSource = CommandSource.USER,
+    ) -> dict[str, object] | None:
+        preview = getattr(self._executor, "sandbox_preview", None)
+        if not callable(preview):
+            return None
+        result: Any = preview(command, source=source)
+        return result if isinstance(result, dict) else None
 
     async def run(self, command: str) -> ExecutionResult:
         result = await self._executor.execute(command)

@@ -39,20 +39,22 @@ class AuditLog:
         command_source: str | None,
         trace_id: str | None = None,
         batch_hosts: tuple[str, ...] = (),
+        sandbox_preview: dict[str, Any] | None = None,
     ) -> str:
         audit_id = uuid.uuid4().hex
-        self.append(
-            {
-                "event": "confirm_begin",
-                "audit_id": audit_id,
-                "command": command,
-                "safety_level": safety_level,
-                "matched_rule": matched_rule,
-                "command_source": command_source,
-                "trace_id": trace_id,
-                "batch_hosts": list(batch_hosts),
-            }
-        )
+        record: dict[str, Any] = {
+            "event": "confirm_begin",
+            "audit_id": audit_id,
+            "command": command,
+            "safety_level": safety_level,
+            "matched_rule": matched_rule,
+            "command_source": command_source,
+            "trace_id": trace_id,
+            "batch_hosts": list(batch_hosts),
+        }
+        if sandbox_preview is not None:
+            record["sandbox_preview"] = sandbox_preview
+        self.append(record)
         return audit_id
 
     async def record_decision(

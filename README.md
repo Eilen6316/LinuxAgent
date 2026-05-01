@@ -6,7 +6,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-87.06%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-87.43%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -186,6 +186,10 @@ large-diff pagination, and per-file acceptance for multi-file patches. Full
 diffs are not shown twice; extra review prompts appear only when hidden pages
 exist.
 
+Command confirmation also shows planned sandbox context: requested profile,
+runner, enforcement state, cwd, allowed roots, network policy, and fallback
+reason when the configured runner cannot enforce isolation.
+
 After approval, patch application runs as a transaction. LinuxAgent validates
 target paths before reading file content, rejects symlink path components,
 hardlinks, directories, device files, FIFOs, sockets, oversized targets, and
@@ -266,7 +270,7 @@ Current documented baseline from `make test` on 2026-05-01:
 | Sandbox boundary suite | covered by `make sandbox` |
 | Harness scenarios | 17 HITL / runbook / cluster / sandbox scenarios |
 | Integration smoke tests | 8 passing |
-| Coverage | 87.62% (`--cov-fail-under=80`) |
+| Coverage | 87.43% (`--cov-fail-under=80`) |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 

@@ -73,6 +73,7 @@ def make_confirm_node(
             command_source=(state.get("command_source") or CommandSource.USER).value,
             trace_id=current_trace_id,
             batch_hosts=state.get("batch_hosts", ()),
+            sandbox_preview=state.get("sandbox_preview"),
         )
         payload = build_confirm_payload(state, audit_id)
         response = interrupt(payload)

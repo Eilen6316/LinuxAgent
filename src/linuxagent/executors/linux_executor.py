@@ -16,6 +16,7 @@ from __future__ import annotations
 import shlex
 import sys
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,7 +30,7 @@ from ..interfaces import (
     SafetyResult,
 )
 from ..policy import DEFAULT_POLICY_ENGINE, PolicyDecision, PolicyEngine
-from ..sandbox.models import SandboxRequest, SandboxRunner
+from ..sandbox.models import SandboxRequest, SandboxRunner, SandboxUnavailableError
 from ..sandbox.noop import NoopSandboxRunner
 from ..sandbox.profiles import profile_for_safety
 from .session_whitelist import SessionWhitelist
@@ -103,6 +104,41 @@ class LinuxCommandExecutor(CommandExecutor):
         if decision.level is SafetyLevel.BLOCK:
             return True
         return _has_destructive_capability(decision.capabilities)
+
+    def sandbox_preview(
+        self,
+        command: str,
+        *,
+        source: CommandSource = CommandSource.USER,
+    ) -> dict[str, object]:
+        try:
+            argv = shlex.split(command)
+        except ValueError as exc:
+            return _sandbox_unavailable_record(
+                self._sandbox_runner.name,
+                self._sandbox_config,
+                None,
+                f"shell parse failed: {exc}",
+            )
+        if not argv:
+            return _sandbox_unavailable_record(
+                self._sandbox_runner.name,
+                self._sandbox_config,
+                None,
+                "empty command",
+            )
+        verdict = self.is_safe(command, source=source)
+        request = self._sandbox_request(command, argv, verdict)
+        try:
+            sandbox = self._sandbox_runner.describe(request)
+        except SandboxUnavailableError as exc:
+            return _sandbox_unavailable_record(
+                self._sandbox_runner.name,
+                self._sandbox_config,
+                request,
+                str(exc),
+            )
+        return _sandbox_preview_record(request, sandbox.to_record(), available=True)
 
     async def execute(self, command: str) -> ExecutionResult:
         """Run ``command`` and return its result.
@@ -259,6 +295,55 @@ def _safety_result(decision: PolicyDecision) -> SafetyResult:
         capabilities=decision.capabilities,
         can_whitelist=decision.can_whitelist,
     )
+
+
+def _sandbox_preview_record(
+    request: SandboxRequest,
+    sandbox: Mapping[str, object],
+    *,
+    available: bool,
+) -> dict[str, object]:
+    return {
+        **sandbox,
+        "available": available,
+        "cwd": str(request.cwd),
+        "allowed_roots": [str(root) for root in request.allowed_roots],
+        "network_allowlist": list(request.network_allowlist),
+    }
+
+
+def _sandbox_unavailable_record(
+    runner: object,
+    config: SandboxConfig,
+    request: SandboxRequest | None,
+    reason: str,
+) -> dict[str, object]:
+    if request is None:
+        return {
+            "requested_profile": config.default_profile.value,
+            "runner": str(getattr(runner, "value", runner)),
+            "enabled": config.enabled,
+            "enforced": False,
+            "root": None,
+            "network": config.network.value,
+            "resource_limits": config.limits.to_record(),
+            "fallback_reason": reason,
+            "available": False,
+            "cwd": str(Path.cwd()),
+            "allowed_roots": [str(root) for root in config.allowed_roots],
+            "network_allowlist": list(config.network_allowlist),
+        }
+    sandbox = {
+        "requested_profile": request.profile.value,
+        "runner": str(getattr(runner, "value", runner)),
+        "enabled": config.enabled,
+        "enforced": False,
+        "root": None,
+        "network": request.network.value,
+        "resource_limits": request.resource_limits,
+        "fallback_reason": reason,
+    }
+    return _sandbox_preview_record(request, sandbox, available=False)
 
 
 def _has_destructive_capability(capabilities: tuple[str, ...]) -> bool:

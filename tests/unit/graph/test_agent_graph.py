@@ -200,7 +200,11 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     del result
     snapshot = await graph.aget_state(config)
     interrupts = snapshot.tasks[0].interrupts
-    assert interrupts[0].value["type"] == "confirm_command"
+    payload = interrupts[0].value
+    assert payload["type"] == "confirm_command"
+    assert payload["sandbox_preview"]["runner"] == "noop"
+    assert payload["sandbox_preview"]["enforced"] is False
+    assert payload["sandbox_preview"]["cwd"]
     resumed = await graph.ainvoke(
         Command(resume={"decision": "yes", "latency_ms": 1}), config=config
     )
@@ -212,6 +216,8 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     trace_ids = {record["trace_id"] for record in audit_records}
     assert len(trace_ids) == 1
     assert None not in trace_ids
+    begin_record = next(record for record in audit_records if record["event"] == "confirm_begin")
+    assert begin_record["sandbox_preview"]["runner"] == "noop"
 
 
 async def test_graph_allow_all_is_scoped_to_conversation_state(tmp_path) -> None:

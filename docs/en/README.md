@@ -7,7 +7,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-87.06%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-87.43%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -60,13 +60,13 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Read-only workspace tools | The planner can inspect real files through `read_file`, `list_dir`, and `search_files` before proposing a patch |
 | Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
 | Runbooks | 11 YAML runbooks supplied as planner guidance, not pre-LLM hard routes |
-| Human-in-the-Loop | LangGraph `interrupt()` + session resume for controlled operator workflows |
+| Human-in-the-Loop | LangGraph `interrupt()` + session resume; confirmations show policy and planned sandbox context |
 | Conversation permissions | Approved SAFE commands can skip confirmation only within the same conversation thread, including `/resume`; destructive commands never enter |
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | Current documented baseline: 396 unit tests passing at 87.06% coverage, plus 12 HITL YAML scenarios, 8 integration smoke tests, and optional Anthropic compatibility verification |
+| Testability | Current documented baseline: 516 unit tests passing at 87.43% coverage, plus HITL YAML scenarios, 8 integration smoke tests, and optional Anthropic compatibility verification |
 
 ---
 
@@ -237,7 +237,7 @@ batch confirmation, and audit metadata.
 | Aspect | Previous | Current `v4` |
 |---|---|---|
 | Unit tests | 0 | **Current documented baseline: 516 passing; Anthropic compatibility can be verified when the extra is installed** |
-| Coverage | 0 | **87.62%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
+| Coverage | 0 | **87.43%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI checks command, SSH, HITL, code-structure, and sandbox bypass red lines |
 
@@ -489,6 +489,9 @@ linuxagent ❯ list files in the current directory
 │ Safety   CONFIRM                    │
 │ Rule     LLM_FIRST_RUN              │
 │ Source   llm                        │
+│ Sandbox  profile=system_inspect     │
+│          runner=noop enforced=no    │
+│ Network  inherit                    │
 ╰──────────────────────────────────────╯
 Allow this operation? [y/N]: y
 
