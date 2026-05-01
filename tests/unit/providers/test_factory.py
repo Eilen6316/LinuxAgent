@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from linuxagent.config.models import APIConfig, LLMProviderName
+from linuxagent.providers import openai as openai_module
 from linuxagent.providers import provider_factory
 from linuxagent.providers.anthropic import AnthropicProvider, is_available
 from linuxagent.providers.deepseek import DeepSeekProvider
@@ -26,6 +27,10 @@ def test_openai_route() -> None:
     assert isinstance(provider_factory(_cfg(LLMProviderName.OPENAI)), OpenAIProvider)
 
 
+def test_openai_compatible_route() -> None:
+    assert isinstance(provider_factory(_cfg(LLMProviderName.OPENAI_COMPATIBLE)), OpenAIProvider)
+
+
 def test_deepseek_route() -> None:
     provider = provider_factory(_cfg(LLMProviderName.DEEPSEEK))
     assert isinstance(provider, DeepSeekProvider)
@@ -44,8 +49,30 @@ def test_anthropic_route_when_available() -> None:
 
 def test_anthropic_raises_when_extra_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     # Simulate missing extra regardless of actual environment.
-    monkeypatch.setattr(
-        "linuxagent.providers.factory._anthropic_available", lambda: False
-    )
+    monkeypatch.setattr("linuxagent.providers.factory._anthropic_available", lambda: False)
     with pytest.raises(ProviderUnsupportedError, match="anthropic"):
         provider_factory(_cfg(LLMProviderName.ANTHROPIC))
+
+
+def test_openai_provider_uses_configured_token_parameter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(openai_module, "ChatOpenAI", _FakeChatOpenAI)
+    cfg = APIConfig(
+        provider=LLMProviderName.OPENAI_COMPATIBLE,
+        api_key="sk-test",
+        model="relay-model",
+        token_parameter="max_tokens",  # noqa: S106
+        max_tokens=321,
+    )
+
+    OpenAIProvider(cfg)
+
+    assert captured["model_kwargs"] == {"max_tokens": 321}
+    assert "max_completion_tokens" not in captured

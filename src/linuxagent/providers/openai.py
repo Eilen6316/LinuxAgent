@@ -20,13 +20,21 @@ _OPENAI_ERROR_MAP: dict[str, type[ProviderError]] = {
     "APITimeoutError": ProviderTimeoutError,
     "APIConnectionError": ProviderConnectionError,
 }
+LEGACY_LIMIT_PARAMETER = "max_tokens"
 
 
 def _build_chat_model(config: APIConfig) -> ChatOpenAI:
     # ``max_retries=0`` hands retry control to BaseLLMProvider.
-    # ``max_completion_tokens`` is the forward-compatible field on OpenAI's API;
-    # OpenAI-compatible endpoints that still want legacy ``max_tokens`` can be
-    # configured per-provider later (see DeepSeekProvider).
+    if config.token_parameter == LEGACY_LIMIT_PARAMETER:
+        return ChatOpenAI(
+            model=config.model,
+            api_key=config.api_key,
+            base_url=config.base_url,
+            timeout=config.timeout,
+            temperature=config.temperature,
+            max_retries=0,
+            model_kwargs={LEGACY_LIMIT_PARAMETER: config.max_tokens},
+        )
     return ChatOpenAI(
         model=config.model,
         api_key=config.api_key,

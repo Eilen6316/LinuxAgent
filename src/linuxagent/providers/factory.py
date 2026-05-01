@@ -14,7 +14,7 @@ from .openai import OpenAIProvider
 def provider_factory(config: APIConfig) -> BaseLLMProvider:
     """Return a provider instance matching ``config.provider``."""
     match config.provider:
-        case LLMProviderName.OPENAI:
+        case LLMProviderName.OPENAI | LLMProviderName.OPENAI_COMPATIBLE:
             return OpenAIProvider(config)
         case LLMProviderName.DEEPSEEK:
             return DeepSeekProvider(config)

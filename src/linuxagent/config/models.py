@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
+DEFAULT_OUTPUT_LIMIT_PARAMETER: Literal["max_completion_tokens"] = "max_completion_tokens"
 
 
 def _expand_path(path: Path) -> Path:
@@ -35,6 +36,7 @@ UserPathTuple = Annotated[tuple[Path, ...], AfterValidator(_expand_path_tuple)]
 
 class LLMProviderName(StrEnum):
     OPENAI = "openai"
+    OPENAI_COMPATIBLE = "openai_compatible"
     DEEPSEEK = "deepseek"
     ANTHROPIC = "anthropic"
 
@@ -51,6 +53,14 @@ class APIConfig(BaseModel):
     max_retries: int = Field(default=3, ge=0, le=10)
     temperature: float = Field(default=0.3, ge=0, le=2)
     max_tokens: int = Field(default=2048, ge=1, le=65536)
+    token_parameter: Literal["max_completion_tokens", "max_tokens"] = DEFAULT_OUTPUT_LIMIT_PARAMETER
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def _normalize_provider(cls, value: Any) -> Any:
+        if value == "openai-compatible":
+            return LLMProviderName.OPENAI_COMPATIBLE
+        return value
 
     def require_key(self) -> str:
         """Return the secret value, or raise if unset."""

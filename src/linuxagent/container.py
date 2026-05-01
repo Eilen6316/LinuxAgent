@@ -238,7 +238,10 @@ class Container:
         override = self._config.intelligence.tools_enabled
         if override is not None:
             return override
-        return self._config.api.provider is LLMProviderName.OPENAI
+        return self._config.api.provider in (
+            LLMProviderName.OPENAI,
+            LLMProviderName.OPENAI_COMPATIBLE,
+        )
 
     def tools(self) -> list[BaseTool]:
         return self._cached(

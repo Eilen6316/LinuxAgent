@@ -15,7 +15,8 @@
 #   5. configs/default.yaml                   (packaged, lowest)
 
 api:
-  # Provider: openai | deepseek | anthropic
+  # Provider: openai | openai_compatible | deepseek | anthropic
+  # Use openai_compatible for API relays or third-party OpenAI-format endpoints.
   provider: deepseek
   # OpenAI-compatible endpoints include DeepSeek, Together, local Ollama, etc.
   base_url: https://api.deepseek.com/v1
@@ -27,6 +28,16 @@ api:
   max_retries: 3
   temperature: 0.3
   max_tokens: 2048
+  # Token limit parameter name. Some API relays and older OpenAI-compatible
+  # backends require max_tokens; newer OpenAI models use max_completion_tokens.
+  token_parameter: max_completion_tokens
+
+  # Example API relay configuration:
+  # provider: openai_compatible
+  # base_url: https://relay.example.com/v1
+  # model: gpt-4o-mini
+  # api_key: "sk-REPLACE-ME"
+  # token_parameter: max_tokens
 
 security:
   command_timeout: 30.0

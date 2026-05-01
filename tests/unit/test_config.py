@@ -59,6 +59,29 @@ def test_invalid_provider_rejected() -> None:
         AppConfig.model_validate({"api": {"provider": "grok-nope"}})
 
 
+def test_openai_compatible_provider_and_token_parameter() -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "api": {
+                "provider": "openai-compatible",
+                "base_url": "https://relay.example.com/v1",
+                "model": "relay-model",
+                "token_parameter": "max_tokens",
+            }
+        }
+    )
+
+    assert cfg.api.provider is LLMProviderName.OPENAI_COMPATIBLE
+    assert cfg.api.base_url == "https://relay.example.com/v1"
+    assert cfg.api.model == "relay-model"
+    assert cfg.api.token_parameter == "max_tokens"  # noqa: S105
+
+
+def test_invalid_token_parameter_rejected() -> None:
+    with pytest.raises(ValidationError, match="token_parameter"):
+        AppConfig.model_validate({"api": {"token_parameter": "tokens"}})
+
+
 def test_negative_timeout_rejected() -> None:
     with pytest.raises(ValidationError, match="timeout"):
         AppConfig.model_validate({"api": {"timeout": -1}})

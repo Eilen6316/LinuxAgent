@@ -2,7 +2,7 @@
 # DO NOT put real secrets here. User overrides live in ./config.yaml (gitignored, chmod 600).
 
 api:
-  provider: deepseek          # openai | deepseek | anthropic
+  provider: deepseek          # openai | openai_compatible | deepseek | anthropic
   base_url: https://api.deepseek.com/v1
   model: deepseek-chat
   api_key: ""                 # MUST be set in user ./config.yaml
@@ -11,6 +11,7 @@ api:
   max_retries: 3
   temperature: 0.3
   max_tokens: 2048
+  token_parameter: max_completion_tokens  # max_completion_tokens | max_tokens
 
 security:
   command_timeout: 30.0
