@@ -14,11 +14,18 @@ from .openai import OpenAIProvider
 def provider_factory(config: APIConfig) -> BaseLLMProvider:
     """Return a provider instance matching ``config.provider``."""
     match config.provider:
-        case LLMProviderName.OPENAI | LLMProviderName.OPENAI_COMPATIBLE:
+        case (
+            LLMProviderName.OPENAI
+            | LLMProviderName.OPENAI_COMPATIBLE
+            | LLMProviderName.GLM
+            | LLMProviderName.KIMI
+            | LLMProviderName.MINIMAX
+            | LLMProviderName.GEMINI
+        ):
             return OpenAIProvider(config)
         case LLMProviderName.DEEPSEEK:
             return DeepSeekProvider(config)
-        case LLMProviderName.ANTHROPIC:
+        case LLMProviderName.ANTHROPIC | LLMProviderName.ANTHROPIC_COMPATIBLE:
             if not _anthropic_available():
                 raise ProviderUnsupportedError(
                     "Anthropic support requires the optional extra: "

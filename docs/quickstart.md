@@ -25,6 +25,21 @@ api:
   api_key: "your-real-key"
 ```
 
+For API relays or other OpenAI-compatible endpoints:
+
+```yaml
+api:
+  provider: openai_compatible
+  base_url: https://relay.example.com/v1
+  model: gpt-4o-mini
+  api_key: "your-real-key"
+  token_parameter: max_tokens
+```
+
+Provider shortcuts `glm`, `kimi`, `minimax`, and `gemini` use the same
+OpenAI-compatible path. Anthropic-format relays can use
+`provider: anthropic_compatible` after installing the Anthropic extra.
+
 ## 3. Validate
 
 ```bash

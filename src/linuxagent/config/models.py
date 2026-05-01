@@ -38,7 +38,12 @@ class LLMProviderName(StrEnum):
     OPENAI = "openai"
     OPENAI_COMPATIBLE = "openai_compatible"
     DEEPSEEK = "deepseek"
+    GLM = "glm"
+    KIMI = "kimi"
+    MINIMAX = "minimax"
+    GEMINI = "gemini"
     ANTHROPIC = "anthropic"
+    ANTHROPIC_COMPATIBLE = "anthropic_compatible"
 
 
 class APIConfig(BaseModel):
@@ -60,6 +65,12 @@ class APIConfig(BaseModel):
     def _normalize_provider(cls, value: Any) -> Any:
         if value == "openai-compatible":
             return LLMProviderName.OPENAI_COMPATIBLE
+        if value == "anthropic-compatible":
+            return LLMProviderName.ANTHROPIC_COMPATIBLE
+        if value == "moonshot":
+            return LLMProviderName.KIMI
+        if value == "zhipu":
+            return LLMProviderName.GLM
         return value
 
     def require_key(self) -> str:

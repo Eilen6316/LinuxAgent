@@ -77,6 +77,24 @@ def test_openai_compatible_provider_and_token_parameter() -> None:
     assert cfg.api.token_parameter == "max_tokens"  # noqa: S105
 
 
+@pytest.mark.parametrize(
+    ("raw_provider", "normalized"),
+    [
+        ("glm", LLMProviderName.GLM),
+        ("zhipu", LLMProviderName.GLM),
+        ("kimi", LLMProviderName.KIMI),
+        ("moonshot", LLMProviderName.KIMI),
+        ("minimax", LLMProviderName.MINIMAX),
+        ("gemini", LLMProviderName.GEMINI),
+        ("anthropic-compatible", LLMProviderName.ANTHROPIC_COMPATIBLE),
+    ],
+)
+def test_compatible_provider_aliases(raw_provider: str, normalized: LLMProviderName) -> None:
+    cfg = AppConfig.model_validate({"api": {"provider": raw_provider}})
+
+    assert cfg.api.provider is normalized
+
+
 def test_invalid_token_parameter_rejected() -> None:
     with pytest.raises(ValidationError, match="token_parameter"):
         AppConfig.model_validate({"api": {"token_parameter": "tokens"}})

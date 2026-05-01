@@ -15,8 +15,8 @@
 #   5. configs/default.yaml                   (packaged, lowest)
 
 api:
-  # Provider: openai | openai_compatible | deepseek | anthropic
-  # Use openai_compatible for API relays or third-party OpenAI-format endpoints.
+  # Provider: openai | openai_compatible | deepseek | glm | kimi | minimax | gemini | anthropic | anthropic_compatible
+  # Use *_compatible providers for API relays or third-party compatible endpoints.
   provider: deepseek
   # OpenAI-compatible endpoints include DeepSeek, Together, local Ollama, etc.
   base_url: https://api.deepseek.com/v1
@@ -38,6 +38,18 @@ api:
   # model: gpt-4o-mini
   # api_key: "sk-REPLACE-ME"
   # token_parameter: max_tokens
+
+  # Example Anthropic-compatible relay configuration:
+  # provider: anthropic_compatible
+  # base_url: https://anthropic-relay.example.com
+  # model: claude-3-5-sonnet-latest
+  # api_key: "sk-ant-REPLACE-ME"
+
+  # Provider shortcuts using OpenAI-compatible protocols:
+  # GLM/Zhipu:   provider: glm      base_url: https://open.bigmodel.cn/api/paas/v4
+  # Kimi:        provider: kimi     base_url: https://api.moonshot.ai/v1
+  # MiniMax:     provider: minimax  base_url: https://api.minimax.io/v1
+  # Gemini:      provider: gemini   base_url: https://generativelanguage.googleapis.com/v1beta/openai/
 
 security:
   command_timeout: 30.0

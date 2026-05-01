@@ -55,6 +55,22 @@ api:
   api_key: "replace-me"
 ```
 
+For API relays or third-party OpenAI-compatible endpoints, use
+`openai_compatible` or one of the shortcuts `glm`, `kimi`, `minimax`, or
+`gemini`:
+
+```yaml
+api:
+  provider: openai_compatible
+  base_url: https://relay.example.com/v1
+  model: gpt-4o-mini
+  api_key: "replace-me"
+  token_parameter: max_tokens
+```
+
+Anthropic-format relays can use `provider: anthropic_compatible` with their own
+`base_url`.
+
 Run:
 
 ```bash
@@ -143,6 +159,8 @@ By default, file patch reads and writes are limited to the current workspace and
 `/tmp` through `file_patch.allow_roots`. Sensitive roots such as `/etc` and SSH
 key directories are highlighted as high risk, and permission changes such as
 `0755` for generated scripts appear explicitly in the confirmation panel.
+Automatic patch repair defaults to two rounds and can be tuned with
+`file_patch.max_repair_attempts` (`0` disables automatic patch repair).
 
 ## Safety Model
 

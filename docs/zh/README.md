@@ -295,7 +295,22 @@ api:
   api_key: "sk-replace-me"   # 必填
 ```
 
-其他字段全部用默认值即可（默认 provider 为 DeepSeek，可改为 `openai` / `anthropic`）。
+其他字段全部用默认值即可（默认 provider 为 DeepSeek，可改为 `openai` / `openai_compatible` / `glm` / `kimi` / `minimax` / `gemini` / `anthropic` / `anthropic_compatible`）。
+
+API 中转站或第三方 OpenAI 兼容端点可用 `openai_compatible`，也可用
+`glm` / `kimi` / `minimax` / `gemini` 快捷 provider：
+
+```yaml
+api:
+  provider: openai_compatible
+  base_url: https://relay.example.com/v1
+  model: gpt-4o-mini
+  api_key: "sk-replace-me"
+  token_parameter: max_tokens
+```
+
+Anthropic 格式中转站可用 `provider: anthropic_compatible` 并填写自己的
+`base_url`。
 
 ### 验证配置
 
@@ -310,10 +325,11 @@ linuxagent check
 
 | 段 | 字段 | 默认值 | 说明 |
 |---|---|---|---|
-| `api` | `provider` | `deepseek` | 可选 `openai` / `deepseek` / `anthropic` |
+| `api` | `provider` | `deepseek` | 可选 `openai` / `openai_compatible` / `deepseek` / `glm` / `kimi` / `minimax` / `gemini` / `anthropic` / `anthropic_compatible` |
 | `api` | `base_url` | `https://api.deepseek.com/v1` | OpenAI 兼容端点 |
 | `api` | `model` | `deepseek-chat` | 模型名 |
 | `api` | `api_key` | `""` | **必填**；`SecretStr`，不出现在 repr/日志 |
+| `api` | `token_parameter` | `max_completion_tokens` | API 中转站或旧兼容后端可设为 `max_tokens` |
 | `api` | `timeout` | `30.0` | 单次请求超时（秒） |
 | `api` | `stream_timeout` | `60.0` | 流式整体超时（秒） |
 | `api` | `max_retries` | `3` | 指数退避重试次数 |
@@ -323,6 +339,7 @@ linuxagent check
 | `file_patch` | `allow_roots` | `[".", "/tmp"]` | 文件 patch 允许读写的根目录 |
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | 命中后以高风险 diff 确认展示 |
 | `file_patch` | `allow_permission_changes` | `true` | 是否允许 patch 计划声明权限位变更 |
+| `file_patch` | `max_repair_attempts` | `2` | 自动修复 FilePatchPlan 的轮数；`0` 表示关闭自动 patch repair |
 | `cluster` | `batch_confirm_threshold` | `2` | 批量确认阈值（主机数） |
 | `cluster` | `hosts` | `[]` | 集群主机列表 |
 | `audit` | `path` | `~/.linuxagent/audit.log` | 审计日志位置；**审计无法关闭** |
@@ -594,7 +611,10 @@ A：不能。`AuditConfig` 只有 `path` 字段，没有 `enabled`。
 A：在代码里构造 `SSHManager(config, allow_unknown_hosts=True)`；当前 CLI 暂未暴露此开关，避免误用。
 
 **Q：可以用自己的 OpenAI 兼容网关吗？**
-A：可以。把 `api.base_url` 换成你的网关地址，`api.model` 换成它支持的模型名即可。
+A：可以。设置 `api.provider: openai_compatible`，把 `api.base_url` 换成网关地址，`api.model` 换成它支持的模型名。`glm` / `kimi` / `minimax` / `gemini` 也走同一条 OpenAI-compatible 路径。如果网关不接受 `max_completion_tokens`，设置 `api.token_parameter: max_tokens`。
+
+**Q：可以用 Anthropic 兼容网关吗？**
+A：可以。安装 Anthropic extra 后，设置 `api.provider: anthropic_compatible`、`api.base_url`、`api.model` 和 `api.api_key`。
 
 ---
 

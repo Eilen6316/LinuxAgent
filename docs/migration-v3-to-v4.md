@@ -41,6 +41,21 @@ api:
   api_key: "replace-me"
 ```
 
+For API relays or other OpenAI-compatible endpoints:
+
+```yaml
+api:
+  provider: openai_compatible
+  base_url: https://relay.example.com/v1
+  model: gpt-4o-mini
+  api_key: "replace-me"
+  token_parameter: max_tokens
+```
+
+Provider shortcuts `glm`, `kimi`, `minimax`, and `gemini` use the same
+OpenAI-compatible path. Anthropic-format relays can use
+`provider: anthropic_compatible` after installing the Anthropic extra.
+
 Do not use `.env` for secrets. v4 only allows environment variables to point to
 configuration paths, not to carry secret values.
 

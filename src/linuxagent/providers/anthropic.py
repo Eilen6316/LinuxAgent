@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..config.models import APIConfig
+from ..config.models import APIConfig, LLMProviderName
 from .base import BaseLLMProvider
 from .errors import (
     ProviderAuthError,
@@ -40,6 +40,9 @@ def _build_chat_model(config: APIConfig) -> Any:
         raise ProviderUnsupportedError(
             "Anthropic support requires the optional extra: pip install 'linuxagent[anthropic]'"
         )
+    kwargs: dict[str, Any] = {}
+    if config.provider is LLMProviderName.ANTHROPIC_COMPATIBLE:
+        kwargs["anthropic_api_url"] = config.base_url
     return ChatAnthropic(
         model_name=config.model,
         api_key=config.api_key,
@@ -47,6 +50,7 @@ def _build_chat_model(config: APIConfig) -> Any:
         temperature=config.temperature,
         max_tokens_to_sample=config.max_tokens,
         stop=None,
+        **kwargs,
     )
 
 

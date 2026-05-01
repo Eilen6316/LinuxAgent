@@ -40,6 +40,21 @@ api:
   api_key: "replace-me"
 ```
 
+API 中转站或其他 OpenAI 兼容端点：
+
+```yaml
+api:
+  provider: openai_compatible
+  base_url: https://relay.example.com/v1
+  model: gpt-4o-mini
+  api_key: "replace-me"
+  token_parameter: max_tokens
+```
+
+`glm` / `kimi` / `minimax` / `gemini` 快捷 provider 走同一条
+OpenAI-compatible 路径。Anthropic 格式中转站可在安装 Anthropic extra 后使用
+`provider: anthropic_compatible`。
+
 不要用 `.env` 存密钥。v4 只允许环境变量指向配置路径，不承载密钥值。
 
 4. 使用集群功能前先登记 SSH 主机。
