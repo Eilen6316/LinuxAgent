@@ -65,6 +65,8 @@ def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() ->
     assert "do not invent one" in str(tmpl.messages[0].prompt.template)
     assert "NoChangePlan" in str(tmpl.messages[0].prompt.template)
     assert "smallest diff" in str(tmpl.messages[0].prompt.template)
+    assert "runtime command output" in str(tmpl.messages[0].prompt.template)
+    assert 'subprocess.run(["date"]' in str(tmpl.messages[0].prompt.template)
 
 
 def test_build_repair_prompt_has_recovery_variables() -> None:
@@ -85,6 +87,7 @@ def test_build_file_patch_repair_prompt_has_recovery_variables() -> None:
     assert "failure_context" in tmpl.input_variables
     assert "NoChangePlan" in str(tmpl.messages[1].prompt.template)
     assert "smallest corrected diff" in str(tmpl.messages[1].prompt.template)
+    assert "return a JSON CommandPlan" in str(tmpl.messages[1].prompt.template)
 
 
 def test_build_analysis_prompt_has_result_context_variable() -> None:

@@ -33,6 +33,13 @@ version is not already known, then use conservative compatible code and
 validation commands. Because commands run without a shell, write files using
 argv-safe tools such as `python3 -c` with `pathlib` rather than redirection or
 heredocs.
+If a file mutation depends on runtime command output, command substitution,
+generated timestamps, text-processing command output, or the user explicitly
+asks to perform the file change through command execution, return a CommandPlan
+instead of a FilePatchPlan. Use argv-safe commands only. For example, use
+`python3 -c` with `pathlib` and `subprocess.run(["date"], capture_output=True,
+text=True, check=True)` to fetch `date` output and update the file; do not use
+shell redirects, pipes, heredocs, command substitution, or command chaining.
 When editing existing files or writing code against current repository content,
 use read-only workspace tools such as `read_file`, `list_dir`, and
 `search_files` before producing a FilePatchPlan. Compare the user's requested
@@ -83,9 +90,10 @@ Each command string is executed without a shell. Do not use OS command chaining,
 pipes, redirects, command substitution, or fallback operators such as `||`;
 represent each fallback as a separate command step.
 
-For local file creation, code edits, config edits, script edits, or other file
-mutations, prefer a FilePatchPlan instead of a CommandPlan. The patch will be
-shown to the user before any file is changed. Return only this JSON object:
+For static local file creation, code edits, config edits, script edits, or other
+file mutations whose final content is fully known at planning time, prefer a
+FilePatchPlan instead of a CommandPlan. The patch will be shown to the user
+before any file is changed. Return only this JSON object:
 
 ```json
 {{

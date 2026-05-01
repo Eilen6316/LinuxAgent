@@ -24,9 +24,17 @@ only a JSON NoChangePlan object and do not force a patch:
 }}
 ```
 
-Otherwise return only a corrected JSON FilePatchPlan object. Do not return a
-CommandPlan, markdown, prose, or shell commands. Use exactly this top-level
-shape:
+If the original request depends on runtime command output, generated timestamps,
+text-processing command output, or explicitly asks to use command execution for
+the file mutation, return a JSON CommandPlan instead of another FilePatchPlan.
+Use argv-safe commands only. For example, use `python3 -c` with `pathlib` and
+`subprocess.run(["date"], capture_output=True, text=True, check=True)` to fetch
+`date` output and update the file; do not use shell redirects, pipes, heredocs,
+command substitution, or command chaining. The CommandPlan will still go through
+policy, HITL confirmation, execution, and audit.
+
+Otherwise return only a corrected JSON FilePatchPlan object. Do not return
+markdown, prose, or raw shell commands. Use exactly this top-level shape:
 
 ```json
 {{

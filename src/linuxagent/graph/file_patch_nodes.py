@@ -15,6 +15,8 @@ from ..audit import AuditLog
 from ..config.models import FilePatchConfig
 from ..interfaces import CommandSource, ExecutionResult, LLMProvider
 from ..plans import (
+    CommandPlan,
+    CommandPlanParseError,
     FilePatchApplyError,
     FilePatchPlan,
     FilePatchPlanParseError,
@@ -23,6 +25,7 @@ from ..plans import (
     NoChangePlanParseError,
     apply_file_patch_plan,
     evaluate_file_patch_plan,
+    parse_command_plan,
     parse_file_patch_plan,
     parse_no_change_plan,
     select_file_patch_plan_files,
@@ -40,7 +43,7 @@ from .state import AgentState
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 MAX_PATCH_CONTEXT_LINES = 120
 MAX_PATCH_CONTEXT_CHARS = 20_000
-MAX_FILE_PATCH_REPAIR_ATTEMPTS = 2
+DEFAULT_FILE_PATCH_REPAIR_ATTEMPTS = 2
 
 
 def make_file_patch_confirm_node(audit: AuditLog, config: FilePatchConfig) -> Node:
@@ -51,16 +54,7 @@ def make_file_patch_confirm_node(audit: AuditLog, config: FilePatchConfig) -> No
             return Command(goto="respond_block", update=_patch_error(current_trace_id, "no patch"))
         safety = _evaluate_patch_safety(state, config)
         if not safety.allowed:
-            if _should_repair_patch_safety_failure(state, safety):
-                reason = "; ".join(safety.reasons)
-                return Command(
-                    goto="repair_file_patch",
-                    update=_patch_error(current_trace_id, reason),
-                )
-            return Command(
-                goto="respond_block",
-                update=_patch_error(current_trace_id, "; ".join(safety.reasons)),
-            )
+            return _patch_safety_failure_command(state, safety, config, current_trace_id)
         audit_id = await audit.begin(
             command=state.get("pending_command"),
             safety_level="CONFIRM",
@@ -92,6 +86,22 @@ def make_file_patch_confirm_node(audit: AuditLog, config: FilePatchConfig) -> No
     return file_patch_confirm_node
 
 
+def _patch_safety_failure_command(
+    state: AgentState,
+    safety: FilePatchSafetyReport,
+    config: FilePatchConfig,
+    current_trace_id: str,
+) -> Command[Any]:
+    reason = "; ".join(safety.reasons)
+    update = {
+        **_patch_error(current_trace_id, reason),
+        "file_patch_max_repair_attempts": config.max_repair_attempts,
+    }
+    if _should_repair_patch_safety_failure(state, safety, config):
+        return Command(goto="repair_file_patch", update=update)
+    return Command(goto="respond_block", update=update)
+
+
 def make_apply_file_patch_node(audit: AuditLog, config: FilePatchConfig) -> Node:
     async def apply_file_patch_node(state: AgentState) -> AgentState:
         current_trace_id = trace_id(state)
@@ -110,7 +120,11 @@ def make_apply_file_patch_node(audit: AuditLog, config: FilePatchConfig) -> Node
                 duration=result.duration,
                 trace_id=current_trace_id,
             )
-        return {"trace_id": current_trace_id, "execution_result": result}
+        return {
+            "trace_id": current_trace_id,
+            "execution_result": result,
+            "file_patch_max_repair_attempts": config.max_repair_attempts,
+        }
 
     return apply_file_patch_node
 
@@ -148,6 +162,7 @@ def make_repair_file_patch_node(
                 telemetry,
             )
         except (
+            CommandPlanParseError,
             FilePatchApplyError,
             FilePatchPlanParseError,
             NoChangePlanParseError,
@@ -157,13 +172,23 @@ def make_repair_file_patch_node(
                 goto="respond_block",
                 update=_patch_error(current_trace_id, f"file patch repair failed: {exc}"),
             )
-        if isinstance(plan, NoChangePlan):
-            return Command(goto="respond", update=_repair_no_change_update(current_trace_id, plan))
-        return Command(
-            goto="file_patch_confirm", update=_repair_update(state, current_trace_id, plan)
-        )
+        return _repair_success_command(state, current_trace_id, plan)
 
     return repair_file_patch_node
+
+
+def _repair_success_command(
+    state: AgentState,
+    current_trace_id: str,
+    plan: CommandPlan | FilePatchPlan | NoChangePlan,
+) -> Command[Any]:
+    if isinstance(plan, NoChangePlan):
+        return Command(goto="respond", update=_repair_no_change_update(current_trace_id, plan))
+    if isinstance(plan, CommandPlan):
+        return Command(
+            goto="safety_check", update=_repair_command_update(state, current_trace_id, plan)
+        )
+    return Command(goto="file_patch_confirm", update=_repair_update(state, current_trace_id, plan))
 
 
 async def _complete_valid_repair_plan(
@@ -174,12 +199,12 @@ async def _complete_valid_repair_plan(
     current_trace_id: str,
     proposed: str,
     telemetry: TelemetryRecorder | None,
-) -> FilePatchPlan | NoChangePlan:
+) -> CommandPlan | FilePatchPlan | NoChangePlan:
     current = proposed
-    for _ in _remaining_internal_repair_attempts(state):
+    for _ in _remaining_internal_repair_attempts(state, config):
         try:
             plan = _parse_repair_candidate(current)
-            if isinstance(plan, NoChangePlan):
+            if isinstance(plan, CommandPlan | NoChangePlan):
                 return plan
             _ensure_repair_plan_is_valid(plan, config)
             return plan
@@ -194,32 +219,37 @@ async def _complete_valid_repair_plan(
                 provider, prompt, state, config, current_trace_id, current, str(exc), telemetry
             )
     plan = _parse_repair_candidate(current)
-    if isinstance(plan, NoChangePlan):
+    if isinstance(plan, CommandPlan | NoChangePlan):
         return plan
     _ensure_repair_plan_is_valid(plan, config)
     return plan
 
 
-def _parse_repair_candidate(candidate: str) -> FilePatchPlan | NoChangePlan:
+def _parse_repair_candidate(candidate: str) -> CommandPlan | FilePatchPlan | NoChangePlan:
     try:
         return parse_no_change_plan(candidate)
     except NoChangePlanParseError as no_change_exc:
         try:
-            return parse_file_patch_plan(candidate)
-        except FilePatchPlanParseError as patch_exc:
-            raise FilePatchPlanParseError(
-                "repair response must be a JSON FilePatchPlan or NoChangePlan object; "
-                f"NoChangePlan error: {no_change_exc}; FilePatchPlan error: {patch_exc}"
-            ) from patch_exc
+            return parse_command_plan(candidate)
+        except CommandPlanParseError as command_exc:
+            try:
+                return parse_file_patch_plan(candidate)
+            except FilePatchPlanParseError as patch_exc:
+                raise FilePatchPlanParseError(
+                    "repair response must be a JSON CommandPlan, FilePatchPlan, "
+                    "or NoChangePlan object; "
+                    f"NoChangePlan error: {no_change_exc}; "
+                    f"CommandPlan error: {command_exc}; FilePatchPlan error: {patch_exc}"
+                ) from patch_exc
 
 
 def _ensure_repair_plan_is_valid(plan: FilePatchPlan, config: FilePatchConfig) -> None:
     evaluate_file_patch_plan(plan, config)
 
 
-def _remaining_internal_repair_attempts(state: AgentState) -> range:
+def _remaining_internal_repair_attempts(state: AgentState, config: FilePatchConfig) -> range:
     used = state.get("file_patch_repair_attempts", 0)
-    remaining = max(MAX_FILE_PATCH_REPAIR_ATTEMPTS - used, 1)
+    remaining = max(config.max_repair_attempts - used, 1)
     return range(remaining)
 
 
@@ -387,18 +417,24 @@ def should_repair_file_patch(state: AgentState) -> bool:
         state.get("file_patch_plan") is not None
         and result is not None
         and result.exit_code != 0
-        and state.get("file_patch_repair_attempts", 0) < MAX_FILE_PATCH_REPAIR_ATTEMPTS
+        and state.get("file_patch_repair_attempts", 0) < _max_repair_attempts(state)
     )
 
 
-def _should_repair_patch_safety_failure(state: AgentState, safety: FilePatchSafetyReport) -> bool:
+def _should_repair_patch_safety_failure(
+    state: AgentState, safety: FilePatchSafetyReport, config: FilePatchConfig
+) -> bool:
     reasons = "; ".join(safety.reasons)
     return (
         not safety.blocked_paths
         and not safety.high_risk_paths
-        and state.get("file_patch_repair_attempts", 0) < MAX_FILE_PATCH_REPAIR_ATTEMPTS
+        and state.get("file_patch_repair_attempts", 0) < config.max_repair_attempts
         and _is_repairable_patch_error(reasons)
     )
+
+
+def _max_repair_attempts(state: AgentState) -> int:
+    return state.get("file_patch_max_repair_attempts", DEFAULT_FILE_PATCH_REPAIR_ATTEMPTS)
 
 
 def _is_repairable_patch_error(reasons: str) -> bool:
@@ -416,6 +452,7 @@ def _repair_update(state: AgentState, current_trace_id: str, plan: FilePatchPlan
         "file_patch_plan": plan,
         "file_patch_request_intent": state.get("file_patch_request_intent", "unknown"),
         "file_patch_repair_attempts": state.get("file_patch_repair_attempts", 0) + 1,
+        "file_patch_max_repair_attempts": _max_repair_attempts(state),
         "file_patch_selected_files": (),
         "plan_error": None,
         "command_source": CommandSource.LLM,
@@ -434,6 +471,7 @@ def _repair_no_change_update(current_trace_id: str, plan: NoChangePlan) -> Agent
         "file_patch_plan": None,
         "file_patch_request_intent": "unknown",
         "file_patch_repair_attempts": 0,
+        "file_patch_max_repair_attempts": DEFAULT_FILE_PATCH_REPAIR_ATTEMPTS,
         "file_patch_selected_files": (),
         "plan_error": None,
         "safety_reason": None,
@@ -442,6 +480,35 @@ def _repair_no_change_update(current_trace_id: str, plan: NoChangePlan) -> Agent
         "user_confirmed": False,
         "audit_id": None,
         "execution_result": None,
+    }
+
+
+def _repair_command_update(
+    state: AgentState, current_trace_id: str, plan: CommandPlan
+) -> AgentState:
+    return {
+        "trace_id": current_trace_id,
+        "pending_command": plan.primary.command,
+        "command_plan": plan,
+        "file_patch_plan": None,
+        "file_patch_request_intent": "unknown",
+        "file_patch_repair_attempts": 0,
+        "file_patch_max_repair_attempts": _max_repair_attempts(state),
+        "file_patch_selected_files": (),
+        "selected_runbook": None,
+        "runbook_step_index": 0,
+        "plan_result_start_index": len(state.get("runbook_results", ())),
+        "plan_error": None,
+        "command_source": CommandSource.LLM,
+        "selected_hosts": (),
+        "direct_response": False,
+        "safety_level": None,
+        "matched_rule": None,
+        "safety_reason": None,
+        "safety_capabilities": (),
+        "batch_hosts": (),
+        "user_confirmed": False,
+        "audit_id": None,
     }
 
 

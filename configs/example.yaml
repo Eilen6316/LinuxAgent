@@ -58,6 +58,9 @@ file_patch:
     - /home/*/.ssh
   # Permission changes are applied by Python after confirmation, never by shell.
   allow_permission_changes: true
+  # Maximum number of automatic FilePatchPlan repair rounds before stopping.
+  # Set to 0 to disable patch repair fallback.
+  max_repair_attempts: 2
 
 cluster:
   # Any command sent to >= this many hosts triggers R-HITL-02 batch confirm.

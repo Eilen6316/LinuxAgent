@@ -30,6 +30,7 @@ class AgentState(TypedDict, total=False):
     file_patch_plan: FilePatchPlan | None
     file_patch_request_intent: Literal["create", "update", "unknown"]
     file_patch_repair_attempts: int
+    file_patch_max_repair_attempts: int
     file_patch_selected_files: tuple[str, ...]
     selected_runbook: Runbook | None
     runbook_step_index: int
@@ -73,6 +74,7 @@ def initial_state(
         file_patch_plan=None,
         file_patch_request_intent="unknown",
         file_patch_repair_attempts=0,
+        file_patch_max_repair_attempts=2,
         file_patch_selected_files=(),
         selected_runbook=None,
         runbook_step_index=0,

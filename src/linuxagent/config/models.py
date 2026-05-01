@@ -88,6 +88,7 @@ class FilePatchConfig(BaseModel):
         Path("/home/*/.ssh"),
     )
     allow_permission_changes: bool = True
+    max_repair_attempts: int = Field(default=2, ge=0, le=10)
 
 
 class ClusterHost(BaseModel):

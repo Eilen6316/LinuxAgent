@@ -552,6 +552,85 @@ async def test_graph_repairs_failed_file_patch_and_reconfirms(tmp_path) -> None:
     assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
+async def test_graph_file_patch_repair_can_fallback_to_command_plan(tmp_path) -> None:
+    target = tmp_path / "readme.txt"
+    target.write_text("old\ncontent\n", encoding="utf-8")
+    stale_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,2 @@",
+            " old",
+            "-content",
+            "+updated",
+        ],
+    )
+    command_plan = command_plan_json(
+        "/bin/echo command-fallback", goal="fallback to command execution", read_only=False
+    )
+    graph, _provider = _graph(tmp_path, [stale_plan, command_plan])
+    config = {"configurable": {"thread_id": "file-patch-command-fallback"}}
+
+    await graph.ainvoke(
+        initial_state(
+            "删除最后一行并追加 date 命令输出，可以用命令执行模块",
+            source=CommandSource.USER,
+        ),
+        config=config,
+    )
+    target.write_text("old\nchanged\n", encoding="utf-8")
+    result = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+    snapshot = await graph.aget_state(config)
+    interrupts = list(result.get("__interrupt__", ())) if result else []
+    if not interrupts:
+        interrupts = list(snapshot.tasks[0].interrupts)
+
+    assert interrupts[0].value["type"] == "confirm_command"
+    assert interrupts[0].value["command"] == "/bin/echo command-fallback"
+    assert snapshot.values.get("file_patch_plan") is None
+    assert snapshot.values["command_plan"].primary.command == "/bin/echo command-fallback"
+
+
+async def test_graph_honors_configured_file_patch_repair_limit(tmp_path) -> None:
+    target = tmp_path / "readme.txt"
+    target.write_text("old\ncontent\n", encoding="utf-8")
+    stale_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,2 @@",
+            " old",
+            "-content",
+            "+updated",
+        ],
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        [stale_plan, "analysis ok"],
+        file_patch_config=FilePatchConfig(max_repair_attempts=0),
+    )
+    config = {"configurable": {"thread_id": "file-patch-repair-disabled"}}
+
+    await graph.ainvoke(
+        initial_state("update existing file", source=CommandSource.USER),
+        config=config,
+    )
+    target.write_text("old\nchanged\n", encoding="utf-8")
+    result = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+    snapshot = await graph.aget_state(config)
+
+    assert not snapshot.tasks
+    assert "已阻止执行" in str(result["messages"][-1].content)
+    assert "unified diff context does not match target file" in str(result["messages"][-1].content)
+    assert snapshot.values["file_patch_max_repair_attempts"] == 0
+
+
 async def test_graph_repairs_new_file_name_collision_with_unused_name(tmp_path) -> None:
     existing = tmp_path / "disk_info.sh"
     alternate = tmp_path / "disk_info_1.sh"

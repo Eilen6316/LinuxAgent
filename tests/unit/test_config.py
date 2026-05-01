@@ -75,13 +75,14 @@ def test_policy_path_expands_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     assert cfg.policy.path == tmp_path / ".config" / "linuxagent" / "policy.yaml"
 
 
-def test_file_patch_config_supports_allow_roots_and_high_risk_roots(tmp_path: Path) -> None:
+def test_file_patch_config_supports_file_patch_options(tmp_path: Path) -> None:
     cfg = AppConfig.model_validate(
         {
             "file_patch": {
                 "allow_roots": [tmp_path / "workspace"],
                 "high_risk_roots": [tmp_path / "workspace" / "etc"],
                 "allow_permission_changes": False,
+                "max_repair_attempts": 4,
             }
         }
     )
@@ -89,6 +90,7 @@ def test_file_patch_config_supports_allow_roots_and_high_risk_roots(tmp_path: Pa
     assert cfg.file_patch.allow_roots == (tmp_path / "workspace",)
     assert cfg.file_patch.high_risk_roots == (tmp_path / "workspace" / "etc",)
     assert cfg.file_patch.allow_permission_changes is False
+    assert cfg.file_patch.max_repair_attempts == 4
 
 
 # ---- Loader tests -------------------------------------------------------

@@ -30,6 +30,7 @@ file_patch:
     - /root/.ssh
     - /home/*/.ssh
   allow_permission_changes: true
+  max_repair_attempts: 2
 
 cluster:
   batch_confirm_threshold: 2
