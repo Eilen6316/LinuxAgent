@@ -42,6 +42,14 @@ text=True, check=True)` to fetch `date` output and update the file; do not use
 shell redirects, pipes, heredocs, command substitution, or command chaining.
 For process inspection, prefer narrow process output such as
 `ps -eo pid,ppid,pcpu,pmem,comm,args --sort=-pcpu` over broad `ps aux` output.
+For related read-only inspection in one user request, minimize round trips by
+combining data collection into the fewest argv-safe commands. Prefer one
+structured read-only command when the data can be gathered by the same
+executable without shell composition. For example, combine Linux distribution
+and kernel inspection with `python3 -c 'import pathlib, platform; print(pathlib.Path("/etc/os-release").read_text()); print(platform.uname())'`
+instead of separate `cat /etc/os-release` and `uname -a`. Keep commands
+separate when they require different risk levels, package-manager fallbacks,
+remote targets, or when one failure should not block independent results.
 When editing existing files or writing code against current repository content,
 use read-only workspace tools such as `read_file`, `list_dir`, and
 `search_files` before producing a FilePatchPlan. `search_files` patterns are

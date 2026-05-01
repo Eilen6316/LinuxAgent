@@ -329,13 +329,14 @@ class Container:
     def _record_runtime_event(self, event: dict[str, Any]) -> None:
         event_type = str(event.get("type") or "")
         phase = str(event.get("phase") or "")
-        if event_type not in {"activity", "command"} or not phase:
+        if event_type not in {"activity", "command", "command_batch"} or not phase:
             return
         trace_id = str(event.get("trace_id") or "runtime")
         attributes = {
             "type": event_type,
             "phase": phase,
             "command": event.get("command"),
+            "count": event.get("count"),
             "exit_code": event.get("exit_code"),
             "chars": len(str(event.get("text") or "")),
             "redacted_count": event.get("redacted_count"),
@@ -401,6 +402,8 @@ def _runtime_event_message(event: dict[str, Any]) -> str | None:
     phase = str(event.get("phase") or "")
     if event_type == "command":
         return _command_event_message(phase, event)
+    if event_type == "command_batch":
+        return _command_batch_event_message(phase, event)
     if event_type == "activity":
         return _activity_event_message(phase)
     return None
@@ -412,6 +415,15 @@ def _command_event_message(phase: str, event: dict[str, Any]) -> str | None:
         return f"LinuxAgent 正在执行命令：{command}"
     if phase == "finish":
         return f"LinuxAgent 命令结束：exit {event.get('exit_code')}"
+    return None
+
+
+def _command_batch_event_message(phase: str, event: dict[str, Any]) -> str | None:
+    count = int(event.get("count") or 0)
+    if phase == "start":
+        return f"LinuxAgent 正在并发执行 {count} 条只读命令"
+    if phase == "finish":
+        return f"LinuxAgent 并发只读命令已完成：{count} 条"
     return None
 
 

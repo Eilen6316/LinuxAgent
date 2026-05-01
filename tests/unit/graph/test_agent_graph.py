@@ -287,6 +287,53 @@ async def test_graph_allow_all_is_scoped_to_conversation_state(tmp_path) -> None
     assert [result.command for result in results] == ["/bin/echo os", "/bin/echo nginx"]
 
 
+async def test_graph_allow_all_parallelizes_read_only_plan_with_ordered_results(
+    tmp_path,
+) -> None:
+    events: list[dict[str, Any]] = []
+    plan = _multi_command_plan_json(["/bin/echo os", "/bin/echo kernel", "/bin/echo nginx"])
+    graph, _provider = _graph(tmp_path, [plan, "analysis ok"], runtime_observer=events.append)
+    config = {"configurable": {"thread_id": "allow-all-parallel-read-only"}}
+
+    await graph.ainvoke(initial_state("inspect host", source=CommandSource.USER), config=config)
+    await graph.ainvoke(
+        Command(
+            resume={
+                "decision": "yes_all",
+                "latency_ms": 1,
+                "permissions": {
+                    "allow": [
+                        "Bash(/bin/echo os)",
+                        "Bash(/bin/echo kernel)",
+                        "Bash(/bin/echo nginx)",
+                    ]
+                },
+            }
+        ),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    results = snapshot.values["runbook_results"]
+    assert [result.command for result in results] == [
+        "/bin/echo os",
+        "/bin/echo kernel",
+        "/bin/echo nginx",
+    ]
+    batch_events = [event for event in events if event.get("type") == "command_batch"]
+    assert [event["phase"] for event in batch_events] == ["start", "finish"]
+    result_events = [
+        event
+        for event in events
+        if event.get("type") == "command" and event.get("phase") == "result"
+    ]
+    assert [event["command"] for event in result_events] == [
+        "/bin/echo os",
+        "/bin/echo kernel",
+        "/bin/echo nginx",
+    ]
+
+
 async def test_graph_conversation_permissions_do_not_cross_threads(tmp_path) -> None:
     plan = command_plan_json("/bin/echo scoped")
     graph, _provider = _graph(tmp_path, [plan, "analysis allowed", plan])

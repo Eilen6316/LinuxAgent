@@ -362,6 +362,21 @@ def test_tool_event_message_formats_workspace_tools() -> None:
     )
 
 
+def test_runtime_event_message_formats_command_batch() -> None:
+    assert (
+        container_module._runtime_event_message(
+            {"type": "command_batch", "phase": "start", "count": 3}
+        )
+        == "LinuxAgent 正在并发执行 3 条只读命令"
+    )
+    assert (
+        container_module._runtime_event_message(
+            {"type": "command_batch", "phase": "finish", "count": 3}
+        )
+        == "LinuxAgent 并发只读命令已完成：3 条"
+    )
+
+
 def test_container_disables_embedding_tools_for_deepseek_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

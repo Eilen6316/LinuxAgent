@@ -60,13 +60,18 @@ def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() ->
     assert isinstance(tmpl, ChatPromptTemplate)
     assert "user_input" in tmpl.input_variables
     assert "runbook_guidance" in tmpl.input_variables
-    assert "read_file" in str(tmpl.messages[0].prompt.template)
-    assert "search_files" in str(tmpl.messages[0].prompt.template)
-    assert "do not invent one" in str(tmpl.messages[0].prompt.template)
-    assert "NoChangePlan" in str(tmpl.messages[0].prompt.template)
-    assert "smallest diff" in str(tmpl.messages[0].prompt.template)
-    assert "runtime command output" in str(tmpl.messages[0].prompt.template)
-    assert 'subprocess.run(["date"]' in str(tmpl.messages[0].prompt.template)
+    body = str(tmpl.messages[0].prompt.template)
+    assert "read_file" in body
+    assert "search_files" in body
+    assert "do not invent one" in body
+    assert "NoChangePlan" in body
+    assert "smallest diff" in body
+    assert "runtime command output" in body
+    assert 'subprocess.run(["date"]' in body
+    assert "minimize round trips" in body
+    assert "python3 -c" in body
+    assert "cat /etc/os-release" in body
+    assert "uname -a" in body
 
 
 def test_build_repair_prompt_has_recovery_variables() -> None:
