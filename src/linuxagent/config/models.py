@@ -25,6 +25,14 @@ from ..sandbox.models import SandboxNetworkPolicy, SandboxProfile, SandboxRunner
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 DEFAULT_OUTPUT_LIMIT_PARAMETER: Literal["max_completion_tokens"] = "max_completion_tokens"
+LEGACY_OUTPUT_LIMIT_PARAMETER: Literal["max_tokens"] = "max_tokens"
+DEFAULT_API_BASE_URL = "https://api.deepseek.com/v1"
+DEFAULT_API_MODEL = "deepseek-chat"
+LOCAL_OPENAI_BASE_URL = "http://127.0.0.1:8000/v1"
+OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
+LM_STUDIO_BASE_URL = "http://127.0.0.1:1234/v1"
+LOCAL_OPENAI_MODEL = "local-model"
+OLLAMA_MODEL = "llama3.1"
 
 
 def _expand_path(path: Path) -> Path:
@@ -47,6 +55,10 @@ UserPathTuple = Annotated[tuple[Path, ...], AfterValidator(_expand_path_tuple)]
 class LLMProviderName(StrEnum):
     OPENAI = "openai"
     OPENAI_COMPATIBLE = "openai_compatible"
+    LOCAL = "local"
+    OLLAMA = "ollama"
+    VLLM = "vllm"
+    LM_STUDIO = "lmstudio"
     DEEPSEEK = "deepseek"
     GLM = "glm"
     QWEN = "qwen"
@@ -59,12 +71,34 @@ class LLMProviderName(StrEnum):
     XIAOMI_MIMO = "xiaomi_mimo"
 
 
+LOCAL_LLM_PROVIDERS: frozenset[LLMProviderName] = frozenset(
+    {
+        LLMProviderName.LOCAL,
+        LLMProviderName.OLLAMA,
+        LLMProviderName.VLLM,
+        LLMProviderName.LM_STUDIO,
+    }
+)
+_LOCAL_PROVIDER_BASE_URLS: dict[LLMProviderName, str] = {
+    LLMProviderName.LOCAL: LOCAL_OPENAI_BASE_URL,
+    LLMProviderName.OLLAMA: OLLAMA_BASE_URL,
+    LLMProviderName.VLLM: LOCAL_OPENAI_BASE_URL,
+    LLMProviderName.LM_STUDIO: LM_STUDIO_BASE_URL,
+}
+_LOCAL_PROVIDER_MODELS: dict[LLMProviderName, str] = {
+    LLMProviderName.LOCAL: LOCAL_OPENAI_MODEL,
+    LLMProviderName.OLLAMA: OLLAMA_MODEL,
+    LLMProviderName.VLLM: LOCAL_OPENAI_MODEL,
+    LLMProviderName.LM_STUDIO: LOCAL_OPENAI_MODEL,
+}
+
+
 class APIConfig(BaseModel):
     model_config = _FROZEN
 
     provider: LLMProviderName = LLMProviderName.DEEPSEEK
-    base_url: str = "https://api.deepseek.com/v1"
-    model: str = "deepseek-chat"
+    base_url: str = DEFAULT_API_BASE_URL
+    model: str = DEFAULT_API_MODEL
     api_key: SecretStr = SecretStr("")
     timeout: float = Field(default=30.0, gt=0, le=300)
     stream_timeout: float = Field(default=60.0, gt=0, le=600)
@@ -73,9 +107,42 @@ class APIConfig(BaseModel):
     max_tokens: int = Field(default=2048, ge=1, le=65536)
     token_parameter: Literal["max_completion_tokens", "max_tokens"] = DEFAULT_OUTPUT_LIMIT_PARAMETER
 
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_provider_defaults(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        raw_provider = cls._normalize_provider(data.get("provider"))
+        try:
+            provider = (
+                raw_provider
+                if isinstance(raw_provider, LLMProviderName)
+                else LLMProviderName(raw_provider)
+            )
+        except (TypeError, ValueError):
+            return data
+        if provider not in LOCAL_LLM_PROVIDERS:
+            return data
+        values = dict(data)
+        if values.get("base_url", DEFAULT_API_BASE_URL) == DEFAULT_API_BASE_URL:
+            values["base_url"] = _LOCAL_PROVIDER_BASE_URLS[provider]
+        if values.get("model", DEFAULT_API_MODEL) == DEFAULT_API_MODEL:
+            values["model"] = _LOCAL_PROVIDER_MODELS[provider]
+        values.setdefault("api_key", "")
+        if (
+            values.get("token_parameter", DEFAULT_OUTPUT_LIMIT_PARAMETER)
+            == DEFAULT_OUTPUT_LIMIT_PARAMETER
+        ):
+            values["token_parameter"] = LEGACY_OUTPUT_LIMIT_PARAMETER
+        return values
+
     @field_validator("provider", mode="before")
     @classmethod
     def _normalize_provider(cls, value: Any) -> Any:
+        if value in {"local-openai", "local_openai"}:
+            return LLMProviderName.LOCAL
+        if value in {"lm-studio", "lm_studio"}:
+            return LLMProviderName.LM_STUDIO
         if value == "openai-compatible":
             return LLMProviderName.OPENAI_COMPATIBLE
         if value == "anthropic-compatible":
@@ -92,10 +159,14 @@ class APIConfig(BaseModel):
             return LLMProviderName.XIAOMI_MIMO
         return value
 
+    def requires_api_key(self) -> bool:
+        """Return whether this provider needs a configured remote API key."""
+        return self.provider not in LOCAL_LLM_PROVIDERS
+
     def require_key(self) -> str:
         """Return the secret value, or raise if unset."""
         value = self.api_key.get_secret_value()
-        if not value:
+        if not value and self.requires_api_key():
             raise ValueError("api.api_key is required — edit ./config.yaml and set it.")
         return value
 

@@ -15,7 +15,7 @@
 #   5. configs/default.yaml                   (packaged, lowest)
 
 api:
-  # Provider: openai | openai_compatible | deepseek | glm | qwen | kimi | minimax | gemini | hunyuan | anthropic | anthropic_compatible | xiaomi_mimo
+  # Provider: openai | openai_compatible | local | ollama | vllm | lmstudio | deepseek | glm | qwen | kimi | minimax | gemini | hunyuan | anthropic | anthropic_compatible | xiaomi_mimo
   # Use *_compatible providers for API relays or third-party compatible endpoints.
   provider: deepseek
   # OpenAI-compatible endpoints include DeepSeek, Together, local Ollama, etc.
@@ -38,6 +38,18 @@ api:
   # model: gpt-4o-mini
   # api_key: "sk-REPLACE-ME"
   # token_parameter: max_tokens
+
+  # Example local model configuration (OpenAI-compatible):
+  # provider: ollama
+  # base_url: http://127.0.0.1:11434/v1
+  # model: llama3.1
+  # api_key: ""                 # local providers do not require a real API key
+  # token_parameter: max_tokens
+  #
+  # Other local shortcuts:
+  # provider: vllm      base_url: http://127.0.0.1:8000/v1
+  # provider: lmstudio  base_url: http://127.0.0.1:1234/v1
+  # provider: local     base_url: http://127.0.0.1:8000/v1
 
   # Example Anthropic-compatible relay configuration:
   # provider: anthropic_compatible

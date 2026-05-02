@@ -198,6 +198,40 @@ def test_compatible_provider_aliases(raw_provider: str, normalized: LLMProviderN
     assert cfg.api.provider is normalized
 
 
+@pytest.mark.parametrize(
+    ("raw_provider", "normalized", "base_url"),
+    [
+        ("local", LLMProviderName.LOCAL, "http://127.0.0.1:8000/v1"),
+        ("local_openai", LLMProviderName.LOCAL, "http://127.0.0.1:8000/v1"),
+        ("local-openai", LLMProviderName.LOCAL, "http://127.0.0.1:8000/v1"),
+        ("ollama", LLMProviderName.OLLAMA, "http://127.0.0.1:11434/v1"),
+        ("vllm", LLMProviderName.VLLM, "http://127.0.0.1:8000/v1"),
+        ("lmstudio", LLMProviderName.LM_STUDIO, "http://127.0.0.1:1234/v1"),
+        ("lm_studio", LLMProviderName.LM_STUDIO, "http://127.0.0.1:1234/v1"),
+        ("lm-studio", LLMProviderName.LM_STUDIO, "http://127.0.0.1:1234/v1"),
+    ],
+)
+def test_local_provider_aliases(
+    raw_provider: str,
+    normalized: LLMProviderName,
+    base_url: str,
+) -> None:
+    cfg = AppConfig.model_validate({"api": {"provider": raw_provider, "model": "local-model"}})
+
+    assert cfg.api.provider is normalized
+    assert cfg.api.base_url == base_url
+    assert cfg.api.token_parameter == "max_tokens"  # noqa: S105
+    assert cfg.api.require_key() == ""
+
+
+def test_local_provider_replaces_remote_defaults() -> None:
+    cfg = AppConfig.model_validate({"api": {"provider": "ollama"}})
+
+    assert cfg.api.base_url == "http://127.0.0.1:11434/v1"
+    assert cfg.api.model == "llama3.1"
+    assert cfg.api.token_parameter == "max_tokens"  # noqa: S105
+
+
 def test_invalid_token_parameter_rejected() -> None:
     with pytest.raises(ValidationError, match="token_parameter"):
         AppConfig.model_validate({"api": {"token_parameter": "tokens"}})
@@ -380,6 +414,20 @@ def test_loader_accepts_valid_secure_file(tmp_path: Path) -> None:
     path = _write_secure(tmp_path, "api:\n  timeout: 5\n")
     cfg = load_config(cli_path=path, env={})
     assert cfg.api.timeout == 5
+
+
+def test_loader_local_provider_replaces_packaged_remote_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    path = _write_secure(tmp_path, "api:\n  provider: ollama\n")
+
+    cfg = load_config(cli_path=path, env={})
+
+    assert cfg.api.base_url == "http://127.0.0.1:11434/v1"
+    assert cfg.api.model == "llama3.1"
+    assert cfg.api.token_parameter == "max_tokens"  # noqa: S105
 
 
 def test_loader_rejects_invalid_schema(tmp_path: Path) -> None:

@@ -68,6 +68,18 @@ api:
   token_parameter: max_tokens
 ```
 
+For locally deployed OpenAI-compatible models, use `ollama`, `vllm`, `lmstudio`,
+or generic `local`. Local providers do not require a real API key:
+
+```yaml
+api:
+  provider: ollama
+  base_url: http://127.0.0.1:11434/v1
+  model: llama3.1
+  api_key: ""
+  token_parameter: max_tokens
+```
+
 Anthropic-format relays can use `provider: anthropic_compatible` with their own
 `base_url`; Xiaomi MiMo can use `provider: xiaomi_mimo`.
 
@@ -78,6 +90,10 @@ Provider quick reference:
 | `deepseek` | OpenAI-compatible | `https://api.deepseek.com/v1` | `max_completion_tokens` |
 | `openai` | OpenAI | `https://api.openai.com/v1` | `max_completion_tokens` |
 | `openai_compatible` | OpenAI-compatible relay | relay-specific `/v1` URL | often `max_tokens` |
+| `local` | Local OpenAI-compatible | `http://127.0.0.1:8000/v1` | `max_tokens` |
+| `ollama` | Local OpenAI-compatible | `http://127.0.0.1:11434/v1` | `max_tokens` |
+| `vllm` | Local OpenAI-compatible | `http://127.0.0.1:8000/v1` | `max_tokens` |
+| `lmstudio` | Local OpenAI-compatible | `http://127.0.0.1:1234/v1` | `max_tokens` |
 | `qwen` | OpenAI-compatible | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `max_tokens` |
 | `kimi` | OpenAI-compatible | `https://api.moonshot.ai/v1` | `max_tokens` |
 | `glm` | OpenAI-compatible | `https://open.bigmodel.cn/api/paas/v4` | `max_tokens` |

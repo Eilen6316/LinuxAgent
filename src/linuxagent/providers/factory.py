@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..config.models import APIConfig, LLMProviderName
+from ..config.models import LOCAL_LLM_PROVIDERS, APIConfig, LLMProviderName
 from .anthropic import AnthropicProvider
 from .anthropic import is_available as _anthropic_available
 from .base import BaseLLMProvider
@@ -24,6 +24,8 @@ def provider_factory(config: APIConfig) -> BaseLLMProvider:
             | LLMProviderName.GEMINI
             | LLMProviderName.HUNYUAN
         ):
+            return OpenAIProvider(config)
+        case provider if provider in LOCAL_LLM_PROVIDERS:
             return OpenAIProvider(config)
         case LLMProviderName.DEEPSEEK:
             return DeepSeekProvider(config)

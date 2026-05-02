@@ -299,7 +299,7 @@ api:
   api_key: "sk-replace-me"   # required
 ```
 
-All other fields can stay at their defaults (default provider is DeepSeek; switch to `openai`, `openai_compatible`, `glm`, `qwen`, `kimi`, `minimax`, `gemini`, `hunyuan`, `anthropic`, `anthropic_compatible`, or `xiaomi_mimo` as needed).
+All other fields can stay at their defaults (default provider is DeepSeek; switch to `openai`, `openai_compatible`, `local`, `ollama`, `vllm`, `lmstudio`, `glm`, `qwen`, `kimi`, `minimax`, `gemini`, `hunyuan`, `anthropic`, `anthropic_compatible`, or `xiaomi_mimo` as needed).
 
 For API relays or third-party OpenAI-compatible endpoints, use
 `openai_compatible` or a provider shortcut such as `qwen`, `kimi`, `glm`,
@@ -314,6 +314,18 @@ api:
   token_parameter: max_tokens
 ```
 
+For locally deployed OpenAI-compatible models, use `ollama`, `vllm`, `lmstudio`,
+or generic `local`. Local providers do not require a real API key:
+
+```yaml
+api:
+  provider: ollama
+  base_url: http://127.0.0.1:11434/v1
+  model: llama3.1
+  api_key: ""
+  token_parameter: max_tokens
+```
+
 Anthropic-format relays can use `provider: anthropic_compatible` with their own
 `base_url`; Xiaomi MiMo can use `provider: xiaomi_mimo`.
 
@@ -324,6 +336,10 @@ Anthropic-format relays can use `provider: anthropic_compatible` with their own
 | `deepseek` | OpenAI-compatible | `https://api.deepseek.com/v1` | `max_completion_tokens` |
 | `openai` | OpenAI | `https://api.openai.com/v1` | `max_completion_tokens` |
 | `openai_compatible` | OpenAI-compatible relay | Relay-specific `/v1` URL | Often `max_tokens` |
+| `local` | Local OpenAI-compatible | `http://127.0.0.1:8000/v1` | `max_tokens` |
+| `ollama` | Local OpenAI-compatible | `http://127.0.0.1:11434/v1` | `max_tokens` |
+| `vllm` | Local OpenAI-compatible | `http://127.0.0.1:8000/v1` | `max_tokens` |
+| `lmstudio` | Local OpenAI-compatible | `http://127.0.0.1:1234/v1` | `max_tokens` |
 | `qwen` | OpenAI-compatible | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `max_tokens` |
 | `kimi` | OpenAI-compatible | `https://api.moonshot.ai/v1` | `max_tokens` |
 | `glm` | OpenAI-compatible | `https://open.bigmodel.cn/api/paas/v4` | `max_tokens` |
@@ -347,10 +363,10 @@ linuxagent check
 
 | Section | Field | Default | Description |
 |---|---|---|---|
-| `api` | `provider` | `deepseek` | `openai` / `openai_compatible` / `deepseek` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo` |
+| `api` | `provider` | `deepseek` | `openai` / `openai_compatible` / `local` / `ollama` / `vllm` / `lmstudio` / `deepseek` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo` |
 | `api` | `base_url` | `https://api.deepseek.com/v1` | OpenAI-compatible endpoint |
 | `api` | `model` | `deepseek-chat` | Model name |
-| `api` | `api_key` | `""` | **Required**; `SecretStr`, never printed |
+| `api` | `api_key` | `""` | **Required for remote providers**; local providers may leave it empty; `SecretStr`, never printed |
 | `api` | `token_parameter` | `max_completion_tokens` | Use `max_tokens` for API relays or older compatible backends |
 | `api` | `timeout` | `30.0` | Per-request timeout (s) |
 | `api` | `stream_timeout` | `60.0` | Overall stream timeout (s) |
@@ -702,7 +718,7 @@ A: Pre-register host keys first, for example with `ssh-keyscan -H your-host.exam
 A: No. Use `cluster.hosts[].remote_profile` to document and enforce the remote cwd, clean environment, and sudo allowlist. Run SSH as a low-privilege user and keep host keys pre-registered.
 
 **Q: Can I use my own OpenAI-compatible gateway?**
-A: Yes. Set `api.provider: openai_compatible`, point `api.base_url` to the gateway URL, and set `api.model` to a supported model. Shortcuts `glm`, `qwen`, `kimi`, `minimax`, `gemini`, and `hunyuan` use the same OpenAI-compatible path. If the gateway rejects `max_completion_tokens`, set `api.token_parameter: max_tokens`.
+A: Yes. Set `api.provider: openai_compatible`, point `api.base_url` to the gateway URL, and set `api.model` to a supported model. Shortcuts `glm`, `qwen`, `kimi`, `minimax`, `gemini`, and `hunyuan` use the same OpenAI-compatible path. Local deployments can use `ollama`, `vllm`, `lmstudio`, or `local` and leave `api.api_key` empty. If the gateway rejects `max_completion_tokens`, set `api.token_parameter: max_tokens`.
 
 **Q: Can I use an Anthropic-compatible gateway?**
 A: Yes. Install the Anthropic extra and set `api.provider: anthropic_compatible`, `api.base_url`, `api.model`, and `api.api_key`. Xiaomi MiMo can use `api.provider: xiaomi_mimo`.

@@ -294,7 +294,7 @@ api:
   api_key: "sk-replace-me"   # 必填
 ```
 
-其他字段全部用默认值即可（默认 provider 为 DeepSeek，可改为 `openai` / `openai_compatible` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo`）。
+其他字段全部用默认值即可（默认 provider 为 DeepSeek，可改为 `openai` / `openai_compatible` / `local` / `ollama` / `vllm` / `lmstudio` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo`）。
 
 API 中转站或第三方 OpenAI 兼容端点可用 `openai_compatible`，也可用
 `qwen` / `kimi` / `glm` / `minimax` / `gemini` / `hunyuan` 快捷 provider：
@@ -308,6 +308,18 @@ api:
   token_parameter: max_tokens
 ```
 
+本地部署的 OpenAI 兼容模型可用 `ollama`、`vllm`、`lmstudio` 或通用
+`local`。本地 provider 不需要真实 API key：
+
+```yaml
+api:
+  provider: ollama
+  base_url: http://127.0.0.1:11434/v1
+  model: llama3.1
+  api_key: ""
+  token_parameter: max_tokens
+```
+
 Anthropic 格式中转站可用 `provider: anthropic_compatible` 并填写自己的
 `base_url`；小米 MiMo 可用 `provider: xiaomi_mimo`。
 
@@ -318,6 +330,10 @@ Anthropic 格式中转站可用 `provider: anthropic_compatible` 并填写自己
 | `deepseek` | OpenAI 兼容 | `https://api.deepseek.com/v1` | `max_completion_tokens` |
 | `openai` | OpenAI | `https://api.openai.com/v1` | `max_completion_tokens` |
 | `openai_compatible` | OpenAI 兼容中转站 | 中转站自己的 `/v1` 地址 | 通常为 `max_tokens` |
+| `local` | 本地 OpenAI 兼容 | `http://127.0.0.1:8000/v1` | `max_tokens` |
+| `ollama` | 本地 OpenAI 兼容 | `http://127.0.0.1:11434/v1` | `max_tokens` |
+| `vllm` | 本地 OpenAI 兼容 | `http://127.0.0.1:8000/v1` | `max_tokens` |
+| `lmstudio` | 本地 OpenAI 兼容 | `http://127.0.0.1:1234/v1` | `max_tokens` |
 | `qwen` | OpenAI 兼容 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `max_tokens` |
 | `kimi` | OpenAI 兼容 | `https://api.moonshot.ai/v1` | `max_tokens` |
 | `glm` | OpenAI 兼容 | `https://open.bigmodel.cn/api/paas/v4` | `max_tokens` |
@@ -341,10 +357,10 @@ linuxagent check
 
 | 段 | 字段 | 默认值 | 说明 |
 |---|---|---|---|
-| `api` | `provider` | `deepseek` | 可选 `openai` / `openai_compatible` / `deepseek` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo` |
+| `api` | `provider` | `deepseek` | 可选 `openai` / `openai_compatible` / `local` / `ollama` / `vllm` / `lmstudio` / `deepseek` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo` |
 | `api` | `base_url` | `https://api.deepseek.com/v1` | OpenAI 兼容端点 |
 | `api` | `model` | `deepseek-chat` | 模型名 |
-| `api` | `api_key` | `""` | **必填**；`SecretStr`，不出现在 repr/日志 |
+| `api` | `api_key` | `""` | 远端 provider **必填**，本地 provider 可留空；`SecretStr`，不出现在 repr/日志 |
 | `api` | `token_parameter` | `max_completion_tokens` | API 中转站或旧兼容后端可设为 `max_tokens` |
 | `api` | `timeout` | `30.0` | 单次请求超时（秒） |
 | `api` | `stream_timeout` | `60.0` | 流式整体超时（秒） |
@@ -680,7 +696,7 @@ A：先登记 host key，例如 `ssh-keyscan -H your-host.example.com >> ~/.ssh/
 A：不会。请用 `cluster.hosts[].remote_profile` 明确远端 cwd、clean environment 和 sudo allowlist，并使用低权限 SSH 用户和预登记 host key。
 
 **Q：可以用自己的 OpenAI 兼容网关吗？**
-A：可以。设置 `api.provider: openai_compatible`，把 `api.base_url` 换成网关地址，`api.model` 换成它支持的模型名。`glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` 也走同一条 OpenAI-compatible 路径。如果网关不接受 `max_completion_tokens`，设置 `api.token_parameter: max_tokens`。
+A：可以。设置 `api.provider: openai_compatible`，把 `api.base_url` 换成网关地址，`api.model` 换成它支持的模型名。`glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` 也走同一条 OpenAI-compatible 路径。本地部署可用 `ollama`、`vllm`、`lmstudio` 或 `local`，并把 `api.api_key` 留空。如果网关不接受 `max_completion_tokens`，设置 `api.token_parameter: max_tokens`。
 
 **Q：可以用 Anthropic 兼容网关吗？**
 A：可以。安装 Anthropic extra 后，设置 `api.provider: anthropic_compatible`、`api.base_url`、`api.model` 和 `api.api_key`。小米 MiMo 可用 `api.provider: xiaomi_mimo`。

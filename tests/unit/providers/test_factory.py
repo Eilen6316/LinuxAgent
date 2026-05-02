@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import SecretStr
 
 from linuxagent.config.models import APIConfig, LLMProviderName
 from linuxagent.providers import anthropic as anthropic_module
@@ -41,6 +42,10 @@ def test_openai_compatible_route() -> None:
         LLMProviderName.MINIMAX,
         LLMProviderName.GEMINI,
         LLMProviderName.HUNYUAN,
+        LLMProviderName.LOCAL,
+        LLMProviderName.OLLAMA,
+        LLMProviderName.VLLM,
+        LLMProviderName.LM_STUDIO,
     ],
 )
 def test_openai_compatible_shortcut_routes(provider: LLMProviderName) -> None:
@@ -150,3 +155,20 @@ def test_openai_provider_uses_configured_token_parameter(
 
     assert captured["model_kwargs"] == {"max_tokens": 321}
     assert "max_completion_tokens" not in captured
+
+
+def test_local_openai_provider_uses_placeholder_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(openai_module, "ChatOpenAI", _FakeChatOpenAI)
+    cfg = APIConfig(provider=LLMProviderName.OLLAMA, model="llama3.1")
+
+    OpenAIProvider(cfg)
+
+    api_key = captured["api_key"]
+    assert isinstance(api_key, SecretStr)
+    assert api_key.get_secret_value() == "local-not-required"

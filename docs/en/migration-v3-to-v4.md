@@ -53,9 +53,10 @@ api:
 ```
 
 Provider shortcuts `glm`, `qwen`, `kimi`, `minimax`, `gemini`, and `hunyuan`
-use the same OpenAI-compatible path. Anthropic-format relays can use
-`provider: anthropic_compatible` after installing the Anthropic extra; Xiaomi
-MiMo can use `provider: xiaomi_mimo`.
+use the same OpenAI-compatible path. Local OpenAI-compatible servers can use
+`provider: ollama`, `vllm`, `lmstudio`, or `local` without a real API key.
+Anthropic-format relays can use `provider: anthropic_compatible` after
+installing the Anthropic extra; Xiaomi MiMo can use `provider: xiaomi_mimo`.
 
 Do not use `.env` for secrets. v4 only allows environment variables to point to
 configuration paths, not to carry secret values.

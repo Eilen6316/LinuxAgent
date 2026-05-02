@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
-from ..config.models import APIConfig
+from ..config.models import LOCAL_LLM_PROVIDERS, APIConfig
 from .base import BaseLLMProvider
 from .errors import (
     ProviderAuthError,
@@ -21,6 +22,13 @@ _OPENAI_ERROR_MAP: dict[str, type[ProviderError]] = {
     "APIConnectionError": ProviderConnectionError,
 }
 LEGACY_LIMIT_PARAMETER = "max_tokens"
+LOCAL_API_KEY_PLACEHOLDER = "local-not-required"
+
+
+def _api_key(config: APIConfig) -> SecretStr:
+    if config.api_key.get_secret_value() or config.provider not in LOCAL_LLM_PROVIDERS:
+        return config.api_key
+    return SecretStr(LOCAL_API_KEY_PLACEHOLDER)
 
 
 def _build_chat_model(config: APIConfig) -> ChatOpenAI:
@@ -28,7 +36,7 @@ def _build_chat_model(config: APIConfig) -> ChatOpenAI:
     if config.token_parameter == LEGACY_LIMIT_PARAMETER:
         return ChatOpenAI(
             model=config.model,
-            api_key=config.api_key,
+            api_key=_api_key(config),
             base_url=config.base_url,
             timeout=config.timeout,
             temperature=config.temperature,
@@ -37,7 +45,7 @@ def _build_chat_model(config: APIConfig) -> ChatOpenAI:
         )
     return ChatOpenAI(
         model=config.model,
-        api_key=config.api_key,
+        api_key=_api_key(config),
         base_url=config.base_url,
         timeout=config.timeout,
         temperature=config.temperature,
