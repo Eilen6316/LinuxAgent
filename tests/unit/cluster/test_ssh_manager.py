@@ -176,6 +176,19 @@ def test_default_remote_profile_sends_raw_command(monkeypatch: pytest.MonkeyPatc
     assert result.remote["command_sent"] == "echo 'hello world'"
 
 
+def test_default_remote_profile_quotes_shell_expansion_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mgr = SSHManager(ClusterConfig())
+    client = _install_recording_client(monkeypatch, mgr)
+
+    result = mgr._execute_sync(_host(), "cat ~/.ssh/id_rsa /tmp/*")
+
+    assert client.commands == ["cat '~/.ssh/id_rsa' '/tmp/*'"]
+    assert result.remote is not None
+    assert result.remote["command_sent"] == "cat '~/.ssh/id_rsa' '/tmp/*'"
+
+
 def test_remote_profile_wraps_cwd_and_clean_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -8,6 +8,10 @@ from linuxagent.config.models import ClusterHost
 from linuxagent.graph.execution import aggregate_cluster_results, analysis_context, run_command
 from linuxagent.interfaces import ExecutionResult
 
+PRIVATE_KEY_LABEL = "PRIVATE KEY"
+PRIVATE_KEY_BEGIN = f"-----BEGIN OPENSSH {PRIVATE_KEY_LABEL}-----"
+PRIVATE_KEY_END = f"-----END OPENSSH {PRIVATE_KEY_LABEL}-----"
+
 
 def _result(
     command: str, exit_code: int = 0, stdout: str = "ok", stderr: str = ""
@@ -103,6 +107,15 @@ class _FakeCommandService:
         return _result(command, stdout="interactive")
 
 
+class _SplitSecretCommandService(_FakeCommandService):
+    async def run_streaming(self, command: str, *, on_stdout, on_stderr) -> ExecutionResult:
+        del on_stderr
+        self.calls.append(f"stream:{command}")
+        await on_stdout(f"{PRIVATE_KEY_BEGIN}\nabc\n")
+        await on_stdout(f"{PRIVATE_KEY_END}\n")
+        return _result(command, stdout="private key")
+
+
 class _FakeClusterService:
     def __init__(self, resolved_hosts: tuple[SimpleNamespace, ...]) -> None:
         self._resolved_hosts = resolved_hosts
@@ -154,6 +167,25 @@ async def test_run_command_streams_redacted_output_to_observer() -> None:
     assert [event["phase"] for event in events] == ["start", "stdout", "stderr", "finish"]
     assert "hunter2" not in events[1]["text"]
     assert "plain-token" not in events[2]["text"]
+
+
+async def test_run_command_streaming_redacts_secret_split_across_chunks() -> None:
+    events = []
+    service = _SplitSecretCommandService()
+
+    await run_command(
+        {},
+        "cat key",
+        service,  # type: ignore[arg-type]
+        None,
+        trace_id="trace-1",
+        event_observer=events.append,
+    )
+
+    streamed_text = "".join(str(event.get("text") or "") for event in events)
+    assert "OPENSSH PRIVATE KEY" not in streamed_text
+    assert "abc" not in streamed_text
+    assert "***redacted***" in streamed_text
 
 
 async def test_run_command_aggregates_cluster_execution() -> None:

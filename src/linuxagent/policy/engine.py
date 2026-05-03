@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import posixpath
 import re
 import shlex
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..interfaces import CommandSource, SafetyLevel
 from .builtin_rules import builtin_policy_config
@@ -228,7 +230,10 @@ class _CompiledRule:
         if match.path_any and not any(arg in match.path_any for arg in facts.args):
             return False
         if self._path_regex and not any(
-            pattern.match(arg) for arg in facts.args for pattern in self._path_regex
+            pattern.match(path)
+            for arg in facts.args
+            for path in _path_match_candidates(arg)
+            for pattern in self._path_regex
         ):
             return False
         if match.command:
@@ -260,3 +265,27 @@ def _has_non_command_matcher(match: PolicyMatch) -> bool:
         or match.path_regex
         or match.subcommand_any
     )
+
+
+def _path_match_candidates(arg: str) -> tuple[str, ...]:
+    candidates = [arg]
+    expanded = _expand_user_path(arg)
+    if expanded != arg:
+        candidates.append(expanded)
+    for value in tuple(candidates):
+        normalized = _normalize_absolute_path(value)
+        if normalized is not None and normalized not in candidates:
+            candidates.append(normalized)
+    return tuple(candidates)
+
+
+def _expand_user_path(arg: str) -> str:
+    if arg == "~" or arg.startswith("~/"):
+        return str(Path(arg).expanduser())
+    return arg
+
+
+def _normalize_absolute_path(arg: str) -> str | None:
+    if not arg.startswith("/"):
+        return None
+    return posixpath.normpath(arg)

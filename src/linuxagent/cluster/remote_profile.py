@@ -46,8 +46,6 @@ def build_remote_execution(host: ClusterHost, command: RemoteCommand) -> RemoteE
         shell_command = f"env -i PATH={shlex.quote(_DEFAULT_REMOTE_PATH)} {shell_command}"
     if profile.remote_cwd != ".":
         shell_command = f"cd {shlex.quote(profile.remote_cwd)} && {shell_command}"
-    if profile.is_default_boundary:
-        shell_command = command.raw
     return RemoteExecutionPlan(
         user_command=command.raw,
         shell_command=shell_command,

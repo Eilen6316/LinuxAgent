@@ -39,6 +39,23 @@ def test_policy_llm_first_run_adds_source_capability() -> None:
     assert decision.can_whitelist is True
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat /etc/../etc/shadow",
+        "cat /etc/./shadow",
+        "cat /etc//shadow",
+        "cat /root/.ssh/id_rsa",
+        "cat /home/alice/.ssh/id_rsa",
+    ],
+)
+def test_sensitive_paths_are_matched_after_path_normalization(command: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command, source=CommandSource.LLM)
+
+    assert decision.level is SafetyLevel.BLOCK
+    assert decision.matched_rule == "SENSITIVE_PATH"
+
+
 def test_policy_never_whitelist_considers_all_matched_rules() -> None:
     engine = PolicyEngine(
         PolicyConfig(

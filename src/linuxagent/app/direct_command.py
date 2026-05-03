@@ -50,19 +50,22 @@ class DirectCommandRunner:
         audit_id: str | bool | None,
     ) -> None:
         trace_id = new_trace_id()
-        guard = StreamOutputGuard()
+        stdout_guard = StreamOutputGuard()
+        stderr_guard = StreamOutputGuard()
         self._audit_event("direct_command_start", command=command, trace_id=trace_id)
         self._telemetry_event("direct.command.start", trace_id, {"command": command})
         await self.ui.print_raw(f"$ {command}\n")
         result = await self.command_service.run_streaming(
             command,
             on_stdout=lambda text: self._print_stream_chunk(
-                trace_id, command, "stdout", text, guard
+                trace_id, command, "stdout", text, stdout_guard
             ),
             on_stderr=lambda text: self._print_stream_chunk(
-                trace_id, command, "stderr", text, guard
+                trace_id, command, "stderr", text, stderr_guard
             ),
         )
+        await self._flush_stream_guard(trace_id, command, "stdout", stdout_guard)
+        await self._flush_stream_guard(trace_id, command, "stderr", stderr_guard)
         await self.ui.print_raw(f"\n[exit {result.exit_code}]\n")
         if isinstance(audit_id, str):
             await self.audit.record_execution(
@@ -147,6 +150,18 @@ class DirectCommandRunner:
         if chunk.text:
             await self.ui.print_raw(chunk.text, stderr=stream == "stderr")
         self._record_stream_chunk(trace_id, command, stream, chunk)
+
+    async def _flush_stream_guard(
+        self,
+        trace_id: str,
+        command: str,
+        stream: str,
+        guard: StreamOutputGuard,
+    ) -> None:
+        chunk = guard.flush()
+        if chunk.text:
+            await self.ui.print_raw(chunk.text, stderr=stream == "stderr")
+            self._record_stream_chunk(trace_id, command, stream, chunk)
 
     def _record_stream_chunk(
         self,

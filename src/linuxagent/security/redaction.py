@@ -25,6 +25,10 @@ _PRIVATE_KEY_PATTERN = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
     re.DOTALL,
 )
+_INCOMPLETE_PRIVATE_KEY_PATTERN = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*",
+    re.DOTALL,
+)
 
 _TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?i)(authorization\s*:\s*)(bearer|basic)\s+[A-Za-z0-9._~+/=-]+"),
@@ -49,6 +53,8 @@ class RedactionResult:
 def redact_text(text: str) -> RedactionResult:
     """Redact common secrets from free-form text."""
     updated, count = _PRIVATE_KEY_PATTERN.subn(REDACTED, text)
+    updated, incomplete_count = _INCOMPLETE_PRIVATE_KEY_PATTERN.subn(REDACTED, updated)
+    count += incomplete_count
     for pattern in _TEXT_PATTERNS:
         updated, n = pattern.subn(_replacement, updated)
         count += n

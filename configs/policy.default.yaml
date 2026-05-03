@@ -92,6 +92,8 @@ rules:
         - '^/etc/gshadow(/|$)'
         - '^/etc/sudoers(/|$)'
         - '^/boot(/|$)'
+        - '^/root/\.ssh(/|$)'
+        - '^/home/[^/]+/\.ssh(/|$)'
         - '^/dev/[sh]d[a-z]'
         - '^/dev/nvme\d'
         - '^/proc/(?!self/status|cpuinfo|meminfo|version|loadavg|uptime)'

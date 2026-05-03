@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from ..config.models import ClusterHost
 from ..execution_display import execution_display_text
 from ..interfaces import ExecutionResult
-from ..security import redact_text
+from ..security.stream_guard import GuardedStreamChunk, StreamOutputGuard
 from ..services import ClusterService, CommandService
 from .events import RuntimeEventObserver, notify_event
 from .state import AgentState
@@ -96,6 +96,8 @@ async def _run_local_command(
         return await command_service.run_interactive(command)
     if event_observer is None:
         return await command_service.run(command)
+    stdout_guard = StreamOutputGuard(max_chars=STREAM_CHUNK_MAX_CHARS)
+    stderr_guard = StreamOutputGuard(max_chars=STREAM_CHUNK_MAX_CHARS)
     await notify_event(
         event_observer,
         {"type": "command", "phase": "start", "command": command, "trace_id": trace_id},
@@ -103,12 +105,14 @@ async def _run_local_command(
     result = await command_service.run_streaming(
         command,
         on_stdout=lambda text: _stream_command_output(
-            event_observer, trace_id, command, "stdout", text
+            event_observer, trace_id, command, "stdout", text, stdout_guard
         ),
         on_stderr=lambda text: _stream_command_output(
-            event_observer, trace_id, command, "stderr", text
+            event_observer, trace_id, command, "stderr", text, stderr_guard
         ),
     )
+    await _flush_stream_output(event_observer, trace_id, command, "stdout", stdout_guard)
+    await _flush_stream_output(event_observer, trace_id, command, "stderr", stderr_guard)
     await notify_event(
         event_observer,
         {
@@ -128,12 +132,33 @@ async def _stream_command_output(
     command: str,
     stream: str,
     text: str,
+    guard: StreamOutputGuard,
 ) -> None:
-    redacted = redact_text(text)
-    output = redacted.text
-    truncated = len(output) > STREAM_CHUNK_MAX_CHARS
-    if len(output) > STREAM_CHUNK_MAX_CHARS:
-        output = f"{output[:STREAM_CHUNK_MAX_CHARS]}\n[stream chunk truncated]"
+    chunk = guard.guard(text)
+    if not chunk.text:
+        return
+    await _notify_stream_chunk(observer, trace_id, command, stream, chunk)
+
+
+async def _flush_stream_output(
+    observer: RuntimeEventObserver,
+    trace_id: str,
+    command: str,
+    stream: str,
+    guard: StreamOutputGuard,
+) -> None:
+    chunk = guard.flush()
+    if chunk.text:
+        await _notify_stream_chunk(observer, trace_id, command, stream, chunk)
+
+
+async def _notify_stream_chunk(
+    observer: RuntimeEventObserver,
+    trace_id: str,
+    command: str,
+    stream: str,
+    chunk: GuardedStreamChunk,
+) -> None:
     await notify_event(
         observer,
         {
@@ -141,9 +166,9 @@ async def _stream_command_output(
             "phase": stream,
             "command": command,
             "trace_id": trace_id,
-            "text": output,
-            "redacted_count": redacted.count,
-            "truncated": truncated,
+            "text": chunk.text,
+            "redacted_count": chunk.redacted_count,
+            "truncated": chunk.truncated,
         },
     )
 
