@@ -1,0 +1,51 @@
+name: Runbook contribution
+description: Propose or contribute a safe YAML runbook
+title: "runbook: "
+labels: ["runbook", "docs"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read docs/en/runbook-authoring.md first. Runbooks are planner guidance only; they must not bypass policy, HITL, sandbox, or audit.
+  - type: input
+    id: runbook
+    attributes:
+      label: Runbook name
+      placeholder: "disk-read-only-diagnostics"
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Diagnostic workflow
+      description: What operator question should this runbook help answer?
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Expected command families
+      description: List only read-only command families unless a maintainer requested otherwise.
+      placeholder: |
+        - df
+        - lsblk
+        - journalctl --disk-usage
+    validations:
+      required: true
+  - type: dropdown
+    id: safety
+    attributes:
+      label: Safety profile
+      options:
+        - Read-only diagnostics
+        - Requires maintainer review
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Validation plan
+      description: Include schema checks, harness scenarios, or unit tests you expect to add.
+    validations:
+      required: true

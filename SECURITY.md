@@ -70,5 +70,7 @@ runners, reviewers should check:
 - package data: `make verify-build` confirms config, policy, prompts, runbooks,
   and sandbox config sections are present in the wheel.
 
-See [Threat Model](docs/en/threat-model.md) and
-[Production Readiness](docs/en/production-readiness.md) for operational guidance.
+See [Operator Safety Model](docs/en/operator-safety.md),
+[Threat Model](docs/en/threat-model.md), and
+[Production Readiness](docs/en/production-readiness.md) for operational
+guidance.

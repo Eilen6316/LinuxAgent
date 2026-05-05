@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "linuxagent"
 version = "4.0.0"
-description = "LLM-driven Linux operations assistant CLI with Human-in-the-Loop safety."
+description = "HITL-first Linux operations control plane with policy checks, audit trails, runbooks, and SSH guards."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -62,6 +62,7 @@ linuxagent = "linuxagent.cli:main"
 [project.urls]
 Repository = "https://github.com/Eilen6316/LinuxAgent"
 Documentation = "https://github.com/Eilen6316/LinuxAgent#readme"
+Roadmap = "https://github.com/Eilen6316/LinuxAgent/blob/master/ROADMAP.md"
 Changelog = "https://github.com/Eilen6316/LinuxAgent/blob/master/CHANGELOG.md"
 Issues = "https://github.com/Eilen6316/LinuxAgent/issues"
 Security = "https://github.com/Eilen6316/LinuxAgent/security/policy"
@@ -88,6 +89,7 @@ include = [
     "SECURITY.md",
     "CONTRIBUTING.md",
     "CODE_OF_CONDUCT.md",
+    "ROADMAP.md",
     "constraints.txt",
 ]
 exclude = [".work/", ".claude/"]

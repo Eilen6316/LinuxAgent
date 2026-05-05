@@ -20,7 +20,9 @@ def test_openai_error_mapping_avoids_direct_sdk_import() -> None:
     assert isinstance(_map_openai_error(_openai_error("AuthenticationError")), ProviderAuthError)
     assert isinstance(_map_openai_error(_openai_error("RateLimitError")), ProviderRateLimitError)
     assert isinstance(_map_openai_error(_openai_error("APITimeoutError")), ProviderTimeoutError)
-    assert isinstance(_map_openai_error(_openai_error("APIConnectionError")), ProviderConnectionError)
+    assert isinstance(
+        _map_openai_error(_openai_error("APIConnectionError")), ProviderConnectionError
+    )
 
 
 def test_openai_error_mapping_ignores_unknown_errors() -> None:

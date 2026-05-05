@@ -12,6 +12,11 @@ homepage.
 | [中文完整文档](zh/README.md) | 中文安装、配置、使用和架构说明 |
 | [Quick Start](en/quickstart.md) | Short installation and first-run walkthrough |
 | [Development Guide](en/development.md) | Local development and test workflow |
+| [Provider Matrix](en/provider-matrix.md) | Supported provider paths, token parameters, and compatibility report format |
+| [Provider 兼容矩阵](zh/provider-matrix.md) | 中文 provider 兼容路径和反馈格式 |
+| [Runbook Authoring](en/runbook-authoring.md) | How to add safe YAML runbook guidance |
+| [Runbook 编写指南](zh/runbook-authoring.md) | 中文 Runbook 贡献指南 |
+| [Roadmap](../ROADMAP.md) | Maintainer priorities and good-first-issue areas |
 
 ## Release And Operations
 
@@ -29,6 +34,8 @@ homepage.
 | Document | Purpose |
 |---|---|
 | [Threat Model](en/threat-model.md) | Assets, trust boundaries, mitigations, and out-of-scope items |
+| [Operator Safety Model](en/operator-safety.md) | Plain-language command approval, sandbox, audit, and unsuitable-use guidance |
+| [操作员安全模型](zh/operator-safety.md) | 中文安全边界说明 |
 | [威胁模型](zh/threat-model.md) | 中文威胁模型 |
 | [Production Readiness](en/production-readiness.md) | Suitable uses, unsuitable cases, and rollout checklist |
 | [生产就绪清单](zh/production-readiness.md) | 中文生产就绪清单 |

@@ -7,7 +7,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-86.94%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-86.30%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -66,7 +66,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | Current documented baseline: 522 unit tests passing at 86.94% coverage, plus HITL YAML scenarios, 8 integration smoke tests, and optional Anthropic compatibility verification |
+| Testability | Current documented baseline: 577 unit tests passing at 86.30% coverage, plus HITL YAML scenarios, 10 integration smoke tests, and optional Anthropic compatibility verification |
 
 ---
 
@@ -236,8 +236,8 @@ batch confirmation, and audit metadata.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **Current documented baseline: 522 passing; Anthropic compatibility can be verified when the extra is installed** |
-| Coverage | 0 | **86.94%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
+| Unit tests | 0 | **Current documented baseline: 577 passing; Anthropic compatibility can be verified when the extra is installed** |
+| Coverage | 0 | **86.30%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI checks command, SSH, HITL, code-structure, and sandbox bypass red lines |
 
@@ -249,7 +249,7 @@ policy:
   include_builtin: true  # built-ins + user rule overrides/appends
 ```
 | End-to-end scenarios | none | 12 YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard / runbook |
-| Release flow | manual | tag-triggered GitHub Actions builds wheel + sdist + Release |
+| Release flow | manual | tag-triggered GitHub Actions builds wheel + sdist, GitHub Release, and PyPI publish |
 
 ---
 
@@ -328,6 +328,9 @@ api:
 
 Anthropic-format relays can use `provider: anthropic_compatible` with their own
 `base_url`; Xiaomi MiMo can use `provider: xiaomi_mimo`.
+
+See [Provider Compatibility Matrix](provider-matrix.md) for verified paths,
+token parameters, local model notes, and compatibility report details.
 
 ### Provider quick reference
 
@@ -764,11 +767,15 @@ See [Release Guide](release.md).
 ## Docs
 
 - [Quick Start](quickstart.md)
+- [Provider Compatibility Matrix](provider-matrix.md)
+- [Operator Safety Model](operator-safety.md)
+- [Runbook Authoring](runbook-authoring.md)
 - [Development Guide](development.md)
 - [Release Guide](release.md) / [中文发布指南](../zh/release.md)
 - [Migration Guide: v3 to v4.0.0](migration-v3-to-v4.md)
 - [Threat Model](threat-model.md)
 - [Production Readiness](production-readiness.md)
+- [Roadmap](../../ROADMAP.md)
 - [Release Notes](../releases/v4.0.0.md) / [中文发布说明](../zh/releases/v4.0.0.md)
 - [Changelog](../../CHANGELOG.md) / [中文更新日志](../zh/CHANGELOG.md)
 - [Security Policy](../../SECURITY.md) / [安全政策](../zh/SECURITY.md)

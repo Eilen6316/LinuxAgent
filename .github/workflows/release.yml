@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/project/linuxagent/
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,3 +32,5 @@ jobs:
           files: |
             dist/*.whl
             dist/*.tar.gz
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

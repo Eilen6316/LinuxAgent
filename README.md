@@ -6,11 +6,11 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-86.94%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-86.30%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
-  <p><strong>A HITL-first Linux ops agent that turns LLM suggestions into policy-checked, audited, operator-approved commands.</strong></p>
+  <p><strong>A HITL-first Linux operations control plane that keeps LLM plans behind policy checks, audit trails, SSH guards, and operator approval.</strong></p>
 
   <p>
     <a href="docs/zh/README.md">简体中文完整文档</a> ·
@@ -21,7 +21,7 @@
 
 ---
 
-LinuxAgent is a production-minded CLI for Linux operations. It lets an LLM propose commands, but execution stays behind explicit policy checks, Human-in-the-Loop confirmation, SSH safety guards, output redaction, and a hash-chained audit log.
+LinuxAgent is a production-minded CLI for Linux operations. It is not a free-form shell chatbot: it lets an LLM propose plans, but execution stays behind explicit policy checks, Human-in-the-Loop confirmation, SSH safety guards, output redaction, and a hash-chained audit log.
 
 It is built on **LangGraph**, **LangChain**, and **Pydantic v2**. No local deep-learning stack is required.
 
@@ -39,7 +39,7 @@ LinuxAgent's default stance is different:
 | SSH must not silently trust hosts | Remote execution uses known-host verification and shell-syntax guards |
 | Every approval should be reviewable | HITL decisions are written to a `0o600` hash-chained audit log |
 
-## 30-Second Start
+## One-Minute Start
 
 ```bash
 git clone https://github.com/Eilen6316/LinuxAgent.git
@@ -52,6 +52,7 @@ Then edit `./config.yaml` and set your provider API key:
 
 ```yaml
 api:
+  provider: deepseek
   api_key: "replace-me"
 ```
 
@@ -83,6 +84,24 @@ api:
 Anthropic-format relays can use `provider: anthropic_compatible` with their own
 `base_url`; Xiaomi MiMo can use `provider: xiaomi_mimo`.
 
+Validate and start:
+
+```bash
+linuxagent check
+linuxagent
+```
+
+Try a read-only request:
+
+```text
+check the Linux version
+```
+
+When a first LLM-generated command appears, choose `Yes` for one execution,
+`Yes, don't ask again` for matching commands only in this conversation and the
+same `/resume` thread, or `No` to refuse. Use `!uname -a` for direct
+operator-authored command mode.
+
 Provider quick reference:
 
 | Provider | Protocol | Typical `base_url` | Token parameter |
@@ -104,12 +123,8 @@ Provider quick reference:
 | `anthropic_compatible` | Anthropic-compatible relay | relay-specific URL | n/a |
 | `xiaomi_mimo` | Anthropic-compatible | relay-specific URL | n/a |
 
-Run:
-
-```bash
-linuxagent check
-linuxagent
-```
+See the maintained [Provider Compatibility Matrix](docs/en/provider-matrix.md)
+for status, local model notes, and compatibility report details.
 
 `config.yaml` must be owned by the current user and `chmod 600`; secrets are not loaded from `.env`.
 
@@ -286,12 +301,12 @@ Current documented baseline from `make test` on 2026-05-01:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 522 passing |
+| Unit tests | 577 passing |
 | Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
 | Sandbox boundary suite | covered by `make sandbox` |
-| Harness scenarios | 17 HITL / runbook / cluster / sandbox scenarios |
-| Integration smoke tests | 8 passing |
-| Coverage | 86.94% (`--cov-fail-under=80`) |
+| Harness scenarios | scenario-driven HITL / runbook / cluster / sandbox coverage |
+| Integration smoke tests | 10 passing |
+| Coverage | 86.30% (`--cov-fail-under=80`) |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 
@@ -313,6 +328,7 @@ make verify-build
 |---|---|
 | `./scripts/bootstrap.sh` | You are working from a source checkout |
 | `pip install -c constraints.txt https://github.com/Eilen6316/LinuxAgent/releases/download/v4.0.0/linuxagent-4.0.0-py3-none-any.whl` | You want the published GitHub Release wheel |
+| `pip install linuxagent` | You want the PyPI package after the release is published |
 | `pip install -e ".[dev]"` | You are developing or running the full local gate |
 | `pip install -e ".[anthropic]"` | You need the optional Anthropic provider |
 
@@ -324,6 +340,10 @@ make verify-build
 | [docs/zh/README.md](docs/zh/README.md) | Full Chinese manual |
 | [docs/en/README.md](docs/en/README.md) | Full English manual |
 | [Quick Start](docs/en/quickstart.md) | Installation and first run |
+| [Provider Matrix](docs/en/provider-matrix.md) | Provider setup paths and compatibility status |
+| [Operator Safety Model](docs/en/operator-safety.md) | Plain-language safety boundaries for users |
+| [Runbook Authoring](docs/en/runbook-authoring.md) | How to contribute safe YAML runbooks |
+| [Roadmap](ROADMAP.md) | Maintainer priorities and good first issue areas |
 | [Migration Guide](docs/en/migration-v3-to-v4.md) | v3 to v4 breaking changes |
 | [Threat Model](docs/en/threat-model.md) | Assets, trust boundaries, and mitigations |
 | [Production Readiness](docs/en/production-readiness.md) | Where LinuxAgent is and is not appropriate |

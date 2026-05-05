@@ -56,5 +56,6 @@ def test_unknown_exception_falls_back_to_generic_provider_error() -> None:
     mapped = provider._map_error(RuntimeError("who knows"))
     assert isinstance(mapped, ProviderError)
     assert not isinstance(
-        mapped, (ProviderAuthError, ProviderRateLimitError, ProviderTimeoutError, ProviderConnectionError)
+        mapped,
+        ProviderAuthError | ProviderRateLimitError | ProviderTimeoutError | ProviderConnectionError,
     )

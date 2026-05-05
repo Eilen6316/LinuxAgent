@@ -1,5 +1,24 @@
 # 发布指南
 
+LinuxAgent 的正式发布包含两个出口：
+
+- GitHub Release：附带 wheel 和 sdist。
+- PyPI：通过 GitHub Actions + PyPI Trusted Publishing 发布。
+
+## 维护者首次配置
+
+首次发布到 PyPI 前，在 PyPI 配置 Trusted Publishing：
+
+| 字段 | 值 |
+|---|---|
+| PyPI project | `linuxagent` |
+| Owner | `Eilen6316` |
+| Repository | `LinuxAgent` |
+| Workflow | `release.yml` |
+| Environment | `pypi` |
+
+workflow 使用 GitHub OIDC，不需要保存 PyPI API token secret。
+
 ## 本地检查清单
 
 打 tag 前运行：
@@ -9,7 +28,7 @@ make test
 make lint
 make type
 make security
-python -m tests.harness.runner --scenarios tests/harness/scenarios
+make harness
 python -m pip check
 make verify-build
 ```
@@ -63,6 +82,12 @@ pip-compile pyproject.toml --extra dev --extra anthropic --extra pyinstaller --s
 - `dist/*.tar.gz`
 - CI coverage artifact 中的 `coverage.xml` 和 `htmlcov/`
 
+## 产物来源
+
+release workflow 从 tag commit 构建产物，先运行 `make verify-build` 验证 wheel
+安装路径，再把同一批 `dist/*.whl` 和 `dist/*.tar.gz` 上传到 GitHub Release 和
+PyPI。
+
 ## 打 Tag 发布
 
 ```bash
@@ -72,3 +97,4 @@ git push origin v4.0.0
 
 GitHub Actions release workflow 会构建产物，并使用 `docs/releases/v4.0.0.md`
 作为 GitHub Release 正文。中文发布说明位于 `docs/zh/releases/v4.0.0.md`。
+同一个 workflow 会通过 Trusted Publishing 发布到 PyPI。

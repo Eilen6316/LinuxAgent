@@ -1,0 +1,55 @@
+name: Roadmap task
+description: Pick up a scoped task from ROADMAP.md
+title: "roadmap: "
+labels: ["help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with ROADMAP.md before opening this issue. Security-sensitive areas need maintainer review before implementation.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Runbook ecosystem
+        - Provider compatibility
+        - Production evidence
+        - CLI documentation
+        - Policy or runbook tests
+        - Observability
+        - Packaging
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: Task
+      description: What small, reviewable change do you want to make?
+      placeholder: "Add a read-only runbook for ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: List the files or docs you expect to touch.
+    validations:
+      required: true
+  - type: dropdown
+    id: first_issue
+    attributes:
+      label: Contributor level
+      options:
+        - Good first issue
+        - Help wanted
+        - Needs maintainer design review
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: Which tests, docs checks, or manual commands will show the task is done?
+    validations:
+      required: true

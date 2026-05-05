@@ -70,4 +70,3 @@ def _reject_shell_syntax(command: str, argv: tuple[str, ...]) -> None:
         for char in token:
             if char in _FORBIDDEN_CHARS:
                 raise RemoteCommandError(f"remote shell metacharacter is not allowed: {char}")
-

@@ -6,8 +6,9 @@ reviewed with a bias toward explicit behavior, tests, and conservative defaults.
 
 ## Start Here
 
-1. Read [README.md](README.md), [docs/development.md](docs/development.md), and
-   [docs/threat-model.md](docs/threat-model.md).
+1. Read [README.md](README.md), [docs/en/development.md](docs/en/development.md),
+   [docs/en/operator-safety.md](docs/en/operator-safety.md), and
+   [docs/en/threat-model.md](docs/en/threat-model.md).
 2. Create a virtualenv and install development dependencies:
 
 ```bash
@@ -52,6 +53,20 @@ Runtime dependencies live in `pyproject.toml`. `constraints.txt` is generated
 for reproducible installs and release verification; do not hand-edit dependency
 versions in multiple places without explaining why in the PR.
 
+## Where To Contribute
+
+Start with [ROADMAP.md](ROADMAP.md). Good first contributions usually fit one
+of these areas:
+
+- read-only YAML runbooks
+- provider compatibility notes after testing a real endpoint
+- focused policy or runbook validation tests
+- CLI documentation and quickstart improvements
+- production smoke-test transcripts
+
+Open an issue before changing command execution, HITL, SSH, sandbox, audit,
+redaction, or provider SDK boundaries.
+
 ## Pull Request Expectations
 
 - Keep the change scoped and explain the operator-visible behavior.
@@ -61,6 +76,12 @@ versions in multiple places without explaining why in the PR.
 - Include migration notes for breaking changes.
 - Do not commit local files such as `.work/`, `.codex/`, `config.yaml`, build
   output, caches, or secrets.
+
+## Runbook Contributions
+
+Runbooks are advisory planner guidance. They do not bypass policy or HITL. See
+[docs/en/runbook-authoring.md](docs/en/runbook-authoring.md) before adding or
+changing files under `runbooks/`.
 
 ## Commit Messages
 

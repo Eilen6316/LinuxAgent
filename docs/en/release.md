@@ -1,5 +1,25 @@
 # Release
 
+LinuxAgent publishes two release surfaces from a signed tag:
+
+- GitHub Release artifacts: wheel and sdist attached to the release.
+- PyPI package: published by GitHub Actions through PyPI Trusted Publishing.
+
+## Maintainer Setup
+
+Before the first PyPI release, configure PyPI Trusted Publishing for:
+
+| Field | Value |
+|---|---|
+| PyPI project | `linuxagent` |
+| Owner | `Eilen6316` |
+| Repository | `LinuxAgent` |
+| Workflow | `release.yml` |
+| Environment | `pypi` |
+
+The workflow uses GitHub OIDC (`id-token: write`) and does not require a PyPI
+API token secret.
+
 ## Local Checklist
 
 Run these before tagging:
@@ -9,7 +29,7 @@ make test
 make lint
 make type
 make security
-python -m tests.harness.runner --scenarios tests/harness/scenarios
+make harness
 python -m pip check
 make verify-build
 ```
@@ -60,6 +80,20 @@ Regenerate before a release after the full gate passes:
 pip-compile pyproject.toml --extra dev --extra anthropic --extra pyinstaller --strip-extras --no-emit-trusted-host --index-url https://pypi.org/simple --output-file constraints.txt
 ```
 
+## Artifact Provenance
+
+Release artifacts are built by GitHub Actions from the tag commit. The release
+workflow first verifies the wheel install path with `make verify-build`, then
+uploads the same `dist/*.whl` and `dist/*.tar.gz` files to GitHub Release and
+PyPI.
+
+After publication, verify:
+
+```bash
+python -m pip install --upgrade linuxagent
+linuxagent --help
+```
+
 ## Expected Artifacts
 
 - `dist/*.whl`
@@ -75,4 +109,17 @@ git push origin v4.0.0
 
 The GitHub Actions release workflow builds artifacts and creates a GitHub
 Release using `docs/releases/v4.0.0.md` as the release body. The Chinese release
-notes live in `docs/zh/releases/v4.0.0.md`.
+notes live in `docs/zh/releases/v4.0.0.md`. The same workflow publishes to PyPI
+through Trusted Publishing.
+
+## Release Checklist
+
+- Version in `pyproject.toml` matches the tag.
+- `CHANGELOG.md` and release notes mention user-visible changes.
+- `constraints.txt` was refreshed or intentionally left unchanged.
+- `make lint`, `make type`, `make security`, `make test`, `make sandbox`,
+  `make integration`, `make harness`, and `make verify-build` pass locally or
+  in CI.
+- GitHub Release contains wheel and sdist.
+- PyPI page shows the new version.
+- A fresh virtualenv can install and run `linuxagent --help`.

@@ -1,0 +1,68 @@
+name: Provider compatibility report
+description: Report a tested LLM provider, relay, or local endpoint configuration
+title: "provider: "
+labels: ["provider", "docs"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for compatibility evidence that can update docs/en/provider-matrix.md or docs/zh/provider-matrix.md. Redact API keys and private endpoint data.
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      placeholder: "openai, deepseek, ollama, vllm, lmstudio, ..."
+    validations:
+      required: true
+  - type: input
+    id: endpoint
+    attributes:
+      label: Base URL shape
+      description: Redact private hostnames. Keep only the protocol shape when needed.
+      placeholder: "https://api.example.com/v1 or http://127.0.0.1:11434/v1"
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: "deepseek-chat, gpt-4.1-mini, llama3.1, ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: token_parameter
+    attributes:
+      label: Token parameter
+      options:
+        - max_tokens
+        - max_completion_tokens
+        - Not applicable
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Redacted config
+      description: Paste only non-secret config fields.
+      render: yaml
+      placeholder: |
+        api:
+          provider: openai_compatible
+          base_url: https://example.invalid/v1
+          model: example-model
+          token_parameter: max_tokens
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Checks run
+      description: Include linuxagent check output summary and one read-only prompt if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Mention timeouts, streaming behavior, rate limits, or provider quirks.
