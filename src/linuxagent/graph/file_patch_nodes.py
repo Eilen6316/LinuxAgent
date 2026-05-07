@@ -47,6 +47,8 @@ from .state import AgentState
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 MAX_PATCH_CONTEXT_LINES = 120
 MAX_PATCH_CONTEXT_CHARS = 20_000
+MAX_PATCH_ERROR_SNAPSHOT_LINES = 24
+MAX_PATCH_ERROR_SNAPSHOT_CHARS = 4_000
 DEFAULT_FILE_PATCH_REPAIR_ATTEMPTS = 2
 PATCH_REPAIR_NOT_APPLIED = "No file changes were applied."
 
@@ -313,14 +315,15 @@ async def _complete_valid_repair_plan(
 
 
 def _parse_repair_candidate(candidate: str) -> CommandPlan | FilePatchPlan | NoChangePlan:
+    normalized = _extract_embedded_json(candidate)
     try:
-        return parse_no_change_plan(candidate)
+        return parse_no_change_plan(normalized)
     except NoChangePlanParseError as no_change_exc:
         try:
-            return parse_command_plan(candidate)
+            return parse_command_plan(normalized)
         except CommandPlanParseError as command_exc:
             try:
-                return parse_file_patch_plan(candidate)
+                return parse_file_patch_plan(normalized)
             except FilePatchPlanParseError as patch_exc:
                 raise FilePatchPlanParseError(
                     "repair response must be a JSON CommandPlan, FilePatchPlan, "
@@ -328,6 +331,15 @@ def _parse_repair_candidate(candidate: str) -> CommandPlan | FilePatchPlan | NoC
                     f"NoChangePlan error: {no_change_exc}; "
                     f"CommandPlan error: {command_exc}; FilePatchPlan error: {patch_exc}"
                 ) from patch_exc
+
+
+def _extract_embedded_json(candidate: str) -> str:
+    stripped = candidate.strip()
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start == -1 or end <= start:
+        return stripped
+    return stripped[start : end + 1]
 
 
 def _ensure_repair_plan_is_valid(plan: FilePatchPlan, config: FilePatchConfig) -> None:
@@ -636,7 +648,13 @@ def _repair_command_update(
     }
 
 
-def _patch_failure_context(state: AgentState, config: FilePatchConfig) -> str:
+def _patch_failure_context(
+    state: AgentState,
+    config: FilePatchConfig,
+    *,
+    max_snapshot_lines: int = MAX_PATCH_CONTEXT_LINES,
+    max_snapshot_chars: int = MAX_PATCH_CONTEXT_CHARS,
+) -> str:
     result = state.get("execution_result")
     if result is None:
         failure = state.get("safety_reason") or state.get("plan_error") or ""
@@ -644,14 +662,21 @@ def _patch_failure_context(state: AgentState, config: FilePatchConfig) -> str:
         failure = (
             f"exit_code={result.exit_code}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
-    snapshots = _target_file_snapshots(state, config)
+    snapshots = _target_file_snapshots(
+        state, config, max_lines=max_snapshot_lines, max_chars=max_snapshot_chars
+    )
     if not snapshots:
         return failure
     return f"{failure}\n\nCurrent target file snapshots:\n{snapshots}"
 
 
 def _repair_failure_message(state: AgentState, config: FilePatchConfig, error: str) -> str:
-    original_failure = _patch_failure_context(state, config).strip()
+    original_failure = _patch_failure_context(
+        state,
+        config,
+        max_snapshot_lines=MAX_PATCH_ERROR_SNAPSHOT_LINES,
+        max_snapshot_chars=MAX_PATCH_ERROR_SNAPSHOT_CHARS,
+    ).strip()
     if original_failure:
         return (
             f"file patch repair failed: {error}. {PATCH_REPAIR_NOT_APPLIED} "
@@ -670,12 +695,27 @@ def _retry_failure_context(
     )
 
 
-def _target_file_snapshots(state: AgentState, config: FilePatchConfig) -> str:
-    snapshots = [_snapshot_file(path, config) for path in _current_patch_files(state)]
+def _target_file_snapshots(
+    state: AgentState,
+    config: FilePatchConfig,
+    *,
+    max_lines: int = MAX_PATCH_CONTEXT_LINES,
+    max_chars: int = MAX_PATCH_CONTEXT_CHARS,
+) -> str:
+    snapshots = [
+        _snapshot_file(path, config, max_lines=max_lines, max_chars=max_chars)
+        for path in _current_patch_files(state)
+    ]
     return "\n\n".join(snapshot for snapshot in snapshots if snapshot)
 
 
-def _snapshot_file(raw_path: str, config: FilePatchConfig) -> str:
+def _snapshot_file(
+    raw_path: str,
+    config: FilePatchConfig,
+    *,
+    max_lines: int,
+    max_chars: int,
+) -> str:
     path = _resolve_snapshot_path(Path(raw_path))
     if not _path_allowed_for_snapshot(path, config):
         return f"{path}: outside configured file_patch.allow_roots"
@@ -685,18 +725,18 @@ def _snapshot_file(raw_path: str, config: FilePatchConfig) -> str:
         return f"{path}: <directory>"
     if not path.is_file():
         return f"{path}: <not a regular file>"
-    return _read_snapshot(path)
+    return _read_snapshot(path, max_lines=max_lines, max_chars=max_chars)
 
 
-def _read_snapshot(path: Path) -> str:
+def _read_snapshot(path: Path, *, max_lines: int, max_chars: int) -> str:
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as exc:
         return f"{path}: <unreadable: {exc}>"
-    window = lines[:MAX_PATCH_CONTEXT_LINES]
+    window = lines[:max_lines]
     numbered = "\n".join(f"{index}:{line}" for index, line in enumerate(window, start=1))
-    suffix = "\n..." if len(lines) > MAX_PATCH_CONTEXT_LINES else ""
-    return _truncate(f"{path}:\n{numbered}{suffix}", MAX_PATCH_CONTEXT_CHARS)
+    suffix = "\n...<snapshot truncated>" if len(lines) > max_lines else ""
+    return _truncate(f"{path}:\n{numbered}{suffix}", max_chars)
 
 
 def _resolve_snapshot_path(path: Path) -> Path:

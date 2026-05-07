@@ -651,6 +651,59 @@ async def test_graph_retries_file_patch_repair_when_response_is_not_json(
     assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
+async def test_graph_accepts_repair_json_inside_explanatory_text(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("#!/bin/sh\necho disk\n", encoding="utf-8")
+    stale_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,3 @@",
+            " #!/bin/sh",
+            " echo disk",
+            "+echo cpu",
+        ],
+    )
+    repaired_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,3 @@",
+            " #!/bin/sh",
+            " echo storage",
+            "+echo cpu",
+        ],
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        [
+            stale_plan,
+            f"Here is the corrected JSON:\n```json\n{repaired_plan}\n```",
+            "analysis ok",
+        ],
+    )
+    config = {"configurable": {"thread_id": "file-patch-repair-fenced-json"}}
+
+    await graph.ainvoke(
+        initial_state("update existing disk info shell script", source=CommandSource.USER),
+        config=config,
+    )
+    target.write_text("#!/bin/sh\necho storage\n", encoding="utf-8")
+    repair_result = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+    snapshot = await graph.aget_state(config)
+    interrupts = list(repair_result.get("__interrupt__", ())) if repair_result else []
+    if not interrupts:
+        interrupts = list(snapshot.tasks[0].interrupts)
+
+    assert interrupts[0].value["type"] == "confirm_file_patch"
+    assert interrupts[0].value["repair_attempt"] == 1
+    assert "+echo cpu" in interrupts[0].value["unified_diff"]
+
+
 async def test_graph_retries_file_patch_repair_when_repaired_context_is_stale(
     tmp_path,
 ) -> None:
@@ -891,6 +944,7 @@ async def test_graph_file_patch_repair_timeout_reports_non_mutating_failure(tmp_
     assert "No file changes were applied." in content
     assert "Original patch failure" in content
     assert "unified diff context does not match target file" in content
+    assert "...<snapshot truncated>" not in content
     assert target.read_text(encoding="utf-8") == "#!/bin/sh\necho storage\n"
 
 

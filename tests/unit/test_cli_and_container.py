@@ -396,19 +396,20 @@ def test_tool_event_message_formats_workspace_tools() -> None:
                 "output_preview": "1:# LinuxAgent\n2:Usage",
             }
         )
-        == "LinuxAgent 已读取文件 README.md：1:# LinuxAgent；2:Usage"
+        == "LinuxAgent 已读取文件 README.md\n  证据预览:\n  - 1:# LinuxAgent\n  - 2:Usage"
     )
-    assert (
-        container_module._tool_event_message(
-            {
-                "phase": "end",
-                "status": "truncated",
-                "tool_name": "search_files",
-                "args": {"root": ".", "pattern": "START_TIME"},
-                "output_preview": json.dumps(["disk.sh:2:START_TIME=$(date)"]),
-            }
-        )
-        == "LinuxAgent 已搜索 .: START_TIME（输出已截断）：disk.sh:2:START_TIME=$(date)"
+    assert container_module._tool_event_message(
+        {
+            "phase": "end",
+            "status": "truncated",
+            "tool_name": "search_files",
+            "args": {"root": ".", "pattern": "START_TIME"},
+            "output_preview": json.dumps(["disk.sh:2:START_TIME=$(date)"]),
+        }
+    ) == (
+        "LinuxAgent 已搜索 .: START_TIME（输出已截断）\n"
+        "  证据预览:\n"
+        "  - disk.sh:2:START_TIME=$(date)"
     )
     assert (
         container_module._tool_event_message(
@@ -420,7 +421,7 @@ def test_tool_event_message_formats_workspace_tools() -> None:
                 "output_preview": json.dumps(["disk_info.sh", "notes.txt"]),
             }
         )
-        == "LinuxAgent 已列目录 workspace：disk_info.sh；notes.txt"
+        == "LinuxAgent 已列目录 workspace\n  证据预览:\n  - disk_info.sh\n  - notes.txt"
     )
 
 

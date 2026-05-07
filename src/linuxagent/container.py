@@ -484,26 +484,37 @@ def _tool_end_message(tool_name: str, args: dict[str, Any], event: dict[str, Any
     evidence = _tool_evidence_summary(str(event.get("output_preview") or ""))
     suffix = "（输出已截断）" if status == "truncated" or event.get("truncated") else ""
     if tool_name == "read_file":
-        return f"LinuxAgent 已读取文件 {args.get('path') or ''}{suffix}：{evidence}".strip()
+        heading = f"LinuxAgent 已读取文件 {args.get('path') or ''}{suffix}".strip()
+        return _tool_evidence_message(heading, evidence)
     if tool_name == "list_dir":
-        return f"LinuxAgent 已列目录 {args.get('path') or '.'}{suffix}：{evidence}"
+        return _tool_evidence_message(
+            f"LinuxAgent 已列目录 {args.get('path') or '.'}{suffix}", evidence
+        )
     if tool_name == "search_files":
         root = args.get("root") or "."
         pattern = args.get("pattern") or ""
-        return f"LinuxAgent 已搜索 {root}: {pattern}{suffix}：{evidence}"
+        return _tool_evidence_message(f"LinuxAgent 已搜索 {root}: {pattern}{suffix}", evidence)
     return None
 
 
-def _tool_evidence_summary(preview: str) -> str:
+def _tool_evidence_message(heading: str, evidence: tuple[str, ...]) -> str:
+    bullets = "\n".join(f"  - {item}" for item in evidence)
+    return f"{heading}\n  证据预览:\n{bullets}"
+
+
+def _tool_evidence_summary(preview: str) -> tuple[str, ...]:
     items = _json_preview_items(preview)
     if not items:
         items = [line.strip() for line in preview.splitlines() if line.strip()]
     if not items:
-        return "无输出"
-    summary = "；".join(items[:_TOOL_EVIDENCE_ITEMS])
-    if len(summary) <= _TOOL_EVIDENCE_CHARS:
-        return summary
-    return summary[: _TOOL_EVIDENCE_CHARS - 1].rstrip() + "…"
+        return ("无输出",)
+    return tuple(_trim_tool_evidence(item) for item in items[:_TOOL_EVIDENCE_ITEMS])
+
+
+def _trim_tool_evidence(item: str) -> str:
+    if len(item) <= _TOOL_EVIDENCE_CHARS:
+        return item
+    return item[: _TOOL_EVIDENCE_CHARS - 1].rstrip() + "…"
 
 
 def _json_preview_items(preview: str) -> list[str]:

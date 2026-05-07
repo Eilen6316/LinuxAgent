@@ -12,6 +12,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `read_file`, `list_dir`, and `search_files` calls. No-change file-plan
   answers also include the cited evidence so operators can see which file lines
   or search results the model used.
+- File-patch repair is stricter about regenerating diffs from current file
+  snapshots, accepts JSON embedded in model prose or fenced blocks, and keeps
+  terminal failure messages shorter by truncating large target snapshots.
 
 ## [4.1.0] - 2026-05-07
 

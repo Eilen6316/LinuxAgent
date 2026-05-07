@@ -7,6 +7,10 @@ Previous FilePatchPlan JSON:
 Patch failure:
 {failure_context}
 
+Your response is machine-parsed. Return exactly one JSON object and nothing
+else: no markdown fences, no explanations, no apologies, no code blocks outside
+JSON.
+
 The previous FilePatchPlan failed to apply. Use available read-only workspace
 tools such as `read_file`, `list_dir`, and `search_files` to inspect the current
 target file content before responding. If a tool says a path is a directory,
@@ -35,8 +39,12 @@ Use argv-safe commands only. For example, use `python3 -c` with `pathlib` and
 command substitution, or command chaining. The CommandPlan will still go through
 policy, HITL confirmation, execution, and audit.
 
-Otherwise return only a corrected JSON FilePatchPlan object. Do not return
-markdown, prose, or raw shell commands. Use exactly this top-level shape:
+Otherwise return only a corrected JSON FilePatchPlan object. Build the new
+unified diff from the current target file snapshot in `Patch failure` or from
+fresh `read_file` output. The context lines in every hunk must exactly match
+the current file, including comments, blank lines, spacing, and language.
+Do not reuse stale context from the failed diff. Use exactly this top-level
+shape:
 
 ```json
 {{
