@@ -1,0 +1,10 @@
+scenario: "conversation history question stays on direct answer path"
+provider_responses:
+  - '{"mode":"DIRECT_ANSWER","answer":"你最开始问的是：code review 一下当前这个项目。","reason":"user asks about prior conversation history"}'
+inputs:
+  - role: human
+    content: "我最开始都问你啥问题了"
+expected:
+  command_executed: false
+  response_contains:
+    - "你最开始问的是：code review 一下当前这个项目。"

@@ -1,0 +1,41 @@
+scenario: "file patch repair accepts corrected JSON embedded in prose"
+provider_responses:
+  - '{"plan_type":"file_patch","goal":"create disk info script","request_intent":"create","files_changed":["{tmp}/disk_info.sh"],"unified_diff":"--- /dev/null\n+++ {tmp}/disk_info.sh\n@@ -0,0 +1,2 @@\n+#!/bin/sh\n+echo disk\n","risk_summary":"Creates a disk info helper script.","verification_commands":["sh -n {tmp}/disk_info.sh"],"permission_changes":[],"rollback_diff":"","expected_side_effects":["filesystem.write"]}'
+  - |
+    I corrected the file target after seeing the current snapshot.
+
+    ```json
+    {"plan_type":"file_patch","goal":"create disk info script without overwriting existing file","request_intent":"create","files_changed":["{tmp}/disk_info_1.sh"],"unified_diff":"--- /dev/null\n+++ {tmp}/disk_info_1.sh\n@@ -0,0 +1,2 @@\n+#!/bin/sh\n+echo disk\n","risk_summary":"Creates an alternate disk info helper script because the requested file already exists.","verification_commands":["sh -n {tmp}/disk_info_1.sh"],"permission_changes":[],"rollback_diff":"","expected_side_effects":["filesystem.write"]}
+    ```
+  - "script created with repaired filename"
+setup:
+  file_patch:
+    allow_roots:
+      - "{tmp}"
+    high_risk_roots: []
+  files:
+    - path: "{tmp}/disk_info.sh"
+      content: |
+        existing
+inputs:
+  - role: human
+    content: "帮我在 /tmp 下编写一个脚本查询 disk 相关信息"
+expected_interrupts:
+  - type: confirm_file_patch
+    repair_attempt: 1
+resume:
+  decision: "yes"
+  latency_ms: 25
+expected:
+  command_executed: true
+  exit_code: 0
+  response_contains:
+    - "script created with repaired filename"
+  files:
+    - path: "{tmp}/disk_info.sh"
+      content: |
+        existing
+    - path: "{tmp}/disk_info_1.sh"
+      content: |
+        #!/bin/sh
+        echo disk

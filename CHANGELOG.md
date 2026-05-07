@@ -15,6 +15,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - File-patch repair is stricter about regenerating diffs from current file
   snapshots, accepts JSON embedded in model prose or fenced blocks, and keeps
   terminal failure messages shorter by truncating large target snapshots.
+- Conversation-history questions now stay on the direct-answer path instead of
+  falling into command or file planning, so chat-only requests do not expose
+  internal no-change evidence errors.
 
 ## [4.1.0] - 2026-05-07
 
