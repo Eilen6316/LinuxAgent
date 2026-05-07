@@ -1095,6 +1095,30 @@ async def test_graph_command_plan_hostname_target_resolves_to_host_name(tmp_path
     assert tuple(snapshot.values["selected_hosts"]) == ("web1",)
 
 
+async def test_graph_ignores_unresolved_external_tool_targets(tmp_path) -> None:
+    cfg = ClusterConfig(
+        batch_confirm_threshold=2,
+        hosts=(ClusterHost(name="web1", hostname="192.0.2.52", username="ops"),),
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        [_command_plan_json_with_hosts("ansible yingxiaoyun-test -m ping", ["yingxiaoyun-test"])],
+        cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
+    )
+    config = {"configurable": {"thread_id": "ansible-group-target"}}
+
+    await graph.ainvoke(
+        initial_state("使用 ansible 对 yingxiaoyun-test 分组做巡检", source=CommandSource.USER),
+        config=config,
+    )
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+
+    snapshot = await graph.aget_state(config)
+    assert tuple(snapshot.values["selected_hosts"]) == ()
+    assert tuple(snapshot.values["batch_hosts"]) == ()
+    assert snapshot.values["execution_result"].stderr != "no matching cluster hosts selected"
+
+
 async def test_graph_treats_localhost_target_as_local_execution(tmp_path) -> None:
     cfg = ClusterConfig(
         batch_confirm_threshold=2,

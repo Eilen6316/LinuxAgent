@@ -573,9 +573,7 @@ def _selected_hosts_for_plan(
     if not remote_hosts:
         return ()
     resolved = cluster_service.resolve_host_names(remote_hosts)
-    if resolved:
-        return tuple(host.name for host in resolved)
-    return remote_hosts
+    return tuple(host.name for host in resolved)
 
 
 def _is_local_identifier(host: str) -> bool:
