@@ -37,6 +37,30 @@ _SENSITIVE_REDIRECT_PATHS: tuple[str, ...] = (
     r"^/home/[^/]+/\.ssh(/|$)",
 )
 _LEVEL_RANK = {SafetyLevel.SAFE: 0, SafetyLevel.CONFIRM: 1, SafetyLevel.BLOCK: 2}
+_SSH_OPTIONS_WITH_ARG: frozenset[str] = frozenset(
+    {
+        "-b",
+        "-c",
+        "-E",
+        "-e",
+        "-F",
+        "-I",
+        "-i",
+        "-J",
+        "-L",
+        "-l",
+        "-m",
+        "-O",
+        "-o",
+        "-p",
+        "-Q",
+        "-R",
+        "-S",
+        "-W",
+        "-w",
+    }
+)
+_SSH_FORCE_TTY_FLAGS: frozenset[str] = frozenset({"-t", "-tt"})
 
 
 class PolicyInputError(ValueError):
@@ -142,6 +166,8 @@ def is_interactive_tokens(
         noninteractive_flags = config.noninteractive_flags
     if not tokens or tokens[0] not in interactive_commands:
         return False
+    if tokens[0] == "ssh":
+        return _is_interactive_ssh(tokens)
     return not _has_noninteractive_flag(tokens, noninteractive_flags)
 
 
@@ -149,6 +175,39 @@ def _has_noninteractive_flag(tokens: list[str] | tuple[str, ...], flags: tuple[s
     return any(
         token == flag or token.startswith(f"{flag}=") for token in tokens[1:] for flag in flags
     )
+
+
+def _is_interactive_ssh(tokens: list[str] | tuple[str, ...]) -> bool:
+    if _ssh_forces_tty(tokens):
+        return True
+    destination_index = _ssh_destination_index(tokens)
+    if destination_index is None:
+        return True
+    return len(tokens) == destination_index + 1
+
+
+def _ssh_forces_tty(tokens: list[str] | tuple[str, ...]) -> bool:
+    return any(token in _SSH_FORCE_TTY_FLAGS for token in tokens[1:])
+
+
+def _ssh_destination_index(tokens: list[str] | tuple[str, ...]) -> int | None:
+    index = 1
+    while index < len(tokens):
+        arg = tokens[index]
+        if arg == "--":
+            return index + 1 if index + 1 < len(tokens) else None
+        if not arg.startswith("-") or arg == "-":
+            return index
+        index += 2 if _ssh_option_takes_separate_arg(arg, index, tokens) else 1
+    return None
+
+
+def _ssh_option_takes_separate_arg(
+    arg: str,
+    index: int,
+    tokens: list[str] | tuple[str, ...],
+) -> bool:
+    return arg in _SSH_OPTIONS_WITH_ARG and index + 1 < len(tokens)
 
 
 def _decision_from_matches(matches: list[PolicyRule], source: CommandSource) -> PolicyDecision:

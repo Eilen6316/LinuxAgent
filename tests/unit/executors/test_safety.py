@@ -119,11 +119,36 @@ def test_is_destructive(command: str, expected: bool) -> None:
 def test_interactive_exact_match() -> None:
     assert is_interactive(["python", "script.py"]) is True
     assert is_interactive(["vim", "file.txt"]) is True
+    assert is_interactive(["ssh", "ops@example.com"]) is True
 
 
 def test_interactive_batch_flags_mark_client_noninteractive() -> None:
     assert is_interactive(["mysql", "-uroot", "-e", "SELECT 1"]) is False
     assert is_interactive(["mysql", "--batch", "--execute=SELECT 1"]) is False
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
+        ["ssh", "ops@example.com", "uptime"],
+        ["ssh", "-p", "2222", "ops@example.com", "df", "-h"],
+        ["ssh", "-i", "~/.ssh/id_ed25519", "ops@example.com", "hostname"],
+        ["ssh", "--", "ops@example.com", "uname", "-a"],
+    ],
+)
+def test_ssh_with_remote_command_is_noninteractive(tokens: list[str]) -> None:
+    assert is_interactive(tokens) is False
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
+        ["ssh", "-t", "ops@example.com", "top"],
+        ["ssh", "-tt", "ops@example.com", "bash"],
+    ],
+)
+def test_ssh_forced_tty_stays_interactive(tokens: list[str]) -> None:
+    assert is_interactive(tokens) is True
 
 
 def test_interactive_does_not_match_inside_string() -> None:
