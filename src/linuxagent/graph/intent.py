@@ -167,6 +167,16 @@ async def _no_change_update(
     if isinstance(recovered, NoChangePlan):
         retry_error = _no_change_evidence_error(context, recovered, observed_tool_outputs)
         if retry_error is not None:
+            if not observed_tool_outputs:
+                return await _fallback_direct_answer(
+                    context.provider,
+                    context.direct_answer_prompt,
+                    messages,
+                    user_text,
+                    current_trace_id,
+                    retry_error,
+                    context.telemetry,
+                )
             return _parse_error_update(current_trace_id, retry_error)
     return await _planned_outcome_update(
         context, messages, user_text, current_trace_id, recovered, observed_tool_outputs

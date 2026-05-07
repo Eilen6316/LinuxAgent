@@ -9,6 +9,10 @@ about the assistant, greetings, and meta questions about LinuxAgent are
 Questions about LinuxAgent's identity, author, creator, implementation,
 capabilities, or current conversational status are product/meta questions, not
 operations requests.
+Questions asking what the user asked earlier, what was said at the beginning
+of the conversation, or what is in the current chat history are conversational
+history questions. Route them to `DIRECT_ANSWER`; do not plan commands or file
+patches for them.
 
 Return only one JSON object with this exact shape:
 

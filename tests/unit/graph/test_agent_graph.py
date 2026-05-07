@@ -1440,6 +1440,35 @@ async def test_graph_answers_howto_without_command_panel(tmp_path) -> None:
     assert snapshot.values["direct_response"] is True
 
 
+async def test_graph_falls_back_to_direct_answer_for_history_question_nochange(
+    tmp_path,
+) -> None:
+    answer = "你最开始问的是：code review 一下当前这个项目。"
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _no_change_plan_json("没有需要修改的文件。"),
+            _no_change_plan_json("仍然没有需要修改的文件。"),
+            answer,
+        ],
+        tools=(SimpleNamespace(name="read_file"),),  # type: ignore[arg-type]
+    )
+    config = {"configurable": {"thread_id": "history-question-nochange"}}
+
+    result = await graph.ainvoke(
+        initial_state("我最开始都问你啥问题了", source=CommandSource.USER),
+        config=config,
+    )
+    content = str(result["messages"][-1].content)
+
+    assert answer in content
+    assert "NoChangePlan requires read_file evidence" not in content
+    assert provider.tool_calls == 1
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values["direct_response"] is True
+
+
 async def test_graph_clarifies_artifact_creation_without_destination(tmp_path) -> None:
     answer = "脚本要保存到哪个目录和文件名？"
     graph, provider = _graph(tmp_path, [_router_response("CLARIFY", answer)])
