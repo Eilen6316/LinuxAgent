@@ -3,7 +3,7 @@
 
 PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo python; fi)
 
-.PHONY: help install test sandbox integration optional-anthropic lint type security harness build verify-build clean
+.PHONY: help install test sandbox integration optional-anthropic lint type security red-team harness build verify-build clean
 
 help:
 	@echo "Targets:"
@@ -15,6 +15,7 @@ help:
 	@echo "  lint       ruff check"
 	@echo "  type       mypy"
 	@echo "  security   grep red-lines + bandit"
+	@echo "  red-team   adversarial policy regression tests"
 	@echo "  harness    scenario-driven HITL harness"
 	@echo "  build      build wheel + sdist"
 	@echo "  verify-build build wheel + verify install + packaged data"
@@ -69,6 +70,9 @@ security:
 	@$(PYTHON) scripts/check_sandbox_rules.py
 	@echo "--> bandit"
 	@$(PYTHON) -m bandit -q -r src/linuxagent/ -ll
+
+red-team:
+	$(PYTHON) -m pytest tests/red_team/
 
 harness:
 	LINUXAGENT_HARNESS_SCENARIOS=tests/harness/scenarios $(PYTHON) -m pytest tests/harness/test_scenarios.py
