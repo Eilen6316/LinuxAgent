@@ -20,11 +20,22 @@ from .models import (
     PolicyMatch,
     PolicyRule,
 )
+from .shell_structure import ShellRedirect, ShellStructure, analyze_shell_structure
 
 MAX_COMMAND_LENGTH = 2048
 _BIDI_CONTROLS: frozenset[str] = frozenset(
     {"LRE", "RLE", "LRO", "RLO", "LRI", "RLI", "FSI", "PDF", "PDI"}
 )
+_MAX_SHELL_STRUCTURE_DEPTH = 4
+_SENSITIVE_REDIRECT_PATHS: tuple[str, ...] = (
+    r"^/etc(/|$)",
+    r"^/root(/|$)",
+    r"^/boot(/|$)",
+    r"^/dev/[sh]d[a-z]",
+    r"^/dev/nvme\d",
+    r"^/home/[^/]+/\.ssh(/|$)",
+)
+_LEVEL_RANK = {SafetyLevel.SAFE: 0, SafetyLevel.CONFIRM: 1, SafetyLevel.BLOCK: 2}
 
 
 class PolicyInputError(ValueError):
@@ -69,11 +80,23 @@ class PolicyEngine:
         *,
         source: CommandSource = CommandSource.USER,
     ) -> PolicyDecision:
+        return self._evaluate(command, source=source, depth=0)
+
+    def _evaluate(
+        self,
+        command: str,
+        *,
+        source: CommandSource,
+        depth: int,
+    ) -> PolicyDecision:
         facts = command_facts(command, source=source)
-        matches = [compiled.rule for compiled in self._compiled if compiled.matches(facts)]
-        if not matches:
-            return PolicyDecision(level=SafetyLevel.SAFE, command_source=source)
-        return _decision_from_matches(matches, source)
+        local_decision = _decision_from_facts(facts, self._compiled, source)
+        if facts.input_error is not None or facts.parse_error is not None:
+            return local_decision
+        shell = analyze_shell_structure(command)
+        shell_decision = _decision_from_shell_structure(shell, source)
+        child_decisions = _child_policy_decisions(shell, self, source=source, depth=depth)
+        return _merge_decisions((shell_decision, local_decision, *child_decisions), source)
 
 
 def validate_input(command: str, *, max_length: int = MAX_COMMAND_LENGTH) -> None:
@@ -141,9 +164,170 @@ def _decision_from_matches(matches: list[PolicyRule], source: CommandSource) -> 
     )
 
 
+def _decision_from_facts(
+    facts: CommandFacts,
+    compiled_rules: tuple[_CompiledRule, ...],
+    source: CommandSource,
+) -> PolicyDecision:
+    matches = [compiled.rule for compiled in compiled_rules if compiled.matches(facts)]
+    if not matches:
+        return PolicyDecision(level=SafetyLevel.SAFE, command_source=source)
+    return _decision_from_matches(matches, source)
+
+
+def _decision_from_shell_structure(
+    shell: ShellStructure,
+    source: CommandSource,
+) -> PolicyDecision:
+    parse_decision = _shell_parse_decision(shell, source)
+    if parse_decision is not None:
+        return parse_decision
+    redirect_decision = _redirect_decision(shell.redirects, source)
+    if redirect_decision is not None:
+        return redirect_decision
+    if shell.control_operators:
+        return _structural_decision(
+            SafetyLevel.CONFIRM,
+            65,
+            ("shell.control",),
+            ("SHELL_CONTROL",),
+            "shell control operator requires review",
+            source,
+        )
+    return PolicyDecision(level=SafetyLevel.SAFE, command_source=source)
+
+
+def _shell_parse_decision(
+    shell: ShellStructure,
+    source: CommandSource,
+) -> PolicyDecision | None:
+    if shell.parse_error is None:
+        return None
+    return _structural_decision(
+        SafetyLevel.BLOCK,
+        100,
+        ("shell.parse",),
+        ("PARSE_ERROR",),
+        shell.parse_error,
+        source,
+    )
+
+
+def _redirect_decision(
+    redirects: tuple[ShellRedirect, ...],
+    source: CommandSource,
+) -> PolicyDecision | None:
+    write_targets = tuple(redirect.target for redirect in redirects if redirect.is_write)
+    if not write_targets:
+        return None
+    if any(target and _is_sensitive_redirect_target(target) for target in write_targets):
+        return _structural_decision(
+            SafetyLevel.BLOCK,
+            100,
+            ("filesystem.sensitive_write",),
+            ("SENSITIVE_REDIRECT",),
+            "redirect targets sensitive path",
+            source,
+        )
+    return _structural_decision(
+        SafetyLevel.CONFIRM,
+        60,
+        ("filesystem.write",),
+        ("REDIRECT_WRITE",),
+        "shell redirect writes output",
+        source,
+    )
+
+
+def _structural_decision(
+    level: SafetyLevel,
+    risk_score: int,
+    capabilities: tuple[str, ...],
+    matched_rules: tuple[str, ...],
+    reason: str,
+    source: CommandSource,
+) -> PolicyDecision:
+    return PolicyDecision(
+        level=level,
+        risk_score=risk_score,
+        capabilities=capabilities,
+        matched_rules=matched_rules,
+        reason=reason,
+        approval=_approval_for(level, matched_rules),
+        command_source=source,
+        can_whitelist=level is not SafetyLevel.BLOCK,
+    )
+
+
+def _child_policy_decisions(
+    shell: ShellStructure,
+    engine: PolicyEngine,
+    *,
+    source: CommandSource,
+    depth: int,
+) -> tuple[PolicyDecision, ...]:
+    if depth >= _MAX_SHELL_STRUCTURE_DEPTH:
+        return ()
+    return tuple(
+        engine._evaluate(child, source=source, depth=depth + 1) for child in shell.child_commands
+    )
+
+
+def _is_sensitive_redirect_target(target: str) -> bool:
+    return any(
+        re.match(pattern, candidate)
+        for candidate in _path_match_candidates(target)
+        for pattern in _SENSITIVE_REDIRECT_PATHS
+    )
+
+
+def _merge_decisions(
+    decisions: Iterable[PolicyDecision],
+    source: CommandSource,
+) -> PolicyDecision:
+    materialized = tuple(decisions)
+    max_level = _max_level(decision.level for decision in materialized)
+    ordered = _highest_risk_first(materialized)
+    matched_rules = _merged_matched_rules(ordered)
+    if not matched_rules:
+        return PolicyDecision(level=max_level, command_source=source)
+    return PolicyDecision(
+        level=max_level,
+        risk_score=max(decision.risk_score for decision in materialized),
+        capabilities=_merged_capabilities(ordered),
+        matched_rules=matched_rules,
+        reason=_merged_reason(ordered),
+        approval=_approval_for(max_level, matched_rules),
+        command_source=source,
+        can_whitelist=all(decision.can_whitelist for decision in materialized),
+    )
+
+
+def _highest_risk_first(decisions: tuple[PolicyDecision, ...]) -> tuple[PolicyDecision, ...]:
+    indexed = tuple(enumerate(decisions))
+    ordered = sorted(
+        indexed,
+        key=lambda item: (_LEVEL_RANK[item[1].level], item[1].risk_score, -item[0]),
+        reverse=True,
+    )
+    return tuple(decision for _, decision in ordered)
+
+
+def _merged_matched_rules(decisions: tuple[PolicyDecision, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(rule for decision in decisions for rule in decision.matched_rules))
+
+
+def _merged_capabilities(decisions: tuple[PolicyDecision, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(cap for decision in decisions for cap in decision.capabilities))
+
+
+def _merged_reason(decisions: tuple[PolicyDecision, ...]) -> str | None:
+    reasons = tuple(dict.fromkeys(decision.reason for decision in decisions if decision.reason))
+    return "; ".join(reasons) if reasons else None
+
+
 def _max_level(levels: Iterable[SafetyLevel]) -> SafetyLevel:
-    order = {SafetyLevel.SAFE: 0, SafetyLevel.CONFIRM: 1, SafetyLevel.BLOCK: 2}
-    return max(levels, key=lambda level: order[level])
+    return max(levels, key=lambda level: _LEVEL_RANK[level])
 
 
 def _approval_for(level: SafetyLevel, matched_rules: tuple[str, ...]) -> PolicyApproval:
