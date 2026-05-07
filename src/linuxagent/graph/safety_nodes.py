@@ -36,38 +36,85 @@ def make_safety_check_node(
             runtime_observer,
             {"type": "activity", "phase": "policy", "command": command},
         )
-        with span(telemetry, "policy.evaluate", current_trace_id, {"command_source": source.value}):
+        with span(
+            telemetry,
+            "policy.evaluate",
+            current_trace_id,
+            {"command_source": source.value, "graph.node": "safety_check"},
+        ):
             verdict = command_service.classify(command, source=source)
+        _record_policy_decision(telemetry, current_trace_id, verdict)
         sandbox_preview = _sandbox_preview(command_service, command, source)
         selected = _selected_cluster_hosts(state, cluster_service)
         remote_error = _remote_command_error(command, selected)
         if remote_error is not None:
             return _remote_error_update(current_trace_id, remote_error, verdict)
-        batch_hosts = _batch_hosts(selected, cluster_service)
-        remote_profiles = _remote_profiles(selected, cluster_service)
-        remote_preflight = _remote_preflight_commands(selected, cluster_service)
-        level = _permission_adjusted_level(
+        return _selected_safety_update(
             state,
             command,
-            verdict,
-            batch_hosts,
-            permissions_enabled=_conversation_permissions_enabled(command_service),
-        )
-        if batch_hosts and level is SafetyLevel.SAFE:
-            level = SafetyLevel.CONFIRM
-        return _safety_update(
             current_trace_id,
             verdict,
-            level,
-            batch_hosts,
-            remote_profiles,
-            remote_preflight,
-            matched_rule=_matched_rule(verdict, level, batch_hosts),
-            reason=_safety_reason(verdict, level, batch_hosts),
             sandbox_preview=sandbox_preview,
+            selected=selected,
+            cluster_service=cluster_service,
+            command_service=command_service,
         )
 
     return safety_check_node
+
+
+def _selected_safety_update(
+    state: AgentState,
+    command: str,
+    trace: str,
+    verdict: Any,
+    *,
+    sandbox_preview: dict[str, object] | None,
+    selected: tuple[ClusterHost, ...],
+    cluster_service: ClusterService | None,
+    command_service: CommandService,
+) -> AgentState:
+    batch_hosts = _batch_hosts(selected, cluster_service)
+    level = _permission_adjusted_level(
+        state,
+        command,
+        verdict,
+        batch_hosts,
+        permissions_enabled=_conversation_permissions_enabled(command_service),
+    )
+    if batch_hosts and level is SafetyLevel.SAFE:
+        level = SafetyLevel.CONFIRM
+    return _safety_update(
+        trace,
+        verdict,
+        level,
+        batch_hosts,
+        _remote_profiles(selected, cluster_service),
+        _remote_preflight_commands(selected, cluster_service),
+        matched_rule=_matched_rule(verdict, level, batch_hosts),
+        reason=_safety_reason(verdict, level, batch_hosts),
+        sandbox_preview=sandbox_preview,
+    )
+
+
+def _record_policy_decision(
+    telemetry: TelemetryRecorder | None,
+    trace: str,
+    verdict: Any,
+) -> None:
+    if telemetry is None:
+        return
+    telemetry.event(
+        "policy.decision",
+        trace_id=trace,
+        attributes={
+            "policy.level": getattr(verdict.level, "value", str(verdict.level)),
+            "policy.matched_rule": verdict.matched_rule,
+            "policy.risk_score": getattr(verdict, "risk_score", None),
+            "policy.capabilities": tuple(getattr(verdict, "capabilities", ())),
+            "graph.node": "safety_check",
+        },
+    )
 
 
 def _empty_command_update(trace: str, state: AgentState) -> AgentState:

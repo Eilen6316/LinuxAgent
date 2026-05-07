@@ -94,7 +94,7 @@ monitoring:
 
 telemetry:
   enabled: true
-  exporter: local
+  exporter: local  # local | none | console | otlp
   path: ~/.linuxagent/telemetry.jsonl
   otlp_endpoint:
 

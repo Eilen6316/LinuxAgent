@@ -170,10 +170,10 @@ audit:
   sink_header_value:
 
 telemetry:
-  # Default is local JSONL spans. No external collector is required.
-  # Set exporter: none to disable telemetry writes.
+  # Default is local JSONL spans. Set exporter: console for local stdout
+  # development, otlp for an HTTP collector, or none to disable telemetry.
   enabled: true
-  exporter: local              # local | none | otlp
+  exporter: local              # local | none | console | otlp
   path: ~/.linuxagent/telemetry.jsonl
   otlp_endpoint:
 

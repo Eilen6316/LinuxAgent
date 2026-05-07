@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 import uuid
@@ -17,14 +18,21 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib import error, parse, request
 
 from .security import redact_record
+
+
+class TelemetryExportError(RuntimeError):
+    """Raised when a best-effort telemetry exporter fails."""
 
 
 @dataclass(frozen=True)
 class TelemetryRecorder:
     path: Path
     enabled: bool = True
+    exporter: str = "local"
+    otlp_endpoint: str | None = None
     _lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False, compare=False
     )
@@ -82,6 +90,14 @@ class TelemetryRecorder:
         if error is not None:
             record["error"] = error
         payload = redact_record(record)
+        if self.exporter == "console":
+            self._write_console(payload)
+            return
+        if self.exporter == "otlp":
+            self._write_otlp(payload)
+            return
+        if self.exporter == "none":
+            return
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             if not self.path.exists():
@@ -90,6 +106,59 @@ class TelemetryRecorder:
             os.chmod(self.path, 0o600)
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+
+    def _write_console(self, payload: dict[str, Any]) -> None:
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True), file=sys.stdout)
+
+    def _write_otlp(self, payload: dict[str, Any]) -> None:
+        if self.otlp_endpoint is None:
+            raise TelemetryExportError("otlp endpoint is required")
+        _validate_http_url(self.otlp_endpoint)
+        body = json.dumps(_otlp_envelope(payload), ensure_ascii=False, sort_keys=True).encode(
+            "utf-8"
+        )
+        req = request.Request(  # noqa: S310
+            self.otlp_endpoint,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=2.0) as response:  # noqa: S310  # nosec B310
+                status = response.getcode()
+        except (OSError, error.URLError) as exc:
+            raise TelemetryExportError(str(exc)) from exc
+        if status < 200 or status >= 300:
+            raise TelemetryExportError(f"otlp exporter returned status {status}")
+
+
+def _otlp_envelope(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "resourceSpans": [
+            {
+                "scopeSpans": [
+                    {
+                        "scope": {"name": "linuxagent"},
+                        "spans": [
+                            {
+                                "traceId": payload["trace_id"],
+                                "spanId": payload["span_id"],
+                                "name": payload["name"],
+                                "status": {"code": payload["status"]},
+                                "attributes": payload.get("attributes", {}),
+                            }
+                        ],
+                    }
+                ]
+            }
+        ]
+    }
+
+
+def _validate_http_url(url: str) -> None:
+    parsed = parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise TelemetryExportError("telemetry OTLP endpoint must be http:// or https://")
 
 
 def new_trace_id() -> str:

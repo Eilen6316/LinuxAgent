@@ -420,9 +420,18 @@ class TelemetryConfig(BaseModel):
     model_config = _FROZEN
 
     enabled: bool = True
-    exporter: Literal["local", "none", "otlp"] = "local"
+    exporter: Literal["local", "none", "console", "otlp"] = "local"
     path: UserPath = Field(default_factory=lambda: Path.home() / ".linuxagent" / "telemetry.jsonl")
     otlp_endpoint: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_otlp(self) -> TelemetryConfig:
+        if self.enabled and self.exporter == "otlp":
+            if not self.otlp_endpoint:
+                raise ValueError("telemetry.otlp_endpoint is required when exporter is otlp")
+            if not self.otlp_endpoint.startswith(("https://", "http://")):
+                raise ValueError("telemetry.otlp_endpoint must be http:// or https://")
+        return self
 
 
 class AnalyticsConfig(BaseModel):

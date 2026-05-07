@@ -200,6 +200,10 @@ extra is not installed.
 Every graph run receives a `trace_id` that is attached to HITL audit records
 and local telemetry spans. The default telemetry backend writes JSONL to
 `~/.linuxagent/telemetry.jsonl`; it does not require an external OTel service.
+For development you can set `telemetry.exporter: console` to print redacted span
+JSON to stdout. For collector integration set `telemetry.exporter: otlp` and
+`telemetry.otlp_endpoint` to an HTTP traces endpoint. Network telemetry export is
+never enabled by default.
 
 HITL "allow all" decisions are recorded as `decision: yes_all` with a
 Claude-style `permissions.allow` list such as `Bash(cat /etc/os-release)`.

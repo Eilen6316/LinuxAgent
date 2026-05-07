@@ -399,8 +399,9 @@ linuxagent check
 | `cluster.hosts[].remote_profile` | `environment` | `inherit` | `inherit` preserves current behavior; `clean` sends a minimal PATH environment |
 | `cluster.hosts[].remote_profile` | `allow_sudo` | `false` | Allows sudo only when paired with a non-empty `sudo_allowlist` |
 | `audit` | `path` | `~/.linuxagent/audit.log` | Audit log location; **audit cannot be disabled** |
-| `telemetry` | `exporter` | `local` | Local JSONL spans by default; `none` disables writes |
+| `telemetry` | `exporter` | `local` | `local`, `console`, `otlp`, or `none` |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | Local telemetry path |
+| `telemetry` | `otlp_endpoint` | null | Required when `exporter: otlp` |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
 | `ui` | `max_chat_history` | `20` | Max retained messages per saved session; new sessions do not load them automatically |
 | `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | Local LangGraph checkpoint store for pending HITL resume |

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
+from linuxagent import telemetry as telemetry_module
 from linuxagent.graph.intent import tool_event_observer
 from linuxagent.telemetry import TelemetryRecorder, new_trace_id
 
@@ -87,3 +89,68 @@ def test_telemetry_disabled_does_not_create_file(tmp_path) -> None:
         pass
 
     assert not path.exists()
+
+
+def test_telemetry_console_exporter_redacts_stdout(tmp_path, capsys) -> None:
+    recorder = TelemetryRecorder(tmp_path / "telemetry.jsonl", exporter="console")
+
+    recorder.event(
+        "policy.decision",
+        trace_id="trace-1",
+        attributes={"api_key": "sk-prodsecret1234567890", "policy.level": "BLOCK"},
+    )
+
+    captured = capsys.readouterr()
+    assert "sk-prodsecret" not in captured.out
+    record = json.loads(captured.out)
+    assert record["attributes"]["api_key"] == "***redacted***"
+    assert record["attributes"]["policy.level"] == "BLOCK"
+    assert not (tmp_path / "telemetry.jsonl").exists()
+
+
+def test_telemetry_none_exporter_does_not_create_file(tmp_path) -> None:
+    path = tmp_path / "telemetry.jsonl"
+    recorder = TelemetryRecorder(path, exporter="none")
+
+    recorder.event("policy.decision", trace_id="trace-1")
+
+    assert not path.exists()
+
+
+def test_telemetry_otlp_exporter_posts_redacted_payload(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class _Response:
+        def __enter__(self) -> _Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def getcode(self) -> int:
+            return 200
+
+    def fake_urlopen(req: Any, *, timeout: float) -> _Response:
+        captured["url"] = req.full_url
+        captured["timeout"] = timeout
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _Response()
+
+    monkeypatch.setattr(telemetry_module.request, "urlopen", fake_urlopen)
+    recorder = TelemetryRecorder(
+        tmp_path / "telemetry.jsonl",
+        exporter="otlp",
+        otlp_endpoint="https://otel.example.invalid/v1/traces",
+    )
+
+    recorder.event("policy.decision", trace_id="trace-1", attributes={"token": "plain-token"})
+
+    assert captured["url"] == "https://otel.example.invalid/v1/traces"
+    span = captured["body"]["resourceSpans"][0]["scopeSpans"][0]["spans"][0]
+    assert span["traceId"] == "trace-1"
+    assert span["name"] == "policy.decision"
+    assert span["attributes"]["token"] == "***redacted***"  # noqa: S105
+    assert not (tmp_path / "telemetry.jsonl").exists()

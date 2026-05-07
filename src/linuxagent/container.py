@@ -212,8 +212,9 @@ class Container:
             "telemetry",
             lambda: TelemetryRecorder(
                 self._config.telemetry.path,
-                enabled=self._config.telemetry.enabled
-                and self._config.telemetry.exporter == "local",
+                enabled=self._config.telemetry.enabled,
+                exporter=self._config.telemetry.exporter,
+                otlp_endpoint=self._config.telemetry.otlp_endpoint,
             ),
         )
 

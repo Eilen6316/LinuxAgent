@@ -551,6 +551,24 @@ def test_audit_sink_header_secret_is_not_rendered() -> None:
     assert cfg.sink_header_value.get_secret_value() == "Bearer secret-token"
 
 
+def test_telemetry_otlp_requires_endpoint() -> None:
+    with pytest.raises(ValueError, match="telemetry.otlp_endpoint is required"):
+        AppConfig.model_validate({"telemetry": {"exporter": "otlp"}})
+
+
+def test_telemetry_console_exporter_is_valid() -> None:
+    cfg = AppConfig.model_validate({"telemetry": {"exporter": "console"}})
+
+    assert cfg.telemetry.exporter == "console"
+
+
+def test_telemetry_otlp_endpoint_requires_http() -> None:
+    with pytest.raises(ValueError, match="must be http:// or https://"):
+        AppConfig.model_validate(
+            {"telemetry": {"exporter": "otlp", "otlp_endpoint": "file:///tmp/traces"}}
+        )
+
+
 def test_cluster_paths_expand_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     cfg = ClusterConfig.model_validate(

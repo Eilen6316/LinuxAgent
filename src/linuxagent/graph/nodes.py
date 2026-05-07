@@ -161,7 +161,14 @@ async def _record_confirm_decision(
     current_trace_id: str,
 ) -> str:
     with span(
-        telemetry, "hitl.confirm", current_trace_id, {"matched_rule": state.get("matched_rule")}
+        telemetry,
+        "hitl.confirm",
+        current_trace_id,
+        {
+            "matched_rule": state.get("matched_rule"),
+            "hitl.latency_ms": latency_ms(response),
+            "graph.node": "confirm",
+        },
     ):
         user_decision = decision(response)
         await audit.record_decision(
