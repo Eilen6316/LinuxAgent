@@ -1422,6 +1422,46 @@ async def test_graph_returns_no_change_plan_as_direct_response(tmp_path) -> None
     assert snapshot.values["direct_response"] is True
 
 
+async def test_graph_includes_workspace_evidence_in_no_change_answer(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    evidence = "2:START_TIME=$(date '+%Y-%m-%d %H:%M:%S')"
+    target.write_text("#!/bin/bash\nSTART_TIME=$(date '+%Y-%m-%d %H:%M:%S')\n", encoding="utf-8")
+    answer = "现有脚本已包含执行开始时间功能，无需修改。"
+    provider = _ScriptedToolProvider(
+        [
+            {
+                "tool_calls": [{"tool": "read_file", "args": {"path": str(target)}}],
+                "response": _no_change_plan_json(answer, evidence=[evidence]),
+            }
+        ]
+    )
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+            tools=tuple(build_workspace_tools(FilePatchConfig(allow_roots=(tmp_path,)))),
+            file_patch_config=FilePatchConfig(allow_roots=(tmp_path,)),
+        )
+    )
+    config = {"configurable": {"thread_id": "no-change-evidence-answer"}}
+
+    result = await graph.ainvoke(
+        initial_state("在 /tmp/disk_info.sh 里面再加执行开始时间功能"),
+        config=config,
+    )
+    content = str(result["messages"][-1].content)
+
+    assert answer in content
+    assert "依据：" in content
+    assert evidence in content
+    assert provider.tool_calls == 1
+
+
 async def test_graph_rejects_no_change_without_workspace_evidence(tmp_path) -> None:
     target = tmp_path / "disk_info.sh"
     target.write_text("#!/bin/bash\necho disk\n", encoding="utf-8")

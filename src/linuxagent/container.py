@@ -8,6 +8,7 @@ avoided (R-ARCH-05). The container is instantiated once per process in
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -57,6 +58,8 @@ from .ui import ConsoleUI
 if TYPE_CHECKING:
     from .config.models import AppConfig
 _T = TypeVar("_T")
+_TOOL_EVIDENCE_ITEMS = 3
+_TOOL_EVIDENCE_CHARS = 180
 
 
 class Container:
@@ -407,6 +410,8 @@ def _tool_event_message(event: dict[str, Any]) -> str | None:
             f"LinuxAgent 工具调用失败："
             f"{tool_name}: {event.get('output_preview') or 'unknown error'}"
         )
+    if phase == "end":
+        return _tool_end_message(tool_name, args, event)
     return None
 
 
@@ -470,3 +475,42 @@ def _tool_start_message(tool_name: str, args: dict[str, Any]) -> str:
         suffix = f" {', '.join(str(item) for item in files)}" if files else ""
         return f"LinuxAgent 正在重新读取文件并修复 diff{suffix}"
     return f"LinuxAgent 正在调用工具 {tool_name}"
+
+
+def _tool_end_message(tool_name: str, args: dict[str, Any], event: dict[str, Any]) -> str | None:
+    status = str(event.get("status") or "")
+    if status not in {"allowed", "truncated"}:
+        return None
+    evidence = _tool_evidence_summary(str(event.get("output_preview") or ""))
+    suffix = "（输出已截断）" if status == "truncated" or event.get("truncated") else ""
+    if tool_name == "read_file":
+        return f"LinuxAgent 已读取文件 {args.get('path') or ''}{suffix}：{evidence}".strip()
+    if tool_name == "list_dir":
+        return f"LinuxAgent 已列目录 {args.get('path') or '.'}{suffix}：{evidence}"
+    if tool_name == "search_files":
+        root = args.get("root") or "."
+        pattern = args.get("pattern") or ""
+        return f"LinuxAgent 已搜索 {root}: {pattern}{suffix}：{evidence}"
+    return None
+
+
+def _tool_evidence_summary(preview: str) -> str:
+    items = _json_preview_items(preview)
+    if not items:
+        items = [line.strip() for line in preview.splitlines() if line.strip()]
+    if not items:
+        return "无输出"
+    summary = "；".join(items[:_TOOL_EVIDENCE_ITEMS])
+    if len(summary) <= _TOOL_EVIDENCE_CHARS:
+        return summary
+    return summary[: _TOOL_EVIDENCE_CHARS - 1].rstrip() + "…"
+
+
+def _json_preview_items(preview: str) -> list[str]:
+    try:
+        value = json.loads(preview)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]

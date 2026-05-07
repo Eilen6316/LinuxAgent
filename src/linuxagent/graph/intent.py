@@ -43,6 +43,8 @@ from .state import AgentState
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 ToolEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
 MAX_PLAN_PARSE_RETRIES = 2
+NO_CHANGE_EVIDENCE_ITEMS = 3
+NO_CHANGE_EVIDENCE_CHARS = 180
 
 
 class IntentMode(StrEnum):
@@ -158,7 +160,7 @@ async def _no_change_update(
 ) -> AgentState:
     evidence_error = _no_change_evidence_error(context, plan, observed_tool_outputs)
     if evidence_error is None:
-        return _direct_response_update(current_trace_id, plan.answer)
+        return _direct_response_update(current_trace_id, _no_change_answer(plan))
     recovered = await _recover_plan_parse_error(
         context, messages, user_text, current_trace_id, evidence_error, plan.model_dump_json()
     )
@@ -234,6 +236,22 @@ def _no_change_evidence_error(
     if missing:
         return "NoChangePlan evidence was not found in workspace tool output: " + "; ".join(missing)
     return None
+
+
+def _no_change_answer(plan: NoChangePlan) -> str:
+    if not plan.evidence:
+        return plan.answer
+    evidence = "\n".join(
+        f"- {_trim_no_change_evidence(item)}" for item in plan.evidence[:NO_CHANGE_EVIDENCE_ITEMS]
+    )
+    return f"{plan.answer}\n\n依据：\n{evidence}"
+
+
+def _trim_no_change_evidence(value: str) -> str:
+    text = " ".join(value.split())
+    if len(text) <= NO_CHANGE_EVIDENCE_CHARS:
+        return text
+    return text[: NO_CHANGE_EVIDENCE_CHARS - 1].rstrip() + "…"
 
 
 async def _complete_plan_candidate(
