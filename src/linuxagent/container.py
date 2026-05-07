@@ -59,6 +59,8 @@ if TYPE_CHECKING:
     from .config.models import AppConfig
 _T = TypeVar("_T")
 _TOOL_EVIDENCE_ITEMS = 3
+_READ_FILE_HEAD_EVIDENCE_ITEMS = 2
+_READ_FILE_TAIL_EVIDENCE_ITEMS = 3
 _TOOL_EVIDENCE_CHARS = 180
 
 
@@ -481,16 +483,19 @@ def _tool_end_message(tool_name: str, args: dict[str, Any], event: dict[str, Any
     status = str(event.get("status") or "")
     if status not in {"allowed", "truncated"}:
         return None
-    evidence = _tool_evidence_summary(str(event.get("output_preview") or ""))
+    output = str(event.get("output_text") or event.get("output_preview") or "")
     suffix = "（输出已截断）" if status == "truncated" or event.get("truncated") else ""
     if tool_name == "read_file":
+        evidence = _read_file_evidence_summary(output)
         heading = f"LinuxAgent 已读取文件 {args.get('path') or ''}{suffix}".strip()
         return _tool_evidence_message(heading, evidence)
     if tool_name == "list_dir":
+        evidence = _tool_evidence_summary(output)
         return _tool_evidence_message(
             f"LinuxAgent 已列目录 {args.get('path') or '.'}{suffix}", evidence
         )
     if tool_name == "search_files":
+        evidence = _tool_evidence_summary(output)
         root = args.get("root") or "."
         pattern = args.get("pattern") or ""
         return _tool_evidence_message(f"LinuxAgent 已搜索 {root}: {pattern}{suffix}", evidence)
@@ -509,6 +514,19 @@ def _tool_evidence_summary(preview: str) -> tuple[str, ...]:
     if not items:
         return ("无输出",)
     return tuple(_trim_tool_evidence(item) for item in items[:_TOOL_EVIDENCE_ITEMS])
+
+
+def _read_file_evidence_summary(output: str) -> tuple[str, ...]:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if not lines:
+        return ("无输出",)
+    if len(lines) <= _READ_FILE_HEAD_EVIDENCE_ITEMS + _READ_FILE_TAIL_EVIDENCE_ITEMS:
+        return tuple(_trim_tool_evidence(line) for line in lines)
+    selected = [
+        *lines[:_READ_FILE_HEAD_EVIDENCE_ITEMS],
+        *lines[-_READ_FILE_TAIL_EVIDENCE_ITEMS:],
+    ]
+    return tuple(_trim_tool_evidence(line) for line in selected)
 
 
 def _trim_tool_evidence(item: str) -> str:

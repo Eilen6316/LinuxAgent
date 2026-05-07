@@ -97,7 +97,7 @@ async def invoke_tool_with_sandbox(
         )
     timeout = _tool_timeout(tool, limits)
     try:
-        raw_result = await asyncio.wait_for(tool.ainvoke(args), timeout=timeout)
+        raw_result = await asyncio.wait_for(_invoke_tool(tool, args), timeout=timeout)
     except TimeoutError:
         return _tool_error_result(
             tool,
@@ -120,6 +120,16 @@ async def invoke_tool_with_sandbox(
         event=_tool_event(tool, args, "end", status, content, truncated=truncated),
         output_chars=len(content),
     )
+
+
+async def _invoke_tool(tool: BaseTool, args: dict[str, Any]) -> Any:
+    if _has_async_tool_callable(tool):
+        return await tool.ainvoke(args)
+    return tool.invoke(args)
+
+
+def _has_async_tool_callable(tool: BaseTool) -> bool:
+    return callable(getattr(tool, "coroutine", None)) or callable(getattr(tool, "afunc", None))
 
 
 def _tool_error_result(
@@ -214,6 +224,7 @@ def _tool_event(
         "args": args,
         "sandbox": tool_sandbox_record(tool),
         "output_preview": output[:500],
+        "output_text": output,
         "output_chars": len(output),
         "truncated": truncated,
     }

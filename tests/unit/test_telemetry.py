@@ -81,6 +81,28 @@ async def test_tool_event_observer_records_structured_status(tmp_path) -> None:
     assert record["error"] == "outside allowed roots"
 
 
+async def test_tool_event_observer_omits_full_tool_output_from_telemetry(tmp_path) -> None:
+    recorder = TelemetryRecorder(tmp_path / "telemetry.jsonl")
+    observed_outputs: list[str] = []
+    observer = tool_event_observer(recorder, None, "trace-1", observed_outputs)
+
+    await observer(
+        {
+            "phase": "end",
+            "status": "allowed",
+            "tool_name": "read_file",
+            "args": {"path": "README.md"},
+            "output_preview": "1:# LinuxAgent",
+            "output_text": "1:# LinuxAgent\n2:Usage",
+        }
+    )
+
+    record = json.loads((tmp_path / "telemetry.jsonl").read_text(encoding="utf-8"))
+    assert "output_text" not in record["attributes"]
+    assert record["attributes"]["output_preview"] == "1:# LinuxAgent"
+    assert observed_outputs == ["1:# LinuxAgent\n2:Usage"]
+
+
 def test_telemetry_disabled_does_not_create_file(tmp_path) -> None:
     path = tmp_path / "telemetry.jsonl"
     recorder = TelemetryRecorder(path, enabled=False)

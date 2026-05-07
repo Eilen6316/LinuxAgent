@@ -1,0 +1,45 @@
+scenario: "read file evidence summary uses the same output sent to the agent"
+provider_responses:
+  - tool_calls:
+      - tool: read_file
+        args:
+          path: "{tmp}/disk_info.sh"
+    response: |
+      {"plan_type":"no_change","answer":"已读取脚本内容。","reason":"inspection only","evidence":["8:echo \"end\""]}
+setup:
+  workspace_tools: true
+  file_patch:
+    allow_roots:
+      - "{tmp}"
+    high_risk_roots: []
+  files:
+    - path: "{tmp}/disk_info.sh"
+      content: |
+        #!/bin/bash
+        echo "header"
+        echo "body1"
+        echo "body2"
+        echo "body3"
+        echo "body4"
+        echo "footer"
+        echo "end"
+inputs:
+  - role: human
+    content: "读取 /tmp/disk_info.sh 看一下内容"
+expected:
+  command_executed: false
+  response_contains:
+    - "已读取脚本内容。"
+    - "8:echo \"end\""
+  tool_events:
+    - tool_name: read_file
+      status: allowed
+      output_text: |-
+        1:#!/bin/bash
+        2:echo "header"
+        3:echo "body1"
+        4:echo "body2"
+        5:echo "body3"
+        6:echo "body4"
+        7:echo "footer"
+        8:echo "end"

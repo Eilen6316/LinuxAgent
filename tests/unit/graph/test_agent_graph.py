@@ -1510,6 +1510,7 @@ async def test_graph_includes_workspace_evidence_in_no_change_answer(tmp_path) -
     evidence = "2:START_TIME=$(date '+%Y-%m-%d %H:%M:%S')"
     target.write_text("#!/bin/bash\nSTART_TIME=$(date '+%Y-%m-%d %H:%M:%S')\n", encoding="utf-8")
     answer = "现有脚本已包含执行开始时间功能，无需修改。"
+    events: list[dict[str, Any]] = []
     provider = _ScriptedToolProvider(
         [
             {
@@ -1528,6 +1529,7 @@ async def test_graph_includes_workspace_evidence_in_no_change_answer(tmp_path) -
             ),
             audit=AuditLog(tmp_path / "audit.log"),
             tools=tuple(build_workspace_tools(FilePatchConfig(allow_roots=(tmp_path,)))),
+            tool_observer=events.append,
             file_patch_config=FilePatchConfig(allow_roots=(tmp_path,)),
         )
     )
@@ -1538,11 +1540,11 @@ async def test_graph_includes_workspace_evidence_in_no_change_answer(tmp_path) -
         config=config,
     )
     content = str(result["messages"][-1].content)
-
     assert answer in content
     assert "依据：" in content
     assert evidence in content
     assert provider.tool_calls == 1
+    assert events[0]["output_text"] == "1:#!/bin/bash\n" + evidence
 
 
 async def test_graph_rejects_no_change_without_workspace_evidence(tmp_path) -> None:

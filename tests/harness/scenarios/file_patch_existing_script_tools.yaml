@@ -43,6 +43,9 @@ expected:
       status: allowed
       args:
         path: "{tmp}/disk_info.sh"
+      output_text: |-
+        1:#!/bin/bash
+        2:echo "disk"
   files:
     - path: "{tmp}/disk_info.sh"
       content: |

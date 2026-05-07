@@ -401,6 +401,34 @@ def test_tool_event_message_formats_workspace_tools() -> None:
     assert container_module._tool_event_message(
         {
             "phase": "end",
+            "status": "allowed",
+            "tool_name": "read_file",
+            "args": {"path": "workspace/disk_info.sh"},
+            "output_preview": "1:#!/bin/bash\n2:# disk\n3:\n4:echo header",
+            "output_text": "\n".join(
+                [
+                    "1:#!/bin/bash",
+                    "2:# disk",
+                    "3:",
+                    "4:echo header",
+                    "5:echo body",
+                    "6:echo footer",
+                    "7:echo done",
+                ]
+            ),
+        }
+    ) == (
+        "LinuxAgent 已读取文件 workspace/disk_info.sh\n"
+        "  证据预览:\n"
+        "  - 1:#!/bin/bash\n"
+        "  - 2:# disk\n"
+        "  - 5:echo body\n"
+        "  - 6:echo footer\n"
+        "  - 7:echo done"
+    )
+    assert container_module._tool_event_message(
+        {
+            "phase": "end",
             "status": "truncated",
             "tool_name": "search_files",
             "args": {"root": ".", "pattern": "START_TIME"},

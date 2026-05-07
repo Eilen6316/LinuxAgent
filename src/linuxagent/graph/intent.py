@@ -318,7 +318,7 @@ def _capture_observed_tool_output(
 ) -> None:
     if observed_outputs is None or event.get("status") != "allowed":
         return
-    output = event.get("output_preview")
+    output = event.get("output_text") or event.get("output_preview")
     if isinstance(output, str) and output:
         observed_outputs.append(output)
 
@@ -328,6 +328,7 @@ def _record_tool_event(
 ) -> None:
     if telemetry is None:
         return
+    telemetry_event = _telemetry_tool_event(event)
     phase = str(event.get("phase") or "unknown")
     tool_status = str(event.get("status") or "")
     status = "error" if phase == "error" or tool_status in {"denied", "timeout", "error"} else "ok"
@@ -336,9 +337,15 @@ def _record_tool_event(
         "tool.call",
         trace_id=current_trace_id,
         status=status,
-        attributes=event,
+        attributes=telemetry_event,
         error=error,
     )
+
+
+def _telemetry_tool_event(event: dict[str, Any]) -> dict[str, Any]:
+    telemetry_event = dict(event)
+    telemetry_event.pop("output_text", None)
+    return telemetry_event
 
 
 async def _recover_plan_parse_error(

@@ -18,6 +18,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Conversation-history questions now stay on the direct-answer path instead of
   falling into command or file planning, so chat-only requests do not expose
   internal no-change evidence errors.
+- Workspace evidence previews for `read_file` now come from the same bounded
+  output sent to the agent and include both the start and end of longer read
+  windows, making file-edit evidence less misleading.
 
 ## [4.1.0] - 2026-05-07
 
