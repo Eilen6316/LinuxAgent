@@ -165,6 +165,21 @@ def test_audit_verify_command_reports_tamper(
     assert "tamper detected at line 1" in captured.err
 
 
+def test_mcp_command_starts_stdio_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = AppConfig.model_validate({})
+    calls: list[tuple[str, Path]] = []
+
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+    monkeypatch.setattr(
+        cli, "serve_stdio", lambda server: calls.append(("serve", server.audit_path)) or 0
+    )
+
+    code = cli.main(["mcp"])
+
+    assert code == 0
+    assert calls == [("serve", cfg.audit.path)]
+
+
 def test_main_unknown_command_routes_to_parser_error(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeParser:
         def parse_args(self, _argv: list[str] | None = None) -> argparse.Namespace:
@@ -299,7 +314,10 @@ def test_container_adds_workspace_tools(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert captured["tool_config"] == cfg.sandbox.tools
 
 
-def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_container_builds_cached_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     fake_provider = SimpleNamespace(name="provider")
     fake_graph = SimpleNamespace(name="graph")
     captured: dict[str, object] = {}
@@ -323,7 +341,14 @@ def test_container_builds_cached_runtime(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(container_module, "OpenAIEmbeddings", _FakeEmbeddings)
     monkeypatch.setattr(container_module, "SSHManager", _FakeSSHManager)
 
-    container = Container(AppConfig.model_validate({"intelligence": {"tools_enabled": True}}))
+    container = Container(
+        AppConfig.model_validate(
+            {
+                "intelligence": {"tools_enabled": True},
+                "telemetry": {"path": tmp_path / "telemetry.jsonl"},
+            }
+        )
+    )
 
     assert container.provider() is fake_provider
     assert container.provider() is fake_provider

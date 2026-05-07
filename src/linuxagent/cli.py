@@ -14,6 +14,7 @@ from .audit import verify_audit_log
 from .config.loader import ConfigError, load_config
 from .container import Container
 from .logger import configure_logging
+from .mcp_server import McpServer, serve_stdio
 from .providers.errors import ProviderError
 from .services import MonitoringAlert, collect_system_snapshot, evaluate_alerts
 
@@ -70,6 +71,10 @@ def _add_subcommands(parser: argparse.ArgumentParser) -> None:
     subparsers.add_parser(
         "chat",
         help="Start an interactive chat session (default).",
+    )
+    subparsers.add_parser(
+        "mcp",
+        help="Run the read-only stdio MCP server.",
     )
     audit_parser = subparsers.add_parser(
         "audit",
@@ -159,10 +164,22 @@ def _cmd_audit(args: argparse.Namespace) -> int:
     return 1
 
 
+def _cmd_mcp(args: argparse.Namespace) -> int:
+    try:
+        cfg = load_config(cli_path=args.config)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    container = Container(cfg)
+    server = McpServer(container.policy_engine(), cfg.audit.path)
+    return serve_stdio(server)
+
+
 _COMMANDS = {
     "audit": _cmd_audit,
     "check": _cmd_check,
     "chat": _cmd_chat,
+    "mcp": _cmd_mcp,
 }
 
 

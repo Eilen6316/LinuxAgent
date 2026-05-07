@@ -19,6 +19,7 @@ homepage.
 | [Red Team Baseline](en/red-team.md) | Adversarial policy test baseline and xfail semantics |
 | [Policy Benchmark](../benchmarks/policy-benchmark.md) | Policy/parser latency P50/P95/P99 report |
 | [Landlock Sandbox Design](design/sandbox-landlock.md) | Planned kernel-native sandbox backend design and compatibility matrix |
+| [MCP Server Design](design/mcp-server.md) | Read-only MCP server prototype, threat model, and future execution boundary |
 | [Roadmap](../ROADMAP.md) | Maintainer priorities and good-first-issue areas |
 
 ## Release And Operations

@@ -272,6 +272,14 @@ capability probing, fallback order, and the compatibility test matrix.
 | Default sandbox runner | Records profile metadata only; no process isolation |
 | Enabled safe sandbox profile unavailable | Fail closed before spawning |
 
+## MCP Server Prototype
+
+`linuxagent mcp` starts a local stdio MCP server with read-only tools for
+policy classification and audit hash-chain verification. It intentionally does
+not expose command execution, file patch application, SSH fan-out, or secrets.
+The threat model and future execution boundary are documented in
+[docs/design/mcp-server.md](docs/design/mcp-server.md).
+
 LinuxAgent is **not** an autonomous remediator. The current default `noop`
 sandbox runner is also not a command sandbox; it is intended for controlled
 operator-in-the-loop use. See [Production Readiness](docs/en/production-readiness.md) and [Threat Model](docs/en/threat-model.md).
