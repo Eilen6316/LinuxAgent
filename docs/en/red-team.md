@@ -36,6 +36,13 @@ The initial corpus covers at least these families:
 - editor and pager escape surfaces
 - sensitive path reads and block-device mutation
 
+LOLBin rules are deterministic policy checks for binaries that can execute
+other commands or escape into a shell. A LOLBin hit is reported with a
+`LOLBIN_*` matched rule and a capability such as `interpreter.escape`,
+`shell.remote_execute`, or `lolbin.find_exec`. These rules complement shell
+structure analysis; they are not a replacement for parsing and they never
+downgrade an existing `BLOCK`.
+
 The current suite also includes a minimal property-based fuzz test: arbitrary
 command text must not crash the policy engine, and structural validation
 failures must become explicit safety decisions.
@@ -45,7 +52,7 @@ failures must become explicit safety decisions.
 Red-team numbers should be read as an engineering baseline:
 
 - `BLOCK` and `CONFIRM` show the current deterministic policy response.
-- `xfail` is an acknowledged risk queued for Shell AST policy and LOLBin work.
+- `xfail` is an acknowledged risk queued for later parser or policy work.
 - The suite is expected to become stricter as parser coverage improves.
 
 Do not present the xfail count as protected coverage.

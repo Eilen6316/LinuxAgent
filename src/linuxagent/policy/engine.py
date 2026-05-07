@@ -12,6 +12,7 @@ from pathlib import Path
 
 from ..interfaces import CommandSource, SafetyLevel
 from .builtin_rules import builtin_policy_config
+from .lolbins import LolbinFinding, analyze_lolbins
 from .models import (
     ApprovalMode,
     PolicyApproval,
@@ -95,8 +96,12 @@ class PolicyEngine:
             return local_decision
         shell = analyze_shell_structure(command)
         shell_decision = _decision_from_shell_structure(shell, source)
+        lolbin_decision = _decision_from_lolbins(analyze_lolbins(facts.tokens, shell), source)
         child_decisions = _child_policy_decisions(shell, self, source=source, depth=depth)
-        return _merge_decisions((shell_decision, local_decision, *child_decisions), source)
+        return _merge_decisions(
+            (lolbin_decision, shell_decision, local_decision, *child_decisions),
+            source,
+        )
 
 
 def validate_input(command: str, *, max_length: int = MAX_COMMAND_LENGTH) -> None:
@@ -259,6 +264,26 @@ def _structural_decision(
     )
 
 
+def _decision_from_lolbins(
+    findings: tuple[LolbinFinding, ...],
+    source: CommandSource,
+) -> PolicyDecision:
+    if not findings:
+        return PolicyDecision(level=SafetyLevel.SAFE, command_source=source)
+    max_level = _max_level(finding.level for finding in findings)
+    matched_rules = tuple(dict.fromkeys(finding.matched_rule for finding in findings))
+    return PolicyDecision(
+        level=max_level,
+        risk_score=max(finding.risk_score for finding in findings),
+        capabilities=tuple(dict.fromkeys(finding.capability for finding in findings)),
+        matched_rules=matched_rules,
+        reason="; ".join(dict.fromkeys(finding.reason for finding in findings)),
+        approval=_approval_for(max_level, matched_rules),
+        command_source=source,
+        can_whitelist=False,
+    )
+
+
 def _child_policy_decisions(
     shell: ShellStructure,
     engine: PolicyEngine,
@@ -307,10 +332,21 @@ def _highest_risk_first(decisions: tuple[PolicyDecision, ...]) -> tuple[PolicyDe
     indexed = tuple(enumerate(decisions))
     ordered = sorted(
         indexed,
-        key=lambda item: (_LEVEL_RANK[item[1].level], item[1].risk_score, -item[0]),
+        key=lambda item: (
+            _LEVEL_RANK[item[1].level],
+            _source_priority(item[0], item[1]),
+            item[1].risk_score,
+            -item[0],
+        ),
         reverse=True,
     )
     return tuple(decision for _, decision in ordered)
+
+
+def _source_priority(index: int, decision: PolicyDecision) -> int:
+    if decision.level is SafetyLevel.BLOCK:
+        return 0
+    return 1 if index >= 2 else 0
 
 
 def _merged_matched_rules(decisions: tuple[PolicyDecision, ...]) -> tuple[str, ...]:
