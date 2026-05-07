@@ -51,8 +51,8 @@ CI 门禁。
 
 所有公开位置统一使用同一套发布定位：
 
-> LinuxAgent v4.0.0 是重写后的第一个正式版本。它用基于 LangGraph 的、
-> 策略驱动、可审计 CLI 替代旧原型，定位为受控的人机协同 Linux 运维工具。
+> LinuxAgent v4.1.0 是一次安全深度版本。它把 v4 的命令安全边界做得更容易被攻击、
+> 被度量、被验证，也更容易被其他 agent 客户端复用。
 
 建议 GitHub About 字段：
 
@@ -91,10 +91,10 @@ PyPI。
 ## 打 Tag 发布
 
 ```bash
-git tag v4.0.0
-git push origin v4.0.0
+git tag v4.1.0
+git push origin v4.1.0
 ```
 
-GitHub Actions release workflow 会构建产物，并使用 `docs/releases/v4.0.0.md`
-作为 GitHub Release 正文。中文发布说明位于 `docs/zh/releases/v4.0.0.md`。
+GitHub Actions release workflow 会构建产物，并使用 `docs/releases/<tag>.md`
+作为 GitHub Release 正文。中文发布说明位于 `docs/zh/releases/<tag>.md`。
 同一个 workflow 会通过 Trusted Publishing 发布到 PyPI。

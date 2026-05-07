@@ -6,6 +6,8 @@ LinuxAgent 的重要变更记录在这里。
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-05-07
+
 ### Added
 
 - 新增通用系统健康 Runbook，用于“查看服务器状态”类请求，覆盖 uptime、
@@ -14,6 +16,19 @@ LinuxAgent 的重要变更记录在这里。
 - 新增直接回答 Prompt 路径，用于能力说明类对话问题，避免为非执行回答生成
   `echo` 命令和 HITL 确认。
 - 新增面向终端的分析 Prompt，要求模型输出纯文本总结，避免 Markdown 格式影响阅读。
+- 新增红队攻击策略 harness，覆盖 24 个命令 agent 攻击用例。
+- 新增 shell 结构策略分析，覆盖 pipeline、subshell、command substitution、
+  redirect 和嵌套 shell 执行。
+- 新增确定性 LOLBin 与 interpreter escape 检测，覆盖 network-to-shell
+  pipeline、`find -exec`、`xargs`、`awk system()`、编辑器 shell escape 和
+  interpreter inline execution。
+- 新增面向 shell 结构解析的 Hypothesis fuzzing。
+- 新增 policy 延迟 benchmark 报告，包含 P50/P95/P99 指标。
+- 新增可选 HTTP audit sink，保持本地先追加审计语义，并把 sink 投递失败记录回本地审计链。
+- 新增 telemetry exporter 模式：local JSONL、console、OTLP HTTP JSON 和 none。
+- 新增 Landlock sandbox 设计文档，覆盖能力探测、降级顺序、兼容性限制和实现切分。
+- 新增只读 stdio MCP server prototype，仅暴露 policy classify 与 audit verify，
+  不暴露命令执行能力。
 
 ### Fixed
 
@@ -22,6 +37,11 @@ LinuxAgent 的重要变更记录在这里。
   `["*"]` 表示所有已配置集群主机。
 - DeepSeek 默认不再启用依赖 embedding 的 intelligence tools，除非显式配置。
 - LLM 多命令计划现在会在每一步成功后继续执行后续计划步骤，不再第一条命令后提前结束。
+
+### Changed
+
+- README 将已完成的安全深度工作整理成对外项目叙事，而不只散落在实现计划中。
+- Release workflow 改为按 tag 名选择 release notes，不再硬编码 v4.0.0 发布正文。
 
 ## [4.0.0] - 2026-04-26
 
@@ -75,5 +95,6 @@ LinuxAgent v4.0.0 是重写后的第一个正式版本。它用基于 LangGraph 
 本版本不能从 v3 原地平滑升级。参见
 [docs/zh/migration-v3-to-v4.md](migration-v3-to-v4.md)。
 
-[Unreleased]: https://github.com/Eilen6316/LinuxAgent/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/Eilen6316/LinuxAgent/compare/v4.1.0...HEAD
+[4.1.0]: https://github.com/Eilen6316/LinuxAgent/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0

@@ -28,6 +28,8 @@ homepage.
 |---|---|
 | [Release Guide](en/release.md) | Release checklist, constraints, artifacts, and GitHub About copy |
 | [中文发布指南](zh/release.md) | 中文发布流程 |
+| [v4.1.0 Release Notes](releases/v4.1.0.md) | English release notes |
+| [v4.1.0 中文发布说明](zh/releases/v4.1.0.md) | 中文发布说明 |
 | [v4.0.0 Release Notes](releases/v4.0.0.md) | English release notes |
 | [v4.0.0 中文发布说明](zh/releases/v4.0.0.md) | 中文发布说明 |
 | [Migration Guide](en/migration-v3-to-v4.md) | v3 to v4 breaking changes |

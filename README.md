@@ -4,9 +4,9 @@
 
   <p>
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
-    <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
-    <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-86.30%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
+    <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-86.40%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -15,7 +15,7 @@
   <p>
     <a href="docs/zh/README.md">简体中文完整文档</a> ·
     <a href="docs/en/README.md">Full English manual</a> ·
-    <a href="docs/releases/v4.0.0.md">v4.0.0 release notes</a>
+    <a href="docs/releases/v4.1.0.md">v4.1.0 release notes</a>
   </p>
 </div>
 
@@ -38,6 +38,22 @@ LinuxAgent's default stance is different:
 | Production output may contain secrets | Tool output is guarded and redacted before LLM-facing analysis |
 | SSH must not silently trust hosts | Remote execution uses known-host verification and shell-syntax guards |
 | Every approval should be reviewable | HITL decisions are written to a `0o600` hash-chained audit log |
+
+## v4.1 Security Depth
+
+LinuxAgent v4.1 turns the command safety boundary into a measurable subsystem,
+not just a set of claims in the README:
+
+| Layer | What changed |
+|---|---|
+| Red-team proof | 24 adversarial command-agent cases run in CI with `make red-team` |
+| Shell structure | Pipelines, subshells, command substitution, redirects, and nested shell execution are analyzed before execution |
+| LOLBin coverage | Network-to-shell pipelines, `find -exec`, `xargs`, `awk system()`, editor escapes, and interpreter inline execution are classified deterministically |
+| Fuzzing and benchmark | Hypothesis parser fuzzing plus P50/P95/P99 policy latency reporting |
+| Audit depth | Optional HTTP sink forwards hash-chained entries while local append remains the source of truth |
+| Observability | Telemetry can export local JSONL, console JSON, OTLP HTTP JSON, or be disabled explicitly |
+| Sandbox roadmap | Landlock design documents capability probes, fallback order, compatibility limits, and implementation slices |
+| Agent integration | `linuxagent mcp` exposes read-only policy classify and audit verify tools over stdio MCP |
 
 ## One-Minute Start
 
@@ -308,18 +324,18 @@ step still goes through normal policy, HITL, audit, and analysis flow.
 
 ## Quality Gate
 
-Current documented baseline from `make test` on 2026-05-01:
+Current documented baseline from `make test` on 2026-05-07:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 577 passing |
+| Unit tests | 639 passing |
 | Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
 | Sandbox boundary suite | covered by `make sandbox` |
 | Red-team policy suite | adversarial command corpus |
 | Policy benchmark | [P50/P95/P99 policy latency](benchmarks/policy-benchmark.md) |
 | Harness scenarios | scenario-driven HITL / runbook / cluster / sandbox coverage |
 | Integration smoke tests | 10 passing |
-| Coverage | 86.30% (`--cov-fail-under=80`) |
+| Coverage | 86.40% (`--cov-fail-under=80`) |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 
@@ -342,7 +358,7 @@ make verify-build
 | Path | Use when |
 |---|---|
 | `./scripts/bootstrap.sh` | You are working from a source checkout |
-| `pip install -c constraints.txt https://github.com/Eilen6316/LinuxAgent/releases/download/v4.0.0/linuxagent-4.0.0-py3-none-any.whl` | You want the published GitHub Release wheel |
+| `pip install -c constraints.txt https://github.com/Eilen6316/LinuxAgent/releases/download/v4.1.0/linuxagent-4.1.0-py3-none-any.whl` | You want the published GitHub Release wheel |
 | `pip install linuxagent` | You want the PyPI package after the release is published |
 | `pip install -e ".[dev]"` | You are developing or running the full local gate |
 | `pip install -e ".[anthropic]"` | You need the optional Anthropic provider |

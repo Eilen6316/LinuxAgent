@@ -6,6 +6,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-05-07
+
 ### Added
 
 - General system health runbook for server-status requests, covering uptime,
@@ -16,6 +18,21 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `echo` command plans and HITL prompts for non-execution answers.
 - Terminal-friendly analysis prompt for plain-text summaries without Markdown
   formatting.
+- Red-team adversarial policy harness with 24 command-agent attack cases.
+- Shell-structure policy analysis for pipelines, subshells, command
+  substitution, redirects, and nested shell execution.
+- Deterministic LOLBin and interpreter-escape detection for patterns such as
+  network-to-shell pipelines, `find -exec`, `xargs`, `awk system()`, editor
+  shell escapes, and interpreter inline execution.
+- Hypothesis fuzzing for shell-structure parsing.
+- Policy latency benchmark report with P50/P95/P99 timings.
+- Optional HTTP audit sink that preserves local append-first audit behavior and
+  records sink delivery failures locally.
+- Telemetry exporter modes for local JSONL, console, OTLP HTTP JSON, and none.
+- Landlock sandbox design document covering capability probes, fallback order,
+  compatibility limits, and implementation slices.
+- Read-only stdio MCP server prototype exposing policy classification and audit
+  verification without command execution.
 
 ### Fixed
 
@@ -27,6 +44,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   explicitly configured.
 - Multi-command LLM plans now continue through all successful planned steps
   instead of stopping after the first command.
+
+### Changed
+
+- README now presents the completed security-depth work as a project narrative
+  instead of scattering it only across implementation plans.
+- Release workflow selects release notes from the pushed tag name instead of
+  hard-coding the v4.0.0 release body.
 
 ## [4.0.0] - 2026-04-26
 
@@ -93,5 +117,6 @@ policy-driven, audited CLI for controlled human-in-the-loop Linux operations.
 This release is not a drop-in upgrade from v3. See
 [docs/migration-v3-to-v4.md](docs/migration-v3-to-v4.md).
 
-[Unreleased]: https://github.com/Eilen6316/LinuxAgent/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/Eilen6316/LinuxAgent/compare/v4.1.0...HEAD
+[4.1.0]: https://github.com/Eilen6316/LinuxAgent/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0

@@ -5,9 +5,9 @@
   <p>
     <a href="https://github.com/Eilen6316/LinuxAgent.git"><img src="https://img.shields.io/badge/GitHub-Repository-black?style=flat-square&logo=github" alt="GitHub"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
-    <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
-    <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.0.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-86.30%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
+    <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-86.40%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -15,7 +15,7 @@
     <a href="https://blog.csdn.net/qq_69174109/article/details/146365413"><img src="https://img.shields.io/badge/CSDN-Project_Intro-blue?style=flat-square&logo=csdn" alt="CSDN"></a>
   </p>
 
-  <p><em>LinuxAgent v4.0.0: LLM-driven Linux operations assistant CLI with mandatory Human-in-the-Loop safety</em></p>
+  <p><em>LinuxAgent v4.1.0: LLM-driven Linux operations assistant CLI with mandatory Human-in-the-Loop safety</em></p>
 
   <p>
     <a href="../../README.md">Project homepage</a> ·
@@ -31,7 +31,7 @@
 
 Built on **LangGraph** for state-machine orchestration, **LangChain** for model abstraction, and **Pydantic v2** for fail-fast configuration. No local deep-learning stack is required.
 
-**v4.0.0 is the first formal release of the rewritten agent.** It turns the earlier prototype into a policy-driven, audited, runbook-aware operations CLI for controlled operator-in-the-loop use, not unattended remediation.
+**v4.1.0 is the current security-depth release.** It adds red-team policy proof, shell-structure analysis, LOLBin detection, parser fuzzing, audit sink support, telemetry exporters, Landlock design, and a read-only MCP prototype on top of the rewritten v4 control plane.
 
 ### Who it's for
 
@@ -66,7 +66,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | Current documented baseline: 577 unit tests passing at 86.30% coverage, plus HITL YAML scenarios, 10 integration smoke tests, and optional Anthropic compatibility verification |
+| Testability | Current documented baseline: 639 unit tests passing at 86.40% coverage, plus HITL YAML scenarios, 10 integration smoke tests, red-team cases, and optional Anthropic compatibility verification |
 
 ---
 
@@ -236,8 +236,8 @@ batch confirmation, and audit metadata.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **Current documented baseline: 577 passing; Anthropic compatibility can be verified when the extra is installed** |
-| Coverage | 0 | **86.30%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
+| Unit tests | 0 | **Current documented baseline: 639 passing; Anthropic compatibility can be verified when the extra is installed** |
+| Coverage | 0 | **86.40%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI checks command, SSH, HITL, code-structure, and sandbox bypass red lines |
 
@@ -777,8 +777,8 @@ make harness
 make integration  # optional, when local environment permits
 make sandbox
 make verify-build
-git tag v4.0.0
-git push origin v4.0.0     # triggers release.yml
+git tag v4.1.0
+git push origin v4.1.0     # triggers release.yml
 ```
 
 See [Release Guide](release.md).
@@ -797,7 +797,7 @@ See [Release Guide](release.md).
 - [Threat Model](threat-model.md)
 - [Production Readiness](production-readiness.md)
 - [Roadmap](../../ROADMAP.md)
-- [Release Notes](../releases/v4.0.0.md) / [中文发布说明](../zh/releases/v4.0.0.md)
+- [Release Notes](../releases/v4.1.0.md) / [中文发布说明](../zh/releases/v4.1.0.md)
 - [Changelog](../../CHANGELOG.md) / [中文更新日志](../zh/CHANGELOG.md)
 - [Security Policy](../../SECURITY.md) / [安全政策](../zh/SECURITY.md)
 - [Contributing](../../CONTRIBUTING.md) / [贡献指南](../zh/CONTRIBUTING.md)

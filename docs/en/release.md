@@ -53,9 +53,9 @@ optional provider extras. They are not part of the default CI gate.
 
 Use the same release positioning everywhere:
 
-> LinuxAgent v4.0.0 is the first formal release of the rewritten operations
-> assistant. It replaces the earlier prototype with a LangGraph-based,
-> policy-driven, audited CLI for controlled human-in-the-loop Linux operations.
+> LinuxAgent v4.1.0 is a security-depth release. It turns the v4 command safety
+> boundary into something easier to attack, measure, verify, and reuse from
+> other agent clients.
 
 Recommended GitHub About fields:
 
@@ -103,13 +103,13 @@ linuxagent --help
 ## Tag Release
 
 ```bash
-git tag v4.0.0
-git push origin v4.0.0
+git tag v4.1.0
+git push origin v4.1.0
 ```
 
 The GitHub Actions release workflow builds artifacts and creates a GitHub
-Release using `docs/releases/v4.0.0.md` as the release body. The Chinese release
-notes live in `docs/zh/releases/v4.0.0.md`. The same workflow publishes to PyPI
+Release using `docs/releases/<tag>.md` as the release body. The Chinese release
+notes live in `docs/zh/releases/<tag>.md`. The same workflow publishes to PyPI
 through Trusted Publishing.
 
 ## Release Checklist
