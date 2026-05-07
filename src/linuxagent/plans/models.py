@@ -47,6 +47,12 @@ class NoChangePlan(BaseModel):
     plan_type: Literal["no_change"] = "no_change"
     answer: str = Field(min_length=1)
     reason: str = ""
+    evidence: tuple[str, ...] = ()
+
+    @field_validator("evidence")
+    @classmethod
+    def _strip_empty_evidence(cls, items: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(item.strip() for item in items if item.strip())
 
 
 class PlannedCommand(BaseModel):

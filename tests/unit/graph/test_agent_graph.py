@@ -27,6 +27,8 @@ from linuxagent.plans import command_plan_json, file_patch_plan_json
 from linuxagent.providers.errors import ProviderError
 from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.services import ClusterService, CommandService
+from linuxagent.tools import ToolRuntimeLimits, build_workspace_tools
+from linuxagent.tools.sandbox import invoke_tool_with_sandbox
 
 
 class _FakeProvider:
@@ -58,6 +60,46 @@ class _FakeProvider:
     def stream(self, messages: list[BaseMessage], **kwargs: Any):
         del messages, kwargs
         raise NotImplementedError
+
+
+class _ScriptedToolProvider(_FakeProvider):
+    async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
+        if _is_intent_router_call(messages):
+            self.complete_messages.append(messages)
+            if self._responses and _is_intent_router_response(self._responses[0]):
+                return str(self._responses.pop(0))
+            return _router_response("COMMAND_PLAN")
+        return await super().complete(messages, **kwargs)
+
+    async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
+        self.complete_messages.append(messages)
+        self.tool_calls += 1
+        if not self._responses:
+            return "analysis ok"
+        scripted = self._responses.pop(0)
+        if not isinstance(scripted, dict):
+            return str(scripted)
+        tool_map = {tool.name: tool for tool in tools}
+        observer = kwargs.get("tool_observer")
+        limits = kwargs.get("tool_runtime_limits")
+        if not isinstance(limits, ToolRuntimeLimits):
+            limits = ToolRuntimeLimits()
+        remaining = limits.max_total_output_chars
+        for call in scripted.get("tool_calls", []):
+            tool = tool_map[str(call["tool"])]
+            result = await invoke_tool_with_sandbox(
+                tool,
+                dict(call.get("args", {})),
+                limits=limits,
+                remaining_total_chars=remaining,
+            )
+            remaining -= result.output_chars
+            if observer is not None:
+                await observer(result.event)
+        return str(scripted.get("response", ""))
+
+    def __init__(self, responses: list[Any]) -> None:
+        super().__init__(responses)
 
 
 class _ToolLoopFailingProvider(_FakeProvider):
@@ -152,6 +194,8 @@ def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
 
 
 def _is_intent_router_response(text: str) -> bool:
+    if not isinstance(text, str):
+        return False
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
@@ -205,12 +249,17 @@ def _file_patch_plan_from_diff(
     return json.dumps(payload)
 
 
-def _no_change_plan_json(answer: str = "已有实现已经满足需求，无需修改。") -> str:
+def _no_change_plan_json(
+    answer: str = "已有实现已经满足需求，无需修改。",
+    *,
+    evidence: list[str] | None = None,
+) -> str:
     return json.dumps(
         {
             "plan_type": "no_change",
             "answer": answer,
             "reason": "existing implementation already satisfies the request",
+            "evidence": evidence or [],
         },
         ensure_ascii=False,
     )
@@ -1371,6 +1420,100 @@ async def test_graph_returns_no_change_plan_as_direct_response(tmp_path) -> None
     assert snapshot.values.get("pending_command") is None
     assert snapshot.values.get("file_patch_plan") is None
     assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_rejects_no_change_without_workspace_evidence(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("#!/bin/bash\necho disk\n", encoding="utf-8")
+    answer = "现有脚本已包含执行时间和执行结束时间功能，无需修改。"
+    repaired_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,5 @@",
+            " #!/bin/bash",
+            "+START_TIME=$(date '+%Y-%m-%d %H:%M:%S')",
+            " echo disk",
+            "+END_TIME=$(date '+%Y-%m-%d %H:%M:%S')",
+            '+echo "Script End Time: $END_TIME"',
+        ],
+    )
+    provider = _ScriptedToolProvider(
+        [
+            {
+                "tool_calls": [{"tool": "read_file", "args": {"path": str(target)}}],
+                "response": _no_change_plan_json(answer),
+            },
+            repaired_plan,
+        ]
+    )
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+            tools=tuple(build_workspace_tools(FilePatchConfig(allow_roots=(tmp_path,)))),
+            file_patch_config=FilePatchConfig(allow_roots=(tmp_path,)),
+        )
+    )
+    config = {"configurable": {"thread_id": "no-change-without-evidence"}}
+
+    await graph.ainvoke(
+        initial_state("在 /tmp/disk_info.sh 里面再加执行时间和执行结束时间功能"),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+    interrupts = snapshot.tasks[0].interrupts
+
+    assert provider.tool_calls == 1
+    assert interrupts[0].value["type"] == "confirm_file_patch"
+    assert "START_TIME" in interrupts[0].value["unified_diff"]
+    assert snapshot.values.get("file_patch_plan") is not None
+
+
+async def test_graph_rejects_no_change_with_fake_workspace_evidence(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("#!/bin/bash\necho disk\n", encoding="utf-8")
+    answer = "现有脚本已包含执行时间和执行结束时间功能，无需修改。"
+    provider = _ScriptedToolProvider(
+        [
+            {
+                "tool_calls": [{"tool": "read_file", "args": {"path": str(target)}}],
+                "response": _no_change_plan_json(answer, evidence=["START_TIME=$(date"]),
+            },
+            _no_change_plan_json(answer, evidence=["END_TIME=$(date"]),
+            _no_change_plan_json(answer, evidence=["Script End Time"]),
+        ]
+    )
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+            tools=tuple(build_workspace_tools(FilePatchConfig(allow_roots=(tmp_path,)))),
+            file_patch_config=FilePatchConfig(allow_roots=(tmp_path,)),
+        )
+    )
+    config = {"configurable": {"thread_id": "no-change-fake-evidence"}}
+
+    result = await graph.ainvoke(
+        initial_state("在 /tmp/disk_info.sh 里面再加执行时间和执行结束时间功能"),
+        config=config,
+    )
+    content = str(result["messages"][-1].content)
+
+    assert "已阻止执行" in content
+    assert "NoChangePlan" in content
+    assert "evidence" in content
 
 
 async def test_graph_keeps_operator_request_on_command_plan_path(tmp_path) -> None:

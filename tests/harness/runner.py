@@ -105,6 +105,8 @@ def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
 
 
 def _is_intent_router_response(text: str) -> bool:
+    if not isinstance(text, str):
+        return False
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
@@ -142,6 +144,7 @@ class HarnessRunner:
             for command in scenario.setup.get("session_whitelist", []):
                 whitelist.add(command)
             _write_setup_files(scenario.setup.get("files", []))
+            _create_setup_symlinks(scenario.setup.get("symlinks", []))
 
             file_patch_config = _file_patch_config(scenario.setup.get("file_patch", {}))
             sandbox_config = _sandbox_config(scenario.setup.get("sandbox", {}))
@@ -355,6 +358,14 @@ def _write_setup_files(files: list[dict[str, Any]]) -> None:
         path = Path(spec["path"])
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(str(spec.get("content", "")), encoding="utf-8")
+
+
+def _create_setup_symlinks(links: list[dict[str, Any]]) -> None:
+    for spec in links:
+        path = Path(spec["path"])
+        target = Path(spec["target"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.symlink_to(target)
 
 
 def _assert_expected_file(scenario_name: str, spec: dict[str, Any]) -> None:

@@ -20,6 +20,7 @@ Each scenario file may contain one or more YAML documents. The runner supports:
 - `setup.file_patch`: `FilePatchConfig` overrides for the scenario
 - `setup.sandbox`: `SandboxConfig` overrides for local runner scenarios
 - `setup.files`: temporary files to create before graph execution
+- `setup.symlinks`: symlinks to create before graph execution
 - `setup.tool_probes`: workspace tool calls to run through the tool sandbox
 - `expected_interrupts`: fields to assert on the first interrupt payload
 - `resume`: payload passed to `Command(resume=...)`

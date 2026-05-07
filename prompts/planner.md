@@ -148,12 +148,15 @@ generated script needs executable permissions, use `permission_changes`; do not
 emit `chmod` as a shell command.
 
 If an inspected existing file already has the requested functionality and no
-file mutation is needed, return only this JSON object:
+file mutation is needed, return only this JSON object. `evidence` is required
+for file-related no-change answers and must contain exact line snippets from
+`read_file` tool output that prove the requested functionality already exists:
 
 ```json
 {{
   "plan_type": "no_change",
   "answer": "short explanation in the user's language saying the existing implementation already satisfies the request",
-  "reason": "what existing capability matched the request"
+  "reason": "what existing capability matched the request",
+  "evidence": ["exact snippet copied from read_file output"]
 }}
 ```

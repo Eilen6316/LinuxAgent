@@ -14,13 +14,15 @@ use `list_dir` on that path and read the actual target file from the previous
 plan's `files_changed` or diff `+++` header.
 
 If the current file snapshot already satisfies the original user request, return
-only a JSON NoChangePlan object and do not force a patch:
+only a JSON NoChangePlan object and do not force a patch. Include exact evidence
+snippets copied from the current target file snapshot:
 
 ```json
 {{
   "plan_type": "no_change",
   "answer": "short explanation in the user's language saying the current file already satisfies the request",
-  "reason": "what existing capability matched the request"
+  "reason": "what existing capability matched the request",
+  "evidence": ["exact snippet copied from read_file output or file snapshot"]
 }}
 ```
 

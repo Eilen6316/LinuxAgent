@@ -159,7 +159,11 @@ def _search_tree(
     for path in sorted(root.rglob("*")):
         if len(matches) >= max_matches:
             break
-        if _searchable_file(path, root, max_file_bytes):
+        try:
+            searchable = _searchable_file(path, root, max_file_bytes)
+        except WorkspaceAccessError:
+            continue
+        if searchable:
             matches.extend(_search_file(query, root, path, max_matches - len(matches)))
     return matches
 

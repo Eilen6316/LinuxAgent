@@ -91,7 +91,7 @@ def test_search_files_redacts_sensitive_matches(tmp_path) -> None:
     assert output == ["config.txt:2:password=***redacted***"]
 
 
-def test_search_files_rejects_symlink_to_outside_allowed_root(tmp_path) -> None:
+def test_search_files_skips_symlink_to_outside_allowed_root(tmp_path) -> None:
     allowed = tmp_path / "allowed"
     outside = tmp_path / "outside"
     allowed.mkdir()
@@ -99,10 +99,12 @@ def test_search_files_rejects_symlink_to_outside_allowed_root(tmp_path) -> None:
     secret = outside / "secret.txt"
     secret.write_text("token=sk-prodsecret1234567890\n", encoding="utf-8")
     (allowed / "link.txt").symlink_to(secret)
+    (allowed / "app.txt").write_text("token visible\n", encoding="utf-8")
     tool = make_search_files_tool(FilePatchConfig(allow_roots=(allowed,)))
 
-    with pytest.raises(WorkspaceAccessError, match="symlink"):
-        tool.invoke({"root": str(allowed), "pattern": "token"})
+    output = tool.invoke({"root": str(allowed), "pattern": "token"})
+
+    assert output == ["app.txt:1:token visible"]
 
 
 def test_search_files_applies_configured_match_limit(tmp_path) -> None:

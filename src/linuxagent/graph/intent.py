@@ -105,6 +105,7 @@ def make_parse_intent_node(
 
 
 async def _parse_intent_update(context: IntentNodeContext, state: AgentState) -> AgentState:
+    observed_tool_outputs: list[str] = []
     current_trace_id = trace_id(state)
     messages = list(state.get("messages", []))
     user_text = _last_message_text(messages)
@@ -120,14 +121,54 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     if intent.mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY}:
         return _direct_response_update(current_trace_id, intent.answer)
     await notify_event(context.runtime_observer, {"type": "activity", "phase": "plan"})
-    outcome = await _build_command_plan(context, messages, user_text, current_trace_id)
+    outcome = await _build_command_plan(
+        context, messages, user_text, current_trace_id, observed_tool_outputs
+    )
+    return await _planned_outcome_update(
+        context, messages, user_text, current_trace_id, outcome, observed_tool_outputs
+    )
+
+
+async def _planned_outcome_update(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    outcome: CommandPlan | FilePatchPlan | NoChangePlan | AgentState,
+    observed_tool_outputs: list[str],
+) -> AgentState:
     if isinstance(outcome, CommandPlan):
         return _plan_update(current_trace_id, user_text, outcome, context.cluster_service)
     if isinstance(outcome, FilePatchPlan):
         return _file_patch_update(current_trace_id, user_text, outcome)
     if isinstance(outcome, NoChangePlan):
-        return _direct_response_update(current_trace_id, outcome.answer)
+        return await _no_change_update(
+            context, messages, user_text, current_trace_id, outcome, observed_tool_outputs
+        )
     return outcome
+
+
+async def _no_change_update(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    plan: NoChangePlan,
+    observed_tool_outputs: list[str],
+) -> AgentState:
+    evidence_error = _no_change_evidence_error(context, plan, observed_tool_outputs)
+    if evidence_error is None:
+        return _direct_response_update(current_trace_id, plan.answer)
+    recovered = await _recover_plan_parse_error(
+        context, messages, user_text, current_trace_id, evidence_error, plan.model_dump_json()
+    )
+    if isinstance(recovered, NoChangePlan):
+        retry_error = _no_change_evidence_error(context, recovered, observed_tool_outputs)
+        if retry_error is not None:
+            return _parse_error_update(current_trace_id, retry_error)
+    return await _planned_outcome_update(
+        context, messages, user_text, current_trace_id, recovered, observed_tool_outputs
+    )
 
 
 async def _build_command_plan(
@@ -135,9 +176,10 @@ async def _build_command_plan(
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
+    observed_tool_outputs: list[str],
 ) -> CommandPlan | FilePatchPlan | NoChangePlan | AgentState:
     proposed, tool_error = await _complete_plan_candidate(
-        context, messages, user_text, current_trace_id
+        context, messages, user_text, current_trace_id, observed_tool_outputs
     )
     if tool_error is not None:
         return await _retry_plan_or_error(
@@ -178,11 +220,28 @@ def _combined_plan_parse_error(
     )
 
 
+def _no_change_evidence_error(
+    context: IntentNodeContext, plan: NoChangePlan, observed_tool_outputs: list[str]
+) -> str | None:
+    if not context.tools:
+        return None
+    if not plan.evidence:
+        return "NoChangePlan must include evidence copied from read_file output"
+    observed = "\n".join(observed_tool_outputs)
+    if not observed:
+        return "NoChangePlan requires read_file evidence before claiming no changes are needed"
+    missing = tuple(item for item in plan.evidence if item not in observed)
+    if missing:
+        return "NoChangePlan evidence was not found in workspace tool output: " + "; ".join(missing)
+    return None
+
+
 async def _complete_plan_candidate(
     context: IntentNodeContext,
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
+    observed_tool_outputs: list[str],
 ) -> tuple[str, str | None]:
     prompt_messages = context.planner_prompt.format_messages(
         chat_history=messages[:-1],
@@ -198,7 +257,10 @@ async def _complete_plan_candidate(
                 list(context.tools),
                 tool_runtime_limits=context.tool_runtime_limits,
                 tool_observer=tool_event_observer(
-                    context.telemetry, context.tool_observer, current_trace_id
+                    context.telemetry,
+                    context.tool_observer,
+                    current_trace_id,
+                    observed_tool_outputs,
                 ),
             )
         except ProviderError as exc:
@@ -210,8 +272,10 @@ def tool_event_observer(
     telemetry: TelemetryRecorder | None,
     observer: ToolEventObserver | None,
     current_trace_id: str,
+    observed_outputs: list[str] | None = None,
 ) -> ToolEventObserver:
     async def observe(event: dict[str, Any]) -> None:
+        _capture_observed_tool_output(observed_outputs, event)
         _record_tool_event(telemetry, current_trace_id, event)
         if observer is not None:
             result = observer(event)
@@ -219,6 +283,16 @@ def tool_event_observer(
                 await result
 
     return observe
+
+
+def _capture_observed_tool_output(
+    observed_outputs: list[str] | None, event: dict[str, Any]
+) -> None:
+    if observed_outputs is None or event.get("status") != "allowed":
+        return
+    output = event.get("output_preview")
+    if isinstance(output, str) and output:
+        observed_outputs.append(output)
 
 
 def _record_tool_event(
@@ -487,8 +561,9 @@ def _retry_intent_prompt(user_text: str, error: str, rejected_response: str, att
         f"JSON-only retry attempt {attempt}. If the user is asking to create or edit a "
         "file, script, config, playbook, or code artifact, return a FilePatchPlan JSON "
         "object. If current file content already satisfies the request, return a "
-        "NoChangePlan JSON object. Otherwise return a CommandPlan JSON object. Output "
-        "exactly one valid JSON object and nothing else."
+        "NoChangePlan JSON object with evidence copied exactly from read_file output. "
+        "Otherwise return a CommandPlan JSON object. Output exactly one valid JSON "
+        "object and nothing else."
     )
 
 
