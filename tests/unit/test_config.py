@@ -45,6 +45,11 @@ CONFIG_REQUIRED_PATHS = (
     ("cluster", "known_hosts_path"),
     ("cluster", "hosts"),
     ("audit", "path"),
+    ("audit", "sink_enabled"),
+    ("audit", "sink_url"),
+    ("audit", "sink_timeout_seconds"),
+    ("audit", "sink_header_name"),
+    ("audit", "sink_header_value"),
     ("telemetry", "enabled"),
     ("telemetry", "exporter"),
     ("telemetry", "path"),
@@ -519,6 +524,31 @@ def test_audit_path_expands_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     monkeypatch.setenv("HOME", str(tmp_path))
     cfg = AuditConfig.model_validate({"path": "~/.linuxagent/audit.log"})
     assert cfg.path == tmp_path / ".linuxagent" / "audit.log"
+
+
+def test_audit_sink_requires_url_when_enabled() -> None:
+    with pytest.raises(ValueError, match="audit.sink_url is required"):
+        AuditConfig.model_validate({"sink_enabled": True})
+
+
+def test_audit_sink_requires_http_url() -> None:
+    with pytest.raises(ValueError, match="must be http:// or https://"):
+        AuditConfig.model_validate({"sink_enabled": True, "sink_url": "file:///audit.jsonl"})
+
+
+def test_audit_sink_header_secret_is_not_rendered() -> None:
+    cfg = AuditConfig.model_validate(
+        {
+            "sink_enabled": True,
+            "sink_url": "https://audit.example.invalid/events",
+            "sink_header_name": "Authorization",
+            "sink_header_value": "Bearer secret-token",
+        }
+    )
+
+    assert "secret-token" not in repr(cfg)
+    assert cfg.sink_header_value is not None
+    assert cfg.sink_header_value.get_secret_value() == "Bearer secret-token"
 
 
 def test_cluster_paths_expand_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -673,6 +673,24 @@ Verify integrity:
 linuxagent audit verify
 ```
 
+The local file remains the required source of truth. You can also configure a
+best-effort HTTP append-only sink for an external collector:
+
+```yaml
+audit:
+  path: ~/.linuxagent/audit.log
+  sink_enabled: true
+  sink_url: https://audit-collector.example/events
+  sink_timeout_seconds: 2
+  sink_header_name: Authorization
+  sink_header_value: Bearer replace-with-collector-token
+```
+
+LinuxAgent writes locally first, then posts the redacted audit record and chain
+hash to the sink. Sink errors do not block local auditing; they are appended as
+`audit_sink_failure` records for review. Keep collector tokens in `config.yaml`
+only, protected by the required `0o600` file mode.
+
 Handy post-incident queries:
 
 ```bash

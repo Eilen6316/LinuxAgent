@@ -358,12 +358,31 @@ class AuditConfig(BaseModel):
     """HITL audit log settings.
 
     The audit log is never disabled by design (R-HITL-06). Only the path is
-    configurable.
+    required. Remote sinks are optional best-effort append-only anchors.
     """
 
     model_config = _FROZEN
 
     path: UserPath = Field(default_factory=lambda: Path.home() / ".linuxagent" / "audit.log")
+    sink_enabled: bool = False
+    sink_url: str | None = None
+    sink_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
+    sink_header_name: str | None = None
+    sink_header_value: SecretStr | None = None
+
+    @model_validator(mode="after")
+    def _validate_sink(self) -> AuditConfig:
+        if not self.sink_enabled:
+            return self
+        if not self.sink_url:
+            raise ValueError("audit.sink_url is required when audit.sink_enabled is true")
+        if not self.sink_url.startswith(("https://", "http://")):
+            raise ValueError("audit.sink_url must be http:// or https://")
+        if bool(self.sink_header_name) != bool(self.sink_header_value):
+            raise ValueError(
+                "audit.sink_header_name and audit.sink_header_value must be set together"
+            )
+        return self
 
 
 class UIConfig(BaseModel):

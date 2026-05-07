@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .audit_sink import AuditSink, AuditSinkError
 from .sandbox.models import SandboxResult
 from .security import redact_record
 
@@ -26,6 +27,7 @@ GENESIS_HASH = "0" * 64
 @dataclass(frozen=True)
 class AuditLog:
     path: Path
+    sink: AuditSink | None = None
     _lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False, compare=False
     )
@@ -108,6 +110,9 @@ class AuditLog:
         self.append(record)
 
     def append(self, record: dict[str, Any]) -> None:
+        self._append(record, send_to_sink=True)
+
+    def _append(self, record: dict[str, Any], *, send_to_sink: bool) -> None:
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             if not self.path.exists():
@@ -119,6 +124,27 @@ class AuditLog:
             payload["hash"] = _record_hash(payload)
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+        if send_to_sink:
+            self._send_to_sink(payload)
+
+    def _send_to_sink(self, payload: dict[str, Any]) -> None:
+        if self.sink is None:
+            return
+        try:
+            self.sink.send(payload)
+        except AuditSinkError as exc:
+            self._record_sink_failure(payload, exc)
+
+    def _record_sink_failure(self, payload: dict[str, Any], exc: AuditSinkError) -> None:
+        self._append(
+            {
+                "event": "audit_sink_failure",
+                "failed_event": payload.get("event"),
+                "failed_hash": payload.get("hash"),
+                "reason": str(exc),
+            },
+            send_to_sink=False,
+        )
 
 
 @dataclass(frozen=True)

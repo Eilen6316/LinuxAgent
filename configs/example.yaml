@@ -161,6 +161,13 @@ audit:
   # Audit log cannot be disabled (R-HITL-06). Path can change, presence cannot.
   # File is hash-chained and created 0o600 on first write.
   path: ~/.linuxagent/audit.log
+  # Optional best-effort HTTP sink. Local audit writes always happen first.
+  # Sink failures append audit_sink_failure locally and do not block execution.
+  sink_enabled: false
+  sink_url:
+  sink_timeout_seconds: 2.0
+  sink_header_name:
+  sink_header_value:
 
 telemetry:
   # Default is local JSONL spans. No external collector is required.

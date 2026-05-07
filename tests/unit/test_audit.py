@@ -3,14 +3,32 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from linuxagent.audit import AuditLog, verify_audit_log
+from linuxagent.audit_sink import AuditSinkError
 from linuxagent.sandbox import (
     SandboxNetworkPolicy,
     SandboxProfile,
     SandboxResult,
     SandboxRunnerKind,
 )
+
+
+class CapturingSink:
+    def __init__(self) -> None:
+        self.records: list[dict[str, Any]] = []
+
+    def send(self, record: dict[str, Any]) -> None:
+        self.records.append(record)
+
+
+class FailingSink:
+    def __init__(self, reason: str = "sink unavailable") -> None:
+        self.reason = reason
+
+    def send(self, record: dict[str, Any]) -> None:
+        raise AuditSinkError(self.reason)
 
 
 async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
@@ -92,6 +110,47 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
     assert all(line["trace_id"] is None for line in lines)
     assert lines[0]["prev_hash"] == "0" * 64
     assert verify_audit_log(path).valid is True
+
+
+def test_audit_sink_receives_redacted_hash_chained_record(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    sink = CapturingSink()
+    audit = AuditLog(path, sink=sink)
+
+    audit.append({"event": "manual", "api_key": "sk-prodsecret1234567890"})
+
+    assert len(sink.records) == 1
+    sent = sink.records[0]
+    assert sent["event"] == "manual"
+    assert sent["api_key"] == "***redacted***"
+    assert sent["prev_hash"] == "0" * 64
+    assert sent["hash"]
+    assert verify_audit_log(path).valid is True
+
+
+def test_audit_sink_failure_is_recorded_without_blocking_local_append(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path, sink=FailingSink("timeout while sending token=bearer-secret"))
+
+    audit.append({"event": "manual", "command": "uptime"})
+
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert [record["event"] for record in records] == ["manual", "audit_sink_failure"]
+    assert records[1]["failed_event"] == "manual"
+    assert records[1]["failed_hash"] == records[0]["hash"]
+    assert records[1]["reason"] == "timeout while sending token=***redacted***"
+    assert verify_audit_log(path).valid is True
+
+
+def test_audit_sink_timeout_failure_is_recorded(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path, sink=FailingSink("timed out"))
+
+    audit.append({"event": "manual"})
+
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert records[1]["event"] == "audit_sink_failure"
+    assert records[1]["reason"] == "timed out"
 
 
 async def test_audit_log_redacts_sensitive_fields_but_keeps_command_raw(tmp_path) -> None:

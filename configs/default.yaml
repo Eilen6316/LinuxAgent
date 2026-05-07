@@ -68,6 +68,11 @@ cluster:
 
 audit:
   path: ~/.linuxagent/audit.log
+  sink_enabled: false
+  sink_url:
+  sink_timeout_seconds: 2.0
+  sink_header_name:
+  sink_header_value:
 
 ui:
   theme: auto

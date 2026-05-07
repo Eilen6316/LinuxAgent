@@ -17,6 +17,7 @@ from langchain_openai import OpenAIEmbeddings
 
 from .app import LinuxAgent
 from .audit import AuditLog
+from .audit_sink import HttpAuditSink
 from .cluster import SSHManager
 from .config.models import LLMProviderName
 from .executors import LinuxCommandExecutor
@@ -85,7 +86,22 @@ class Container:
         )
 
     def audit_log(self) -> AuditLog:
-        return self._cached("audit_log", lambda: AuditLog(self._config.audit.path))
+        return self._cached(
+            "audit_log",
+            lambda: AuditLog(self._config.audit.path, sink=self._audit_sink()),
+        )
+
+    def _audit_sink(self) -> HttpAuditSink | None:
+        cfg = self._config.audit
+        if not cfg.sink_enabled or cfg.sink_url is None:
+            return None
+        secret = cfg.sink_header_value.get_secret_value() if cfg.sink_header_value else None
+        return HttpAuditSink(
+            cfg.sink_url,
+            timeout_seconds=cfg.sink_timeout_seconds,
+            header_name=cfg.sink_header_name,
+            header_value=secret,
+        )
 
     def chat_service(self) -> ChatService:
         return self._cached(

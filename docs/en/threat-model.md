@@ -22,7 +22,7 @@ but to make model-driven operations explicit, reviewable, and auditable.
 | Local subprocess | Executes with the invoking user's privileges; configured sandbox runners may add local process or OS boundaries |
 | SSH target | Must already be trusted through `known_hosts`; local OS sandboxing does not protect the remote host |
 | Config file | Trusted only if owned by the user and `chmod 600` |
-| Audit log | Append-only best effort with hash-chain tamper detection |
+| Audit log | Local append-only best effort with hash-chain tamper detection; optional remote sink can anchor records outside the host |
 
 ## Primary Threats and Mitigations
 
@@ -35,7 +35,7 @@ but to make model-driven operations explicit, reviewable, and auditable.
 | Remote SSH command runs with excessive privileges | Cluster remote profiles record cwd, environment policy, sudo policy, and audit metadata; recommended deployment uses low-privilege users |
 | Unknown SSH host enables MITM | `RejectPolicy` and `load_system_host_keys()` by default |
 | Secrets leak through logs or command output | `SecretStr`, config permission checks, output guard, redaction before LLM-facing analysis paths |
-| Audit log tampering hides an approval | Hash-chained JSONL records and `linuxagent audit verify` |
+| Audit log tampering hides an approval | Hash-chained JSONL records, `linuxagent audit verify`, and optional remote append-only sink forwarding |
 | Non-interactive automation silently approves work | No-TTY confirmation requests auto-deny |
 | Overly broad dependencies increase supply-chain risk | Major-version bounds plus release constraints file and build verification |
 | Operators assume sandbox isolation is active | No-op and passthrough runners mark `enforced=false`; SSH protection is a least-privilege boundary, not local sandbox inheritance |
@@ -45,7 +45,9 @@ but to make model-driven operations explicit, reviewable, and auditable.
 - Providing strong isolation for SSH targets. Remote execution relies on account
   privileges, sudoers, known_hosts, confirmation, and audit rather than a remote
   agent or container sandbox.
-- Preventing a malicious local root user from modifying files.
+- Preventing a malicious local root user from modifying files. A remote audit
+  sink can preserve already-forwarded records outside the host, but it cannot
+  prove events that were never written or forwarded before compromise.
 - Replacing host intrusion detection, EDR, SIEM, or privileged access
   management.
 - Guaranteeing that LLM-generated analysis is correct.
@@ -72,5 +74,7 @@ Changes in these areas require focused tests and careful review:
 - Configure `cluster.hosts[].remote_profile` with an expected cwd and keep sudo
   disabled unless a minimal sudoers rule is reviewed.
 - Review audit logs after high-impact sessions.
+- For higher assurance, forward audit records to an append-only collector,
+  syslog pipeline, or object store controlled by a different trust domain.
 - Keep runtime policies environment-specific and test them with harness
   scenarios before production use.
