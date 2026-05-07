@@ -48,6 +48,7 @@ Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 MAX_PATCH_CONTEXT_LINES = 120
 MAX_PATCH_CONTEXT_CHARS = 20_000
 DEFAULT_FILE_PATCH_REPAIR_ATTEMPTS = 2
+PATCH_REPAIR_NOT_APPLIED = "No file changes were applied."
 
 
 @dataclass(frozen=True)
@@ -183,10 +184,7 @@ def make_repair_file_patch_node(
             NoChangePlanParseError,
             ProviderError,
         ) as exc:
-            return Command(
-                goto="respond_block",
-                update=_patch_error(current_trace_id, f"file patch repair failed: {exc}"),
-            )
+            return _repair_failure_command(state, config, current_trace_id, str(exc))
         return _repair_success_command(state, current_trace_id, plan)
 
     return repair_file_patch_node
@@ -204,7 +202,7 @@ async def _complete_repair_candidate_plan(
     telemetry: TelemetryRecorder | None,
     runtime_limits: ToolRuntimeLimits,
 ) -> CommandPlan | FilePatchPlan | NoChangePlan:
-    proposed = await _complete_repair_plan(
+    proposed = await _complete_repair_plan_with_fallback(
         provider,
         prompt_messages,
         tools,
@@ -221,6 +219,48 @@ async def _complete_repair_candidate_plan(
         current_trace_id,
         proposed,
         telemetry,
+    )
+
+
+def _repair_failure_command(
+    state: AgentState, config: FilePatchConfig, current_trace_id: str, error: str
+) -> Command[Any]:
+    return Command(
+        goto="respond_block",
+        update=_patch_error(current_trace_id, _repair_failure_message(state, config, error)),
+    )
+
+
+async def _complete_repair_plan_with_fallback(
+    provider: LLMProvider,
+    prompt_messages: list[BaseMessage],
+    tools: tuple[BaseTool, ...],
+    telemetry: TelemetryRecorder | None,
+    observer: ToolEventObserver | None,
+    current_trace_id: str,
+    tool_runtime_limits: ToolRuntimeLimits,
+) -> str:
+    try:
+        return await _complete_repair_plan(
+            provider,
+            prompt_messages,
+            tools,
+            telemetry,
+            observer,
+            current_trace_id,
+            tool_runtime_limits,
+        )
+    except ProviderError:
+        if not tools:
+            raise
+    return await _complete_repair_plan(
+        provider,
+        prompt_messages,
+        (),
+        telemetry,
+        observer,
+        current_trace_id,
+        tool_runtime_limits,
     )
 
 
@@ -608,6 +648,16 @@ def _patch_failure_context(state: AgentState, config: FilePatchConfig) -> str:
     if not snapshots:
         return failure
     return f"{failure}\n\nCurrent target file snapshots:\n{snapshots}"
+
+
+def _repair_failure_message(state: AgentState, config: FilePatchConfig, error: str) -> str:
+    original_failure = _patch_failure_context(state, config).strip()
+    if original_failure:
+        return (
+            f"file patch repair failed: {error}. {PATCH_REPAIR_NOT_APPLIED} "
+            f"Original patch failure: {original_failure}"
+        )
+    return f"file patch repair failed: {error}. {PATCH_REPAIR_NOT_APPLIED}"
 
 
 def _retry_failure_context(

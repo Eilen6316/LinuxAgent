@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import json
 import os
 import tempfile
@@ -46,7 +47,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 class Scenario:
     name: str
     inputs: list[dict[str, str]]
-    provider_responses: list[str]
+    provider_responses: list[Any]
     expected: dict[str, Any]
     expected_interrupts: list[dict[str, Any]]
     resume: dict[str, Any] | None
@@ -54,7 +55,7 @@ class Scenario:
 
 
 class _FakeProvider:
-    def __init__(self, responses: list[str]) -> None:
+    def __init__(self, responses: list[Any]) -> None:
         self._responses = list(responses)
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
@@ -66,12 +67,33 @@ class _FakeProvider:
         return self._responses.pop(0) if self._responses else "analysis ok"
 
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
-        del tools
+        if self._responses and isinstance(self._responses[0], dict):
+            return await self._complete_scripted_tool_round(list(tools), **kwargs)
         return await self.complete(messages, **kwargs)
 
     def stream(self, messages: list[BaseMessage], **kwargs: Any):
         del messages, kwargs
         raise NotImplementedError
+
+    async def _complete_scripted_tool_round(self, tools: list[Any], **kwargs: Any) -> str:
+        scripted = self._responses.pop(0)
+        tool_map = {tool.name: tool for tool in tools}
+        limits = kwargs.get("tool_runtime_limits")
+        if not isinstance(limits, ToolRuntimeLimits):
+            limits = ToolRuntimeLimits()
+        observer = kwargs.get("tool_observer")
+        remaining = limits.max_total_output_chars
+        for call in scripted.get("tool_calls", []):
+            name = str(call["tool"])
+            result = await invoke_tool_with_sandbox(
+                tool_map[name],
+                dict(call.get("args", {})),
+                limits=limits,
+                remaining_total_chars=remaining,
+            )
+            remaining -= result.output_chars
+            await _notify_tool_observer(observer, result.event)
+        return str(scripted.get("response", ""))
 
 
 def _router_response(mode: str, answer: str = "", reason: str = "test route") -> str:
@@ -318,6 +340,14 @@ async def _run_tool_probes(
         )
         events.append(result.event)
     return events
+
+
+async def _notify_tool_observer(observer: Any, event: dict[str, Any]) -> None:
+    if observer is None:
+        return
+    result = observer(event)
+    if inspect.isawaitable(result):
+        await result
 
 
 def _write_setup_files(files: list[dict[str, Any]]) -> None:

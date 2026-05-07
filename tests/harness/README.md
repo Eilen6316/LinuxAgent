@@ -12,6 +12,9 @@ Each scenario file may contain one or more YAML documents. The runner supports:
 
 - `scenario`: human-readable name
 - `provider_responses`: ordered fake LLM outputs for the scenario
+  - string entries are returned as normal LLM text
+  - object entries in a tool-enabled scenario can script workspace tool calls:
+    `{tool_calls: [{tool: read_file, args: {path: ...}}], response: "...json..."}`
 - `inputs`: list of `{role, content}` messages (first human input drives the turn)
 - `setup.session_whitelist`: commands to preload into the executor whitelist
 - `setup.file_patch`: `FilePatchConfig` overrides for the scenario

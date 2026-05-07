@@ -67,6 +67,24 @@ class _ToolLoopFailingProvider(_FakeProvider):
         raise ProviderError("tool loop exceeded max rounds")
 
 
+class _RepairToolTimeoutProvider(_FakeProvider):
+    async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
+        if _is_file_patch_repair_call(messages):
+            del tools, kwargs
+            self.complete_messages.append(messages)
+            self.tool_calls += 1
+            raise ProviderError("provider request exceeded timeout (30.0s)")
+        return await super().complete_with_tools(messages, tools, **kwargs)
+
+
+class _RepairTimeoutProvider(_FakeProvider):
+    async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
+        if _is_file_patch_repair_call(messages):
+            self.complete_messages.append(messages)
+            raise ProviderError("provider request exceeded timeout (30.0s)")
+        return await super().complete(messages, **kwargs)
+
+
 class _FakeSSH:
     async def execute_many(self, hosts, command, **kwargs):
         del kwargs
@@ -143,6 +161,10 @@ def _is_intent_router_response(text: str) -> bool:
         "COMMAND_PLAN",
         "CLARIFY",
     }
+
+
+def _is_file_patch_repair_call(messages: list[BaseMessage]) -> bool:
+    return bool(messages) and "Previous FilePatchPlan JSON" in str(messages[-1].content)
 
 
 def _command_plan_json_with_hosts(command: str, hosts: list[str]) -> str:
@@ -724,6 +746,103 @@ async def test_graph_repairs_failed_file_patch_and_reconfirms(tmp_path) -> None:
 
     assert target.read_text(encoding="utf-8") == "#!/bin/sh\necho storage\necho cpu\n"
     assert "analysis ok" in str(resumed["messages"][-1].content)
+
+
+async def test_graph_file_patch_repair_falls_back_when_tool_call_times_out(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("#!/bin/sh\necho disk\n", encoding="utf-8")
+    stale_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,3 @@",
+            " #!/bin/sh",
+            " echo disk",
+            "+echo cpu",
+        ],
+    )
+    repaired_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,3 @@",
+            " #!/bin/sh",
+            " echo storage",
+            "+echo cpu",
+        ],
+    )
+    provider = _RepairToolTimeoutProvider([stale_plan, repaired_plan, "analysis ok"])
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+            tools=(SimpleNamespace(name="read_file"),),  # type: ignore[arg-type]
+        )
+    )
+    config = {"configurable": {"thread_id": "file-patch-repair-tool-timeout"}}
+
+    await graph.ainvoke(initial_state("add cpu info to script"), config=config)
+    target.write_text("#!/bin/sh\necho storage\n", encoding="utf-8")
+    repair_result = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+    snapshot = await graph.aget_state(config)
+    interrupts = list(repair_result.get("__interrupt__", ())) if repair_result else []
+    if not interrupts:
+        interrupts = list(snapshot.tasks[0].interrupts)
+
+    assert provider.tool_calls == 2
+    assert interrupts[0].value["type"] == "confirm_file_patch"
+    assert "+echo cpu" in interrupts[0].value["unified_diff"]
+
+
+async def test_graph_file_patch_repair_timeout_reports_non_mutating_failure(tmp_path) -> None:
+    target = tmp_path / "disk_info.sh"
+    target.write_text("#!/bin/sh\necho disk\n", encoding="utf-8")
+    stale_plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,2 +1,3 @@",
+            " #!/bin/sh",
+            " echo disk",
+            "+echo cpu",
+        ],
+    )
+    provider = _RepairTimeoutProvider([stale_plan])
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+        )
+    )
+    config = {"configurable": {"thread_id": "file-patch-repair-timeout"}}
+
+    await graph.ainvoke(initial_state("add cpu info to script"), config=config)
+    target.write_text("#!/bin/sh\necho storage\n", encoding="utf-8")
+    result = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+    content = str(result["messages"][-1].content)
+
+    assert "provider request exceeded timeout (30.0s)" in content
+    assert "No file changes were applied." in content
+    assert "Original patch failure" in content
+    assert "unified diff context does not match target file" in content
+    assert target.read_text(encoding="utf-8") == "#!/bin/sh\necho storage\n"
 
 
 async def test_graph_file_patch_repair_can_fallback_to_command_plan(tmp_path) -> None:
