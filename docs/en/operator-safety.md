@@ -39,6 +39,9 @@ The default configuration uses `sandbox.enabled: false` and `runner: noop`.
 That records sandbox metadata but does not isolate the process. Enabling safe
 profiles with a runner that cannot enforce them fails closed unless the selected
 profile is explicit passthrough.
+The planned Landlock backend is design-only for now; its capability probe,
+fallback order, and compatibility matrix are documented in
+[Landlock Sandbox Design](../design/sandbox-landlock.md).
 
 Remote SSH commands are not protected by local OS sandboxing. Their boundary is
 host-key verification, target scoping, least-privilege accounts, remote working

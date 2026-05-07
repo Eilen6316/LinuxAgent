@@ -253,6 +253,9 @@ but it does not claim filesystem or network isolation for safe profiles.
 `runner: bubblewrap` is optional and capability-probed; if `bwrap` is missing or
 cannot enforce the requested profile or network policy, safe profiles fail
 closed while explicit passthrough profiles remain auditable passthrough.
+The planned Landlock backend is documented in
+[docs/design/sandbox-landlock.md](docs/design/sandbox-landlock.md), including
+capability probing, fallback order, and the compatibility test matrix.
 
 ## Safety Model
 

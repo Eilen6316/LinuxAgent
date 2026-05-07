@@ -18,6 +18,7 @@ homepage.
 | [Runbook 编写指南](zh/runbook-authoring.md) | 中文 Runbook 贡献指南 |
 | [Red Team Baseline](en/red-team.md) | Adversarial policy test baseline and xfail semantics |
 | [Policy Benchmark](../benchmarks/policy-benchmark.md) | Policy/parser latency P50/P95/P99 report |
+| [Landlock Sandbox Design](design/sandbox-landlock.md) | Planned kernel-native sandbox backend design and compatibility matrix |
 | [Roadmap](../ROADMAP.md) | Maintainer priorities and good-first-issue areas |
 
 ## Release And Operations
