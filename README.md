@@ -304,7 +304,8 @@ Current documented baseline from `make test` on 2026-05-01:
 | Unit tests | 577 passing |
 | Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
 | Sandbox boundary suite | covered by `make sandbox` |
-| Red-team policy suite | adversarial command corpus with explicit xfail gaps |
+| Red-team policy suite | adversarial command corpus |
+| Policy benchmark | [P50/P95/P99 policy latency](benchmarks/policy-benchmark.md) |
 | Harness scenarios | scenario-driven HITL / runbook / cluster / sandbox coverage |
 | Integration smoke tests | 10 passing |
 | Coverage | 86.30% (`--cov-fail-under=80`) |
@@ -320,6 +321,7 @@ make lint
 make type
 make security
 make red-team
+make benchmark
 make harness
 make verify-build
 ```

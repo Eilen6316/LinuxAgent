@@ -739,6 +739,7 @@ make lint      # ruff check
 make type      # mypy --strict
 make security  # red-line grep + bandit
 make red-team  # adversarial command-policy corpus
+make benchmark # policy/parser latency benchmark
 make sandbox   # sandbox boundary regression suite
 make harness   # YAML scenario harness
 make build     # wheel + sdist

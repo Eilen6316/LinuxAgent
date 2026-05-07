@@ -17,6 +17,7 @@ homepage.
 | [Runbook Authoring](en/runbook-authoring.md) | How to add safe YAML runbook guidance |
 | [Runbook 编写指南](zh/runbook-authoring.md) | 中文 Runbook 贡献指南 |
 | [Red Team Baseline](en/red-team.md) | Adversarial policy test baseline and xfail semantics |
+| [Policy Benchmark](../benchmarks/policy-benchmark.md) | Policy/parser latency P50/P95/P99 report |
 | [Roadmap](../ROADMAP.md) | Maintainer priorities and good-first-issue areas |
 
 ## Release And Operations
