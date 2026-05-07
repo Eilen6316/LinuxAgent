@@ -202,11 +202,15 @@ as structured model-visible events while telemetry records `allowed`, `denied`,
 `timeout`, or `truncated`.
 
 The terminal shows observable tool activity such as `LinuxAgent is reading
-...` / `LinuxAgent is listing ...`. Patch confirmation shows per-file stats,
-compact `+` / `-` diff snippets, high-risk path warnings, permission changes,
-large-diff pagination, and per-file acceptance for multi-file patches. Full
-diffs are not shown twice; extra review prompts appear only when hidden pages
-exist.
+...` / `LinuxAgent is listing ...`, then prints concise evidence from completed
+workspace tool calls, such as the first line-numbered `read_file` snippets or
+`search_files` matches. If the planner concludes that no file change is needed,
+the final answer includes the cited evidence so the operator can see which file
+lines or search results supported the judgment. Patch confirmation shows
+per-file stats, compact `+` / `-` diff snippets, high-risk path warnings,
+permission changes, large-diff pagination, and per-file acceptance for
+multi-file patches. Full diffs are not shown twice; extra review prompts appear
+only when hidden pages exist.
 
 Command confirmation also shows planned sandbox context: requested profile,
 runner, enforcement state, cwd, allowed roots, network policy, and fallback

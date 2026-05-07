@@ -474,7 +474,11 @@ redirection.
    `read_files`, `write_files`, `execute_commands`, `system_inspect`,
    `network_access`, and `hitl` mode.
 3. The terminal shows observable tool activity such as `LinuxAgent is reading
-   /tmp/disk_info.sh`; tool failures are surfaced clearly.
+   /tmp/disk_info.sh`, then prints concise evidence from completed workspace
+   tool calls, such as line-numbered `read_file` snippets or `search_files`
+   matches. If the planner concludes that no file change is needed, the final
+   answer includes the cited evidence so the operator can see which file lines
+   or search results supported the judgment. Tool failures are surfaced clearly.
 4. The model must return a structured `FilePatchPlan` with `request_intent`,
    target files, unified diff, risk summary, verification commands, and optional
    permission changes.

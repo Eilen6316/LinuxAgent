@@ -6,6 +6,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Workspace tool activity now includes concise evidence snippets from completed
+  `read_file`, `list_dir`, and `search_files` calls. No-change file-plan
+  answers also include the cited evidence so operators can see which file lines
+  or search results the model used.
+
 ## [4.1.0] - 2026-05-07
 
 ### Added
