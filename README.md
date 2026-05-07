@@ -10,20 +10,28 @@
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
-  <p><strong>A HITL-first Linux operations control plane that keeps LLM plans behind policy checks, audit trails, SSH guards, and operator approval.</strong></p>
+  <p><strong>A Linux ops CLI where LLM-generated commands must pass deterministic policy and human approval before execution.</strong></p>
 
   <p>
     <a href="docs/zh/README.md">简体中文完整文档</a> ·
     <a href="docs/en/README.md">Full English manual</a> ·
-    <a href="docs/releases/v4.1.0.md">v4.1.0 release notes</a>
+    <a href="blog.md">why substring matching is not safety</a> ·
+    <a href="docs/releases/v4.1.0.md">v4.1.0 release notes</a> ·
+    <a href="https://github.com/Eilen6316/LinuxAgent/issues/new?template=user_feedback.yml">share real usage feedback</a>
   </p>
 </div>
 
 ---
 
-LinuxAgent is a production-minded CLI for Linux operations. It is not a free-form shell chatbot: it lets an LLM propose plans, but execution stays behind explicit policy checks, Human-in-the-Loop confirmation, SSH safety guards, output redaction, and a hash-chained audit log.
+LinuxAgent is not a free-form shell chatbot and not an autonomous remediator. It
+lets an LLM propose Linux operations, but execution stays behind deterministic
+policy checks, Human-in-the-Loop confirmation, SSH safety guards, output
+redaction, and a hash-chained audit log.
 
-It is built on **LangGraph**, **LangChain**, and **Pydantic v2**. No local deep-learning stack is required.
+The core project is intentionally narrow: command planning, policy, HITL,
+audit, SSH guardrails, and a small set of practical providers. Extra providers,
+runbooks, and integrations are treated as extension points rather than the
+center of the product.
 
 ## Why It Exists
 
@@ -64,7 +72,8 @@ cd LinuxAgent
 source .venv/bin/activate
 ```
 
-Then edit `./config.yaml` and set your provider API key:
+Then edit `./config.yaml` and set a provider. The core paths are OpenAI,
+DeepSeek, local Ollama/OpenAI-compatible models, and Anthropic:
 
 ```yaml
 api:
@@ -72,21 +81,7 @@ api:
   api_key: "replace-me"
 ```
 
-For API relays or third-party OpenAI-compatible endpoints, use
-`openai_compatible` or a provider shortcut such as `qwen`, `kimi`, `glm`,
-`minimax`, `gemini`, or `hunyuan`:
-
-```yaml
-api:
-  provider: openai_compatible
-  base_url: https://relay.example.com/v1
-  model: gpt-4o-mini
-  api_key: "replace-me"
-  token_parameter: max_tokens
-```
-
-For locally deployed OpenAI-compatible models, use `ollama`, `vllm`, `lmstudio`,
-or generic `local`. Local providers do not require a real API key:
+For local Ollama:
 
 ```yaml
 api:
@@ -97,8 +92,9 @@ api:
   token_parameter: max_tokens
 ```
 
-Anthropic-format relays can use `provider: anthropic_compatible` with their own
-`base_url`; Xiaomi MiMo can use `provider: xiaomi_mimo`.
+Other OpenAI-compatible relays and provider shortcuts are documented in the
+[Provider Compatibility Matrix](docs/en/provider-matrix.md). They are useful,
+but they are not the project's core safety story.
 
 Validate and start:
 
@@ -117,30 +113,6 @@ When a first LLM-generated command appears, choose `Yes` for one execution,
 `Yes, don't ask again` for matching commands only in this conversation and the
 same `/resume` thread, or `No` to refuse. Use `!uname -a` for direct
 operator-authored command mode.
-
-Provider quick reference:
-
-| Provider | Protocol | Typical `base_url` | Token parameter |
-|---|---|---|---|
-| `deepseek` | OpenAI-compatible | `https://api.deepseek.com/v1` | `max_completion_tokens` |
-| `openai` | OpenAI | `https://api.openai.com/v1` | `max_completion_tokens` |
-| `openai_compatible` | OpenAI-compatible relay | relay-specific `/v1` URL | often `max_tokens` |
-| `local` | Local OpenAI-compatible | `http://127.0.0.1:8000/v1` | `max_tokens` |
-| `ollama` | Local OpenAI-compatible | `http://127.0.0.1:11434/v1` | `max_tokens` |
-| `vllm` | Local OpenAI-compatible | `http://127.0.0.1:8000/v1` | `max_tokens` |
-| `lmstudio` | Local OpenAI-compatible | `http://127.0.0.1:1234/v1` | `max_tokens` |
-| `qwen` | OpenAI-compatible | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `max_tokens` |
-| `kimi` | OpenAI-compatible | `https://api.moonshot.ai/v1` | `max_tokens` |
-| `glm` | OpenAI-compatible | `https://open.bigmodel.cn/api/paas/v4` | `max_tokens` |
-| `minimax` | OpenAI-compatible | `https://api.minimax.io/v1` | `max_tokens` |
-| `gemini` | OpenAI-compatible | `https://generativelanguage.googleapis.com/v1beta/openai/` | `max_tokens` |
-| `hunyuan` | OpenAI-compatible | `https://api.hunyuan.cloud.tencent.com/v1` | `max_tokens` |
-| `anthropic` | Anthropic | provider default | n/a |
-| `anthropic_compatible` | Anthropic-compatible relay | relay-specific URL | n/a |
-| `xiaomi_mimo` | Anthropic-compatible | relay-specific URL | n/a |
-
-See the maintained [Provider Compatibility Matrix](docs/en/provider-matrix.md)
-for status, local model notes, and compatibility report details.
 
 `config.yaml` must be owned by the current user and `chmod 600`; secrets are not loaded from `.env`.
 
@@ -381,6 +353,8 @@ make verify-build
 | [Security Policy](SECURITY.md) | Vulnerability reporting and supported versions |
 | [Contributing](CONTRIBUTING.md) | Contribution workflow and review expectations |
 | [Changelog](CHANGELOG.md) | Release history |
+| [Why substring matching is not safety](blog.md) | Technical argument behind LinuxAgent's command safety model |
+| [Real user feedback](https://github.com/Eilen6316/LinuxAgent/issues/new?template=user_feedback.yml) | Tell us what happened on a real server, VM, container, or homelab machine |
 
 ## Mirrors and Community
 

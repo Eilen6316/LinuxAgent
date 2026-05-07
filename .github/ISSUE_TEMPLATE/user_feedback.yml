@@ -1,0 +1,60 @@
+name: Real user feedback
+description: Tell us what happened when you tried LinuxAgent on a real machine
+title: "feedback: "
+labels: ["feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying LinuxAgent. This template is for real usage feedback,
+        not feature wishlists. Concrete operator workflows matter more than stars.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, install method, and whether this was a server, VM, container, or homelab machine.
+      placeholder: "Ubuntu 24.04, Python 3.12, pip install linuxagent, homelab VM"
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What were you trying to do?
+      description: Describe the actual ops task you wanted LinuxAgent to help with.
+      placeholder: "Example: inspect nginx status and recent errors before restarting it"
+    validations:
+      required: true
+  - type: textarea
+    id: transcript
+    attributes:
+      label: What happened?
+      description: Paste a redacted transcript, command plan, confirmation screen, or audit snippet if possible.
+    validations:
+      required: true
+  - type: dropdown
+    id: trust
+    attributes:
+      label: Which part affected your trust the most?
+      options:
+        - Policy decision felt right
+        - Policy decision felt too strict
+        - Policy decision felt too loose
+        - HITL confirmation helped
+        - HITL confirmation got in the way
+        - Output analysis was useful
+        - Output analysis was not useful
+        - Setup/configuration was the blocker
+    validations:
+      required: true
+  - type: textarea
+    id: reuse
+    attributes:
+      label: Would you use it again?
+      description: If yes, for what workflow? If no, what would need to change?
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else?
+      description: Redact secrets, hostnames, IPs, tokens, and customer names before posting.
