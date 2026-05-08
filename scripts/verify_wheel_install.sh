@@ -34,9 +34,13 @@ if [[ -f constraints.txt ]]; then
 fi
 "${PIP_INSTALL[@]}" "$WHEEL_PATH"
 linuxagent --help >/dev/null
+linuxagent check >/dev/null
 python - <<'PY'
 from importlib import resources
 import yaml
+
+import linuxagent.mcp_tools
+import linuxagent.skills
 
 root = resources.files("linuxagent")
 required = [
@@ -54,7 +58,7 @@ if missing:
 if len(runbooks) != 11:
     raise SystemExit(f"expected 11 packaged runbooks, found {len(runbooks)}: {runbooks}")
 config = yaml.safe_load((root / "_data" / "default.yaml").read_text(encoding="utf-8"))
-for section in ("sandbox", "file_patch", "cluster", "policy"):
+for section in ("sandbox", "file_patch", "cluster", "policy", "mcp", "skills"):
     if section not in config:
         raise SystemExit(f"missing packaged default config section: {section}")
 sandbox = config["sandbox"]
@@ -63,4 +67,18 @@ if "tools" not in sandbox or "limits" not in sandbox:
 cluster = config["cluster"]
 if "known_hosts_path" not in cluster:
     raise SystemExit("packaged cluster config is missing known_hosts_path")
+mcp = config["mcp"]
+if mcp.get("tools") != [
+    "linuxagent.policy.classify",
+    "linuxagent.audit.verify",
+]:
+    raise SystemExit(f"packaged mcp.tools is wrong: {mcp.get('tools')}")
+if mcp.get("resources") != [
+    "linuxagent://runbooks/summary",
+    "linuxagent://skills/summary",
+]:
+    raise SystemExit(f"packaged mcp.resources is wrong: {mcp.get('resources')}")
+skills = config["skills"]
+if skills.get("enabled") is not False or skills.get("manifests") != []:
+    raise SystemExit(f"packaged skills defaults are wrong: {skills}")
 PY
