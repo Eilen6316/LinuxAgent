@@ -53,6 +53,7 @@ CONFIG_REQUIRED_PATHS = (
     ("mcp", "enabled"),
     ("mcp", "transport"),
     ("mcp", "tools"),
+    ("mcp", "resources"),
     ("skills", "enabled"),
     ("skills", "manifests"),
     ("telemetry", "enabled"),
@@ -140,6 +141,10 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.mcp.enabled is True
     assert cfg.mcp.transport == "stdio"
     assert cfg.mcp.tools == ("linuxagent.policy.classify", "linuxagent.audit.verify")
+    assert cfg.mcp.resources == (
+        "linuxagent://runbooks/summary",
+        "linuxagent://skills/summary",
+    )
     assert cfg.skills.enabled is False
     assert cfg.skills.manifests == ()
     assert cfg.ui.max_chat_history == 20
@@ -427,6 +432,25 @@ def test_mcp_config_rejects_duplicate_tools() -> None:
                     "tools": [
                         "linuxagent.policy.classify",
                         "linuxagent.policy.classify",
+                    ]
+                }
+            }
+        )
+
+
+def test_mcp_config_rejects_unknown_resource() -> None:
+    with pytest.raises(ValidationError, match="mcp.resources"):
+        AppConfig.model_validate({"mcp": {"resources": ["linuxagent://commands/execute"]}})
+
+
+def test_mcp_config_rejects_duplicate_resources() -> None:
+    with pytest.raises(ValidationError, match="duplicate"):
+        AppConfig.model_validate(
+            {
+                "mcp": {
+                    "resources": [
+                        "linuxagent://runbooks/summary",
+                        "linuxagent://runbooks/summary",
                     ]
                 }
             }

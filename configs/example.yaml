@@ -176,6 +176,9 @@ mcp:
   tools:
     - linuxagent.policy.classify
     - linuxagent.audit.verify
+  resources:
+    - linuxagent://runbooks/summary
+    - linuxagent://skills/summary
 
 skills:
   # Declarative local YAML manifests only. No Python hooks, shell hooks, remote

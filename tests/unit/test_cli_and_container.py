@@ -267,20 +267,36 @@ def test_audit_verify_command_reports_tamper(
 
 
 def test_mcp_command_starts_stdio_server(monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg = AppConfig.model_validate({"mcp": {"tools": ["linuxagent.policy.classify"]}})
+    cfg = AppConfig.model_validate(
+        {
+            "mcp": {
+                "tools": ["linuxagent.policy.classify"],
+                "resources": ["linuxagent://skills/summary"],
+            },
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
     calls: list[tuple[str, Path]] = []
 
     monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
     monkeypatch.setattr(
         cli,
         "serve_stdio",
-        lambda server: calls.append(("serve", server.audit_path, server.tools)) or 0,
+        lambda server: calls.append(("serve", server.audit_path, server.tools, server.resources))
+        or 0,
     )
 
     code = cli.main(["mcp"])
 
     assert code == 0
-    assert calls == [("serve", cfg.audit.path, ("linuxagent.policy.classify",))]
+    assert calls == [
+        (
+            "serve",
+            cfg.audit.path,
+            ("linuxagent.policy.classify",),
+            ("linuxagent://skills/summary",),
+        )
+    ]
 
 
 def test_mcp_command_rejects_disabled_server(

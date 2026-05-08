@@ -9,6 +9,8 @@ from pathlib import Path
 from linuxagent.audit import AuditLog
 from linuxagent.mcp_server import McpServer, serve_stdio
 from linuxagent.policy import DEFAULT_POLICY_ENGINE
+from linuxagent.runbooks import Runbook, RunbookStep
+from linuxagent.skills import SkillManifest
 
 
 def _server(tmp_path: Path) -> McpServer:
@@ -42,6 +44,149 @@ def test_mcp_tools_list_honors_configured_allowlist(tmp_path: Path) -> None:
     assert response is not None
     names = [tool["name"] for tool in response["result"]["tools"]]
     assert names == ["linuxagent.policy.classify"]
+
+
+def test_mcp_resources_list_honors_configured_allowlist(tmp_path: Path) -> None:
+    server = McpServer(
+        DEFAULT_POLICY_ENGINE,
+        tmp_path / "audit.log",
+        resources=("linuxagent://runbooks/summary",),
+    )
+
+    response = server.handle({"jsonrpc": "2.0", "id": 7, "method": "resources/list"})
+
+    assert response is not None
+    uris = [resource["uri"] for resource in response["result"]["resources"]]
+    assert uris == ["linuxagent://runbooks/summary"]
+
+
+def test_mcp_runbook_summary_resource_is_read_only(tmp_path: Path) -> None:
+    server = McpServer(
+        DEFAULT_POLICY_ENGINE,
+        tmp_path / "audit.log",
+        runbooks=(
+            Runbook(
+                id="skill.disk.quick",
+                title="Disk quick check",
+                steps=(
+                    RunbookStep(
+                        command="df -h",
+                        purpose="Show filesystem usage",
+                        read_only=True,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    response = server.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "resources/read",
+            "params": {"uri": "linuxagent://runbooks/summary"},
+        }
+    )
+
+    assert response is not None
+    content = json.loads(response["result"]["contents"][0]["text"])
+    assert content["runbooks"] == [
+        {
+            "id": "skill.disk.quick",
+            "title": "Disk quick check",
+            "steps": [{"purpose": "Show filesystem usage", "read_only": True}],
+        }
+    ]
+    assert "df -h" not in response["result"]["contents"][0]["text"]
+
+
+def test_mcp_skill_summary_resource_reports_manifest_metadata(tmp_path: Path) -> None:
+    server = McpServer(
+        DEFAULT_POLICY_ENGINE,
+        tmp_path / "audit.log",
+        skills=(
+            SkillManifest(
+                name="disk-pack",
+                version="1.0",
+                description="Disk guidance",
+                planner_guidance="Prefer df before du.",
+                permissions=("filesystem.inspect",),
+                runbooks=(
+                    Runbook(
+                        id="skill.disk.quick",
+                        title="Disk quick check",
+                        steps=(
+                            RunbookStep(
+                                command="df -h",
+                                purpose="Show filesystem usage",
+                                read_only=True,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    response = server.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "resources/read",
+            "params": {"uri": "linuxagent://skills/summary"},
+        }
+    )
+
+    assert response is not None
+    content = json.loads(response["result"]["contents"][0]["text"])
+    assert content == {
+        "enabled": True,
+        "skills": [
+            {
+                "name": "disk-pack",
+                "version": "1.0",
+                "description": "Disk guidance",
+                "permissions": ["filesystem.inspect"],
+                "has_planner_guidance": True,
+                "runbooks": ["skill.disk.quick"],
+            }
+        ],
+    }
+    assert "Prefer df before du" not in response["result"]["contents"][0]["text"]
+
+
+def test_mcp_skill_summary_resource_reports_disabled_when_no_skills(tmp_path: Path) -> None:
+    response = _server(tmp_path).handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "resources/read",
+            "params": {"uri": "linuxagent://skills/summary"},
+        }
+    )
+
+    assert response is not None
+    content = json.loads(response["result"]["contents"][0]["text"])
+    assert content == {"enabled": False, "skills": []}
+
+
+def test_mcp_disabled_resource_is_rejected(tmp_path: Path) -> None:
+    response = McpServer(
+        DEFAULT_POLICY_ENGINE,
+        tmp_path / "audit.log",
+        resources=("linuxagent://runbooks/summary",),
+    ).handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "resources/read",
+            "params": {"uri": "linuxagent://skills/summary"},
+        }
+    )
+
+    assert response is not None
+    assert response["error"]["code"] == -32602
+    assert "disabled resource" in response["error"]["message"]
 
 
 def test_mcp_policy_classify_is_read_only(tmp_path: Path) -> None:

@@ -16,6 +16,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `linuxagent check` now reports MCP and Skill status and fails fast when Skill
   manifests are missing, invalid, or contain read-only runbooks rejected by
   policy.
+- MCP now exposes configurable read-only resources for runbook and Skill
+  summaries without returning command strings, full guidance bodies, or
+  execution handles.
 - Workspace tool activity now includes concise evidence snippets from completed
   `read_file`, `list_dir`, and `search_files` calls. No-change file-plan
   answers also include the cited evidence so operators can see which file lines

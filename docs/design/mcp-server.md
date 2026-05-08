@@ -13,6 +13,9 @@ This design follows the MCP tool model: the server declares a `tools`
 capability, clients discover tools with `tools/list`, and clients invoke tools
 with `tools/call`.
 
+It also exposes bounded read-only resources for public capability summaries.
+Resources are not execution handles.
+
 ## Threat Model
 
 An MCP client is model-facing software. Tool calls may be triggered by model
@@ -39,11 +42,14 @@ mcp:
   tools:
     - linuxagent.policy.classify
     - linuxagent.audit.verify
+  resources:
+    - linuxagent://runbooks/summary
+    - linuxagent://skills/summary
 ```
 
-`transport` currently accepts only `stdio`. `tools` is an explicit allowlist:
-unknown tool names fail config validation, and tools omitted from the list are
-not returned by `tools/list` or callable through `tools/call`.
+`transport` currently accepts only `stdio`. `tools` and `resources` are explicit
+allowlists: unknown names fail config validation, and entries omitted from the
+list are not returned by list methods or callable/readable by clients.
 
 The default config enables the stdio server with both read-only tools. Setting
 `mcp.enabled: false` makes `linuxagent mcp` fail closed instead of starting a
@@ -61,6 +67,17 @@ capabilities, matched rules, approval requirement, and whitelist eligibility.
 Audit verification returns validity, record count, tamper line, reason, and the
 configured audit path.
 
+## Exposed Resources
+
+| Resource | Behavior | State mutation |
+|---|---|---|
+| `linuxagent://runbooks/summary` | Returns runbook ids, titles, and step purpose/read-only flags | None |
+| `linuxagent://skills/summary` | Returns Skill name/version/description/permissions/guidance presence/runbook ids | None |
+
+Resources intentionally return summaries. They do not expose command strings,
+planner guidance bodies, execution results, raw audit logs, config secrets, or
+filesystem content.
+
 ## Non-Exposed Capabilities
 
 These remain intentionally unavailable over MCP:
@@ -70,6 +87,8 @@ These remain intentionally unavailable over MCP:
 - file patch application
 - SSH cluster execution
 - raw audit record search
+- runbook command-string export
+- full Skill planner guidance export
 - raw secrets, provider keys, config values, or environment values
 
 If execution is added later, it must call the same graph/service path as the
@@ -103,10 +122,13 @@ The server supports:
 - `notifications/initialized`
 - `tools/list`
 - `tools/call`
+- `resources/list`
+- `resources/read`
 - `shutdown`
 
-Unknown methods and unknown tools return JSON-RPC errors. Business validation
-failures inside a known tool return a tool result with `isError: true`.
+Unknown methods, tools, and resources return JSON-RPC errors. Business
+validation failures inside a known tool return a tool result with
+`isError: true`.
 
 ## Future Slices
 

@@ -21,7 +21,12 @@ from pydantic import (
     model_validator,
 )
 
-from ..mcp_tools import MCP_READ_ONLY_TOOL_NAMES, McpToolName
+from ..mcp_tools import (
+    MCP_READ_ONLY_RESOURCE_URIS,
+    MCP_READ_ONLY_TOOL_NAMES,
+    McpResourceUri,
+    McpToolName,
+)
 from ..sandbox.models import SandboxNetworkPolicy, SandboxProfile, SandboxRunnerKind
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -392,12 +397,22 @@ class McpConfig(BaseModel):
     enabled: bool = True
     transport: Literal["stdio"] = "stdio"
     tools: tuple[McpToolName, ...] = MCP_READ_ONLY_TOOL_NAMES
+    resources: tuple[McpResourceUri, ...] = MCP_READ_ONLY_RESOURCE_URIS
 
     @field_validator("tools")
     @classmethod
     def _reject_duplicate_tools(cls, value: tuple[McpToolName, ...]) -> tuple[McpToolName, ...]:
         if len(set(value)) != len(value):
             raise ValueError("mcp.tools cannot contain duplicate entries")
+        return value
+
+    @field_validator("resources")
+    @classmethod
+    def _reject_duplicate_resources(
+        cls, value: tuple[McpResourceUri, ...]
+    ) -> tuple[McpResourceUri, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("mcp.resources cannot contain duplicate entries")
         return value
 
 

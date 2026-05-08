@@ -80,6 +80,9 @@ mcp:
   tools:
     - linuxagent.policy.classify
     - linuxagent.audit.verify
+  resources:
+    - linuxagent://runbooks/summary
+    - linuxagent://skills/summary
 
 skills:
   enabled: false

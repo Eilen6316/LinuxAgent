@@ -11,9 +11,20 @@ from typing import Any, TextIO
 from . import __version__
 from .audit import verify_audit_log
 from .interfaces import CommandSource
-from .mcp_tools import AUDIT_TOOL_NAME, MCP_READ_ONLY_TOOL_NAMES, POLICY_TOOL_NAME, McpToolName
+from .mcp_tools import (
+    AUDIT_TOOL_NAME,
+    MCP_READ_ONLY_RESOURCE_URIS,
+    MCP_READ_ONLY_TOOL_NAMES,
+    POLICY_TOOL_NAME,
+    RUNBOOKS_SUMMARY_RESOURCE,
+    SKILLS_SUMMARY_RESOURCE,
+    McpResourceUri,
+    McpToolName,
+)
 from .policy import PolicyEngine
+from .runbooks import Runbook
 from .security import redact_record
+from .skills import SkillManifest
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "linuxagent-mcp"
@@ -49,6 +60,20 @@ _TOOL_DEFINITIONS: dict[McpToolName, JsonObject] = {
         },
     },
 }
+_RESOURCE_DEFINITIONS: dict[McpResourceUri, JsonObject] = {
+    RUNBOOKS_SUMMARY_RESOURCE: {
+        "uri": RUNBOOKS_SUMMARY_RESOURCE,
+        "name": "LinuxAgent Runbook Summary",
+        "description": "Read-only summary of configured LinuxAgent runbooks.",
+        "mimeType": "application/json",
+    },
+    SKILLS_SUMMARY_RESOURCE: {
+        "uri": SKILLS_SUMMARY_RESOURCE,
+        "name": "LinuxAgent Skill Summary",
+        "description": "Read-only summary of configured LinuxAgent Skill manifests.",
+        "mimeType": "application/json",
+    },
+}
 
 JsonObject = dict[str, Any]
 
@@ -58,6 +83,9 @@ class McpServer:
     policy_engine: PolicyEngine
     audit_path: Path
     tools: tuple[McpToolName, ...] = MCP_READ_ONLY_TOOL_NAMES
+    resources: tuple[McpResourceUri, ...] = MCP_READ_ONLY_RESOURCE_URIS
+    runbooks: tuple[Runbook, ...] = ()
+    skills: tuple[SkillManifest, ...] = ()
 
     def handle(self, request: JsonObject) -> JsonObject | None:
         method = request.get("method")
@@ -81,6 +109,10 @@ class McpServer:
             return _result(request_id, {"tools": list(_tools(self.tools))})
         if method == "tools/call":
             return self._call_tool(request_id, params)
+        if method == "resources/list":
+            return _result(request_id, {"resources": list(_resources(self.resources))})
+        if method == "resources/read":
+            return self._read_resource(request_id, params)
         if method == "shutdown":
             return _result(request_id, {})
         return _error(request_id, -32601, f"unknown method: {method}")
@@ -99,6 +131,18 @@ class McpServer:
         if name == AUDIT_TOOL_NAME:
             return _result(request_id, _tool_result(self._verify_audit()))
         return _error(request_id, -32602, f"unknown tool: {name}")
+
+    def _read_resource(self, request_id: Any, params: Any) -> JsonObject:
+        if not isinstance(params, dict):
+            return _error(request_id, -32602, "resources/read params must be an object")
+        uri = params.get("uri")
+        if uri not in self.resources:
+            return _error(request_id, -32602, f"unknown or disabled resource: {uri}")
+        if uri == RUNBOOKS_SUMMARY_RESOURCE:
+            return _result(request_id, _resource_result(uri, _runbook_summary(self.runbooks)))
+        if uri == SKILLS_SUMMARY_RESOURCE:
+            return _result(request_id, _resource_result(uri, _skill_summary(self.skills)))
+        return _error(request_id, -32602, f"unknown resource: {uri}")
 
     def _classify(self, arguments: JsonObject) -> JsonObject:
         command = arguments.get("command")
@@ -173,13 +217,69 @@ def _initialize_result(params: Any) -> JsonObject:
         protocol_version = str(params["protocolVersion"])
     return {
         "protocolVersion": protocol_version,
-        "capabilities": {"tools": {"listChanged": False}},
+        "capabilities": {
+            "tools": {"listChanged": False},
+            "resources": {"subscribe": False, "listChanged": False},
+        },
         "serverInfo": {"name": SERVER_NAME, "version": __version__},
     }
 
 
 def _tools(names: tuple[McpToolName, ...]) -> tuple[JsonObject, ...]:
     return tuple(_TOOL_DEFINITIONS[name] for name in names)
+
+
+def _resources(uris: tuple[McpResourceUri, ...]) -> tuple[JsonObject, ...]:
+    return tuple(_RESOURCE_DEFINITIONS[uri] for uri in uris)
+
+
+def _resource_result(uri: str, payload: JsonObject) -> JsonObject:
+    text = json.dumps(redact_record(payload), ensure_ascii=False, sort_keys=True)
+    return {
+        "contents": [
+            {
+                "uri": uri,
+                "mimeType": "application/json",
+                "text": text,
+            }
+        ]
+    }
+
+
+def _runbook_summary(runbooks: tuple[Runbook, ...]) -> JsonObject:
+    return {
+        "runbooks": [
+            {
+                "id": runbook.id,
+                "title": runbook.title,
+                "steps": [
+                    {
+                        "purpose": step.purpose,
+                        "read_only": step.read_only,
+                    }
+                    for step in runbook.steps
+                ],
+            }
+            for runbook in runbooks
+        ]
+    }
+
+
+def _skill_summary(skills: tuple[SkillManifest, ...]) -> JsonObject:
+    return {
+        "enabled": bool(skills),
+        "skills": [
+            {
+                "name": skill.name,
+                "version": skill.version,
+                "description": skill.description,
+                "permissions": list(skill.permissions),
+                "has_planner_guidance": bool(skill.planner_guidance),
+                "runbooks": [runbook.id for runbook in skill.runbooks],
+            }
+            for skill in skills
+        ],
+    }
 
 
 def _tool_result(payload: JsonObject) -> JsonObject:

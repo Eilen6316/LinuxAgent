@@ -181,7 +181,14 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
         print("error: mcp.enabled is false", file=sys.stderr)
         return 1
     container = Container(cfg)
-    server = McpServer(container.policy_engine(), cfg.audit.path, tools=cfg.mcp.tools)
+    server = McpServer(
+        container.policy_engine(),
+        cfg.audit.path,
+        tools=cfg.mcp.tools,
+        resources=cfg.mcp.resources,
+        runbooks=container.runbook_engine().runbooks,
+        skills=container.skill_manifests(),
+    )
     return serve_stdio(server)
 
 
