@@ -252,6 +252,8 @@ def _runbook_summary(runbooks: tuple[Runbook, ...]) -> JsonObject:
             {
                 "id": runbook.id,
                 "title": runbook.title,
+                "step_count": len(runbook.steps),
+                "safety_posture": _runbook_safety_posture(runbook),
                 "steps": [
                     {
                         "purpose": step.purpose,
@@ -263,6 +265,12 @@ def _runbook_summary(runbooks: tuple[Runbook, ...]) -> JsonObject:
             for runbook in runbooks
         ]
     }
+
+
+def _runbook_safety_posture(runbook: Runbook) -> str:
+    if all(step.read_only for step in runbook.steps):
+        return "read_only"
+    return "policy_gated"
 
 
 def _skill_summary(skills: tuple[SkillManifest, ...]) -> JsonObject:

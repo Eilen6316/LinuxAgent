@@ -94,10 +94,52 @@ def test_mcp_runbook_summary_resource_is_read_only(tmp_path: Path) -> None:
         {
             "id": "skill.disk.quick",
             "title": "Disk quick check",
+            "step_count": 1,
+            "safety_posture": "read_only",
             "steps": [{"purpose": "Show filesystem usage", "read_only": True}],
         }
     ]
     assert "df -h" not in response["result"]["contents"][0]["text"]
+
+
+def test_mcp_runbook_summary_reports_policy_gated_posture(tmp_path: Path) -> None:
+    server = McpServer(
+        DEFAULT_POLICY_ENGINE,
+        tmp_path / "audit.log",
+        runbooks=(
+            Runbook(
+                id="skill.service.restart",
+                title="Restart service",
+                steps=(
+                    RunbookStep(
+                        command="systemctl status nginx",
+                        purpose="Inspect service status",
+                        read_only=True,
+                    ),
+                    RunbookStep(
+                        command="systemctl restart nginx",
+                        purpose="Restart service",
+                        read_only=False,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    response = server.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "resources/read",
+            "params": {"uri": "linuxagent://runbooks/summary"},
+        }
+    )
+
+    assert response is not None
+    content = json.loads(response["result"]["contents"][0]["text"])
+    assert content["runbooks"][0]["step_count"] == 2
+    assert content["runbooks"][0]["safety_posture"] == "policy_gated"
+    assert "systemctl restart nginx" not in response["result"]["contents"][0]["text"]
 
 
 def test_mcp_skill_summary_resource_reports_manifest_metadata(tmp_path: Path) -> None:

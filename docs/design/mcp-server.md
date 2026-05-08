@@ -71,12 +71,18 @@ configured audit path.
 
 | Resource | Behavior | State mutation |
 |---|---|---|
-| `linuxagent://runbooks/summary` | Returns runbook ids, titles, and step purpose/read-only flags | None |
+| `linuxagent://runbooks/summary` | Returns runbook ids, titles, step counts, safety posture, and step purpose/read-only flags | None |
 | `linuxagent://skills/summary` | Returns Skill name/version/description/permissions/guidance presence/runbook ids | None |
 
 Resources intentionally return summaries. They do not expose command strings,
 planner guidance bodies, execution results, raw audit logs, config secrets, or
 filesystem content.
+
+Runbook safety posture is summary-level metadata:
+
+- `read_only`: every exposed step is declared read-only.
+- `policy_gated`: one or more steps can have side effects and must still go
+  through planner, policy, HITL, sandbox metadata, and audit before execution.
 
 ## Non-Exposed Capabilities
 

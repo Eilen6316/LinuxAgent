@@ -8,6 +8,8 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Changed
 
+- MCP runbook 摘要现在包含显式 step count 和摘要级 safety posture，同时继续
+  隐藏原始命令字符串。
 - Workspace tool 活动现在会展示来自 `read_file`、`list_dir` 和
   `search_files` 完成结果的简短 evidence 摘要。文件修改流程返回“无需修改”时，
   最终回答也会附带引用到的依据，方便操作员看到模型基于哪些文件行或搜索结果做判断。
