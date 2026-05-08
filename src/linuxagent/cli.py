@@ -12,11 +12,14 @@ from uuid import uuid4
 from . import __version__
 from .audit import verify_audit_log
 from .config.loader import ConfigError, load_config
+from .config.models import McpConfig
 from .container import Container
 from .logger import configure_logging
 from .mcp_server import McpServer, serve_stdio
 from .providers.errors import ProviderError
+from .runbooks import RunbookEngine
 from .services import MonitoringAlert, collect_system_snapshot, evaluate_alerts
+from .skills import skill_runbooks
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +108,9 @@ def _cmd_check(args: argparse.Namespace) -> int:
     configure_logging(level=_verbose_to_level(args.verbose))
     try:
         cfg = load_config(cli_path=args.config)
-    except ConfigError as exc:
+        container = Container(cfg)
+        skill_summary = _skill_summary(container)
+    except (ConfigError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     alerts = evaluate_alerts(collect_system_snapshot(), cfg.monitoring)
@@ -115,6 +120,8 @@ def _cmd_check(args: argparse.Namespace) -> int:
         f"model={cfg.api.model}, "
         f"batch_confirm_threshold={cfg.cluster.batch_confirm_threshold}, "
         f"audit_log={cfg.audit.path}, "
+        f"mcp={_mcp_summary(cfg.mcp)}, "
+        f"skills={skill_summary}, "
         f"monitoring_alerts={alert_summary}"
     )
     return 0
@@ -188,6 +195,26 @@ _COMMANDS = {
 
 def _format_alert(alert: MonitoringAlert) -> str:
     return f"{alert.severity}:{alert.metric}={alert.value:.1f}>={alert.threshold:.1f}"
+
+
+def _mcp_summary(config: McpConfig) -> str:
+    if not config.enabled:
+        return "disabled"
+    if not config.tools:
+        return "none"
+    return ",".join(config.tools)
+
+
+def _skill_summary(container: Container) -> str:
+    if not container.config.skills.enabled:
+        return "disabled"
+    manifests = container.skill_manifests()
+    runbooks = skill_runbooks(manifests)
+    RunbookEngine(
+        runbooks,
+        policy_engine=container.policy_engine(),
+    )
+    return f"{len(manifests)} manifests/{len(runbooks)} runbooks"
 
 
 def main(argv: list[str] | None = None) -> int:

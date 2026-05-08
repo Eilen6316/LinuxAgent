@@ -25,6 +25,12 @@ skills:
 When `skills.enabled: true`, at least one manifest path is required. Paths are
 expanded with the same config path rules as the rest of LinuxAgent.
 
+Run `linuxagent check` after enabling Skills. The check command loads every
+manifest, validates schema, validates runbook policy boundaries, and reports a
+summary such as `skills=1 manifests/1 runbooks`. Missing files, invalid YAML, or
+read-only runbook steps that policy does not classify as `SAFE` make the check
+fail before chat starts.
+
 ## Manifest Schema
 
 ```yaml

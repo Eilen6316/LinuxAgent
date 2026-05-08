@@ -17,7 +17,7 @@ import linuxagent.cli as cli
 import linuxagent.container as container_module
 from linuxagent.audit import AuditLog
 from linuxagent.config.loader import ConfigError
-from linuxagent.config.models import AppConfig, MonitoringConfig
+from linuxagent.config.models import AppConfig
 from linuxagent.container import Container
 from linuxagent.policy.config_rules import PolicyConfigError
 from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner
@@ -49,11 +49,11 @@ def test_check_command_success(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    cfg = SimpleNamespace(
-        api=SimpleNamespace(provider="deepseek", model="deepseek-chat"),
-        cluster=SimpleNamespace(batch_confirm_threshold=2),
-        audit=SimpleNamespace(path=Path("audit.log")),
-        monitoring=MonitoringConfig(enabled=False),
+    cfg = AppConfig.model_validate(
+        {
+            "monitoring": {"enabled": False},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
     )
 
     called: list[int] = []
@@ -78,6 +78,8 @@ def test_check_command_success(
     assert code == 0
     assert called == [logging.INFO]
     assert "OK: provider=deepseek" in captured.out
+    assert "mcp=linuxagent.policy.classify,linuxagent.audit.verify" in captured.out
+    assert "skills=disabled" in captured.out
     assert "monitoring_alerts=none" in captured.out
 
 
@@ -85,12 +87,7 @@ def test_check_command_reports_monitoring_alerts(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    cfg = SimpleNamespace(
-        api=SimpleNamespace(provider="deepseek", model="deepseek-chat"),
-        cluster=SimpleNamespace(batch_confirm_threshold=2),
-        audit=SimpleNamespace(path=Path("audit.log")),
-        monitoring=MonitoringConfig(),
-    )
+    cfg = AppConfig.model_validate({"telemetry": {"enabled": False, "exporter": "none"}})
 
     monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
     monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
@@ -114,6 +111,109 @@ def test_check_command_reports_monitoring_alerts(
 
     assert code == 0
     assert "monitoring_alerts=warning:cpu_percent=95.0>=90.0" in captured.out
+
+
+def test_check_command_reports_enabled_skill_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "skill.yaml"
+    manifest.write_text(
+        """
+name: disk-pack
+version: "1.0"
+description: Disk inspection guidance
+planner_guidance: Prefer df before du.
+runbooks:
+  - id: skill.disk.quick
+    title: Skill disk quick check
+    steps:
+      - command: df -h
+        purpose: Show filesystem usage
+        read_only: true
+""",
+        encoding="utf-8",
+    )
+    cfg = AppConfig.model_validate(
+        {
+            "skills": {"enabled": True, "manifests": [manifest]},
+            "mcp": {"tools": ["linuxagent.policy.classify"]},
+            "monitoring": {"enabled": False},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+
+    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+    monkeypatch.setattr(cli, "collect_system_snapshot", lambda: {})
+
+    code = cli.main(["check"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "mcp=linuxagent.policy.classify" in captured.out
+    assert "skills=1 manifests/1 runbooks" in captured.out
+
+
+def test_check_command_fails_for_missing_skill_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "skills": {"enabled": True, "manifests": [tmp_path / "missing.yaml"]},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+
+    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+
+    code = cli.main(["check"])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert "cannot load skill manifest" in captured.err
+
+
+def test_check_command_fails_for_unsafe_skill_runbook(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "bad.yaml"
+    manifest.write_text(
+        """
+name: bad-pack
+version: "1.0"
+description: Bad runbook
+runbooks:
+  - id: skill.bad.delete
+    title: Bad delete
+    steps:
+      - command: rm -rf /tmp/linuxagent-skill-check
+        purpose: Delete data
+        read_only: true
+""",
+        encoding="utf-8",
+    )
+    cfg = AppConfig.model_validate(
+        {
+            "skills": {"enabled": True, "manifests": [manifest]},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+
+    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+
+    code = cli.main(["check"])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert "read-only" in captured.err
 
 
 def test_check_command_failure(
