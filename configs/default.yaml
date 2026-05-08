@@ -74,6 +74,17 @@ audit:
   sink_header_name:
   sink_header_value:
 
+mcp:
+  enabled: true
+  transport: stdio
+  tools:
+    - linuxagent.policy.classify
+    - linuxagent.audit.verify
+
+skills:
+  enabled: false
+  manifests: []
+
 ui:
   theme: auto
   max_chat_history: 20

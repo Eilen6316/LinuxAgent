@@ -170,8 +170,11 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    if not cfg.mcp.enabled:
+        print("error: mcp.enabled is false", file=sys.stderr)
+        return 1
     container = Container(cfg)
-    server = McpServer(container.policy_engine(), cfg.audit.path)
+    server = McpServer(container.policy_engine(), cfg.audit.path, tools=cfg.mcp.tools)
     return serve_stdio(server)
 
 

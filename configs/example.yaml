@@ -169,6 +169,24 @@ audit:
   sink_header_name:
   sink_header_value:
 
+mcp:
+  # Local stdio MCP server. Only read-only tools are supported in this slice.
+  enabled: true
+  transport: stdio
+  tools:
+    - linuxagent.policy.classify
+    - linuxagent.audit.verify
+
+skills:
+  # Declarative local YAML manifests only. No Python hooks, shell hooks, remote
+  # install, or execution bypass is supported.
+  enabled: false
+  manifests: []
+  # Example:
+  # enabled: true
+  # manifests:
+  #   - ./skills/disk-inspection.yaml
+
 telemetry:
   # Default is local JSONL spans. Set exporter: console for local stdout
   # development, otlp for an HTTP collector, or none to disable telemetry.

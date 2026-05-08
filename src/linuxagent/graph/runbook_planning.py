@@ -24,6 +24,7 @@ def build_runbook_guidance(runbook_engine: RunbookEngine | None) -> str:
     ]
     for runbook in runbook_engine.runbooks[:MAX_GUIDANCE_RUNBOOKS]:
         lines.extend(_runbook_guidance_lines(runbook))
+    lines.extend(runbook_engine.extra_guidance)
     return "\n".join(lines)
 
 

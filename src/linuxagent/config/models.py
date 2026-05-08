@@ -21,6 +21,7 @@ from pydantic import (
     model_validator,
 )
 
+from ..mcp_tools import MCP_READ_ONLY_TOOL_NAMES, McpToolName
 from ..sandbox.models import SandboxNetworkPolicy, SandboxProfile, SandboxRunnerKind
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -385,6 +386,34 @@ class AuditConfig(BaseModel):
         return self
 
 
+class McpConfig(BaseModel):
+    model_config = _FROZEN
+
+    enabled: bool = True
+    transport: Literal["stdio"] = "stdio"
+    tools: tuple[McpToolName, ...] = MCP_READ_ONLY_TOOL_NAMES
+
+    @field_validator("tools")
+    @classmethod
+    def _reject_duplicate_tools(cls, value: tuple[McpToolName, ...]) -> tuple[McpToolName, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("mcp.tools cannot contain duplicate entries")
+        return value
+
+
+class SkillsConfig(BaseModel):
+    model_config = _FROZEN
+
+    enabled: bool = False
+    manifests: UserPathTuple = ()
+
+    @model_validator(mode="after")
+    def _require_manifests_when_enabled(self) -> SkillsConfig:
+        if self.enabled and not self.manifests:
+            raise ValueError("skills.manifests is required when skills.enabled is true")
+        return self
+
+
 class UIConfig(BaseModel):
     model_config = _FROZEN
 
@@ -478,6 +507,8 @@ class AppConfig(BaseModel):
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     cluster: ClusterConfig = Field(default_factory=ClusterConfig)
     audit: AuditConfig = Field(default_factory=AuditConfig)
+    mcp: McpConfig = Field(default_factory=McpConfig)
+    skills: SkillsConfig = Field(default_factory=SkillsConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)

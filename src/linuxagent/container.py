@@ -46,6 +46,7 @@ from .sandbox import (
 )
 from .sandbox.models import SandboxRunnerKind
 from .services import ChatService, ClusterService, CommandService, MonitoringService
+from .skills import load_skill_manifests, skill_planner_guidance, skill_runbooks
 from .telemetry import TelemetryRecorder
 from .tools import (
     ToolRuntimeLimits,
@@ -57,6 +58,7 @@ from .ui import ConsoleUI
 
 if TYPE_CHECKING:
     from .config.models import AppConfig
+    from .skills import SkillManifest
 _T = TypeVar("_T")
 _TOOL_EVIDENCE_ITEMS = 3
 _READ_FILE_HEAD_EVIDENCE_ITEMS = 2
@@ -236,11 +238,20 @@ class Container:
         return self._cached(
             "runbook_engine",
             lambda: RunbookEngine(
-                load_runbooks(find_runbooks_dir()),
+                (*load_runbooks(find_runbooks_dir()), *skill_runbooks(self.skill_manifests())),
                 policy_engine=self.policy_engine(),
                 telemetry=self.telemetry(),
+                extra_guidance=skill_planner_guidance(self.skill_manifests()),
             ),
         )
+
+    def skill_manifests(self) -> tuple[SkillManifest, ...]:
+        def factory() -> tuple[SkillManifest, ...]:
+            if not self._config.skills.enabled:
+                return ()
+            return load_skill_manifests(self._config.skills.manifests)
+
+        return self._cached("skill_manifests", factory)
 
     def knowledge_base(self) -> KnowledgeBase:
         return self._cached("knowledge_base", lambda: KnowledgeBase(self.nlp_enhancer()))

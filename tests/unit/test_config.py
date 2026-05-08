@@ -50,6 +50,11 @@ CONFIG_REQUIRED_PATHS = (
     ("audit", "sink_timeout_seconds"),
     ("audit", "sink_header_name"),
     ("audit", "sink_header_value"),
+    ("mcp", "enabled"),
+    ("mcp", "transport"),
+    ("mcp", "tools"),
+    ("skills", "enabled"),
+    ("skills", "manifests"),
     ("telemetry", "enabled"),
     ("telemetry", "exporter"),
     ("telemetry", "path"),
@@ -132,6 +137,11 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.sandbox.default_profile is SandboxProfile.SYSTEM_INSPECT
     assert cfg.cluster.batch_confirm_threshold == 2
     assert cfg.audit.path.name == "audit.log"
+    assert cfg.mcp.enabled is True
+    assert cfg.mcp.transport == "stdio"
+    assert cfg.mcp.tools == ("linuxagent.policy.classify", "linuxagent.audit.verify")
+    assert cfg.skills.enabled is False
+    assert cfg.skills.manifests == ()
     assert cfg.ui.max_chat_history == 20
 
 
@@ -402,6 +412,42 @@ def test_sandbox_tool_config_validates_runtime_limits() -> None:
 def test_sandbox_tool_config_rejects_invalid_rounds() -> None:
     with pytest.raises(ValidationError, match="max_rounds"):
         AppConfig.model_validate({"sandbox": {"tools": {"max_rounds": 0}}})
+
+
+def test_mcp_config_rejects_unknown_tool() -> None:
+    with pytest.raises(ValidationError, match="mcp.tools"):
+        AppConfig.model_validate({"mcp": {"tools": ["linuxagent.command.execute"]}})
+
+
+def test_mcp_config_rejects_duplicate_tools() -> None:
+    with pytest.raises(ValidationError, match="duplicate"):
+        AppConfig.model_validate(
+            {
+                "mcp": {
+                    "tools": [
+                        "linuxagent.policy.classify",
+                        "linuxagent.policy.classify",
+                    ]
+                }
+            }
+        )
+
+
+def test_skills_config_requires_manifest_when_enabled() -> None:
+    with pytest.raises(ValidationError, match="skills.manifests"):
+        AppConfig.model_validate({"skills": {"enabled": True}})
+
+
+def test_skills_config_expands_manifest_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg = AppConfig.model_validate(
+        {"skills": {"enabled": True, "manifests": ["~/.config/linuxagent/skills/disk.yaml"]}}
+    )
+
+    assert cfg.skills.manifests == (tmp_path / ".config" / "linuxagent" / "skills" / "disk.yaml",)
 
 
 # ---- Loader tests -------------------------------------------------------

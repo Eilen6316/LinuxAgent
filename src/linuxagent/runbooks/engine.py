@@ -54,16 +54,22 @@ class RunbookEngine:
         *,
         policy_engine: PolicyEngine = DEFAULT_POLICY_ENGINE,
         telemetry: TelemetryRecorder | None = None,
+        extra_guidance: tuple[str, ...] = (),
     ) -> None:
         self._runbooks = runbooks
         self._policy_engine = policy_engine
         self._telemetry = telemetry
+        self._extra_guidance = extra_guidance
         for runbook in self._runbooks:
             self.evaluate_steps(runbook)
 
     @property
     def runbooks(self) -> tuple[Runbook, ...]:
         return self._runbooks
+
+    @property
+    def extra_guidance(self) -> tuple[str, ...]:
+        return self._extra_guidance
 
     def evaluate_steps(
         self,

@@ -167,18 +167,35 @@ def test_audit_verify_command_reports_tamper(
 
 
 def test_mcp_command_starts_stdio_server(monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg = AppConfig.model_validate({})
+    cfg = AppConfig.model_validate({"mcp": {"tools": ["linuxagent.policy.classify"]}})
     calls: list[tuple[str, Path]] = []
 
     monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
     monkeypatch.setattr(
-        cli, "serve_stdio", lambda server: calls.append(("serve", server.audit_path)) or 0
+        cli,
+        "serve_stdio",
+        lambda server: calls.append(("serve", server.audit_path, server.tools)) or 0,
     )
 
     code = cli.main(["mcp"])
 
     assert code == 0
-    assert calls == [("serve", cfg.audit.path)]
+    assert calls == [("serve", cfg.audit.path, ("linuxagent.policy.classify",))]
+
+
+def test_mcp_command_rejects_disabled_server(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cfg = AppConfig.model_validate({"mcp": {"enabled": False}})
+
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+
+    code = cli.main(["mcp"])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert "mcp.enabled is false" in captured.err
 
 
 def test_main_unknown_command_routes_to_parser_error(monkeypatch: pytest.MonkeyPatch) -> None:

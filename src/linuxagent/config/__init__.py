@@ -15,11 +15,13 @@ from .models import (
     LLMProviderName,
     LogAnalysisConfig,
     LoggingConfig,
+    McpConfig,
     MonitoringConfig,
     SandboxConfig,
     SandboxResourceLimitsConfig,
     SandboxToolConfig,
     SecurityConfig,
+    SkillsConfig,
     UIConfig,
 )
 
@@ -37,11 +39,13 @@ __all__ = [
     "LLMProviderName",
     "LogAnalysisConfig",
     "LoggingConfig",
+    "McpConfig",
     "MonitoringConfig",
     "SandboxConfig",
     "SandboxResourceLimitsConfig",
     "SandboxToolConfig",
     "SecurityConfig",
+    "SkillsConfig",
     "UIConfig",
     "load_config",
 ]

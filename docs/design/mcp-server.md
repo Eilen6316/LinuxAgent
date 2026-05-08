@@ -1,6 +1,6 @@
 # MCP Server Design
 
-Status: minimal read-only prototype.
+Status: configurable read-only stdio server.
 
 ## Goal
 
@@ -19,7 +19,7 @@ An MCP client is model-facing software. Tool calls may be triggered by model
 context, prompt injection, or user confusion, so LinuxAgent must assume tool
 inputs are untrusted.
 
-The current prototype therefore exposes only read-only capabilities:
+The server therefore exposes only read-only capabilities:
 
 - `linuxagent.policy.classify`
 - `linuxagent.audit.verify`
@@ -27,6 +27,27 @@ The current prototype therefore exposes only read-only capabilities:
 It does not expose command execution, file patch application, SSH fan-out, or
 secrets. A malicious MCP client can ask whether a command would be blocked, but
 it cannot cause LinuxAgent to execute that command through the MCP server.
+
+## Configuration
+
+MCP is configured through `config.yaml`:
+
+```yaml
+mcp:
+  enabled: true
+  transport: stdio
+  tools:
+    - linuxagent.policy.classify
+    - linuxagent.audit.verify
+```
+
+`transport` currently accepts only `stdio`. `tools` is an explicit allowlist:
+unknown tool names fail config validation, and tools omitted from the list are
+not returned by `tools/list` or callable through `tools/call`.
+
+The default config enables the stdio server with both read-only tools. Setting
+`mcp.enabled: false` makes `linuxagent mcp` fail closed instead of starting a
+server.
 
 ## Exposed Tools
 
@@ -71,12 +92,12 @@ LinuxAgent is responsible for:
 - validating JSON-RPC request shape and tool arguments
 - keeping the server local stdio only
 - redacting structured tool output
-- never exposing command execution in this prototype
+- never exposing command execution in this server
 - reusing existing policy and audit verifier logic
 
 ## Protocol Surface
 
-The prototype supports:
+The server supports:
 
 - `initialize`
 - `notifications/initialized`

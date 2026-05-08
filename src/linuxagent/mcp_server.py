@@ -11,15 +11,44 @@ from typing import Any, TextIO
 from . import __version__
 from .audit import verify_audit_log
 from .interfaces import CommandSource
+from .mcp_tools import AUDIT_TOOL_NAME, MCP_READ_ONLY_TOOL_NAMES, POLICY_TOOL_NAME, McpToolName
 from .policy import PolicyEngine
 from .security import redact_record
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "linuxagent-mcp"
 
-_POLICY_TOOL_NAME = "linuxagent.policy.classify"
-_AUDIT_TOOL_NAME = "linuxagent.audit.verify"
 _MAX_REQUEST_BYTES = 65_536
+_TOOL_DEFINITIONS: dict[McpToolName, JsonObject] = {
+    POLICY_TOOL_NAME: {
+        "name": POLICY_TOOL_NAME,
+        "title": "LinuxAgent Policy Classifier",
+        "description": "Classify a command with LinuxAgent policy without executing it.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "minLength": 1},
+                "source": {
+                    "type": "string",
+                    "enum": ["user", "llm", "runbook", "whitelist"],
+                    "default": "user",
+                },
+            },
+            "required": ["command"],
+            "additionalProperties": False,
+        },
+    },
+    AUDIT_TOOL_NAME: {
+        "name": AUDIT_TOOL_NAME,
+        "title": "LinuxAgent Audit Verifier",
+        "description": "Verify the configured LinuxAgent audit hash chain.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+}
 
 JsonObject = dict[str, Any]
 
@@ -28,6 +57,7 @@ JsonObject = dict[str, Any]
 class McpServer:
     policy_engine: PolicyEngine
     audit_path: Path
+    tools: tuple[McpToolName, ...] = MCP_READ_ONLY_TOOL_NAMES
 
     def handle(self, request: JsonObject) -> JsonObject | None:
         method = request.get("method")
@@ -48,7 +78,7 @@ class McpServer:
         if method == "initialize":
             return _result(request_id, _initialize_result(params))
         if method == "tools/list":
-            return _result(request_id, {"tools": list(_tools())})
+            return _result(request_id, {"tools": list(_tools(self.tools))})
         if method == "tools/call":
             return self._call_tool(request_id, params)
         if method == "shutdown":
@@ -62,9 +92,11 @@ class McpServer:
         arguments = params.get("arguments", {})
         if not isinstance(arguments, dict):
             return _error(request_id, -32602, "tool arguments must be an object")
-        if name == _POLICY_TOOL_NAME:
+        if name not in self.tools:
+            return _error(request_id, -32602, f"unknown or disabled tool: {name}")
+        if name == POLICY_TOOL_NAME:
             return _result(request_id, _tool_result(self._classify(arguments)))
-        if name == _AUDIT_TOOL_NAME:
+        if name == AUDIT_TOOL_NAME:
             return _result(request_id, _tool_result(self._verify_audit()))
         return _error(request_id, -32602, f"unknown tool: {name}")
 
@@ -146,37 +178,8 @@ def _initialize_result(params: Any) -> JsonObject:
     }
 
 
-def _tools() -> tuple[JsonObject, JsonObject]:
-    return (
-        {
-            "name": _POLICY_TOOL_NAME,
-            "title": "LinuxAgent Policy Classifier",
-            "description": "Classify a command with LinuxAgent policy without executing it.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "command": {"type": "string", "minLength": 1},
-                    "source": {
-                        "type": "string",
-                        "enum": ["user", "llm", "runbook", "whitelist"],
-                        "default": "user",
-                    },
-                },
-                "required": ["command"],
-                "additionalProperties": False,
-            },
-        },
-        {
-            "name": _AUDIT_TOOL_NAME,
-            "title": "LinuxAgent Audit Verifier",
-            "description": "Verify the configured LinuxAgent audit hash chain.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-            },
-        },
-    )
+def _tools(names: tuple[McpToolName, ...]) -> tuple[JsonObject, ...]:
+    return tuple(_TOOL_DEFINITIONS[name] for name in names)
 
 
 def _tool_result(payload: JsonObject) -> JsonObject:

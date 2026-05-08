@@ -30,6 +30,20 @@ def test_mcp_initialize_and_tools_list(tmp_path: Path) -> None:
     assert names == ["linuxagent.policy.classify", "linuxagent.audit.verify"]
 
 
+def test_mcp_tools_list_honors_configured_allowlist(tmp_path: Path) -> None:
+    server = McpServer(
+        DEFAULT_POLICY_ENGINE,
+        tmp_path / "audit.log",
+        tools=("linuxagent.policy.classify",),
+    )
+
+    response = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+
+    assert response is not None
+    names = [tool["name"] for tool in response["result"]["tools"]]
+    assert names == ["linuxagent.policy.classify"]
+
+
 def test_mcp_policy_classify_is_read_only(tmp_path: Path) -> None:
     response = _server(tmp_path).handle(
         {
@@ -82,7 +96,26 @@ def test_mcp_unknown_execution_tool_is_rejected(tmp_path: Path) -> None:
 
     assert response is not None
     assert response["error"]["code"] == -32602
-    assert "unknown tool" in response["error"]["message"]
+    assert "unknown or disabled tool" in response["error"]["message"]
+
+
+def test_mcp_disabled_known_tool_is_rejected(tmp_path: Path) -> None:
+    response = McpServer(
+        DEFAULT_POLICY_ENGINE,
+        tmp_path / "audit.log",
+        tools=("linuxagent.policy.classify",),
+    ).handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {"name": "linuxagent.audit.verify", "arguments": {}},
+        }
+    )
+
+    assert response is not None
+    assert response["error"]["code"] == -32602
+    assert "disabled tool" in response["error"]["message"]
 
 
 def test_mcp_stdio_round_trip(tmp_path: Path) -> None:

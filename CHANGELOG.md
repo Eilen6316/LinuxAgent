@@ -8,6 +8,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- MCP server exposure is now controlled by `mcp.tools`, keeping the stdio
+  server read-only while allowing operators to disable individual tools.
+- Added declarative local Skill manifests for planner guidance and runbook
+  extension. Skills cannot include executable hooks, and Skill runbooks reuse
+  the existing policy validation path.
 - Workspace tool activity now includes concise evidence snippets from completed
   `read_file`, `list_dir`, and `search_files` calls. No-change file-plan
   answers also include the cited evidence so operators can see which file lines
