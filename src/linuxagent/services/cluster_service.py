@@ -1,19 +1,19 @@
-"""Cluster command service wrapping SSHManager."""
+"""Cluster command service wrapping remote execution."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..cluster import SSHError, SSHManager
+from ..cluster import SSHError
 from ..cluster.remote_profile import preflight_commands
 from ..config.models import ClusterConfig, ClusterHost
-from ..interfaces import ExecutionResult
+from ..interfaces import ExecutionResult, RemoteCommandExecutor
 
 
 @dataclass(frozen=True)
 class ClusterService:
     config: ClusterConfig
-    ssh: SSHManager
+    ssh: RemoteCommandExecutor
 
     @property
     def hosts(self) -> tuple[ClusterHost, ...]:

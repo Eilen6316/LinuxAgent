@@ -11,6 +11,7 @@ from .executor import (
     SafetyResult,
 )
 from .llm_provider import LLMProvider
+from .remote_executor import RemoteCommandExecutor
 from .service import BaseService
 from .ui import UserInterface
 
@@ -21,6 +22,7 @@ __all__ = [
     "ExecutionResult",
     "LLMProvider",
     "OutputCallback",
+    "RemoteCommandExecutor",
     "SafetyLevel",
     "SafetyResult",
     "UserInterface",
