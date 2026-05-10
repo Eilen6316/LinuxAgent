@@ -7,7 +7,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-86.40%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-86.78%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -66,7 +66,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
 | Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | Current documented baseline: 639 unit tests passing at 86.40% coverage, plus HITL YAML scenarios, 10 integration smoke tests, red-team cases, and optional Anthropic compatibility verification |
+| Testability | Current documented baseline: 677 unit tests passing at 86.78% coverage, plus HITL YAML scenarios, 10 integration smoke tests, red-team cases, and optional Anthropic compatibility verification |
 
 ---
 
@@ -236,8 +236,8 @@ batch confirmation, and audit metadata.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **Current documented baseline: 639 passing; Anthropic compatibility can be verified when the extra is installed** |
-| Coverage | 0 | **86.40%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
+| Unit tests | 0 | **Current documented baseline: 677 passing; Anthropic compatibility can be verified when the extra is installed** |
+| Coverage | 0 | **86.78%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI checks command, SSH, HITL, code-structure, and sandbox bypass red lines |
 

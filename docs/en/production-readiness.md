@@ -1,6 +1,6 @@
 # Production Readiness Checklist
 
-LinuxAgent v4.0.0 is ready for controlled operator-in-the-loop use. It should
+LinuxAgent v4.1.0 is ready for controlled operator-in-the-loop use. It should
 not be treated as an autonomous production remediator.
 
 ## Suitable Uses
