@@ -6,7 +6,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-86.78%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-86.73%25-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -311,7 +311,7 @@ Current documented baseline from `make test` on 2026-05-11:
 | Policy benchmark | [P50/P95/P99 policy latency](benchmarks/policy-benchmark.md) |
 | Harness scenarios | scenario-driven HITL / runbook / cluster / sandbox coverage |
 | Integration smoke tests | 10 passing |
-| Coverage | 86.78% (`--cov-fail-under=80`) |
+| Coverage | 86.73% (`--cov-fail-under=80`) |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 

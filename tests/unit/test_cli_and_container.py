@@ -15,6 +15,7 @@ import pytest
 
 import linuxagent.cli as cli
 import linuxagent.container as container_module
+from linuxagent.app.runtime_messages import runtime_event_message, tool_event_message
 from linuxagent.audit import AuditLog
 from linuxagent.config.loader import ConfigError
 from linuxagent.config.models import AppConfig
@@ -498,19 +499,17 @@ def test_container_builds_cached_runtime(
 
 def test_tool_event_message_formats_workspace_tools() -> None:
     assert (
-        container_module._tool_event_message(
+        tool_event_message(
             {"phase": "start", "tool_name": "read_file", "args": {"path": "README.md"}}
         )
         == "LinuxAgent 正在读取文件 README.md"
     )
     assert (
-        container_module._tool_event_message(
-            {"phase": "error", "tool_name": "read_file", "output_preview": "denied"}
-        )
+        tool_event_message({"phase": "error", "tool_name": "read_file", "output_preview": "denied"})
         == "LinuxAgent 工具调用失败：read_file: denied"
     )
     assert (
-        container_module._tool_event_message(
+        tool_event_message(
             {
                 "phase": "start",
                 "tool_name": "repair_file_patch",
@@ -520,7 +519,7 @@ def test_tool_event_message_formats_workspace_tools() -> None:
         == "LinuxAgent 正在重新读取文件并修复 diff demo.sh"
     )
     assert (
-        container_module._tool_event_message(
+        tool_event_message(
             {
                 "phase": "end",
                 "status": "allowed",
@@ -531,7 +530,7 @@ def test_tool_event_message_formats_workspace_tools() -> None:
         )
         == "LinuxAgent 已读取文件 README.md\n  证据预览:\n  - 1:# LinuxAgent\n  - 2:Usage"
     )
-    assert container_module._tool_event_message(
+    assert tool_event_message(
         {
             "phase": "end",
             "status": "allowed",
@@ -559,7 +558,7 @@ def test_tool_event_message_formats_workspace_tools() -> None:
         "  - 6:echo footer\n"
         "  - 7:echo done"
     )
-    assert container_module._tool_event_message(
+    assert tool_event_message(
         {
             "phase": "end",
             "status": "truncated",
@@ -573,7 +572,7 @@ def test_tool_event_message_formats_workspace_tools() -> None:
         "  - disk.sh:2:START_TIME=$(date)"
     )
     assert (
-        container_module._tool_event_message(
+        tool_event_message(
             {
                 "phase": "end",
                 "status": "allowed",
@@ -588,15 +587,11 @@ def test_tool_event_message_formats_workspace_tools() -> None:
 
 def test_runtime_event_message_formats_command_batch() -> None:
     assert (
-        container_module._runtime_event_message(
-            {"type": "command_batch", "phase": "start", "count": 3}
-        )
+        runtime_event_message({"type": "command_batch", "phase": "start", "count": 3})
         == "LinuxAgent 正在并发执行 3 条只读命令"
     )
     assert (
-        container_module._runtime_event_message(
-            {"type": "command_batch", "phase": "finish", "count": 3}
-        )
+        runtime_event_message({"type": "command_batch", "phase": "finish", "count": 3})
         == "LinuxAgent 并发只读命令已完成：3 条"
     )
 

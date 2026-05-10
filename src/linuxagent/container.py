@@ -8,7 +8,6 @@ avoided (R-ARCH-05). The container is instantiated once per process in
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -17,6 +16,8 @@ from langchain_core.tools import BaseTool
 from langchain_openai import OpenAIEmbeddings
 
 from .app import LinuxAgent
+from .app.runtime_messages import command_event_key, runtime_event_message, tool_event_message
+from .app.runtime_telemetry import record_runtime_event
 from .audit import AuditLog
 from .audit_sink import HttpAuditSink
 from .cluster import SSHManager
@@ -60,10 +61,6 @@ if TYPE_CHECKING:
     from .config.models import AppConfig
     from .skills import SkillManifest
 _T = TypeVar("_T")
-_TOOL_EVIDENCE_ITEMS = 3
-_READ_FILE_HEAD_EVIDENCE_ITEMS = 2
-_READ_FILE_TAIL_EVIDENCE_ITEMS = 3
-_TOOL_EVIDENCE_CHARS = 180
 
 
 class Container:
@@ -330,7 +327,7 @@ class Container:
 
     def _tool_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
-            message = _tool_event_message(event)
+            message = tool_event_message(event)
             if message:
                 await self.ui().print_raw(f"{message}\n")
 
@@ -338,8 +335,8 @@ class Container:
 
     def _runtime_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
-            self._record_runtime_event(event)
-            message = _runtime_event_message(event)
+            record_runtime_event(self.telemetry(), event)
+            message = runtime_event_message(event)
             if message:
                 await self.ui().print_activity(message)
                 return
@@ -347,41 +344,17 @@ class Container:
             if stream in {"stdout", "stderr"}:
                 text = str(event.get("text") or "")
                 if text:
-                    self._streamed_outputs.add(_command_event_key(event))
+                    self._streamed_outputs.add(command_event_key(event))
                 await self.ui().print_raw(text, stderr=stream == "stderr")
                 return
             if stream == "result":
                 result = event.get("result")
                 if isinstance(result, ExecutionResult):
-                    streamed = _command_event_key(event) in self._streamed_outputs
-                    self._streamed_outputs.discard(_command_event_key(event))
+                    streamed = command_event_key(event) in self._streamed_outputs
+                    self._streamed_outputs.discard(command_event_key(event))
                     await self.ui().print_execution_result(result, include_output=not streamed)
 
         return observe
-
-    def _record_runtime_event(self, event: dict[str, Any]) -> None:
-        event_type = str(event.get("type") or "")
-        phase = str(event.get("phase") or "")
-        if event_type not in {"activity", "command", "command_batch"} or not phase:
-            return
-        trace_id = str(event.get("trace_id") or "runtime")
-        attributes = {
-            "type": event_type,
-            "phase": phase,
-            "command": event.get("command"),
-            "count": event.get("count"),
-            "exit_code": event.get("exit_code"),
-            "chars": len(str(event.get("text") or "")),
-            "redacted_count": event.get("redacted_count"),
-            "truncated": event.get("truncated", False),
-        }
-        status = "truncated" if event.get("truncated") else "ok"
-        self.telemetry().event(
-            f"runtime.{event_type}.{phase}",
-            trace_id=trace_id,
-            status=status,
-            attributes=attributes,
-        )
 
     def ui(self) -> ConsoleUI:
         return self._cached(
@@ -409,148 +382,3 @@ class Container:
             value = factory()
             self._singletons[key] = value
         return cast(_T, value)
-
-
-def _tool_event_message(event: dict[str, Any]) -> str | None:
-    phase = str(event.get("phase") or "")
-    tool_name = str(event.get("tool_name") or "")
-    raw_args = event.get("args")
-    args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
-    if phase == "start":
-        return _tool_start_message(tool_name, args)
-    if phase == "error":
-        return (
-            f"LinuxAgent 工具调用失败："
-            f"{tool_name}: {event.get('output_preview') or 'unknown error'}"
-        )
-    if phase == "end":
-        return _tool_end_message(tool_name, args, event)
-    return None
-
-
-def _command_event_key(event: dict[str, Any]) -> tuple[str, str]:
-    return (str(event.get("trace_id") or ""), str(event.get("command") or ""))
-
-
-def _runtime_event_message(event: dict[str, Any]) -> str | None:
-    event_type = str(event.get("type") or "")
-    phase = str(event.get("phase") or "")
-    if event_type == "command":
-        return _command_event_message(phase, event)
-    if event_type == "command_batch":
-        return _command_batch_event_message(phase, event)
-    if event_type == "activity":
-        return _activity_event_message(phase)
-    return None
-
-
-def _command_event_message(phase: str, event: dict[str, Any]) -> str | None:
-    command = str(event.get("command") or "")
-    if phase == "start":
-        return f"LinuxAgent 正在执行命令：{command}"
-    if phase == "finish":
-        return f"LinuxAgent 命令结束：exit {event.get('exit_code')}"
-    return None
-
-
-def _command_batch_event_message(phase: str, event: dict[str, Any]) -> str | None:
-    count = int(event.get("count") or 0)
-    if phase == "start":
-        return f"LinuxAgent 正在并发执行 {count} 条只读命令"
-    if phase == "finish":
-        return f"LinuxAgent 并发只读命令已完成：{count} 条"
-    return None
-
-
-def _activity_event_message(phase: str) -> str | None:
-    labels = {
-        "classify": "LinuxAgent 正在分类意图",
-        "plan": "LinuxAgent 正在规划命令",
-        "policy": "LinuxAgent 正在评估安全策略",
-        "waiting_confirm": "LinuxAgent 正在等待确认",
-        "repair_plan": "LinuxAgent 正在生成修复方案",
-        "analyze": "LinuxAgent 正在分析执行结果",
-    }
-    return labels.get(phase)
-
-
-def _tool_start_message(tool_name: str, args: dict[str, Any]) -> str:
-    if tool_name == "read_file":
-        return f"LinuxAgent 正在读取文件 {args.get('path') or ''}".strip()
-    if tool_name == "list_dir":
-        return f"LinuxAgent 正在列目录 {args.get('path') or '.'}"
-    if tool_name == "search_files":
-        root = args.get("root") or "."
-        pattern = args.get("pattern") or ""
-        return f"LinuxAgent 正在搜索 {root}: {pattern}"
-    if tool_name == "repair_file_patch":
-        files = args.get("files") if isinstance(args.get("files"), list) else []
-        suffix = f" {', '.join(str(item) for item in files)}" if files else ""
-        return f"LinuxAgent 正在重新读取文件并修复 diff{suffix}"
-    return f"LinuxAgent 正在调用工具 {tool_name}"
-
-
-def _tool_end_message(tool_name: str, args: dict[str, Any], event: dict[str, Any]) -> str | None:
-    status = str(event.get("status") or "")
-    if status not in {"allowed", "truncated"}:
-        return None
-    output = str(event.get("output_text") or event.get("output_preview") or "")
-    suffix = "（输出已截断）" if status == "truncated" or event.get("truncated") else ""
-    if tool_name == "read_file":
-        evidence = _read_file_evidence_summary(output)
-        heading = f"LinuxAgent 已读取文件 {args.get('path') or ''}{suffix}".strip()
-        return _tool_evidence_message(heading, evidence)
-    if tool_name == "list_dir":
-        evidence = _tool_evidence_summary(output)
-        return _tool_evidence_message(
-            f"LinuxAgent 已列目录 {args.get('path') or '.'}{suffix}", evidence
-        )
-    if tool_name == "search_files":
-        evidence = _tool_evidence_summary(output)
-        root = args.get("root") or "."
-        pattern = args.get("pattern") or ""
-        return _tool_evidence_message(f"LinuxAgent 已搜索 {root}: {pattern}{suffix}", evidence)
-    return None
-
-
-def _tool_evidence_message(heading: str, evidence: tuple[str, ...]) -> str:
-    bullets = "\n".join(f"  - {item}" for item in evidence)
-    return f"{heading}\n  证据预览:\n{bullets}"
-
-
-def _tool_evidence_summary(preview: str) -> tuple[str, ...]:
-    items = _json_preview_items(preview)
-    if not items:
-        items = [line.strip() for line in preview.splitlines() if line.strip()]
-    if not items:
-        return ("无输出",)
-    return tuple(_trim_tool_evidence(item) for item in items[:_TOOL_EVIDENCE_ITEMS])
-
-
-def _read_file_evidence_summary(output: str) -> tuple[str, ...]:
-    lines = [line.strip() for line in output.splitlines() if line.strip()]
-    if not lines:
-        return ("无输出",)
-    if len(lines) <= _READ_FILE_HEAD_EVIDENCE_ITEMS + _READ_FILE_TAIL_EVIDENCE_ITEMS:
-        return tuple(_trim_tool_evidence(line) for line in lines)
-    selected = [
-        *lines[:_READ_FILE_HEAD_EVIDENCE_ITEMS],
-        *lines[-_READ_FILE_TAIL_EVIDENCE_ITEMS:],
-    ]
-    return tuple(_trim_tool_evidence(line) for line in selected)
-
-
-def _trim_tool_evidence(item: str) -> str:
-    if len(item) <= _TOOL_EVIDENCE_CHARS:
-        return item
-    return item[: _TOOL_EVIDENCE_CHARS - 1].rstrip() + "…"
-
-
-def _json_preview_items(preview: str) -> list[str]:
-    try:
-        value = json.loads(preview)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(value, list):
-        return []
-    return [str(item).strip() for item in value if str(item).strip()]
