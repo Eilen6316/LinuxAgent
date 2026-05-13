@@ -54,7 +54,7 @@ async def test_console_ui_input_stream_uses_prompt_session(monkeypatch, tmp_path
     assert "linuxagent" in str(session.prompts[0])
 
 
-def test_console_ui_prints_block_hero() -> None:
+def test_console_ui_prints_linuxagent_wordmark() -> None:
     console = Console(record=True, width=120)
     ui = ConsoleUI(console=console)
 
@@ -62,20 +62,19 @@ def test_console_ui_prints_block_hero() -> None:
 
     rendered = console.export_text()
     assert "████" in rendered
-    assert "▄▄▄████" in rendered
-    assert "HITL-safe command automation with audit trails" in rendered
+    assert "HITL-safe" not in rendered
+    assert "▟▙" not in rendered
     assert "╭" not in rendered
 
 
-def test_console_ui_uses_compact_hero_on_narrow_terminals() -> None:
+def test_console_ui_uses_compact_wordmark_on_narrow_terminals() -> None:
     console = Console(record=True, width=40)
     ui = ConsoleUI(console=console)
 
     ui._print_hero()
 
     rendered = console.export_text()
-    assert "▰▰▰ LINUXAGENT" in rendered
-    assert "HITL-safe ops console" in rendered
+    assert rendered.strip() == "LINUXAGENT"
 
 
 def test_console_ui_default_history_file_is_0600(tmp_path: Path) -> None:

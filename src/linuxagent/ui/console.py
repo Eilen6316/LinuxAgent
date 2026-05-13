@@ -121,18 +121,13 @@ class ConsoleUI(UserInterface):
         if self._console.width < HERO_MIN_WIDTH:
             return self._compact_hero_text()
         hero = Text()
-        for line in HERO_MARK:
-            hero.append(f"{line}\n", style=self._accent_style())
         for line in HERO_WORD:
             hero.append(f"{line}\n", style=f"bold {self._accent_style()}")
-        hero.append("  HITL-safe command automation with audit trails", style="dim")
         return hero
 
     def _compact_hero_text(self) -> Text:
         hero = Text()
-        hero.append("▰▰▰ ", style=self._accent_style())
         hero.append("LINUXAGENT", style=f"bold {self._accent_style()}")
-        hero.append(" · HITL-safe ops console", style="dim")
         return hero
 
     def _render_confirm(self, payload: dict[str, Any]) -> None:
@@ -175,18 +170,6 @@ _render_unified_diff = render_unified_diff
 _diff_line_style = diff_line_style
 
 HERO_MIN_WIDTH = 86
-HERO_MARK = (
-    "                 ▄████████▄",
-    "          ▄▄▄████▀▀      ▀████▄▄▄",
-    "      ▄████▀▀                  ▀▀████▄",
-    "   ▄███▀                            ▀███▄",
-    "  ███▀        ▄▄████████████▄▄        ▀███",
-    "  ██        ▄██▀            ▀██▄        ██",
-    "  ███▄       ▀██▄▄        ▄▄██▀       ▄███",
-    "   ▀████▄▄      ▀▀████████▀▀      ▄▄████▀",
-    "       ▀▀████▄▄▄              ▄▄▄████▀▀",
-    "              ▀▀██████████████▀▀",
-)
 HERO_WORD = (
     "  ██      ██ ███    ██ ██    ██ ██   ██  █████   ██████  ███████ ███    ██ ████████",
     "  ██      ██ ████   ██ ██    ██  ██ ██  ██   ██ ██       ██      ████   ██    ██",
