@@ -115,11 +115,27 @@ class ConsoleUI(UserInterface):
         return await _wait_for_escape()
 
     def _print_hero(self) -> None:
+        self._console.print(self._hero_text())
+
+    def _hero_text(self) -> Text:
+        if self._console.width < PIXEL_HERO_MIN_WIDTH:
+            return self._compact_hero_text()
         hero = Text()
-        hero.append("LinuxAgent ", style=f"bold {self._accent_style()}")
-        hero.append("2026 Ops Console", style="bold white")
-        hero.append("\nHITL-safe command automation with audit trails", style="dim")
-        self._console.print(Panel(hero, border_style=self._accent_style(), padding=(1, 2)))
+        for line in PIXEL_HERO_TOP:
+            hero.append(f"{line}\n", style=self._accent_style())
+        for line in PIXEL_HERO_WORD:
+            hero.append(f"{line}\n", style=f"bold {self._accent_style()}")
+        for line in PIXEL_HERO_BOTTOM:
+            hero.append(f"{line}\n", style=self._accent_style())
+        hero.append("HITL-safe command automation with audit trails", style="dim")
+        return hero
+
+    def _compact_hero_text(self) -> Text:
+        hero = Text()
+        hero.append("●●● ", style=self._accent_style())
+        hero.append("LINUXAGENT", style=f"bold {self._accent_style()}")
+        hero.append(" · HITL-safe ops console", style="dim")
+        return hero
 
     def _render_confirm(self, payload: dict[str, Any]) -> None:
         self._confirmation_renderer.render_command(payload)
@@ -159,6 +175,27 @@ class ConsoleUI(UserInterface):
 
 _render_unified_diff = render_unified_diff
 _diff_line_style = diff_line_style
+
+PIXEL_HERO_MIN_WIDTH = 72
+PIXEL_HERO_TOP = (
+    "        ● ● ● ● ● ●        ● ● ● ● ● ● ● ● ● ● ●",
+    "    ● ● ● ● ● ● ● ●    ● ●                     ● ●",
+    "  ● ● ● ● ● ● ●      ● ●                         ●",
+)
+PIXEL_HERO_WORD = (
+    "●      ●●●●●  ●   ●  ●   ●  ●   ●   ●●●   ●●●   ●●●●●  ●   ●  ●●●●●",
+    "●        ●    ●●  ●  ●   ●   ● ●   ●   ●  ●   ●  ●      ●●  ●    ●  ",
+    "●        ●    ● ● ●  ●   ●    ●    ●   ●  ●      ●      ● ● ●    ●  ",
+    "●        ●    ●  ●●  ●   ●    ●    ●●●●●  ● ●●●  ●●●●   ●  ●●    ●  ",
+    "●        ●    ●   ●  ●   ●    ●    ●   ●  ●   ●  ●      ●   ●    ●  ",
+    "●        ●    ●   ●  ●   ●   ● ●   ●   ●  ●   ●  ●      ●   ●    ●  ",
+    "●●●●●  ●●●●●  ●   ●   ●●●   ●   ●  ●   ●   ●●●   ●●●●●  ●   ●    ●  ",
+)
+PIXEL_HERO_BOTTOM = (
+    "●                         ● ●      ● ● ● ● ● ● ●",
+    "  ● ●                     ● ●    ● ● ● ● ● ● ● ●",
+    "      ● ● ● ● ● ● ● ● ● ●        ● ● ● ● ● ●",
+)
 
 
 def _file_patch_approval_response(files: tuple[str, ...]) -> dict[str, Any]:
