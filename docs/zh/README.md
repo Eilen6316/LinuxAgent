@@ -650,6 +650,19 @@ Allow this operation?
 linuxagent audit verify
 ```
 
+查看脱敏后的运维摘要：
+
+```bash
+linuxagent audit summary
+linuxagent audit inspect --limit 10
+linuxagent audit inspect --show-commands
+```
+
+`summary` 和 `inspect` 都是只读命令，会展示时间范围、命令级决策数量、
+`yes` / `no` / `timeout` / `non_tty_auto_deny` 统计、`SAFE` / `CONFIRM` /
+`BLOCK` 统计和 hash-chain 状态。近期命令明细默认只展示命令 hash；
+只有显式传入 `--show-commands` 时才会在现有 redaction 规则处理后展示命令文本。
+
 常用事后复盘：
 
 ```bash

@@ -8,6 +8,8 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Changed
 
+- 新增 `linuxagent audit summary` 和 `linuxagent audit inspect` 只读审计诊断，
+  可查看决策统计、safety 统计、hash-chain 状态和脱敏后的近期命令明细。
 - MCP runbook 摘要现在包含显式 step count 和摘要级 safety posture，同时继续
   隐藏原始命令字符串。
 - Workspace tool 活动现在会展示来自 `read_file`、`list_dir` 和

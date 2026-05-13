@@ -208,3 +208,15 @@ def test_verify_audit_log_reports_missing_file_as_valid(tmp_path) -> None:
 
     assert result.valid is True
     assert result.checked_records == 0
+
+
+def test_verify_audit_log_reports_non_object_json_record(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    path.write_text("[]\n", encoding="utf-8")
+
+    result = verify_audit_log(path)
+
+    assert result.valid is False
+    assert result.checked_records == 0
+    assert result.tampered_line == 1
+    assert result.reason == "record is not an object"

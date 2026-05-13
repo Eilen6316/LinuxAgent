@@ -267,6 +267,78 @@ def test_audit_verify_command_reports_tamper(
     assert "tamper detected at line 1" in captured.err
 
 
+async def test_audit_summary_command_hides_command_text(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+    audit_id = await audit.begin(
+        command="systemctl restart nginx",
+        safety_level="CONFIRM",
+        matched_rule="DESTRUCTIVE",
+        command_source="llm",
+    )
+    await audit.record_decision(audit_id, decision="no", latency_ms=10)
+
+    code = cli.main(["audit", "summary", "--path", str(path)])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "hash_chain: valid (2 records)" in captured.out
+    assert "command_decisions: 1" in captured.out
+    assert "decisions: yes=0, no=1" in captured.out
+    assert "safety: SAFE=0, CONFIRM=1, BLOCK=0" in captured.out
+    assert "command_sha256=" in captured.out
+    assert "systemctl restart nginx" not in captured.out
+
+
+def test_audit_inspect_command_shows_redacted_commands_only_when_requested(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "audit.log"
+    AuditLog(path).append({"event": "manual", "command": "curl https://x.test?token=secret-token"})
+
+    code = cli.main(["audit", "inspect", "--path", str(path), "--show-commands"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "command=curl https://x.test?token=***redacted***" in captured.out
+    assert "secret-token" not in captured.out
+
+
+def test_audit_summary_returns_failure_for_tampered_hash_chain(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+    audit.append({"event": "manual", "command": "uptime"})
+    path.write_text(path.read_text(encoding="utf-8").replace("manual", "changed"), encoding="utf-8")
+
+    code = cli.main(["audit", "summary", "--path", str(path)])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert "hash_chain: invalid (line=1, reason=hash mismatch)" in captured.out
+
+
+def test_audit_summary_reports_permission_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "audit.log"
+    path.write_text("", encoding="utf-8")
+    path.chmod(0o644)
+
+    code = cli.main(["audit", "summary", "--path", str(path)])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert "permissions 0600" in captured.err
+
+
 def test_mcp_command_starts_stdio_server(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = AppConfig.model_validate(
         {
@@ -283,8 +355,9 @@ def test_mcp_command_starts_stdio_server(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(
         cli,
         "serve_stdio",
-        lambda server: calls.append(("serve", server.audit_path, server.tools, server.resources))
-        or 0,
+        lambda server: (
+            calls.append(("serve", server.audit_path, server.tools, server.resources)) or 0
+        ),
     )
 
     code = cli.main(["mcp"])

@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from . import __version__
 from .audit import verify_audit_log
+from .audit_inspect import AuditInspectError, AuditInspection, inspect_audit_log
 from .config.loader import ConfigError, load_config
 from .config.models import McpConfig
 from .container import Container
@@ -94,6 +95,21 @@ def _add_subcommands(parser: argparse.ArgumentParser) -> None:
         metavar="PATH",
         help="Audit log path. Defaults to audit.path from config.",
     )
+    summary_parser = audit_subparsers.add_parser(
+        "summary",
+        help="Show a redacted audit summary.",
+    )
+    _add_audit_inspect_options(summary_parser)
+    inspect_parser = audit_subparsers.add_parser(
+        "inspect",
+        help="Show redacted audit diagnostics with recent command events.",
+    )
+    _add_audit_inspect_options(inspect_parser)
+    inspect_parser.add_argument(
+        "--show-commands",
+        action="store_true",
+        help="Show redacted command strings in recent command details.",
+    )
 
 
 def _verbose_to_level(verbose: int) -> int:
@@ -152,7 +168,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
 
 
 def _cmd_audit(args: argparse.Namespace) -> int:
-    if args.audit_command != "verify":
+    if args.audit_command is None:
         print("error: missing audit subcommand", file=sys.stderr)
         return 2
     try:
@@ -160,6 +176,8 @@ def _cmd_audit(args: argparse.Namespace) -> int:
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    if args.audit_command in {"summary", "inspect"}:
+        return _cmd_audit_summary(args, path)
     result = verify_audit_log(path)
     if result.valid:
         print(f"OK: audit log verified ({result.checked_records} records)")
@@ -169,6 +187,108 @@ def _cmd_audit(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     return 1
+
+
+def _add_audit_inspect_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--path",
+        type=Path,
+        metavar="PATH",
+        help="Audit log path. Defaults to audit.path from config.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        metavar="N",
+        help="Recent command event detail limit.",
+    )
+
+
+def _cmd_audit_summary(args: argparse.Namespace, path: Path) -> int:
+    include_commands = bool(getattr(args, "show_commands", False))
+    try:
+        inspection = inspect_audit_log(
+            path,
+            include_commands=include_commands,
+            limit=args.limit,
+        )
+    except AuditInspectError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(_format_audit_inspection(inspection, include_commands=include_commands))
+    return 0 if inspection.verification.valid else 1
+
+
+def _format_audit_inspection(
+    inspection: AuditInspection,
+    *,
+    include_commands: bool,
+) -> str:
+    lines = [
+        f"Audit log: {inspection.path}",
+        _format_hash_status(inspection),
+        f"records: {inspection.total_records}",
+        f"time_range: {_format_time_range(inspection)}",
+        f"command_decisions: {inspection.command_decision_count}",
+        f"decisions: {_format_counts(inspection.decision_counts)}",
+        f"safety: {_format_counts(inspection.safety_counts)}",
+        (
+            "command_events: "
+            f"{inspection.command_event_count} "
+            f"(sensitive={inspection.sensitive_command_event_count})"
+        ),
+    ]
+    if inspection.details:
+        lines.append("recent_commands:")
+        lines.extend(_format_audit_details(inspection, include_commands=include_commands))
+    return "\n".join(lines)
+
+
+def _format_audit_details(
+    inspection: AuditInspection,
+    *,
+    include_commands: bool,
+) -> list[str]:
+    lines: list[str] = []
+    for detail in inspection.details:
+        command_ref = detail.command or detail.command_hash
+        command_label = "command" if include_commands else "command_sha256"
+        fields = [
+            f"line={detail.line_no}",
+            f"event={detail.event}",
+            f"{command_label}={command_ref}",
+            f"sensitive={str(detail.sensitive).lower()}",
+        ]
+        if detail.safety_level:
+            fields.append(f"safety={detail.safety_level}")
+        if detail.decision:
+            fields.append(f"decision={detail.decision}")
+        if detail.exit_code is not None:
+            fields.append(f"exit_code={detail.exit_code}")
+        if detail.sensitive_sources:
+            fields.append(f"sources={','.join(detail.sensitive_sources)}")
+        lines.append(f"  - {' '.join(fields)}")
+    return lines
+
+
+def _format_hash_status(inspection: AuditInspection) -> str:
+    if inspection.verification.valid:
+        return f"hash_chain: valid ({inspection.verification.checked_records} records)"
+    return (
+        "hash_chain: invalid "
+        f"(line={inspection.verification.tampered_line}, reason={inspection.verification.reason})"
+    )
+
+
+def _format_time_range(inspection: AuditInspection) -> str:
+    if inspection.time_start is None and inspection.time_end is None:
+        return "empty"
+    return f"{inspection.time_start or '?'}..{inspection.time_end or '?'}"
+
+
+def _format_counts(counts: dict[str, int]) -> str:
+    return ", ".join(f"{key}={value}" for key, value in counts.items())
 
 
 def _cmd_mcp(args: argparse.Namespace) -> int:

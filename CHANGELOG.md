@@ -8,6 +8,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `linuxagent audit summary` and `linuxagent audit inspect` now provide
+  read-only audit diagnostics with decision counts, safety counts, hash-chain
+  status, and redacted recent command details.
 - MCP server exposure is now controlled by `mcp.tools`, keeping the stdio
   server read-only while allowing operators to disable individual tools.
 - Added declarative local Skill manifests for planner guidance and runbook

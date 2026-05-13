@@ -167,6 +167,8 @@ def verify_audit_log(path: Path) -> AuditVerificationResult:
             record = json.loads(line)
         except json.JSONDecodeError as exc:
             return AuditVerificationResult(False, checked, line_no, f"invalid JSON: {exc.msg}")
+        if not isinstance(record, dict):
+            return AuditVerificationResult(False, checked, line_no, "record is not an object")
         if record.get("prev_hash") != previous:
             return AuditVerificationResult(False, checked, line_no, "prev_hash mismatch")
         expected = _record_hash(record)
@@ -187,6 +189,8 @@ def _last_hash(path: Path) -> str:
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
+            return previous
+        if not isinstance(record, dict):
             return previous
         previous = str(record.get("hash") or previous)
     return previous

@@ -678,6 +678,20 @@ Verify integrity:
 linuxagent audit verify
 ```
 
+Inspect a redacted operational summary:
+
+```bash
+linuxagent audit summary
+linuxagent audit inspect --limit 10
+linuxagent audit inspect --show-commands
+```
+
+`summary` and `inspect` are read-only. They report the time range, command
+decision counts, `yes` / `no` / `timeout` / `non_tty_auto_deny` totals,
+`SAFE` / `CONFIRM` / `BLOCK` totals, and hash-chain status. Recent command
+details show a command hash by default; `--show-commands` prints command text
+only after the existing redaction rules run.
+
 The local file remains the required source of truth. You can also configure a
 best-effort HTTP append-only sink for an external collector:
 
