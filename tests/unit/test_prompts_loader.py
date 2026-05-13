@@ -10,6 +10,7 @@ from linuxagent.prompts_loader import (
     build_direct_answer_prompt,
     build_file_patch_repair_prompt,
     build_intent_router_prompt,
+    build_planner_gate_prompt,
     build_planner_prompt,
     build_repair_prompt,
     find_prompts_dir,
@@ -24,6 +25,7 @@ def test_find_prompts_dir_resolves_for_editable_install() -> None:
     assert (path / "direct_answer.md").is_file()
     assert (path / "intent_router.md").is_file()
     assert (path / "planner.md").is_file()
+    assert (path / "planner_gate.md").is_file()
     assert (path / "repair.md").is_file()
     assert (path / "file_patch_repair.md").is_file()
 
@@ -76,6 +78,18 @@ def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() ->
     assert "python3 -c" in body
     assert "cat /etc/os-release" in body
     assert "uname -a" in body
+    assert "Before calling any tool" in body
+    assert "direct_answer" in body
+
+
+def test_build_planner_gate_prompt_has_user_input_variable() -> None:
+    tmpl = build_planner_gate_prompt()
+    assert isinstance(tmpl, ChatPromptTemplate)
+    assert "user_input" in tmpl.input_variables
+    body = str(tmpl.messages[0].prompt.template)
+    assert "pre-tool planning gate" in body
+    assert "direct_answer" in body
+    assert "continue_planning" in body
 
 
 def test_build_repair_prompt_has_recovery_variables() -> None:

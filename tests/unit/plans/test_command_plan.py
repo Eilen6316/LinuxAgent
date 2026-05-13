@@ -8,9 +8,13 @@ import pytest
 
 from linuxagent.plans import (
     CommandPlanParseError,
+    ContinuePlanningPlanParseError,
+    DirectAnswerPlanParseError,
     NoChangePlanParseError,
     command_plan_json,
     parse_command_plan,
+    parse_continue_planning_plan,
+    parse_direct_answer_plan,
     parse_no_change_plan,
 )
 
@@ -122,6 +126,44 @@ def test_parse_no_change_plan_accepts_json_object() -> None:
     assert plan.reason == "existing implementation covers request"
 
 
+def test_parse_direct_answer_plan_accepts_json_object() -> None:
+    plan = parse_direct_answer_plan(
+        json.dumps(
+            {
+                "plan_type": "direct_answer",
+                "answer": "这是一个直接回答。",
+                "reason": "no runtime state needed",
+            }
+        )
+    )
+
+    assert plan.answer == "这是一个直接回答。"
+    assert plan.reason == "no runtime state needed"
+
+
+def test_parse_continue_planning_plan_accepts_json_object() -> None:
+    plan = parse_continue_planning_plan(
+        json.dumps(
+            {
+                "plan_type": "continue_planning",
+                "reason": "runtime inspection is needed",
+            }
+        )
+    )
+
+    assert plan.reason == "runtime inspection is needed"
+
+
 def test_parse_no_change_plan_rejects_command_plan_shape() -> None:
     with pytest.raises(NoChangePlanParseError, match="NoChangePlan"):
         parse_no_change_plan(command_plan_json("/bin/echo hi"))
+
+
+def test_parse_direct_answer_plan_rejects_command_plan_shape() -> None:
+    with pytest.raises(DirectAnswerPlanParseError, match="DirectAnswerPlan"):
+        parse_direct_answer_plan(command_plan_json("/bin/echo hi"))
+
+
+def test_parse_continue_planning_plan_rejects_command_plan_shape() -> None:
+    with pytest.raises(ContinuePlanningPlanParseError, match="ContinuePlanningPlan"):
+        parse_continue_planning_plan(command_plan_json("/bin/echo hi"))

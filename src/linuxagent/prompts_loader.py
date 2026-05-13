@@ -63,6 +63,17 @@ def build_planner_prompt() -> ChatPromptTemplate:
     )
 
 
+def build_planner_gate_prompt() -> ChatPromptTemplate:
+    """Build a prompt for pre-tool planning self-correction."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", load_prompt("planner_gate.md")),
+            MessagesPlaceholder("chat_history", optional=True),
+            ("human", "{user_input}"),
+        ]
+    )
+
+
 def build_repair_prompt() -> ChatPromptTemplate:
     """Build a prompt for structured recovery planning."""
     return ChatPromptTemplate.from_messages(

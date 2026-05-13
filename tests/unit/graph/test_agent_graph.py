@@ -44,6 +44,10 @@ class _FakeProvider:
             if self._responses and _is_intent_router_response(self._responses[0]):
                 return self._responses.pop(0)
             return _router_response("COMMAND_PLAN")
+        if _is_planner_gate_call(messages):
+            if self._responses and _is_planner_gate_response(self._responses[0]):
+                return self._responses.pop(0)
+            return _continue_planning_plan_json()
         if self._responses:
             return self._responses.pop(0)
         return "analysis ok"
@@ -69,6 +73,11 @@ class _ScriptedToolProvider(_FakeProvider):
             if self._responses and _is_intent_router_response(self._responses[0]):
                 return str(self._responses.pop(0))
             return _router_response("COMMAND_PLAN")
+        if _is_planner_gate_call(messages):
+            self.complete_messages.append(messages)
+            if self._responses and _is_planner_gate_response(self._responses[0]):
+                return str(self._responses.pop(0))
+            return _continue_planning_plan_json()
         return await super().complete(messages, **kwargs)
 
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
@@ -190,7 +199,9 @@ def _router_response(mode: str, answer: str = "", reason: str = "test route") ->
 
 
 def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
-    return bool(messages) and "intent router" in str(messages[0].content).casefold()
+    return bool(messages) and str(messages[0].content).casefold().startswith(
+        "you are linuxagent's intent router."
+    )
 
 
 def _is_intent_router_response(text: str) -> bool:
@@ -204,6 +215,25 @@ def _is_intent_router_response(text: str) -> bool:
         "DIRECT_ANSWER",
         "COMMAND_PLAN",
         "CLARIFY",
+    }
+
+
+def _is_planner_gate_call(messages: list[BaseMessage]) -> bool:
+    return bool(messages) and str(messages[0].content).casefold().startswith(
+        "you are linuxagent's pre-tool planning gate."
+    )
+
+
+def _is_planner_gate_response(text: object) -> bool:
+    if not isinstance(text, str):
+        return False
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and payload.get("plan_type") in {
+        "direct_answer",
+        "continue_planning",
     }
 
 
@@ -260,6 +290,31 @@ def _no_change_plan_json(
             "answer": answer,
             "reason": "existing implementation already satisfies the request",
             "evidence": evidence or [],
+        },
+        ensure_ascii=False,
+    )
+
+
+def _direct_answer_plan_json(
+    answer: str = "这是一个直接回答。",
+    *,
+    reason: str = "no operational plan needed",
+) -> str:
+    return json.dumps(
+        {
+            "plan_type": "direct_answer",
+            "answer": answer,
+            "reason": reason,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _continue_planning_plan_json(reason: str = "operational planning needed") -> str:
+    return json.dumps(
+        {
+            "plan_type": "continue_planning",
+            "reason": reason,
         },
         ensure_ascii=False,
     )
@@ -1428,6 +1483,32 @@ async def test_graph_answers_product_meta_questions_without_planning(tmp_path) -
         assert snapshot.values["direct_response"] is True
 
 
+async def test_graph_accepts_planner_direct_answer_when_router_misroutes(tmp_path) -> None:
+    answer = "LinuxAgent 由 LinuxAgent contributors 维护。"
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _router_response("COMMAND_PLAN"),
+            _direct_answer_plan_json(answer),
+        ],
+        tools=(SimpleNamespace(name="read_file"),),  # type: ignore[arg-type]
+    )
+    config = {"configurable": {"thread_id": "planner-direct-answer"}}
+
+    result = await graph.ainvoke(
+        initial_state("你的作者是谁", source=CommandSource.USER),
+        config=config,
+    )
+
+    assert answer in str(result["messages"][-1].content)
+    assert provider.tool_calls == 0
+    assert len(provider.complete_messages) == 2
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+
+
 async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
@@ -1713,7 +1794,7 @@ async def test_graph_retries_json_plan_without_tools_after_tool_plaintext(tmp_pa
 
     snapshot = await graph.aget_state(config)
     assert provider.tool_calls == 1
-    assert len(provider.complete_messages) == 3
+    assert len(provider.complete_messages) == 4
     assert snapshot.values["pending_command"] == "/bin/echo hi"
 
 
@@ -1845,7 +1926,7 @@ async def test_graph_falls_back_to_direct_answer_for_empty_command_plan(tmp_path
     )
 
     assert "LinuxAgent contributors" in str(result["messages"][-1].content)
-    assert len(provider.complete_messages) == 3
+    assert len(provider.complete_messages) == 4
     snapshot = await graph.aget_state(config)
     assert snapshot.values.get("pending_command") is None
     assert snapshot.values["direct_response"] is True
@@ -1863,11 +1944,11 @@ async def test_graph_provides_runbook_guidance_without_hard_routing(tmp_path) ->
 
     snapshot = await graph.aget_state(config)
     interrupt_payload = snapshot.tasks[0].interrupts[0].value
-    assert len(provider.complete_messages) == 2
+    assert len(provider.complete_messages) == 3
     assert snapshot.values["pending_command"] == "df -h"
     assert snapshot.values.get("selected_runbook") is None
     assert "runbook_id" not in interrupt_payload
-    planning_prompt = "\n".join(str(message.content) for message in provider.complete_messages[1])
+    planning_prompt = "\n".join(str(message.content) for message in provider.complete_messages[2])
     assert "Runbook guidance library" in planning_prompt
     assert "advisory only" in planning_prompt
     assert "disk.full" in planning_prompt
@@ -1890,7 +1971,7 @@ async def test_graph_artifact_requests_are_not_captured_by_runbook_guidance(tmp_
     snapshot = await graph.aget_state(config)
     assert snapshot.values.get("selected_runbook") is None
     assert snapshot.values["pending_command"] == "python3 --version"
-    planning_prompt = "\n".join(str(message.content) for message in provider.complete_messages[1])
+    planning_prompt = "\n".join(str(message.content) for message in provider.complete_messages[2])
     assert "For artifact generation" in planning_prompt
     assert "version/environment probe" in planning_prompt
 
