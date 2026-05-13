@@ -341,13 +341,16 @@ async def _plan_gate(
         chat_history=messages[:-1],
         user_input=user_text,
     )
-    with span(
-        context.telemetry,
-        "llm.complete",
-        current_trace_id,
-        {"node": "parse_intent", "mode": "planner_gate"},
-    ):
-        raw = (await context.provider.complete(prompt_messages)).strip()
+    try:
+        with span(
+            context.telemetry,
+            "llm.complete",
+            current_trace_id,
+            {"node": "parse_intent", "mode": "planner_gate"},
+        ):
+            raw = (await context.provider.complete(prompt_messages)).strip()
+    except ProviderError:
+        return None
     try:
         return parse_direct_answer_plan(raw)
     except DirectAnswerPlanParseError:

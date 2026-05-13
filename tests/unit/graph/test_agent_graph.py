@@ -118,6 +118,15 @@ class _ToolLoopFailingProvider(_FakeProvider):
         raise ProviderError("tool loop exceeded max rounds")
 
 
+class _PlannerGateFailingProvider(_FakeProvider):
+    async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
+        if _is_planner_gate_call(messages):
+            del kwargs
+            self.complete_messages.append(messages)
+            raise ProviderError("planner gate unavailable")
+        return await super().complete(messages, **kwargs)
+
+
 class _RepairToolTimeoutProvider(_FakeProvider):
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
         if _is_file_patch_repair_call(messages):
@@ -1507,6 +1516,34 @@ async def test_graph_accepts_planner_direct_answer_when_router_misroutes(tmp_pat
     assert not snapshot.tasks
     assert snapshot.values.get("pending_command") is None
     assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_continues_planning_when_planner_gate_fails(tmp_path) -> None:
+    provider = _PlannerGateFailingProvider(
+        [
+            _router_response("COMMAND_PLAN"),
+            command_plan_json("/bin/echo hi"),
+        ]
+    )
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+        )
+    )
+    config = {"configurable": {"thread_id": "planner-gate-provider-error"}}
+
+    await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["pending_command"] == "/bin/echo hi"
+    assert snapshot.values["direct_response"] is False
+    assert len(provider.complete_messages) == 3
 
 
 async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> None:
