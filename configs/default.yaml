@@ -96,7 +96,7 @@ ui:
   prompt_symbol: "❯"
 
 logging:
-  level: INFO
+  level: WARNING
   format: console
 
 monitoring:

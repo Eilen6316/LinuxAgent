@@ -15,7 +15,7 @@ from .audit_inspect import AuditInspectError, AuditInspection, inspect_audit_log
 from .config.loader import ConfigError, load_config
 from .config.models import McpConfig
 from .container import Container
-from .logger import configure_logging
+from .logger import configure_dependency_logging, configure_logging
 from .mcp_server import McpServer, serve_stdio
 from .providers.errors import ProviderError
 from .runbooks import RunbookEngine
@@ -153,6 +153,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
 
     level: int | str = _verbose_to_level(args.verbose) if args.verbose > 0 else cfg.logging.level
     configure_logging(level=level, fmt=cfg.logging.format)
+    configure_dependency_logging(quiet=args.verbose == 0)
 
     container = Container(cfg)
     chat_service = container.chat_service()

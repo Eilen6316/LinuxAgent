@@ -405,7 +405,7 @@ linuxagent check
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
 | `ui` | `max_chat_history` | `20` | Max retained messages per saved session; new sessions do not load them automatically |
 | `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | Local LangGraph checkpoint store for pending HITL resume |
-| `logging` | `level` | `INFO` | `DEBUG` / `INFO` / `WARNING` / ... |
+| `logging` | `level` | `WARNING` | `DEBUG` / `INFO` / `WARNING` / ... |
 | `logging` | `format` | `console` | `console` (Rich colour) / `json` (production) |
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | Semantic search model; **local PyTorch models are disallowed** |
 

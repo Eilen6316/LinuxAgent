@@ -91,3 +91,16 @@ def test_configure_logging_console_uses_rich_handler() -> None:
 def test_configure_logging_invalid_level_raises() -> None:
     with pytest.raises(ValueError, match="unknown log level"):
         logger_mod.configure_logging(level="NOT_A_LEVEL")
+
+
+def test_configure_dependency_logging_toggles_noisy_dependency_levels() -> None:
+    httpx_logger = logging.getLogger("httpx")
+    original_level = httpx_logger.level
+    try:
+        logger_mod.configure_dependency_logging(quiet=True)
+        assert httpx_logger.level == logging.WARNING
+
+        logger_mod.configure_dependency_logging(quiet=False)
+        assert httpx_logger.level == logging.NOTSET
+    finally:
+        httpx_logger.setLevel(original_level)

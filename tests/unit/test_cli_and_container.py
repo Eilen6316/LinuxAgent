@@ -713,9 +713,16 @@ def test_chat_command_runs_agent(
         api=SimpleNamespace(require_key=lambda: "key"),
         logging=SimpleNamespace(level="INFO", format="console"),
     )
+    logging_calls: list[dict[str, object]] = []
+    dependency_calls: list[bool] = []
 
     monkeypatch.setattr(cli, "load_config", lambda cli_path=None: cfg)
-    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "configure_logging", lambda **kwargs: logging_calls.append(kwargs))
+    monkeypatch.setattr(
+        cli,
+        "configure_dependency_logging",
+        lambda *, quiet: dependency_calls.append(quiet),
+    )
     monkeypatch.setattr(cli, "Container", _FakeContainer)
 
     def _run(coro):
@@ -727,6 +734,58 @@ def test_chat_command_runs_agent(
     captured = capsys.readouterr()
     assert code == 0
     assert captured.err == ""
+    assert logging_calls == [{"level": "INFO", "fmt": "console"}]
+    assert dependency_calls == [True]
+
+
+def test_chat_verbose_leaves_dependency_info_logs_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeAgent:
+        async def run(self, *, thread_id: str = "default") -> None:
+            del thread_id
+
+    class _FakeChatService:
+        def load(self) -> None:
+            return None
+
+        def save(self) -> None:
+            return None
+
+    class _FakeContainer:
+        def __init__(self, config: SimpleNamespace) -> None:
+            del config
+
+        def chat_service(self) -> _FakeChatService:
+            return _FakeChatService()
+
+        def build_agent(self) -> _FakeAgent:
+            return _FakeAgent()
+
+    cfg = SimpleNamespace(
+        api=SimpleNamespace(require_key=lambda: "key"),
+        logging=SimpleNamespace(level="WARNING", format="console"),
+    )
+    logging_calls: list[dict[str, object]] = []
+    dependency_calls: list[bool] = []
+
+    monkeypatch.setattr(cli, "load_config", lambda cli_path=None: cfg)
+    monkeypatch.setattr(cli, "configure_logging", lambda **kwargs: logging_calls.append(kwargs))
+    monkeypatch.setattr(
+        cli,
+        "configure_dependency_logging",
+        lambda *, quiet: dependency_calls.append(quiet),
+    )
+    monkeypatch.setattr(cli, "Container", _FakeContainer)
+
+    def _run(coro):
+        return asyncio.new_event_loop().run_until_complete(coro)
+
+    monkeypatch.setattr(cli.asyncio, "run", _run)
+
+    assert cli.main(["-v", "chat"]) == 0
+    assert logging_calls == [{"level": logging.INFO, "fmt": "console"}]
+    assert dependency_calls == [False]
 
 
 def test_chat_command_reports_config_error(

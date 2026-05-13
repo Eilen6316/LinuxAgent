@@ -21,6 +21,14 @@ from rich.logging import RichHandler
 LogFormat = Literal["json", "console"]
 
 _HANDLER_MARKER = "_linuxagent_handler"
+_NOISY_DEPENDENCY_LOGGERS = (
+    "httpcore",
+    "httpx",
+    "langchain",
+    "langchain_core",
+    "langchain_openai",
+    "openai",
+)
 
 _RESERVED_LOG_ATTRS = frozenset(
     {
@@ -98,6 +106,12 @@ def configure_logging(
     handler = _build_handler(fmt, level)
     setattr(handler, _HANDLER_MARKER, True)
     root.addHandler(handler)
+
+
+def configure_dependency_logging(*, quiet: bool) -> None:
+    level = logging.WARNING if quiet else logging.NOTSET
+    for name in _NOISY_DEPENDENCY_LOGGERS:
+        logging.getLogger(name).setLevel(level)
 
 
 def _build_handler(fmt: LogFormat, level: int) -> logging.Handler:

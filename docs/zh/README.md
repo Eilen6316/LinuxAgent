@@ -395,7 +395,7 @@ linuxagent check
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
 | `ui` | `max_chat_history` | `20` | 每个已保存会话最多保留的消息数；新会话不会自动加载 |
 | `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | 本地 LangGraph checkpoint 文件，用于恢复未完成的 HITL 确认 |
-| `logging` | `level` | `INFO` | `DEBUG` / `INFO` / `WARNING` / ... |
+| `logging` | `level` | `WARNING` | `DEBUG` / `INFO` / `WARNING` / ... |
 | `logging` | `format` | `console` | `console`（Rich 彩色） / `json`（生产） |
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | 语义检索模型；**禁止本地 PyTorch 模型** |
 

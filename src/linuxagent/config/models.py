@@ -446,7 +446,7 @@ class UIConfig(BaseModel):
 class LoggingConfig(BaseModel):
     model_config = _FROZEN
 
-    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "WARNING"
     format: Literal["json", "console"] = "console"
 
 

@@ -1402,6 +1402,32 @@ async def test_graph_answers_capability_question_without_command(tmp_path) -> No
     assert snapshot.values["direct_response"] is True
 
 
+async def test_graph_answers_product_meta_questions_without_planning(tmp_path) -> None:
+    questions = (
+        "你的作者是谁",
+        "你是谁开发的",
+        "你能联网搜索你是谁开发的吗",
+    )
+    for question in questions:
+        graph, provider = _graph(
+            tmp_path,
+            [_router_response("DIRECT_ANSWER", "LinuxAgent contributors")],
+        )
+        config = {"configurable": {"thread_id": f"meta-{abs(hash(question))}"}}
+
+        result = await graph.ainvoke(
+            initial_state(question, source=CommandSource.USER), config=config
+        )
+
+        assert "LinuxAgent contributors" in str(result["messages"][-1].content)
+        assert len(provider.complete_messages) == 1
+        assert provider.tool_calls == 0
+        snapshot = await graph.aget_state(config)
+        assert not snapshot.tasks
+        assert snapshot.values.get("pending_command") is None
+        assert snapshot.values["direct_response"] is True
+
+
 async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,

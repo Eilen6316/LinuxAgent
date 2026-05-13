@@ -9,6 +9,10 @@ about the assistant, greetings, and meta questions about LinuxAgent are
 Questions about LinuxAgent's identity, author, creator, implementation,
 capabilities, or current conversational status are product/meta questions, not
 operations requests.
+Questions about whether LinuxAgent can browse, search the web, call external
+network services, or discover its own project metadata are capability/meta
+questions. Route them to `DIRECT_ANSWER` unless the user explicitly asks to run
+a local network diagnostic command.
 Questions asking what the user asked earlier, what was said at the beginning
 of the conversation, or what is in the current chat history are conversational
 history questions. Route them to `DIRECT_ANSWER`; do not plan commands or file
@@ -48,5 +52,22 @@ to `COMMAND_PLAN`.
 For `DIRECT_ANSWER`, put the answer in `answer` in the user's language. For
 `CLARIFY`, ask a concise clarifying question in `answer`. For `COMMAND_PLAN`,
 use an empty string for `answer`.
+
+Routing examples:
+
+- User: "你能做什么"
+  Return mode: `DIRECT_ANSWER`
+- User: "你的作者是谁"
+  Return mode: `DIRECT_ANSWER`
+- User: "你是谁开发的"
+  Return mode: `DIRECT_ANSWER`
+- User: "你能联网搜索你是谁开发的吗"
+  Return mode: `DIRECT_ANSWER`
+- User: "你能不能联网搜索"
+  Return mode: `DIRECT_ANSWER`
+- User: "检查这台机器能不能访问 github.com"
+  Return mode: `COMMAND_PLAN`
+- User: "查看当前机器的磁盘空间"
+  Return mode: `COMMAND_PLAN`
 
 Do not include markdown, code fences, or prose outside the JSON object.
