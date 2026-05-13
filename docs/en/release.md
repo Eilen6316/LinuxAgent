@@ -25,19 +25,36 @@ API token secret.
 Run these before tagging:
 
 ```bash
-make test
-make lint
-make type
-make security
-make harness
-python -m pip check
-make verify-build
+make release-preflight
 ```
 
-The wheel verification step installs the built wheel and runtime dependencies
-in a temporary virtualenv, checks `linuxagent --help`, and verifies packaged
-config, prompt, and runbook data are present. It uses PyPI by default; set
+`make release-preflight` checks version consistency, lint, type checking,
+security red-lines, unit tests, sandbox tests, integration tests, red-team
+policy tests, the YAML harness, and build verification. Run it from a clean
+worktree on the release branch.
+
+The release check validates that `pyproject.toml`, `src/linuxagent/__init__.py`,
+`CHANGELOG.md`, Chinese changelog, and release notes all point at the same
+version. For a tag dry-run, use:
+
+```bash
+python scripts/release_check.py --versions --tag v4.1.0
+```
+
+The artifact verification step builds wheel and sdist, checks wheel/sdist
+metadata, rejects `.work/`, local `config.yaml`, cache, and bytecode files, then
+installs the built wheel in a temporary virtualenv. It checks
+`linuxagent --version`, `linuxagent --help`, `linuxagent check`, and packaged
+config, policy, prompt, and runbook data. It uses PyPI by default; set
 `LINUXAGENT_PIP_INDEX_URL` to test against a private mirror.
+
+For slow mainland China networks, run the same gate through a domestic mirror:
+
+```bash
+LINUXAGENT_PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+LINUXAGENT_PIP_TIMEOUT=120 \
+make verify-build
+```
 
 Optional integration smoke checks:
 
@@ -46,8 +63,8 @@ make integration
 make optional-anthropic  # after pip install -e '.[anthropic,dev]'
 ```
 
-Run these when the local environment supports the integration assumptions and
-optional provider extras. They are not part of the default CI gate.
+Run the optional provider extra when the local environment supports it. The
+standard integration suite is part of `make release-preflight`.
 
 ## Version Narrative
 
@@ -91,8 +108,15 @@ After publication, verify:
 
 ```bash
 python -m pip install --upgrade linuxagent
+linuxagent --version
 linuxagent --help
 ```
+
+If PyPI publication fails after GitHub Release creation, delete the GitHub
+Release and tag, fix the release commit, and push a new tag for the corrected
+version. If GitHub Release succeeds but PyPI already accepted the version, do
+not overwrite artifacts; publish a new patch version and document the rollback
+or superseded artifact in the release notes.
 
 ## Expected Artifacts
 
@@ -103,7 +127,8 @@ linuxagent --help
 ## Tag Release
 
 ```bash
-git tag v4.1.0
+python scripts/release_check.py --versions --tag v4.1.0
+git tag -s v4.1.0 -m "v4.1.0"
 git push origin v4.1.0
 ```
 
@@ -115,11 +140,11 @@ through Trusted Publishing.
 ## Release Checklist
 
 - Version in `pyproject.toml` matches the tag.
+- Version in `src/linuxagent/__init__.py` matches `pyproject.toml`.
 - `CHANGELOG.md` and release notes mention user-visible changes.
 - `constraints.txt` was refreshed or intentionally left unchanged.
-- `make lint`, `make type`, `make security`, `make test`, `make sandbox`,
-  `make integration`, `make harness`, and `make verify-build` pass locally or
-  in CI.
+- `make release-preflight` passes locally or in CI.
 - GitHub Release contains wheel and sdist.
 - PyPI page shows the new version.
-- A fresh virtualenv can install and run `linuxagent --help`.
+- A fresh virtualenv can install and run `linuxagent --version`,
+  `linuxagent --help`, and `linuxagent check`.

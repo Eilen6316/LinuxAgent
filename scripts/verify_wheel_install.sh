@@ -6,6 +6,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 WHEEL_PATH="${1:-}"
+VERSION="$(python3 - <<'PY'
+from pathlib import Path
+import tomllib
+
+print(tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"])
+PY
+)"
 if [[ -z "$WHEEL_PATH" ]]; then
     WHEEL_PATH="$(python3 - <<'PY'
 from pathlib import Path
@@ -28,11 +35,18 @@ TMP_VENV="$(mktemp -d)"
 trap 'rm -rf "$TMP_VENV"' EXIT
 python3 -m venv "$TMP_VENV"
 source "$TMP_VENV/bin/activate"
-PIP_INSTALL=(pip install --index-url "${LINUXAGENT_PIP_INDEX_URL:-https://pypi.org/simple}")
+PIP_INDEX_URL="${LINUXAGENT_PIP_INDEX_URL:-https://pypi.org/simple}"
+PIP_TIMEOUT="${LINUXAGENT_PIP_TIMEOUT:-60}"
+python -m pip install --upgrade pip --index-url "$PIP_INDEX_URL" --timeout "$PIP_TIMEOUT" --retries 5
+PIP_INSTALL=(python -m pip install --index-url "$PIP_INDEX_URL" --timeout "$PIP_TIMEOUT" --retries 5)
 if [[ -f constraints.txt ]]; then
     PIP_INSTALL+=(--constraint constraints.txt)
 fi
 "${PIP_INSTALL[@]}" "$WHEEL_PATH"
+if [[ "$(linuxagent --version)" != "linuxagent ${VERSION}" ]]; then
+    echo "linuxagent --version does not match pyproject version ${VERSION}" >&2
+    exit 1
+fi
 linuxagent --help >/dev/null
 linuxagent check >/dev/null
 python - <<'PY'

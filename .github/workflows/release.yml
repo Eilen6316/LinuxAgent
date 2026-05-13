@@ -25,6 +25,7 @@ jobs:
           pip install -e ".[dev]"
       - name: Run release quality gates
         run: |
+          make release-check
           make lint
           make type
           make security

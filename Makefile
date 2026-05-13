@@ -3,7 +3,7 @@
 
 PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo python; fi)
 
-.PHONY: help install test sandbox integration optional-anthropic lint type security red-team benchmark harness build verify-build clean
+.PHONY: help install test sandbox integration optional-anthropic lint type security red-team benchmark harness build release-check release-preflight verify-build clean
 
 help:
 	@echo "Targets:"
@@ -19,6 +19,8 @@ help:
 	@echo "  benchmark  policy/parser latency benchmark"
 	@echo "  harness    scenario-driven HITL harness"
 	@echo "  build      build wheel + sdist"
+	@echo "  release-check version/docs consistency checks"
+	@echo "  release-preflight full local release gate"
 	@echo "  verify-build build wheel + verify install + packaged data"
 	@echo "  clean      remove build / cache artifacts"
 
@@ -86,9 +88,26 @@ build:
 		echo "error: hatchling.build is unavailable. Run 'make install' or activate the project .venv before make build." >&2; \
 		exit 1; \
 	}
+	rm -rf build/ dist/
 	$(PYTHON) -m build --no-isolation
 
+release-check:
+	$(PYTHON) scripts/release_check.py --versions
+
+release-preflight:
+	$(MAKE) release-check
+	$(MAKE) lint
+	$(MAKE) type
+	$(MAKE) security
+	$(MAKE) test
+	$(MAKE) sandbox
+	$(MAKE) integration
+	$(MAKE) red-team
+	$(MAKE) harness
+	$(MAKE) verify-build
+
 verify-build: build
+	$(PYTHON) scripts/release_check.py --artifacts
 	./scripts/verify_wheel_install.sh
 
 clean:
