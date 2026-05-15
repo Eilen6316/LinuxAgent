@@ -23,7 +23,13 @@ from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
 from .common import span, trace_id
 from .events import RuntimeEventObserver, notify_event
-from .execution import analysis_context, notify_command_result, run_command, synthetic_result
+from .execution import (
+    analysis_context,
+    notify_command_result,
+    requires_interactive_tty,
+    run_command,
+    synthetic_result,
+)
 from .intent import make_parse_intent_node
 from .payloads import build_confirm_payload, decision, latency_ms, may_whitelist, permissions
 from .runbook_planning import next_plan_step_update
@@ -474,7 +480,7 @@ def _plan_step_is_local_read_only(step: PlannedCommand) -> bool:
 
 
 def _current_step_can_enter_batch(state: AgentState) -> bool:
-    if state.get("matched_rule") == "INTERACTIVE":
+    if requires_interactive_tty(state):
         return False
     if _has_unsafe_batch_capability(state.get("safety_capabilities", ())):
         return False

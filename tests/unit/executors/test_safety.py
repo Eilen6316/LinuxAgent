@@ -130,6 +130,24 @@ def test_interactive_batch_flags_mark_client_noninteractive() -> None:
 @pytest.mark.parametrize(
     "tokens",
     [
+        ["python", "-c", "print(1)"],
+        ["python3", "-c", "print(1)"],
+        ["bash", "-c", "echo ok"],
+        ["bash", "-lc", "echo ok"],
+        ["sh", "-c", "echo ok"],
+        ["sh", "-ec", "echo ok"],
+        ["perl", "-e", "print 1"],
+        ["ruby", "-e", "puts 1"],
+        ["node", "-e", "console.log(1)"],
+    ],
+)
+def test_inline_interpreters_are_noninteractive(tokens: list[str]) -> None:
+    assert is_interactive(tokens) is False
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
         ["ssh", "ops@example.com", "uptime"],
         ["ssh", "-p", "2222", "ops@example.com", "df", "-h"],
         ["ssh", "-i", "~/.ssh/id_ed25519", "ops@example.com", "hostname"],

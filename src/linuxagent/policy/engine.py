@@ -15,6 +15,7 @@ from .builtin_rules import builtin_policy_config
 from .lolbins import LolbinFinding, analyze_lolbins
 from .models import (
     ApprovalMode,
+    CommandFlagSet,
     PolicyApproval,
     PolicyConfig,
     PolicyDecision,
@@ -90,8 +91,14 @@ class PolicyEngine:
         self._config = config
         self._interactive_commands = frozenset(config.interactive_commands)
         self._noninteractive_flags = tuple(config.noninteractive_flags)
+        self._noninteractive_command_flags = _command_flag_map(config.noninteractive_command_flags)
         self._compiled = tuple(
-            _CompiledRule(rule, self._interactive_commands, self._noninteractive_flags)
+            _CompiledRule(
+                rule,
+                self._interactive_commands,
+                self._noninteractive_flags,
+                self._noninteractive_command_flags,
+            )
             for rule in config.rules
         )
 
@@ -159,16 +166,54 @@ def is_interactive_tokens(
     *,
     interactive_commands: frozenset[str] | None = None,
     noninteractive_flags: tuple[str, ...] | None = None,
+    noninteractive_command_flags: dict[str, frozenset[str]] | None = None,
 ) -> bool:
-    if interactive_commands is None or noninteractive_flags is None:
+    if (
+        interactive_commands is None
+        or noninteractive_flags is None
+        or noninteractive_command_flags is None
+    ):
         config = builtin_policy_config()
         interactive_commands = frozenset(config.interactive_commands)
         noninteractive_flags = config.noninteractive_flags
+        noninteractive_command_flags = _command_flag_map(config.noninteractive_command_flags)
     if not tokens or tokens[0] not in interactive_commands:
         return False
     if tokens[0] == "ssh":
         return _is_interactive_ssh(tokens)
+    if _has_command_noninteractive_flag(tokens, noninteractive_command_flags):
+        return False
     return not _has_noninteractive_flag(tokens, noninteractive_flags)
+
+
+def _has_command_noninteractive_flag(
+    tokens: list[str] | tuple[str, ...],
+    command_flags: dict[str, frozenset[str]],
+) -> bool:
+    flags = command_flags.get(tokens[0])
+    if flags is None:
+        return False
+    return any(_command_flag_matches(token, flags) for token in tokens[1:])
+
+
+def _command_flag_matches(token: str, flags: frozenset[str]) -> bool:
+    return any(
+        token == flag
+        or token.startswith(flag)
+        and len(token) > len(flag)
+        or _short_flag_is_bundled(token, flag)
+        for flag in flags
+    )
+
+
+def _short_flag_is_bundled(token: str, flag: str) -> bool:
+    return (
+        len(flag) == 2 and flag.startswith("-") and token.startswith("-") and flag[1] in token[1:]
+    )
+
+
+def _command_flag_map(command_flags: Iterable[CommandFlagSet]) -> dict[str, frozenset[str]]:
+    return {item.command: frozenset(item.flags) for item in command_flags}
 
 
 def _has_noninteractive_flag(tokens: list[str] | tuple[str, ...], flags: tuple[str, ...]) -> bool:
@@ -456,10 +501,12 @@ class _CompiledRule:
         rule: PolicyRule,
         interactive_commands: frozenset[str],
         noninteractive_flags: tuple[str, ...],
+        noninteractive_command_flags: dict[str, frozenset[str]],
     ) -> None:
         self.rule = rule
         self._interactive_commands = interactive_commands
         self._noninteractive_flags = noninteractive_flags
+        self._noninteractive_command_flags = noninteractive_command_flags
         self._args_regex = tuple(re.compile(pattern) for pattern in rule.match.args_regex)
         self._path_regex = tuple(re.compile(pattern) for pattern in rule.match.path_regex)
         self._embedded_regex = tuple(re.compile(pattern) for pattern in rule.match.embedded_regex)
@@ -491,6 +538,7 @@ class _CompiledRule:
                 facts.tokens,
                 interactive_commands=self._interactive_commands,
                 noninteractive_flags=self._noninteractive_flags,
+                noninteractive_command_flags=self._noninteractive_command_flags,
             )
         )
 

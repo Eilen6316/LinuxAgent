@@ -4,8 +4,15 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from linuxagent.config.models import ClusterHost
-from linuxagent.graph.execution import aggregate_cluster_results, analysis_context, run_command
+from linuxagent.graph.execution import (
+    aggregate_cluster_results,
+    analysis_context,
+    requires_interactive_tty,
+    run_command,
+)
 from linuxagent.interfaces import ExecutionResult
 
 PRIVATE_KEY_LABEL = "PRIVATE KEY"
@@ -132,12 +139,30 @@ class _FakeClusterService:
         }
 
 
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"matched_rule": "LOLBIN_PYTHON3_EXEC", "safety_capabilities": ("interpreter.escape",)},
+        {"matched_rule": "LOLBIN_SHELL_C", "safety_capabilities": ("interpreter.escape",)},
+        {"matched_rule": "INTERACTIVE", "safety_capabilities": ("interpreter.escape",)},
+    ],
+)
+def test_inline_interpreter_risk_does_not_require_interactive_tty(state) -> None:
+    assert requires_interactive_tty(state) is False
+
+
+def test_terminal_interactive_capability_requires_tty() -> None:
+    state = {"matched_rule": "INTERACTIVE", "safety_capabilities": ("terminal.interactive",)}
+
+    assert requires_interactive_tty(state) is True
+
+
 async def test_run_command_uses_normal_and_interactive_paths() -> None:
     service = _FakeCommandService()
 
     normal = await run_command({}, "uptime", service, None, trace_id="trace-1")  # type: ignore[arg-type]
     interactive = await run_command(
-        {"matched_rule": "INTERACTIVE"},
+        {"matched_rule": "INTERACTIVE", "safety_capabilities": ("terminal.interactive",)},
         "top",
         service,  # type: ignore[arg-type]
         None,
@@ -147,6 +172,24 @@ async def test_run_command_uses_normal_and_interactive_paths() -> None:
     assert normal.stdout == "normal"
     assert interactive.stdout == "interactive"
     assert service.calls == ["run:uptime", "interactive:top"]
+
+
+async def test_run_command_streams_inline_interpreter_instead_of_interactive_path() -> None:
+    events = []
+    service = _FakeCommandService()
+
+    result = await run_command(
+        {"matched_rule": "LOLBIN_PYTHON3_EXEC", "safety_capabilities": ("interpreter.escape",)},
+        "python3 -c 'print(1)'",
+        service,  # type: ignore[arg-type]
+        None,
+        trace_id="trace-1",
+        event_observer=events.append,
+    )
+
+    assert result.stdout == "password=hunter2"
+    assert service.calls == ["stream:python3 -c 'print(1)'"]
+    assert any(event.get("phase") == "stdout" for event in events)
 
 
 async def test_run_command_streams_redacted_output_to_observer() -> None:
@@ -216,7 +259,11 @@ async def test_run_command_reports_unmatched_and_interactive_cluster_requests() 
         trace_id="trace-1",
     )
     interactive = await run_command(
-        {"selected_hosts": ("web-1",), "matched_rule": "INTERACTIVE"},
+        {
+            "selected_hosts": ("web-1",),
+            "matched_rule": "INTERACTIVE",
+            "safety_capabilities": ("terminal.interactive",),
+        },
         "top",
         service,  # type: ignore[arg-type]
         _FakeClusterService((SimpleNamespace(name="web-1"),)),  # type: ignore[arg-type]

@@ -1874,6 +1874,33 @@ async def test_graph_redacts_execution_output_before_analysis(tmp_path) -> None:
     assert "***redacted***" in analysis_prompt
 
 
+async def test_graph_inline_shell_stream_output_reaches_analysis_prompt(tmp_path) -> None:
+    events: list[dict[str, Any]] = []
+    graph, provider = _graph(
+        tmp_path,
+        [command_plan_json("sh -c 'printf inline-output'"), "analysis ok"],
+        runtime_observer=events.append,
+    )
+    config = {"configurable": {"thread_id": "inline-output-analysis"}}
+
+    await graph.ainvoke(initial_state("run inline shell", source=CommandSource.USER), config=config)
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+
+    snapshot = await graph.aget_state(config)
+    result = snapshot.values["execution_result"]
+    analysis_prompt = str(provider.complete_messages[-1][-1].content)
+    streamed_stdout = "".join(
+        str(event.get("text") or "")
+        for event in events
+        if event.get("type") == "command" and event.get("phase") == "stdout"
+    )
+
+    assert result.stdout.strip() == "inline-output"
+    assert "inline-output" in streamed_stdout
+    assert "stdout:\ninline-output" in analysis_prompt
+    assert result.stderr == ""
+
+
 async def test_graph_blocks_non_json_command_plan(tmp_path) -> None:
     graph, _provider = _graph(tmp_path, ["/bin/echo legacy"])
     config = {"configurable": {"thread_id": "invalid-plan"}}

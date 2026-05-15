@@ -27,6 +27,23 @@ noninteractive_flags:
   - --batch
   - -N
   - --skip-column-names
+noninteractive_command_flags:
+  - command: python
+    flags: [-c]
+  - command: python3
+    flags: [-c]
+  - command: bash
+    flags: [-c]
+  - command: sh
+    flags: [-c]
+  - command: zsh
+    flags: [-c]
+  - command: perl
+    flags: [-e]
+  - command: ruby
+    flags: [-e]
+  - command: node
+    flags: [-e]
 rules:
   - id: input.validation
     legacy_rule: INPUT_VALIDATION

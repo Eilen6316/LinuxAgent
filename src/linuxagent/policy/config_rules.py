@@ -42,6 +42,9 @@ def merge_policy_configs(base: PolicyConfig, overlay: PolicyConfig) -> PolicyCon
         version=max(base.version, overlay.version),
         interactive_commands=overlay.interactive_commands or base.interactive_commands,
         noninteractive_flags=overlay.noninteractive_flags or base.noninteractive_flags,
+        noninteractive_command_flags=(
+            overlay.noninteractive_command_flags or base.noninteractive_command_flags
+        ),
         rules=tuple(rules_by_id[id_] for id_ in order),
     )
 

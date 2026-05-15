@@ -235,6 +235,24 @@ async def test_execute_streaming_emits_output_chunks() -> None:
     assert stderr == []
 
 
+async def test_execute_streaming_inline_shell_captures_final_stdout() -> None:
+    ex = _make()
+    stdout: list[str] = []
+    stderr: list[str] = []
+
+    result = await ex.execute_streaming(
+        "sh -c 'printf inline-output'",
+        on_stdout=lambda text: _append(stdout, text),
+        on_stderr=lambda text: _append(stderr, text),
+    )
+
+    assert result.exit_code == 0
+    assert stdout == ["inline-output"]
+    assert result.stdout == "".join(stdout)
+    assert stderr == []
+    assert result.stderr == ""
+
+
 async def test_execute_applies_command_output_budget_even_with_noop_runner() -> None:
     ex = LinuxCommandExecutor(SecurityConfig(command_timeout=5.0, output_bytes=1024))
 

@@ -13,6 +13,7 @@ from .events import RuntimeEventObserver, notify_event
 from .state import AgentState
 
 STREAM_CHUNK_MAX_CHARS = 8000
+INTERACTIVE_TTY_CAPABILITY = "terminal.interactive"
 
 
 def synthetic_result(command: str, exit_code: int, stdout: str, stderr: str) -> ExecutionResult:
@@ -36,6 +37,13 @@ def analysis_context(state: AgentState, result: ExecutionResult) -> str:
     return "\n".join(sections)
 
 
+def requires_interactive_tty(state: AgentState) -> bool:
+    capabilities = state.get("safety_capabilities", ())
+    if INTERACTIVE_TTY_CAPABILITY in capabilities:
+        return True
+    return state.get("matched_rule") == "INTERACTIVE" and not capabilities
+
+
 async def run_command(
     state: AgentState,
     command: str,
@@ -50,7 +58,7 @@ async def run_command(
         resolved_hosts = cluster_service.resolve_host_names(selected_hosts)
         if not resolved_hosts:
             return synthetic_result(command, 2, "", "no matching cluster hosts selected")
-        if state.get("matched_rule") == "INTERACTIVE":
+        if requires_interactive_tty(state):
             return synthetic_result(
                 command,
                 2,
@@ -92,7 +100,7 @@ async def _run_local_command(
     trace_id: str,
     event_observer: RuntimeEventObserver | None,
 ) -> ExecutionResult:
-    if state.get("matched_rule") == "INTERACTIVE":
+    if requires_interactive_tty(state):
         return await command_service.run_interactive(command)
     if event_observer is None:
         return await command_service.run(command)

@@ -71,12 +71,20 @@ class PolicyRule(BaseModel):
     never_whitelist: bool = False
 
 
+class CommandFlagSet(BaseModel):
+    model_config = _FROZEN
+
+    command: str
+    flags: tuple[str, ...]
+
+
 class PolicyConfig(BaseModel):
     model_config = _FROZEN
 
     version: int = 1
     interactive_commands: tuple[str, ...] = ()
     noninteractive_flags: tuple[str, ...] = ()
+    noninteractive_command_flags: tuple[CommandFlagSet, ...] = ()
     rules: tuple[PolicyRule, ...]
 
     @field_validator("rules")

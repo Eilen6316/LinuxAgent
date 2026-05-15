@@ -129,6 +129,34 @@ def test_policy_evaluates_nested_shell_c_string() -> None:
     assert "service.mutate" in decision.capabilities
 
 
+@pytest.mark.parametrize(
+    ("command", "expected_rule"),
+    [
+        ("python -c 'print(1)'", "LOLBIN_PYTHON_EXEC"),
+        ("python3 -c 'print(1)'", "LOLBIN_PYTHON3_EXEC"),
+        ("bash -c 'echo ok'", "LOLBIN_SHELL_C"),
+        ("bash -lc 'echo ok'", "LOLBIN_SHELL_C"),
+        ("sh -c 'echo ok'", "LOLBIN_SHELL_C"),
+        ("sh -ec 'echo ok'", "LOLBIN_SHELL_C"),
+        ("perl -e 'print 1'", "LOLBIN_PERL_EXEC"),
+        ("ruby -e 'puts 1'", "LOLBIN_RUBY_EXEC"),
+        ('node -e "console.log(1)"', "LOLBIN_NODE_EXEC"),
+    ],
+)
+def test_inline_interpreters_keep_lolbin_risk_without_interactive_rule(
+    command: str,
+    expected_rule: str,
+) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert expected_rule in decision.matched_rules
+    assert "INTERACTIVE" not in decision.matched_rules
+    assert "interpreter.escape" in decision.capabilities
+    assert "terminal.interactive" not in decision.capabilities
+    assert decision.can_whitelist is False
+
+
 def test_policy_evaluates_subshell_children() -> None:
     decision = DEFAULT_POLICY_ENGINE.evaluate("(systemctl restart nginx)")
 
