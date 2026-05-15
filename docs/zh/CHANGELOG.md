@@ -6,6 +6,12 @@ LinuxAgent 的重要变更记录在这里。
 
 ## [Unreleased]
 
+### Fixed
+
+- `python3 -c`、`bash -c` 等 inline interpreter 命令不再走继承 stdio 的
+  interactive 执行路径。流式输出会写入 `ExecutionResult.stdout`/`stderr`，
+  并进入命令结果面板和分析 prompt。
+
 ### Changed
 
 - 新增 `linuxagent audit summary` 和 `linuxagent audit inspect` 只读审计诊断，

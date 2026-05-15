@@ -6,6 +6,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Inline interpreter commands such as `python3 -c` and `bash -c` are no
+  longer routed through inherited-stdio interactive execution. Their streamed
+  output is captured in `ExecutionResult.stdout`/`stderr` and is available to
+  the command-result panel and analysis prompt.
+
 ### Changed
 
 - `linuxagent audit summary` and `linuxagent audit inspect` now provide
