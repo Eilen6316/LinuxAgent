@@ -13,7 +13,7 @@ from . import __version__
 from .audit import verify_audit_log
 from .audit_inspect import AuditInspectError, AuditInspection, inspect_audit_log
 from .config.loader import ConfigError, load_config
-from .config.models import McpConfig
+from .config.models import AppConfig, McpConfig
 from .container import Container
 from .logger import configure_dependency_logging, configure_logging
 from .mcp_server import McpServer, serve_stdio
@@ -21,6 +21,7 @@ from .providers.errors import ProviderError
 from .runbooks import RunbookEngine
 from .services import MonitoringAlert, collect_system_snapshot, evaluate_alerts
 from .skills import skill_runbooks
+from .tools import format_tool_catalog_check
 
 logger = logging.getLogger(__name__)
 
@@ -126,21 +127,21 @@ def _cmd_check(args: argparse.Namespace) -> int:
         cfg = load_config(cli_path=args.config)
         container = Container(cfg)
         skill_summary = _skill_summary(container)
+        tool_catalog = container.tool_catalog()
     except (ConfigError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     alerts = evaluate_alerts(collect_system_snapshot(), cfg.monitoring)
     alert_summary = "none" if not alerts else ", ".join(_format_alert(alert) for alert in alerts)
+    print(_format_check_summary(cfg, skill_summary, alert_summary))
     print(
-        f"OK: provider={cfg.api.provider}, "
-        f"model={cfg.api.model}, "
-        f"batch_confirm_threshold={cfg.cluster.batch_confirm_threshold}, "
-        f"audit_log={cfg.audit.path}, "
-        f"mcp={_mcp_summary(cfg.mcp)}, "
-        f"skills={skill_summary}, "
-        f"monitoring_alerts={alert_summary}"
+        format_tool_catalog_check(
+            tool_catalog,
+            runner=cfg.sandbox.runner,
+            sandbox_enabled=cfg.sandbox.enabled,
+        )
     )
-    return 0
+    return 0 if tool_catalog.ok else 1
 
 
 def _cmd_chat(args: argparse.Namespace) -> int:
@@ -323,6 +324,18 @@ _COMMANDS = {
 
 def _format_alert(alert: MonitoringAlert) -> str:
     return f"{alert.severity}:{alert.metric}={alert.value:.1f}>={alert.threshold:.1f}"
+
+
+def _format_check_summary(cfg: AppConfig, skill_summary: str, alert_summary: str) -> str:
+    return (
+        f"OK: provider={cfg.api.provider}, "
+        f"model={cfg.api.model}, "
+        f"batch_confirm_threshold={cfg.cluster.batch_confirm_threshold}, "
+        f"audit_log={cfg.audit.path}, "
+        f"mcp={_mcp_summary(cfg.mcp)}, "
+        f"skills={skill_summary}, "
+        f"monitoring_alerts={alert_summary}"
+    )
 
 
 def _mcp_summary(config: McpConfig) -> str:

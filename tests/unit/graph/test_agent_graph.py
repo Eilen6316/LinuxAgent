@@ -23,6 +23,7 @@ from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.graph.checkpoint import PersistentMemorySaver
 from linuxagent.interfaces import CommandSource, ExecutionResult
+from linuxagent.operating_manifest import operating_manifest_context
 from linuxagent.plans import command_plan_json, file_patch_plan_json
 from linuxagent.product_context import product_capability_context
 from linuxagent.providers.errors import ProviderError
@@ -183,6 +184,7 @@ def _graph(
     security_config: SecurityConfig | None = None,
     telemetry: TelemetryRecorder | None = None,
     product_context: str = "",
+    operating_manifest: str = "",
 ):
     provider = _FakeProvider(responses)
     executor = LinuxCommandExecutor(
@@ -201,6 +203,7 @@ def _graph(
         tool_observer=tool_observer,
         runtime_observer=runtime_observer,
         product_context=product_context,
+        operating_manifest=operating_manifest,
     )
     return build_agent_graph(deps), provider
 
@@ -1542,7 +1545,7 @@ async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> N
 async def test_graph_answers_capability_question_without_command(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "dynamic capability answer")],
+        [_router_response("DIRECT_ANSWER", "router draft"), "dynamic capability answer"],
     )
     config = {"configurable": {"thread_id": "capabilities"}}
 
@@ -1551,7 +1554,7 @@ async def test_graph_answers_capability_question_without_command(tmp_path) -> No
     )
 
     assert "dynamic capability answer" in str(result["messages"][-1].content)
-    assert len(provider.complete_messages) == 1
+    assert len(provider.complete_messages) == 2
     assert provider.tool_calls == 0
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
@@ -1568,7 +1571,7 @@ async def test_graph_answers_product_meta_questions_without_planning(tmp_path) -
     for question in questions:
         graph, provider = _graph(
             tmp_path,
-            [_router_response("DIRECT_ANSWER", "LinuxAgent contributors")],
+            [_router_response("DIRECT_ANSWER", "router draft"), "LinuxAgent contributors"],
         )
         config = {"configurable": {"thread_id": f"meta-{abs(hash(question))}"}}
 
@@ -1577,7 +1580,7 @@ async def test_graph_answers_product_meta_questions_without_planning(tmp_path) -
         )
 
         assert "LinuxAgent contributors" in str(result["messages"][-1].content)
-        assert len(provider.complete_messages) == 1
+        assert len(provider.complete_messages) == 2
         assert provider.tool_calls == 0
         snapshot = await graph.aget_state(config)
         assert not snapshot.tasks
@@ -1640,6 +1643,31 @@ async def test_graph_passes_product_context_to_direct_answer_paths(tmp_path) -> 
     assert snapshot.values["direct_response"] is True
 
 
+async def test_graph_injects_operating_manifest_only_for_direct_answer(tmp_path) -> None:
+    manifest = operating_manifest_context(section_names=("tools", "safety"))
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _router_response("DIRECT_ANSWER", "router draft"),
+            "manifest answer",
+        ],
+        product_context=product_capability_context(provider="deepseek", model="deepseek-chat"),
+        operating_manifest=manifest,
+    )
+
+    result = await graph.ainvoke(
+        initial_state("说一下你的工具和安全边界", source=CommandSource.USER),
+        config={"configurable": {"thread_id": "manifest-direct"}},
+    )
+
+    assert "manifest answer" in str(result["messages"][-1].content)
+    prompts = [
+        "\n".join(str(message.content) for message in call) for call in provider.complete_messages
+    ]
+    assert "# tools" in prompts[-1]
+    assert "# safety" in prompts[-1]
+
+
 async def test_graph_continues_planning_when_planner_gate_fails(tmp_path) -> None:
     provider = _PlannerGateFailingProvider(
         [
@@ -1671,7 +1699,7 @@ async def test_graph_continues_planning_when_planner_gate_fails(tmp_path) -> Non
 async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "router supplied direct answer")],
+        [_router_response("DIRECT_ANSWER", "router draft"), "router supplied direct answer"],
     )
     config = {"configurable": {"thread_id": "daily-chat"}}
 
@@ -1680,7 +1708,7 @@ async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> N
     )
 
     assert "router supplied direct answer" in str(result["messages"][-1].content)
-    assert len(provider.complete_messages) == 1
+    assert len(provider.complete_messages) == 2
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
     assert snapshot.values.get("pending_command") is None
@@ -1690,7 +1718,7 @@ async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> N
 async def test_graph_answers_howto_without_command_panel(tmp_path) -> None:
     graph, _provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "router supplied how-to answer")],
+        [_router_response("DIRECT_ANSWER", "router draft"), "router supplied how-to answer"],
     )
     config = {"configurable": {"thread_id": "howto-chat"}}
 

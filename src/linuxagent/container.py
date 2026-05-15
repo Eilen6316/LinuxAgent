@@ -36,6 +36,7 @@ from .intelligence import (
     RecommendationEngine,
 )
 from .interfaces import ExecutionResult, LLMProvider
+from .operating_manifest import operating_manifest_context
 from .policy import PolicyEngine, runtime_policy_config
 from .product_context import product_capability_context
 from .providers import provider_factory
@@ -51,10 +52,13 @@ from .services import ChatService, ClusterService, CommandService, MonitoringSer
 from .skills import load_skill_manifests, skill_planner_guidance, skill_runbooks
 from .telemetry import TelemetryRecorder
 from .tools import (
+    ToolCatalogReport,
     ToolRuntimeLimits,
     build_intelligence_tools,
     build_system_tools,
     build_workspace_tools,
+    compact_tool_catalog_summary,
+    inspect_tool_catalog,
 )
 from .ui import ConsoleUI
 
@@ -88,7 +92,7 @@ class Container:
             monitoring_service=self.monitoring_service(),
             cluster_service=self.cluster_service(),
             telemetry=self.telemetry(),
-            tool_names=tuple(tool.name for tool in self.tools()),
+            tool_names=tuple(item.name for item in self.tool_catalog().items),
         )
 
     def audit_log(self) -> AuditLog:
@@ -190,6 +194,7 @@ class Container:
                     runtime_observer=self._runtime_event_observer(),
                     tool_runtime_limits=self.tool_runtime_limits(),
                     product_context=self.product_context(),
+                    operating_manifest=self.operating_manifest(),
                 )
             ),
         )
@@ -312,11 +317,19 @@ class Container:
     def tools(self) -> list[BaseTool]:
         return self._cached(
             "tools",
-            lambda: [
-                *self.system_tools(),
-                *build_workspace_tools(self._config.file_patch, self._config.sandbox.tools),
-                *self.intelligence_tools(),
-            ],
+            lambda: list(self.tool_catalog().tools),
+        )
+
+    def tool_catalog(self) -> ToolCatalogReport:
+        return self._cached(
+            "tool_catalog",
+            lambda: inspect_tool_catalog(
+                [
+                    *self.system_tools(),
+                    *build_workspace_tools(self._config.file_patch, self._config.sandbox.tools),
+                    *self.intelligence_tools(),
+                ]
+            ),
         )
 
     def tool_runtime_limits(self) -> ToolRuntimeLimits:
@@ -329,11 +342,16 @@ class Container:
         )
 
     def product_context(self) -> str:
+        catalog = self.tool_catalog()
         return product_capability_context(
             provider=self._config.api.provider.value,
             model=self._config.api.model,
-            tool_names=tuple(tool.name for tool in self.tools()),
+            tool_names=tuple(item.name for item in catalog.items),
+            tool_catalog=compact_tool_catalog_summary(catalog),
         )
+
+    def operating_manifest(self) -> str:
+        return self._cached("operating_manifest", operating_manifest_context)
 
     def _tool_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:

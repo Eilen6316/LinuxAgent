@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import pytest
 from langchain_core.tools import tool
 
-from linuxagent.sandbox import SandboxProfile
-from linuxagent.tools import ToolRuntimeLimits
+from linuxagent.sandbox import SandboxProfile, SandboxRunnerKind
+from linuxagent.tools import (
+    ToolCatalogError,
+    ToolRuntimeLimits,
+    format_tool_catalog_check,
+    inspect_tool_catalog,
+    require_valid_tool_catalog,
+)
 from linuxagent.tools.sandbox import ToolSandboxSpec, attach_tool_sandbox, invoke_tool_with_sandbox
 
 
@@ -30,6 +37,49 @@ async def test_unwrapped_tool_is_denied_before_execution() -> None:
     assert result.event["status"] == "denied"
     assert result.event["sandbox"] is None
     assert "missing ToolSandboxSpec metadata" in result.content
+
+
+def test_tool_catalog_reports_missing_metadata() -> None:
+    @tool
+    def unsafe_tool() -> str:
+        """A tool without ToolSandboxSpec metadata."""
+        return "should not run"
+
+    report = inspect_tool_catalog([unsafe_tool])
+
+    assert report.ok is False
+    assert "unsafe_tool" in report.errors[0]
+    assert "missing linuxagent_sandbox" in report.errors[0]
+    with pytest.raises(ToolCatalogError, match="unsafe_tool"):
+        require_valid_tool_catalog([unsafe_tool])
+
+
+def test_tool_catalog_check_formats_permissions() -> None:
+    @tool
+    def read_window() -> str:
+        """Return a bounded file window."""
+        return "ok"
+
+    report = inspect_tool_catalog(
+        [
+            attach_tool_sandbox(
+                read_window,
+                ToolSandboxSpec(profile=SandboxProfile.READ_ONLY, read_files=True),
+            )
+        ]
+    )
+
+    output = format_tool_catalog_check(
+        report,
+        runner=SandboxRunnerKind.NOOP,
+        sandbox_enabled=False,
+    )
+
+    assert "status: ok" in output
+    assert "runner: noop" in output
+    assert "diagnostic only" in output
+    assert "name=read_window status=ok profile=read_only" in output
+    assert "permissions=read_files" in output
 
 
 async def test_tool_event_keeps_full_limited_output_for_ui_evidence() -> None:

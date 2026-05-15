@@ -89,6 +89,7 @@ class GraphDependencies:
     runtime_observer: RuntimeEventObserver | None = None
     tool_runtime_limits: ToolRuntimeLimits = field(default_factory=ToolRuntimeLimits)
     product_context: str = ""
+    operating_manifest: str = ""
 
 
 def make_confirm_node(

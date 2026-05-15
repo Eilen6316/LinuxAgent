@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+from .catalog import (
+    ToolCatalogError,
+    ToolCatalogItem,
+    ToolCatalogReport,
+    compact_tool_catalog_summary,
+    format_tool_catalog_check,
+    inspect_tool_catalog,
+    require_valid_tool_catalog,
+)
 from .intelligence_tools import (
     build_intelligence_tools,
     make_command_recommendations_tool,
@@ -27,6 +36,9 @@ from .workspace_tools import (
 
 __all__ = [
     "LogFileAccessError",
+    "ToolCatalogError",
+    "ToolCatalogItem",
+    "ToolCatalogReport",
     "ToolHITLMode",
     "ToolRuntimeLimits",
     "ToolSandboxSpec",
@@ -35,6 +47,9 @@ __all__ = [
     "build_system_tools",
     "build_intelligence_tools",
     "build_workspace_tools",
+    "compact_tool_catalog_summary",
+    "format_tool_catalog_check",
+    "inspect_tool_catalog",
     "make_command_recommendations_tool",
     "make_execute_command_tool",
     "make_get_system_info_tool",
@@ -45,4 +60,5 @@ __all__ = [
     "make_search_logs_tool",
     "make_search_files_tool",
     "make_similar_commands_tool",
+    "require_valid_tool_catalog",
 ]

@@ -8,6 +8,8 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Fixed
 
+- LLM 可见工具现在会在 catalog metadata 缺失或非法时 fail closed，返回结构化
+  denied tool event，而不是把未包装工具绑定进 provider tool loop。
 - Workspace tool 错误现在会显示为简短的操作员可读消息，包含 tool 名称、目标和
   人类可读原因，不再把内部 JSON 错误结构直接打到终端。
 - Runtime activity 输出现在会抑制相邻重复进度行，同时继续保留完整 telemetry 事件。
@@ -21,6 +23,12 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Changed
 
+- 新增统一 tool catalog，供运行时 tool binding、`/tools` 上下文、product context
+  和 `linuxagent check` 复用；check 输出现在会展示每个 tool 的 sandbox profile、
+  permissions、network access、HITL mode、allowed roots 和 runner isolation note。
+- 新增 `prompts/manifest/` operating manifest，用渐进披露方式提供 LinuxAgent
+  全方位说明。Direct-answer 路径可以获得完整产品运行上下文，普通运维规划仍只接收
+  简短 product context。
 - 直接回答、intent router 和规划 prompt 现在会收到简洁的 LinuxAgent 产品上下文，
   覆盖 `/resume`、会话历史、checkpoint、learner memory 边界以及当前
   provider/model 来源，使自身能力类问题回答更准确。

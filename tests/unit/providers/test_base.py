@@ -117,6 +117,10 @@ async def test_complete_with_tools_resolves_tool_calls() -> None:
 
 async def test_complete_with_tools_rejects_unwrapped_tool_before_binding() -> None:
     events: list[dict[str, Any]] = []
+    output = (
+        '{"status": "error", "tool": "lookup_status", "error_type": "denied", '
+        '"message": "missing linuxagent_sandbox ToolSandboxSpec metadata"}'
+    )
 
     @tool
     async def lookup_status(service: str) -> str:
@@ -126,7 +130,7 @@ async def test_complete_with_tools_rejects_unwrapped_tool_before_binding() -> No
     model = _ToolCallingModel([AIMessage(content="unreachable")])
     provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
 
-    with pytest.raises(ProviderError, match="missing ToolSandboxSpec"):
+    with pytest.raises(ProviderError, match="missing linuxagent_sandbox ToolSandboxSpec"):
         await provider.complete_with_tools(
             [HumanMessage(content="check nginx")],
             [lookup_status],
@@ -141,8 +145,9 @@ async def test_complete_with_tools_rejects_unwrapped_tool_before_binding() -> No
             "tool_name": "lookup_status",
             "args": {},
             "sandbox": None,
-            "output_preview": "tool is missing ToolSandboxSpec metadata",
-            "output_chars": len("tool is missing ToolSandboxSpec metadata"),
+            "output_preview": output,
+            "output_text": output,
+            "output_chars": len(output),
             "truncated": False,
         }
     ]

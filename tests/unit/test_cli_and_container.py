@@ -22,8 +22,9 @@ from linuxagent.config.models import AppConfig
 from linuxagent.container import Container
 from linuxagent.policy.config_rules import PolicyConfigError
 from linuxagent.product_context import product_capability_context, slash_help
-from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner
+from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner, SandboxProfile
 from linuxagent.services import MonitoringAlert
+from linuxagent.tools import ToolCatalogReport, ToolSandboxSpec, attach_tool_sandbox
 
 
 def test_verbose_to_level_mapping() -> None:
@@ -83,6 +84,9 @@ def test_check_command_success(
     assert "mcp=linuxagent.policy.classify,linuxagent.audit.verify" in captured.out
     assert "skills=disabled" in captured.out
     assert "monitoring_alerts=none" in captured.out
+    assert "tool_catalog:" in captured.out
+    assert "name=execute_command status=ok profile=privileged_passthrough" in captured.out
+    assert "network_access=true" in captured.out
 
 
 def test_check_command_reports_monitoring_alerts(
@@ -113,6 +117,42 @@ def test_check_command_reports_monitoring_alerts(
 
     assert code == 0
     assert "monitoring_alerts=warning:cpu_percent=95.0>=90.0" in captured.out
+
+
+def test_check_command_fails_for_invalid_tool_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cfg = AppConfig.model_validate({"telemetry": {"enabled": False, "exporter": "none"}})
+
+    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+    monkeypatch.setattr(cli, "collect_system_snapshot", lambda: {})
+    monkeypatch.setattr(cli, "_skill_summary", lambda _container: "disabled")
+    monkeypatch.setattr(
+        container_module.Container,
+        "tool_catalog",
+        lambda _self: ToolCatalogReport(
+            (
+                SimpleNamespace(
+                    name="unsafe_tool",
+                    ok=False,
+                    errors=("missing linuxagent_sandbox ToolSandboxSpec metadata",),
+                    sandbox=None,
+                    tool=SimpleNamespace(name="unsafe_tool"),
+                ),
+            )
+        ),
+    )
+
+    code = cli.main(["check"])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert "tool_catalog:" in captured.out
+    assert "status: error" in captured.out
+    assert "unsafe_tool" in captured.out
+    assert "missing linuxagent_sandbox" in captured.out
 
 
 def test_check_command_reports_enabled_skill_summary(
@@ -507,7 +547,12 @@ def test_container_adds_workspace_tools(monkeypatch: pytest.MonkeyPatch, tmp_pat
     def fake_build_workspace_tools(config, tool_config):
         captured["allow_roots"] = config.allow_roots
         captured["tool_config"] = tool_config
-        return [SimpleNamespace(name="read_file")]
+        return [
+            attach_tool_sandbox(
+                SimpleNamespace(name="read_file", metadata={}),
+                ToolSandboxSpec(profile=SandboxProfile.READ_ONLY),
+            )
+        ]
 
     monkeypatch.setattr(container_module, "build_workspace_tools", fake_build_workspace_tools)
     cfg = AppConfig.model_validate(

@@ -8,6 +8,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- LLM-visible tools now fail closed when their catalog metadata is missing or
+  invalid, returning structured denied tool events instead of binding unsafe
+  tools into the provider loop.
 - Workspace tool errors now render as short operator-facing messages with the
   tool name, target, and human-readable reason instead of raw internal JSON.
 - Runtime activity output now suppresses adjacent duplicate progress lines
@@ -25,6 +28,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Added a unified tool catalog used by runtime tool binding, `/tools` context,
+  product context, and `linuxagent check`; check output now reports each
+  tool's sandbox profile, permissions, network access, HITL mode, allowed
+  roots, and runner isolation note.
+- Added an operating manifest under `prompts/manifest/` for progressive
+  LinuxAgent self-description. Direct-answer paths can receive the full
+  product operating context, while normal operational planning still receives
+  only the concise product context.
 - Direct answers, the intent router, and planning prompts now receive concise
   LinuxAgent product context, including `/resume`, session history,
   checkpointing, learner memory boundaries, and the configured provider/model

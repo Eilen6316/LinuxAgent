@@ -38,6 +38,7 @@ def product_capability_context(
     provider: str | None = None,
     model: str | None = None,
     tool_names: Iterable[str] = (),
+    tool_catalog: str | None = None,
 ) -> str:
     """Return concise product facts for LinuxAgent self-description prompts."""
     runtime = "当前运行时模型由 config.yaml 的 api.provider/api.model 决定"
@@ -49,4 +50,5 @@ def product_capability_context(
         runtime=runtime,
         slash_commands=commands,
         tool_names=tools,
+        tool_catalog=tool_catalog or tools,
     )

@@ -81,6 +81,13 @@ class IntentNodeContext:
     runtime_observer: RuntimeEventObserver | None
     tool_runtime_limits: ToolRuntimeLimits
     product_context: str
+    operating_manifest: str
+
+    def direct_answer_context(self) -> str:
+        manifest = self.operating_manifest.strip()
+        if not manifest:
+            return self.product_context
+        return f"{self.product_context}\n\n{manifest}"
 
 
 def make_parse_intent_node(
@@ -94,6 +101,7 @@ def make_parse_intent_node(
     runtime_observer: RuntimeEventObserver | None = None,
     tool_runtime_limits: ToolRuntimeLimits | None = None,
     product_context: str = "",
+    operating_manifest: str = "",
 ) -> Node:
     context = IntentNodeContext(
         provider=provider,
@@ -109,6 +117,7 @@ def make_parse_intent_node(
         runtime_observer=runtime_observer,
         tool_runtime_limits=tool_runtime_limits or ToolRuntimeLimits(),
         product_context=product_context,
+        operating_manifest=operating_manifest,
     )
 
     async def parse_intent_node(state: AgentState) -> AgentState:
@@ -130,7 +139,9 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
         current_trace_id,
     )
     if intent.mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY}:
-        return _direct_response_update(current_trace_id, intent.answer)
+        return await _complete_direct_response(
+            context, messages, user_text, current_trace_id, intent
+        )
     gate = await _plan_gate(context, messages, user_text, current_trace_id)
     if gate is not None:
         return _direct_response_update(current_trace_id, gate.answer)
@@ -164,6 +175,42 @@ async def _planned_outcome_update(
     return outcome
 
 
+async def _complete_direct_response(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    intent: IntentDecision,
+) -> AgentState:
+    if intent.mode is IntentMode.CLARIFY:
+        return _direct_response_update(current_trace_id, intent.answer)
+    try:
+        answer = await _complete_direct_answer(context, messages, user_text, current_trace_id)
+    except ProviderError:
+        return _direct_response_update(current_trace_id, intent.answer)
+    return _direct_response_update(current_trace_id, answer or intent.answer)
+
+
+async def _complete_direct_answer(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+) -> str:
+    prompt_messages = context.direct_answer_prompt.format_messages(
+        chat_history=messages[:-1],
+        product_context=context.direct_answer_context(),
+        user_input=user_text,
+    )
+    with span(
+        context.telemetry,
+        "llm.complete",
+        current_trace_id,
+        {"node": "parse_intent", "mode": "direct_answer"},
+    ):
+        return (await context.provider.complete(prompt_messages)).strip()
+
+
 async def _no_change_update(
     context: IntentNodeContext,
     messages: list[BaseMessage],
@@ -190,7 +237,7 @@ async def _no_change_update(
                     current_trace_id,
                     retry_error,
                     context.telemetry,
-                    context.product_context,
+                    context.direct_answer_context(),
                 )
             return _parse_error_update(current_trace_id, retry_error)
     return await _planned_outcome_update(
@@ -438,7 +485,7 @@ async def _recover_plan_parse_error(
             current_trace_id,
             error,
             context.telemetry,
-            context.product_context,
+            context.direct_answer_context(),
         )
     if not context.tools:
         return _parse_error_update(current_trace_id, error)
@@ -536,7 +583,7 @@ async def _retry_plan_or_error(
             current_trace_id,
             retry_plan,
             context.telemetry,
-            context.product_context,
+            context.direct_answer_context(),
         )
     return _parse_error_update(current_trace_id, retry_plan)
 

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -38,6 +39,7 @@ from tenacity import (
 
 from ..config.models import APIConfig
 from ..interfaces import LLMProvider
+from ..tools.catalog import ToolCatalogReport, inspect_tool_catalog
 from ..tools.sandbox import ToolRuntimeLimits, invoke_tool_with_sandbox, tool_sandbox_record
 from .errors import (
     ProviderConnectionError,
@@ -237,26 +239,44 @@ def _coerce_ai_message(message: BaseMessage) -> AIMessage:
 
 
 async def _ensure_tool_sandbox_specs(tools: list[BaseTool], observer: ToolObserver | None) -> None:
-    missing = [tool.name for tool in tools if tool_sandbox_record(tool) is None]
-    if not missing:
+    report = inspect_tool_catalog(tools)
+    if report.ok:
         return
-    message = "tool is missing ToolSandboxSpec metadata"
-    for name in sorted(missing):
+    for item in report.items:
+        if item.ok:
+            continue
+        output = _catalog_error_output(item.name, item.errors)
         await _notify_tool_observer(
             observer,
             {
                 "phase": "error",
                 "status": "denied",
-                "tool_name": name,
+                "tool_name": item.name,
                 "args": {},
                 "sandbox": None,
-                "output_preview": message,
-                "output_chars": len(message),
+                "output_preview": output,
+                "output_text": output,
+                "output_chars": len(output),
                 "truncated": False,
             },
         )
-    names = ", ".join(sorted(missing))
-    raise ProviderError(f"LLM tools missing ToolSandboxSpec metadata: {names}")
+    raise ProviderError(_catalog_error_message(report))
+
+
+def _catalog_error_output(tool_name: str, errors: tuple[str, ...]) -> str:
+    return json.dumps(
+        {
+            "status": "error",
+            "tool": tool_name,
+            "error_type": "denied",
+            "message": "; ".join(errors) or "invalid tool metadata",
+        },
+        ensure_ascii=False,
+    )
+
+
+def _catalog_error_message(report: ToolCatalogReport) -> str:
+    return "LLM tool catalog validation failed: " + "; ".join(report.errors)
 
 
 async def _execute_tool_calls(

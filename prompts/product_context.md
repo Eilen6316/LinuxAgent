@@ -6,4 +6,5 @@ LinuxAgent product facts:
 - LLM 生成的命令会先经过结构化计划校验、policy 检查和必要的人工确认；破坏性命令不会进入跨会话白名单。
 - Slash/direct commands: {slash_commands}.
 - LLM-visible tools: {tool_names}.
+- Tool catalog summary: {tool_catalog}.
 - LinuxAgent 没有通用联网搜索功能；只有配置和工具明确提供的能力才可用。

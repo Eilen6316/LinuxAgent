@@ -28,6 +28,7 @@ def test_find_prompts_dir_resolves_for_editable_install() -> None:
     assert (path / "planner_gate.md").is_file()
     assert (path / "repair.md").is_file()
     assert (path / "file_patch_repair.md").is_file()
+    assert (path / "manifest" / "tools.md").is_file()
 
 
 def test_load_system_prompt_is_non_empty() -> None:
