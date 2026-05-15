@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from ..executors import is_destructive
-from ..interfaces import CommandSource
+from ..interfaces import CommandSource, SafetyLevel, SafetyResult
 from ..plans import CommandPlan
 from ..runbooks import Runbook
 from .state import AgentState
 
+PermissionClassifier = Callable[[str], SafetyResult]
 
-def build_confirm_payload(state: AgentState, audit_id: str) -> dict[str, Any]:
+
+def build_confirm_payload(
+    state: AgentState,
+    audit_id: str,
+    *,
+    permission_classifier: PermissionClassifier | None = None,
+) -> dict[str, Any]:
     command = state.get("pending_command")
     safety_level = state.get("safety_level")
     return {
@@ -20,14 +28,18 @@ def build_confirm_payload(state: AgentState, audit_id: str) -> dict[str, Any]:
         "command": command,
         "safety_level": safety_level.value if safety_level else None,
         "matched_rule": state.get("matched_rule"),
+        "matched_rules": list(state.get("matched_rules", ())),
         "command_source": (state.get("command_source") or CommandSource.USER).value,
+        "risk_score": state.get("safety_risk_score", 0),
+        "capabilities": list(state.get("safety_capabilities", ())),
+        "risk_details": _risk_details(state),
         "batch_hosts": list(state.get("batch_hosts", ())),
         "remote_profiles": list(state.get("remote_profiles", ())),
         "remote_preflight_commands": list(state.get("remote_preflight_commands", ())),
         "sandbox_preview": state.get("sandbox_preview"),
         "is_destructive": _is_destructive(command or "", state.get("safety_capabilities", ())),
         "can_whitelist": state.get("safety_can_whitelist", True),
-        "permission_candidates": _permission_candidates(state),
+        "permission_candidates": _permission_candidates(state, permission_classifier),
         **_plan_payload(state.get("command_plan"), state.get("runbook_step_index", 0)),
         **_runbook_payload(state.get("selected_runbook"), state.get("runbook_step_index", 0)),
     }
@@ -86,11 +98,38 @@ def permissions(response: Any) -> dict[str, Any] | None:
     return None
 
 
-def _permission_candidates(state: AgentState) -> list[dict[str, str]]:
+def _permission_candidates(
+    state: AgentState,
+    classifier: PermissionClassifier | None,
+) -> list[dict[str, str]]:
+    if not state.get("safety_can_whitelist", True):
+        return []
     plan = state.get("command_plan")
     if plan is None or len(plan.commands) <= 1:
         return []
-    return [{"type": "Bash", "command": item.command} for item in plan.commands]
+    candidates = []
+    for item in plan.commands:
+        if classifier is not None and not _candidate_can_whitelist(item.command, classifier):
+            continue
+        candidates.append({"type": "Bash", "command": item.command})
+    return candidates
+
+
+def _candidate_can_whitelist(command: str, classifier: PermissionClassifier) -> bool:
+    verdict = classifier(command)
+    if verdict.level is SafetyLevel.BLOCK or not verdict.can_whitelist:
+        return False
+    return not _has_destructive_capability(verdict.capabilities)
+
+
+def _risk_details(state: AgentState) -> dict[str, Any]:
+    return {
+        "matched_rules": list(state.get("matched_rules", ())),
+        "capabilities": list(state.get("safety_capabilities", ())),
+        "risk_score": state.get("safety_risk_score", 0),
+        "can_whitelist": state.get("safety_can_whitelist", True),
+        "reason": state.get("safety_reason"),
+    }
 
 
 def _plan_payload(plan: CommandPlan | None, step_index: int = 0) -> dict[str, Any]:

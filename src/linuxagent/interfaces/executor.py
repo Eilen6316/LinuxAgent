@@ -44,6 +44,13 @@ class SafetyResult:
     risk_score: int = 0
     capabilities: tuple[str, ...] = ()
     can_whitelist: bool = True
+    matched_rules: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.matched_rules and self.matched_rule is None:
+            object.__setattr__(self, "matched_rule", self.matched_rules[0])
+        if self.matched_rule and not self.matched_rules:
+            object.__setattr__(self, "matched_rules", (self.matched_rule,))
 
 
 @dataclass(frozen=True)

@@ -98,6 +98,10 @@ class DirectCommandRunner:
             safety_level=safety.level.value,
             matched_rule=safety.matched_rule,
             command_source=safety.command_source.value,
+            matched_rules=safety.matched_rules,
+            capabilities=safety.capabilities,
+            risk_score=safety.risk_score,
+            can_whitelist=safety.can_whitelist,
         )
         response = await self.ui.handle_interrupt(
             {
@@ -106,9 +110,20 @@ class DirectCommandRunner:
                 "purpose": "Run command from ! prefix without an AI-generated reply",
                 "safety_level": safety.level.value,
                 "matched_rule": safety.matched_rule,
+                "matched_rules": list(safety.matched_rules),
                 "command_source": safety.command_source.value,
+                "risk_score": safety.risk_score,
+                "capabilities": list(safety.capabilities),
+                "risk_details": {
+                    "matched_rules": list(safety.matched_rules),
+                    "capabilities": list(safety.capabilities),
+                    "risk_score": safety.risk_score,
+                    "can_whitelist": safety.can_whitelist,
+                    "reason": safety.reason,
+                },
                 "risk_summary": safety.reason,
                 "is_destructive": _is_destructive(self.command_service, command),
+                "can_whitelist": safety.can_whitelist,
             }
         )
         decision = str(response.get("decision") or "no")

@@ -120,6 +120,7 @@ class LinuxCommandExecutor(CommandExecutor):
                 level=SafetyLevel.SAFE,
                 reason="whitelisted in session",
                 matched_rule="SESSION_WHITELIST",
+                matched_rules=("SESSION_WHITELIST",),
                 command_source=CommandSource.WHITELIST,
             )
         return result
@@ -203,6 +204,7 @@ class LinuxCommandExecutor(CommandExecutor):
                     level=SafetyLevel.BLOCK,
                     reason="interactive execution requires a controlling TTY",
                     matched_rule="INTERACTIVE_NON_TTY",
+                    matched_rules=("INTERACTIVE_NON_TTY",),
                 )
             )
 
@@ -274,6 +276,7 @@ class LinuxCommandExecutor(CommandExecutor):
                     level=SafetyLevel.BLOCK,
                     reason=f"shell parse failed: {exc}",
                     matched_rule="PARSE_ERROR",
+                    matched_rules=("PARSE_ERROR",),
                 )
             ) from exc
         if not argv:
@@ -282,6 +285,7 @@ class LinuxCommandExecutor(CommandExecutor):
                     level=SafetyLevel.BLOCK,
                     reason="empty command",
                     matched_rule="EMPTY",
+                    matched_rules=("EMPTY",),
                 )
             )
 
@@ -325,6 +329,7 @@ def _safety_result(decision: PolicyDecision) -> SafetyResult:
         level=decision.level,
         reason=decision.reason,
         matched_rule=decision.matched_rule,
+        matched_rules=decision.matched_rules,
         command_source=decision.command_source,
         risk_score=decision.risk_score,
         capabilities=decision.capabilities,

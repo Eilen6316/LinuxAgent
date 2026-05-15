@@ -70,6 +70,7 @@ def is_safe(
         level=decision.level,
         reason=decision.reason,
         matched_rule=decision.matched_rule,
+        matched_rules=decision.matched_rules,
         command_source=decision.command_source,
         risk_score=decision.risk_score,
         capabilities=decision.capabilities,

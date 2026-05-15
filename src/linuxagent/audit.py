@@ -42,6 +42,10 @@ class AuditLog:
         trace_id: str | None = None,
         batch_hosts: tuple[str, ...] = (),
         sandbox_preview: dict[str, Any] | None = None,
+        matched_rules: tuple[str, ...] = (),
+        capabilities: tuple[str, ...] = (),
+        risk_score: int | None = None,
+        can_whitelist: bool | None = None,
     ) -> str:
         audit_id = uuid.uuid4().hex
         record: dict[str, Any] = {
@@ -56,6 +60,14 @@ class AuditLog:
         }
         if sandbox_preview is not None:
             record["sandbox_preview"] = sandbox_preview
+        if matched_rules:
+            record["matched_rules"] = list(matched_rules)
+        if capabilities:
+            record["capabilities"] = list(capabilities)
+        if risk_score is not None:
+            record["risk_score"] = risk_score
+        if can_whitelist is not None:
+            record["can_whitelist"] = can_whitelist
         self.append(record)
         return audit_id
 

@@ -66,6 +66,7 @@ def test_is_safe_uses_injected_policy_engine() -> None:
 
     assert result.level is SafetyLevel.BLOCK
     assert result.matched_rule == "CUSTOM_BLOCK"
+    assert result.matched_rules == ("CUSTOM_BLOCK",)
     assert result.risk_score == 100
     assert result.capabilities == ("custom.block",)
 
@@ -77,6 +78,7 @@ def test_whitelisted_llm_command_downgraded_to_safe() -> None:
     result = ex.is_safe("ls -la", source=CommandSource.LLM)
     assert result.level is SafetyLevel.SAFE
     assert result.matched_rule == "SESSION_WHITELIST"
+    assert result.matched_rules == ("SESSION_WHITELIST",)
     assert result.command_source is CommandSource.WHITELIST
 
 
@@ -88,6 +90,7 @@ def test_whitelist_disabled_keeps_confirm() -> None:
     result = ex.is_safe("ls -la", source=CommandSource.LLM)
     assert result.level is SafetyLevel.CONFIRM
     assert result.matched_rule == "LLM_FIRST_RUN"
+    assert result.matched_rules == ("LLM_FIRST_RUN",)
 
 
 def test_runtime_never_whitelist_rule_blocks_session_whitelist_downgrade() -> None:
@@ -126,6 +129,7 @@ def test_runtime_never_whitelist_rule_blocks_session_whitelist_downgrade() -> No
 
     assert result.level is SafetyLevel.CONFIRM
     assert result.matched_rule == "LLM_FIRST_RUN"
+    assert result.matched_rules == ("LLM_FIRST_RUN", "CUSTOM_NEVER_WHITELIST")
     assert result.can_whitelist is False
 
 

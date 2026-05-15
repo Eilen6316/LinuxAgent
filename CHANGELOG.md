@@ -8,6 +8,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Command confirmations now preserve and display full policy details for
+  inline interpreter and LOLBin commands, including all matched rules,
+  capabilities, risk score, and the policy whitelist decision.
 - Inline interpreter commands such as `python3 -c` and `bash -c` are no
   longer routed through inherited-stdio interactive execution. Their streamed
   output is captured in `ExecutionResult.stdout`/`stderr` and is available to

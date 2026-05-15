@@ -46,7 +46,9 @@ class AgentState(TypedDict, total=False):
     # Populated by safety_check; consumed by HITL router + confirm_node.
     safety_level: SafetyLevel | None
     matched_rule: str | None
+    matched_rules: tuple[str, ...]
     safety_reason: str | None
+    safety_risk_score: int
     safety_capabilities: tuple[str, ...]
     safety_can_whitelist: bool
     command_permissions: tuple[str, ...]
@@ -97,7 +99,9 @@ def initial_state(
         direct_response=False,
         safety_level=None,
         matched_rule=None,
+        matched_rules=(),
         safety_reason=None,
+        safety_risk_score=0,
         safety_capabilities=(),
         safety_can_whitelist=True,
         command_permissions=command_permissions,

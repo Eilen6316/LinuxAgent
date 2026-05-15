@@ -62,16 +62,25 @@ def make_repair_plan_node(
             "command_source": CommandSource.LLM,
             "selected_hosts": (),
             "direct_response": False,
-            "safety_level": None,
-            "matched_rule": None,
-            "safety_reason": None,
-            "safety_capabilities": (),
+            **_reset_safety_state(),
             "batch_hosts": (),
             "user_confirmed": False,
             "audit_id": None,
         }
 
     return repair_plan_node
+
+
+def _reset_safety_state() -> AgentState:
+    return {
+        "safety_level": None,
+        "matched_rule": None,
+        "matched_rules": (),
+        "safety_reason": None,
+        "safety_risk_score": 0,
+        "safety_capabilities": (),
+        "safety_can_whitelist": True,
+    }
 
 
 async def _complete_valid_repair_plan(

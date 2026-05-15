@@ -8,6 +8,8 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Fixed
 
+- 命令确认现在会保留并展示 inline interpreter 和 LOLBin 命令的完整 policy
+  details，包括全部 matched rules、capabilities、risk score 和策略白名单决定。
 - `python3 -c`、`bash -c` 等 inline interpreter 命令不再走继承 stdio 的
   interactive 执行路径。流式输出会写入 `ExecutionResult.stdout`/`stderr`，
   并进入命令结果面板和分析 prompt。

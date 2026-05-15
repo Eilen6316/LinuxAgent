@@ -40,6 +40,10 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
         matched_rule="LLM_FIRST_RUN",
         command_source="llm",
         batch_hosts=("a", "b"),
+        matched_rules=("LLM_FIRST_RUN", "LOLBIN_PYTHON3_EXEC"),
+        capabilities=("llm.generated", "interpreter.escape"),
+        risk_score=90,
+        can_whitelist=False,
         sandbox_preview={
             "requested_profile": "system_inspect",
             "runner": "noop",
@@ -96,6 +100,11 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
         "command_executed",
     ]
     assert lines[0]["batch_hosts"] == ["a", "b"]
+    assert lines[0]["matched_rule"] == "LLM_FIRST_RUN"
+    assert lines[0]["matched_rules"] == ["LLM_FIRST_RUN", "LOLBIN_PYTHON3_EXEC"]
+    assert lines[0]["capabilities"] == ["llm.generated", "interpreter.escape"]
+    assert lines[0]["risk_score"] == 90
+    assert lines[0]["can_whitelist"] is False
     assert lines[0]["sandbox_preview"]["runner"] == "noop"
     assert lines[0]["sandbox_preview"]["cwd"] == str(tmp_path)
     assert lines[1]["decision"] == "yes"

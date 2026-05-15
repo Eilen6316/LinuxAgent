@@ -44,7 +44,8 @@ class ConfirmationRenderer:
             )
         self._add_optional_rows(table, payload, ("goal", "purpose"))
         table.add_row("Safety", str(payload.get("safety_level") or "?"))
-        table.add_row("Rule", str(payload.get("matched_rule") or "?"))
+        table.add_row("Rules", _matched_rules_summary(payload))
+        self._add_policy_risk_rows(table, payload)
         table.add_row("Source", str(payload.get("command_source") or "?"))
         self._add_sandbox_rows(table, payload)
         self._add_optional_rows(table, payload, ("risk_summary",))
@@ -177,6 +178,32 @@ class ConfirmationRenderer:
         if fallback:
             table.add_row("Sandbox note", str(fallback))
 
+    def _add_policy_risk_rows(self, table: Table, payload: dict[str, Any]) -> None:
+        risk_score = payload.get("risk_score")
+        if isinstance(risk_score, int) and risk_score > 0:
+            table.add_row("Policy risk", str(risk_score))
+        capabilities = _string_list(payload.get("capabilities"))
+        if capabilities:
+            table.add_row("Capabilities", "\n".join(capabilities))
+        risk_details = payload.get("risk_details")
+        reason = (
+            risk_details.get("reason")
+            if isinstance(risk_details, dict) and isinstance(risk_details.get("reason"), str)
+            else None
+        )
+        if reason:
+            table.add_row("Policy reason", reason)
+        if _high_review_required(payload):
+            table.add_row(
+                "Review",
+                "high - interpreter or LOLBin execution requires careful operator review",
+            )
+        if payload.get("can_whitelist") is False:
+            table.add_row(
+                "Whitelist",
+                "not allowed - policy requires confirmation every time",
+            )
+
     def _add_patch_risk_rows(self, table: Table, payload: dict[str, Any]) -> None:
         if payload.get("risk_level") == "high":
             table.add_row("Elevated risk", "yes - elevated file patch risk requires review")
@@ -220,6 +247,29 @@ def _patch_title_style(payload: dict[str, Any]) -> str:
     if payload.get("risk_level") == "high":
         return "bright_red"
     return "bright_yellow"
+
+
+def _matched_rules_summary(payload: dict[str, Any]) -> str:
+    rules = _string_list(payload.get("matched_rules"))
+    if rules:
+        return "\n".join(rules)
+    return str(payload.get("matched_rule") or "?")
+
+
+def _high_review_required(payload: dict[str, Any]) -> bool:
+    capabilities = _string_list(payload.get("capabilities"))
+    rules = _string_list(payload.get("matched_rules"))
+    return any(
+        capability in {"interpreter.escape", "shell.remote_execute"}
+        or capability.startswith("lolbin.")
+        for capability in capabilities
+    ) or any(rule.startswith("LOLBIN_") for rule in rules)
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list | tuple):
+        return []
+    return [str(item) for item in value if str(item)]
 
 
 def _sandbox_summary(sandbox: dict[str, Any]) -> str:

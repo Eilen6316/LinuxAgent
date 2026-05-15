@@ -120,8 +120,18 @@ async def _confirm_node(
         trace_id=current_trace_id,
         batch_hosts=state.get("batch_hosts", ()),
         sandbox_preview=state.get("sandbox_preview"),
+        matched_rules=state.get("matched_rules", ()),
+        capabilities=state.get("safety_capabilities", ()),
+        risk_score=state.get("safety_risk_score"),
+        can_whitelist=state.get("safety_can_whitelist", True),
     )
-    payload = build_confirm_payload(state, audit_id)
+    payload = build_confirm_payload(
+        state,
+        audit_id,
+        permission_classifier=lambda candidate: command_service.classify(
+            candidate, source=CommandSource.LLM
+        ),
+    )
     await _notify_waiting_confirm(runtime_observer, command)
     response = interrupt(payload)
     user_decision = await _record_confirm_decision(
@@ -172,6 +182,10 @@ async def _record_confirm_decision(
         current_trace_id,
         {
             "matched_rule": state.get("matched_rule"),
+            "matched_rules": state.get("matched_rules", ()),
+            "capabilities": state.get("safety_capabilities", ()),
+            "risk_score": state.get("safety_risk_score"),
+            "can_whitelist": state.get("safety_can_whitelist", True),
             "hitl.latency_ms": latency_ms(response),
             "graph.node": "confirm",
         },

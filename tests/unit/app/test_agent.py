@@ -564,7 +564,13 @@ async def test_bang_command_stream_output_is_redacted_and_truncated(tmp_path) ->
 async def test_bang_command_requires_confirmation_for_confirm_policy(tmp_path) -> None:
     ui = _FakeUI(inputs=["!python script.py", "/exit"])
     command_service = _command_service(
-        safety=SafetyResult(level=SafetyLevel.CONFIRM, matched_rule="INTERACTIVE"),
+        safety=SafetyResult(
+            level=SafetyLevel.CONFIRM,
+            matched_rule="LOLBIN_PYTHON3_EXEC",
+            risk_score=90,
+            capabilities=("interpreter.escape",),
+            can_whitelist=False,
+        ),
         result=ExecutionResult("python script.py", 0, "ran\n", "", 0.1),
     )
     agent = _agent(tmp_path, ui=ui, command_service=command_service)
@@ -573,6 +579,9 @@ async def test_bang_command_requires_confirmation_for_confirm_policy(tmp_path) -
 
     assert ui.interrupts
     assert ui.interrupts[0]["command"] == "python script.py"
+    assert ui.interrupts[0]["matched_rules"] == ["LOLBIN_PYTHON3_EXEC"]
+    assert ui.interrupts[0]["capabilities"] == ["interpreter.escape"]
+    assert ui.interrupts[0]["can_whitelist"] is False
     assert ("ran\n", False) in ui.raw_printed
 
 

@@ -110,8 +110,10 @@ def _record_policy_decision(
         attributes={
             "policy.level": getattr(verdict.level, "value", str(verdict.level)),
             "policy.matched_rule": verdict.matched_rule,
+            "policy.matched_rules": _verdict_matched_rules(verdict),
             "policy.risk_score": getattr(verdict, "risk_score", None),
             "policy.capabilities": tuple(getattr(verdict, "capabilities", ())),
+            "policy.can_whitelist": _can_whitelist(verdict),
             "graph.node": "safety_check",
         },
     )
@@ -122,7 +124,9 @@ def _empty_command_update(trace: str, state: AgentState) -> AgentState:
         "trace_id": trace,
         "safety_level": SafetyLevel.BLOCK,
         "matched_rule": "EMPTY",
+        "matched_rules": ("EMPTY",),
         "safety_reason": state.get("plan_error") or "no command proposed",
+        "safety_risk_score": 100,
         "safety_capabilities": (),
         "safety_can_whitelist": False,
         "sandbox_preview": None,
@@ -134,8 +138,10 @@ def _remote_error_update(trace: str, remote_error: str, verdict: Any) -> AgentSt
         "trace_id": trace,
         "safety_level": SafetyLevel.BLOCK,
         "matched_rule": "REMOTE_SHELL_SYNTAX",
+        "matched_rules": _effective_matched_rules(verdict, "REMOTE_SHELL_SYNTAX"),
         "safety_reason": remote_error,
         "command_source": verdict.command_source,
+        "safety_risk_score": _risk_score(verdict),
         "safety_capabilities": verdict.capabilities,
         "safety_can_whitelist": _can_whitelist(verdict),
         "sandbox_preview": None,
@@ -161,7 +167,9 @@ def _safety_update(
         "trace_id": trace,
         "safety_level": level,
         "matched_rule": matched_rule,
+        "matched_rules": _effective_matched_rules(verdict, matched_rule),
         "safety_reason": reason,
+        "safety_risk_score": _risk_score(verdict),
         "command_source": verdict.command_source,
         "safety_capabilities": verdict.capabilities,
         "safety_can_whitelist": _can_whitelist(verdict),
@@ -254,6 +262,30 @@ def _normalize_command(command: str) -> str | None:
 
 def _can_whitelist(verdict: Any) -> bool:
     return bool(getattr(verdict, "can_whitelist", True))
+
+
+def _risk_score(verdict: Any) -> int:
+    value = getattr(verdict, "risk_score", 0)
+    return value if isinstance(value, int) else 0
+
+
+def _verdict_matched_rules(verdict: Any) -> tuple[str, ...]:
+    rules = getattr(verdict, "matched_rules", ())
+    if isinstance(rules, list | tuple):
+        materialized = tuple(rule for rule in rules if isinstance(rule, str) and rule)
+    else:
+        materialized = ()
+    if materialized:
+        return materialized
+    rule = getattr(verdict, "matched_rule", None)
+    return (rule,) if isinstance(rule, str) and rule else ()
+
+
+def _effective_matched_rules(verdict: Any, matched_rule: str | None) -> tuple[str, ...]:
+    rules = list(_verdict_matched_rules(verdict))
+    if matched_rule:
+        rules.insert(0, matched_rule)
+    return tuple(dict.fromkeys(rules))
 
 
 def _selected_cluster_hosts(

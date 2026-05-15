@@ -160,6 +160,33 @@ def test_render_confirm_shows_basic_command_fields() -> None:
     assert "sandbox disabled" in rendered
 
 
+def test_render_confirm_shows_policy_details_and_whitelist_block() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+
+    ui._render_confirm(
+        {
+            "type": "confirm_command",
+            "command": "python3 -c 'print(1)'",
+            "safety_level": "CONFIRM",
+            "matched_rule": "LLM_FIRST_RUN",
+            "matched_rules": ["LLM_FIRST_RUN", "LOLBIN_PYTHON3_EXEC"],
+            "command_source": "llm",
+            "risk_score": 90,
+            "capabilities": ["llm.generated", "interpreter.escape"],
+            "risk_details": {"reason": "LLM-generated command; python3 inline code execution"},
+            "can_whitelist": False,
+        }
+    )
+
+    rendered = console.export_text()
+    assert "LOLBIN_PYTHON3_EXEC" in rendered
+    assert "interpreter.escape" in rendered
+    assert "Policy risk" in rendered
+    assert "high - interpreter or LOLBin execution requires careful operator review" in rendered
+    assert "not allowed - policy requires confirmation every time" in rendered
+
+
 def test_render_file_patch_confirm_shows_planned_diff() -> None:
     console = Console(record=True, color_system="truecolor", width=120)
     ui = ConsoleUI(console=console)
@@ -348,6 +375,34 @@ def test_command_approval_does_not_offer_allow_all_for_destructive_command(
             "is_destructive": True,
             "can_whitelist": False,
             "permission_candidates": [{"type": "Bash", "command": "rm -rf /tmp/x"}],
+        }
+    )
+
+    assert response == {"decision": "yes"}
+    assert seen_decisions == ["yes", "no"]
+
+
+def test_command_approval_does_not_offer_allow_all_when_policy_forbids_whitelist(
+    monkeypatch,
+) -> None:
+    seen_decisions: list[str] = []
+
+    class FakeSelector:
+        def __init__(self, options: tuple[Any, ...]) -> None:
+            seen_decisions.extend(option.decision for option in options)
+
+        def choose(self) -> str:
+            return "yes"
+
+    monkeypatch.setattr("linuxagent.ui.console.ApprovalSelector", FakeSelector)
+    ui = ConsoleUI()
+
+    response = ui._approval_response(
+        {
+            "type": "confirm_command",
+            "is_destructive": False,
+            "can_whitelist": False,
+            "permission_candidates": [{"type": "Bash", "command": "python3 -c 'print(1)'"}],
         }
     )
 

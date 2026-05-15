@@ -27,6 +27,7 @@ from linuxagent.plans import command_plan_json, file_patch_plan_json
 from linuxagent.providers.errors import ProviderError
 from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.services import ClusterService, CommandService
+from linuxagent.telemetry import TelemetryRecorder
 from linuxagent.tools import ToolRuntimeLimits, build_workspace_tools
 from linuxagent.tools.sandbox import invoke_tool_with_sandbox
 
@@ -179,6 +180,7 @@ def _graph(
     runtime_observer: Any | None = None,
     checkpointer: Any | None = None,
     security_config: SecurityConfig | None = None,
+    telemetry: TelemetryRecorder | None = None,
 ):
     provider = _FakeProvider(responses)
     executor = LinuxCommandExecutor(
@@ -193,6 +195,7 @@ def _graph(
         tools=tools,  # type: ignore[arg-type]
         runbook_engine=runbook_engine,
         file_patch_config=file_patch_config or FilePatchConfig(),
+        telemetry=telemetry,
         tool_observer=tool_observer,
         runtime_observer=runtime_observer,
     )
@@ -355,6 +358,87 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     assert None not in trace_ids
     begin_record = next(record for record in audit_records if record["event"] == "confirm_begin")
     assert begin_record["sandbox_preview"]["runner"] == "noop"
+
+
+async def test_graph_inline_python_confirm_payload_exposes_policy_details(tmp_path) -> None:
+    telemetry = TelemetryRecorder(tmp_path / "telemetry.jsonl")
+    graph, _provider = _graph(
+        tmp_path,
+        [command_plan_json("python3 -c 'print(1)'")],
+        telemetry=telemetry,
+    )
+    config = {"configurable": {"thread_id": "inline-python-policy"}}
+
+    await graph.ainvoke(initial_state("print one", source=CommandSource.USER), config=config)
+
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+    assert payload["matched_rule"] == "LLM_FIRST_RUN"
+    assert "LOLBIN_PYTHON3_EXEC" in payload["matched_rules"]
+    assert "interpreter.escape" in payload["capabilities"]
+    assert payload["risk_score"] == 90
+    assert payload["can_whitelist"] is False
+    assert payload["permission_candidates"] == []
+    assert payload["risk_details"]["can_whitelist"] is False
+
+    audit_records = [
+        json.loads(line)
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    begin_record = next(record for record in audit_records if record["event"] == "confirm_begin")
+    assert begin_record["matched_rule"] == "LLM_FIRST_RUN"
+    assert "LOLBIN_PYTHON3_EXEC" in begin_record["matched_rules"]
+    assert "interpreter.escape" in begin_record["capabilities"]
+    assert begin_record["risk_score"] == 90
+    assert begin_record["can_whitelist"] is False
+
+    telemetry_records = [
+        json.loads(line)
+        for line in (tmp_path / "telemetry.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    policy_record = next(
+        record for record in telemetry_records if record["name"] == "policy.decision"
+    )
+    attributes = policy_record["attributes"]
+    assert attributes["policy.matched_rule"] == "LLM_FIRST_RUN"
+    assert "LOLBIN_PYTHON3_EXEC" in attributes["policy.matched_rules"]
+    assert "interpreter.escape" in attributes["policy.capabilities"]
+    assert attributes["policy.risk_score"] == 90
+    assert attributes["policy.can_whitelist"] is False
+
+
+async def test_graph_shell_c_payload_exposes_nested_service_mutation(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [command_plan_json("bash -c 'systemctl restart nginx'")],
+    )
+    config = {"configurable": {"thread_id": "shell-c-policy"}}
+
+    await graph.ainvoke(initial_state("restart nginx", source=CommandSource.USER), config=config)
+
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+    assert payload["matched_rule"] == "DESTRUCTIVE"
+    assert "LOLBIN_SHELL_C" in payload["matched_rules"]
+    assert "service.mutate" in payload["capabilities"]
+    assert "interpreter.escape" in payload["capabilities"]
+    assert payload["risk_score"] == 90
+    assert payload["can_whitelist"] is False
+    assert payload["permission_candidates"] == []
+
+
+async def test_graph_permission_candidates_exclude_non_whitelistable_commands(tmp_path) -> None:
+    plan = _multi_command_plan_json(["/bin/echo ok", "python3 -c 'print(1)'"])
+    graph, _provider = _graph(tmp_path, [plan])
+    config = {"configurable": {"thread_id": "candidate-filter"}}
+
+    await graph.ainvoke(
+        initial_state("inspect and print", source=CommandSource.USER), config=config
+    )
+
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+    assert payload["permission_candidates"] == [{"type": "Bash", "command": "/bin/echo ok"}]
 
 
 async def test_graph_allow_all_is_scoped_to_conversation_state(tmp_path) -> None:
