@@ -58,6 +58,7 @@ def build_planner_prompt() -> ChatPromptTemplate:
         [
             ("system", load_prompt("planner.md")),
             MessagesPlaceholder("chat_history", optional=True),
+            ("system", "{product_context}"),
             ("human", "{user_input}"),
         ]
     )
@@ -69,6 +70,7 @@ def build_planner_gate_prompt() -> ChatPromptTemplate:
         [
             ("system", load_prompt("planner_gate.md")),
             MessagesPlaceholder("chat_history", optional=True),
+            ("system", "{product_context}"),
             ("human", "{user_input}"),
         ]
     )
@@ -100,6 +102,7 @@ def build_direct_answer_prompt() -> ChatPromptTemplate:
         [
             ("system", load_prompt("direct_answer.md")),
             MessagesPlaceholder("chat_history", optional=True),
+            ("system", "{product_context}"),
             ("human", "{user_input}"),
         ]
     )
@@ -111,6 +114,7 @@ def build_intent_router_prompt() -> ChatPromptTemplate:
         [
             ("system", load_prompt("intent_router.md")),
             MessagesPlaceholder("chat_history", optional=True),
+            ("system", "{product_context}"),
             ("human", "{user_input}"),
         ]
     )

@@ -2,17 +2,9 @@
 
 from __future__ import annotations
 
+from ..product_context import slash_help
 
-def slash_help() -> str:
-    return (
-        "可用命令：\n"
-        "/help - 显示帮助\n"
-        "/resume - 查看本机保存的会话；随后输入编号恢复\n"
-        "/new 或 /clear - 开启一个空上下文新对话\n"
-        "/tools - 查看可用工具入口\n"
-        "/trace on|off - 显示或隐藏活动状态\n"
-        "/exit 或 /quit - 退出"
-    )
+__all__ = ["slash_help", "tools_help"]
 
 
 def tools_help(tool_names: tuple[str, ...]) -> str:

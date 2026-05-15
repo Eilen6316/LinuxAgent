@@ -24,6 +24,7 @@ from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.graph.checkpoint import PersistentMemorySaver
 from linuxagent.interfaces import CommandSource, ExecutionResult
 from linuxagent.plans import command_plan_json, file_patch_plan_json
+from linuxagent.product_context import product_capability_context
 from linuxagent.providers.errors import ProviderError
 from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.services import ClusterService, CommandService
@@ -181,6 +182,7 @@ def _graph(
     checkpointer: Any | None = None,
     security_config: SecurityConfig | None = None,
     telemetry: TelemetryRecorder | None = None,
+    product_context: str = "",
 ):
     provider = _FakeProvider(responses)
     executor = LinuxCommandExecutor(
@@ -198,6 +200,7 @@ def _graph(
         telemetry=telemetry,
         tool_observer=tool_observer,
         runtime_observer=runtime_observer,
+        product_context=product_context,
     )
     return build_agent_graph(deps), provider
 
@@ -1604,6 +1607,35 @@ async def test_graph_accepts_planner_direct_answer_when_router_misroutes(tmp_pat
     assert len(provider.complete_messages) == 2
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_passes_product_context_to_direct_answer_paths(tmp_path) -> None:
+    answer = "这是 /resume 的说明。"
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _router_response("COMMAND_PLAN"),
+            _direct_answer_plan_json(answer),
+        ],
+        product_context=product_capability_context(provider="deepseek", model="deepseek-chat"),
+    )
+    config = {"configurable": {"thread_id": "resume-meta"}}
+
+    result = await graph.ainvoke(
+        initial_state("你的/resume 的功能是干啥的", source=CommandSource.USER),
+        config=config,
+    )
+
+    assert answer in str(result["messages"][-1].content)
+    assert len(provider.complete_messages) == 2
+    prompts = [
+        "\n".join(str(message.content) for message in call) for call in provider.complete_messages
+    ]
+    assert all("LinuxAgent product facts" in prompt for prompt in prompts)
+    assert "/resume 是 LinuxAgent 内置命令" in prompts[-1]
+    snapshot = await graph.aget_state(config)
     assert snapshot.values.get("pending_command") is None
     assert snapshot.values["direct_response"] is True
 

@@ -37,6 +37,7 @@ from .intelligence import (
 )
 from .interfaces import ExecutionResult, LLMProvider
 from .policy import PolicyEngine, runtime_policy_config
+from .product_context import product_capability_context
 from .providers import provider_factory
 from .runbooks import RunbookEngine, find_runbooks_dir, load_runbooks
 from .sandbox import (
@@ -70,6 +71,7 @@ class Container:
         self._config = config
         self._singletons: dict[str, object] = {}
         self._streamed_outputs: set[tuple[str, str]] = set()
+        self._last_activity_message = ""
 
     @property
     def config(self) -> AppConfig:
@@ -187,6 +189,7 @@ class Container:
                     tool_observer=self._tool_event_observer(),
                     runtime_observer=self._runtime_event_observer(),
                     tool_runtime_limits=self.tool_runtime_limits(),
+                    product_context=self.product_context(),
                 )
             ),
         )
@@ -325,6 +328,13 @@ class Container:
             max_total_output_chars=tools.max_total_output_chars,
         )
 
+    def product_context(self) -> str:
+        return product_capability_context(
+            provider=self._config.api.provider.value,
+            model=self._config.api.model,
+            tool_names=tuple(tool.name for tool in self.tools()),
+        )
+
     def _tool_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
             message = tool_event_message(event)
@@ -338,8 +348,11 @@ class Container:
             record_runtime_event(self.telemetry(), event)
             message = runtime_event_message(event)
             if message:
-                await self.ui().print_activity(message)
+                if message != self._last_activity_message:
+                    self._last_activity_message = message
+                    await self.ui().print_activity(message)
                 return
+            self._last_activity_message = ""
             stream = event.get("phase")
             if stream in {"stdout", "stderr"}:
                 text = str(event.get("text") or "")

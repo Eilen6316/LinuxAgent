@@ -8,6 +8,9 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Fixed
 
+- Workspace tool 错误现在会显示为简短的操作员可读消息，包含 tool 名称、目标和
+  人类可读原因，不再把内部 JSON 错误结构直接打到终端。
+- Runtime activity 输出现在会抑制相邻重复进度行，同时继续保留完整 telemetry 事件。
 - 命令确认现在会保留并展示 inline interpreter 和 LOLBin 命令的完整 policy
   details，包括全部 matched rules、capabilities、risk score 和策略白名单决定。
 - 命令确认现在会把 inline interpreter payload 提取成带行号的独立审阅块，并明确标记
@@ -18,6 +21,10 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Changed
 
+- 直接回答、intent router 和规划 prompt 现在会收到简洁的 LinuxAgent 产品上下文，
+  覆盖 `/resume`、会话历史、checkpoint、learner memory 边界以及当前
+  provider/model 来源，使自身能力类问题回答更准确。
+- Slash command 帮助和补全现在共用同一个命令目录。
 - 新增 `linuxagent audit summary` 和 `linuxagent audit inspect` 只读审计诊断，
   可查看决策统计、safety 统计、hash-chain 状态和脱敏后的近期命令明细。
 - MCP runbook 摘要现在包含显式 step count 和摘要级 safety posture，同时继续

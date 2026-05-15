@@ -9,6 +9,7 @@ _TOOL_EVIDENCE_ITEMS = 3
 _READ_FILE_HEAD_EVIDENCE_ITEMS = 2
 _READ_FILE_TAIL_EVIDENCE_ITEMS = 3
 _TOOL_EVIDENCE_CHARS = 180
+_TOOL_ERROR_CHARS = 220
 
 
 def tool_event_message(event: dict[str, Any]) -> str | None:
@@ -19,10 +20,7 @@ def tool_event_message(event: dict[str, Any]) -> str | None:
     if phase == "start":
         return _tool_start_message(tool_name, args)
     if phase == "error":
-        return (
-            f"LinuxAgent 工具调用失败："
-            f"{tool_name}: {event.get('output_preview') or 'unknown error'}"
-        )
+        return _tool_error_message(tool_name, args, event)
     if phase == "end":
         return _tool_end_message(tool_name, args, event)
     return None
@@ -88,6 +86,56 @@ def _tool_start_message(tool_name: str, args: dict[str, Any]) -> str:
         suffix = f" {', '.join(str(item) for item in files)}" if files else ""
         return f"LinuxAgent 正在重新读取文件并修复 diff{suffix}"
     return f"LinuxAgent 正在调用工具 {tool_name}"
+
+
+def _tool_error_message(tool_name: str, args: dict[str, Any], event: dict[str, Any]) -> str:
+    target = _tool_target(tool_name, args)
+    reason = _human_tool_error(event.get("output_preview") or event.get("output_text"))
+    location = f" {target}" if target else ""
+    return f"LinuxAgent 工具未完成：{tool_name}{location} - {reason}"
+
+
+def _tool_target(tool_name: str, args: dict[str, Any]) -> str:
+    if tool_name == "search_files":
+        root = args.get("root") or "."
+        pattern = args.get("pattern") or ""
+        return f"{root}: {pattern}".strip()
+    target = args.get("path")
+    if isinstance(target, str) and target:
+        return target
+    return ""
+
+
+def _human_tool_error(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return "unknown error"
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return _trim_tool_error(text)
+    if not isinstance(payload, dict):
+        return _trim_tool_error(text)
+    message = payload.get("message")
+    error_type = payload.get("error_type")
+    if isinstance(message, str) and message.strip():
+        reason = message.strip()
+        if isinstance(error_type, str) and error_type and error_type not in reason:
+            reason = f"{error_type}: {reason}"
+        return _trim_tool_error(reason)
+    status = payload.get("status")
+    if isinstance(error_type, str) and error_type:
+        return _trim_tool_error(error_type)
+    if isinstance(status, str) and status:
+        return _trim_tool_error(status)
+    return _trim_tool_error(text)
+
+
+def _trim_tool_error(text: str) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= _TOOL_ERROR_CHARS:
+        return normalized
+    return normalized[: _TOOL_ERROR_CHARS - 1].rstrip() + "…"
 
 
 def _tool_end_message(tool_name: str, args: dict[str, Any], event: dict[str, Any]) -> str | None:

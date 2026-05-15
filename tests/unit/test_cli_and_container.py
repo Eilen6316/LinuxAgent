@@ -21,6 +21,7 @@ from linuxagent.config.loader import ConfigError
 from linuxagent.config.models import AppConfig
 from linuxagent.container import Container
 from linuxagent.policy.config_rules import PolicyConfigError
+from linuxagent.product_context import product_capability_context, slash_help
 from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner
 from linuxagent.services import MonitoringAlert
 
@@ -543,6 +544,7 @@ def test_container_builds_cached_runtime(
 
     def fake_build_agent_graph(deps):
         captured["tool_observer"] = deps.tool_observer
+        captured["product_context"] = deps.product_context
         return fake_graph
 
     monkeypatch.setattr(container_module, "build_agent_graph", fake_build_agent_graph)
@@ -568,6 +570,8 @@ def test_container_builds_cached_runtime(
     assert container.build_agent().graph is fake_graph
     assert container.build_agent().context_manager is container.context_manager()
     assert captured["tool_observer"] is not None
+    assert "provider=deepseek" in str(captured["product_context"])
+    assert "/resume 是 LinuxAgent 内置命令" in str(captured["product_context"])
 
 
 def test_tool_event_message_formats_workspace_tools() -> None:
@@ -578,8 +582,22 @@ def test_tool_event_message_formats_workspace_tools() -> None:
         == "LinuxAgent 正在读取文件 README.md"
     )
     assert (
-        tool_event_message({"phase": "error", "tool_name": "read_file", "output_preview": "denied"})
-        == "LinuxAgent 工具调用失败：read_file: denied"
+        tool_event_message(
+            {
+                "phase": "error",
+                "tool_name": "read_file",
+                "args": {"path": "/workspace-dir"},
+                "output_preview": json.dumps(
+                    {
+                        "status": "error",
+                        "tool": "read_file",
+                        "error_type": "denied",
+                        "message": "path is not a file: /workspace-dir",
+                    }
+                ),
+            }
+        )
+        == "LinuxAgent 工具未完成：read_file /workspace-dir - denied: path is not a file: /workspace-dir"
     )
     assert (
         tool_event_message(
@@ -658,6 +676,20 @@ def test_tool_event_message_formats_workspace_tools() -> None:
     )
 
 
+def test_product_capability_context_describes_resume_and_model_source() -> None:
+    context = product_capability_context(
+        provider="deepseek",
+        model="deepseek-chat",
+        tool_names=("read_file", "search_files"),
+    )
+
+    assert "provider=deepseek, model=deepseek-chat" in context
+    assert "/resume 是 LinuxAgent 内置命令" in context
+    assert "learner memory" in context
+    assert "read_file, search_files" in context
+    assert "/resume - 列出本机保存的会话" in slash_help()
+
+
 def test_runtime_event_message_formats_command_batch() -> None:
     assert (
         runtime_event_message({"type": "command_batch", "phase": "start", "count": 3})
@@ -667,6 +699,39 @@ def test_runtime_event_message_formats_command_batch() -> None:
         runtime_event_message({"type": "command_batch", "phase": "finish", "count": 3})
         == "LinuxAgent 并发只读命令已完成：3 条"
     )
+
+
+async def test_runtime_observer_deduplicates_repeated_activity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeUI:
+        def __init__(self) -> None:
+            self.activities: list[str] = []
+            self.raw: list[tuple[str, bool]] = []
+
+        async def print_activity(self, text: str) -> None:
+            self.activities.append(text)
+
+        async def print_raw(self, text: str, *, stderr: bool = False) -> None:
+            self.raw.append((text, stderr))
+
+    ui = _FakeUI()
+    monkeypatch.setattr(container_module.Container, "ui", lambda self: ui)
+    container = Container(AppConfig.model_validate({"telemetry": {"enabled": False}}))
+    observer = container._runtime_event_observer()
+
+    await observer({"type": "activity", "phase": "waiting_confirm"})
+    await observer({"type": "activity", "phase": "waiting_confirm"})
+    await observer({"type": "activity", "phase": "plan"})
+    await observer({"phase": "stdout", "text": "ok"})
+    await observer({"type": "activity", "phase": "plan"})
+
+    assert ui.activities == [
+        "LinuxAgent 正在等待确认",
+        "LinuxAgent 正在规划命令",
+        "LinuxAgent 正在规划命令",
+    ]
+    assert ui.raw == [("ok", False)]
 
 
 def test_container_disables_embedding_tools_for_deepseek_by_default(

@@ -8,6 +8,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Workspace tool errors now render as short operator-facing messages with the
+  tool name, target, and human-readable reason instead of raw internal JSON.
+- Runtime activity output now suppresses adjacent duplicate progress lines
+  while preserving full telemetry events.
 - Command confirmations now preserve and display full policy details for
   inline interpreter and LOLBin commands, including all matched rules,
   capabilities, risk score, and the policy whitelist decision.
@@ -21,6 +25,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Direct answers, the intent router, and planning prompts now receive concise
+  LinuxAgent product context, including `/resume`, session history,
+  checkpointing, learner memory boundaries, and the configured provider/model
+  source, so self-capability questions stay accurate.
+- Slash-command help and completion now share one command catalog.
 - `linuxagent audit summary` and `linuxagent audit inspect` now provide
   read-only audit diagnostics with decision counts, safety counts, hash-chain
   status, and redacted recent command details.

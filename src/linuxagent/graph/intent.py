@@ -80,6 +80,7 @@ class IntentNodeContext:
     tool_observer: ToolEventObserver | None
     runtime_observer: RuntimeEventObserver | None
     tool_runtime_limits: ToolRuntimeLimits
+    product_context: str
 
 
 def make_parse_intent_node(
@@ -92,6 +93,7 @@ def make_parse_intent_node(
     tool_observer: ToolEventObserver | None = None,
     runtime_observer: RuntimeEventObserver | None = None,
     tool_runtime_limits: ToolRuntimeLimits | None = None,
+    product_context: str = "",
 ) -> Node:
     context = IntentNodeContext(
         provider=provider,
@@ -106,6 +108,7 @@ def make_parse_intent_node(
         tool_observer=tool_observer,
         runtime_observer=runtime_observer,
         tool_runtime_limits=tool_runtime_limits or ToolRuntimeLimits(),
+        product_context=product_context,
     )
 
     async def parse_intent_node(state: AgentState) -> AgentState:
@@ -121,12 +124,10 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     user_text = _last_message_text(messages)
     await notify_event(context.runtime_observer, {"type": "activity", "phase": "classify"})
     intent = await _route_intent(
-        context.provider,
-        context.intent_router_prompt,
+        context,
         messages,
         user_text,
         current_trace_id,
-        context.telemetry,
     )
     if intent.mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY}:
         return _direct_response_update(current_trace_id, intent.answer)
@@ -189,6 +190,7 @@ async def _no_change_update(
                     current_trace_id,
                     retry_error,
                     context.telemetry,
+                    context.product_context,
                 )
             return _parse_error_update(current_trace_id, retry_error)
     return await _planned_outcome_update(
@@ -308,6 +310,7 @@ async def _complete_plan_candidate(
 ) -> tuple[str, str | None]:
     prompt_messages = context.planner_prompt.format_messages(
         chat_history=messages[:-1],
+        product_context=context.product_context,
         runbook_guidance=context.runbook_guidance,
         user_input=user_text,
     )
@@ -339,6 +342,7 @@ async def _plan_gate(
 ) -> DirectAnswerPlan | None:
     prompt_messages = context.planner_gate_prompt.format_messages(
         chat_history=messages[:-1],
+        product_context=context.product_context,
         user_input=user_text,
     )
     try:
@@ -434,6 +438,7 @@ async def _recover_plan_parse_error(
             current_trace_id,
             error,
             context.telemetry,
+            context.product_context,
         )
     if not context.tools:
         return _parse_error_update(current_trace_id, error)
@@ -447,24 +452,23 @@ def _should_retry_parse_error(error: str) -> bool:
 
 
 async def _route_intent(
-    provider: LLMProvider,
-    intent_router_prompt: Any,
+    context: IntentNodeContext,
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
-    telemetry: TelemetryRecorder | None,
 ) -> IntentDecision:
-    router_messages = intent_router_prompt.format_messages(
+    router_messages = context.intent_router_prompt.format_messages(
         chat_history=messages[:-1],
+        product_context=context.product_context,
         user_input=user_text,
     )
     with span(
-        telemetry,
+        context.telemetry,
         "llm.complete",
         current_trace_id,
         {"node": "parse_intent", "mode": "intent_router"},
     ):
-        raw = (await provider.complete(router_messages)).strip()
+        raw = (await context.provider.complete(router_messages)).strip()
     return _parse_intent_decision(raw)
 
 
@@ -476,9 +480,11 @@ async def _fallback_direct_answer(
     current_trace_id: str,
     planning_error: str,
     telemetry: TelemetryRecorder | None,
+    product_context: str,
 ) -> AgentState:
     prompt_messages = direct_answer_prompt.format_messages(
         chat_history=messages[:-1],
+        product_context=product_context,
         user_input=(
             f"{user_text}\n\n"
             "The previous planner produced no executable command for this user message. "
@@ -511,6 +517,7 @@ async def _retry_plan_or_error(
         messages,
         user_text,
         context.runbook_guidance,
+        context.product_context,
         current_trace_id,
         error,
         rejected_response,
@@ -529,6 +536,7 @@ async def _retry_plan_or_error(
             current_trace_id,
             retry_plan,
             context.telemetry,
+            context.product_context,
         )
     return _parse_error_update(current_trace_id, retry_plan)
 
@@ -681,6 +689,7 @@ async def _retry_command_plan(
     messages: list[BaseMessage],
     user_text: str,
     runbook_guidance: str,
+    product_context: str,
     current_trace_id: str,
     error: str,
     rejected_response: str,
@@ -695,6 +704,7 @@ async def _retry_command_plan(
             messages,
             user_text,
             runbook_guidance,
+            product_context,
             current_trace_id,
             current_error,
             current_response,
@@ -720,6 +730,7 @@ async def _complete_retry_plan(
     messages: list[BaseMessage],
     user_text: str,
     runbook_guidance: str,
+    product_context: str,
     current_trace_id: str,
     error: str,
     rejected_response: str,
@@ -728,6 +739,7 @@ async def _complete_retry_plan(
 ) -> str:
     retry_messages = prompt.format_messages(
         chat_history=messages[:-1],
+        product_context=product_context,
         runbook_guidance=runbook_guidance,
         user_input=_retry_intent_prompt(user_text, error, rejected_response, attempt),
     )

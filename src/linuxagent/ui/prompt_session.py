@@ -12,16 +12,7 @@ from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
 
-_SLASH_COMMANDS: tuple[tuple[str, str], ...] = (
-    ("/help", "Show available slash commands"),
-    ("/resume", "List saved sessions, then choose one to resume"),
-    ("/new", "Start a fresh empty-context conversation"),
-    ("/clear", "Alias for /new"),
-    ("/tools", "Show enabled local/LLM tool entry points"),
-    ("/exit", "Exit LinuxAgent"),
-    ("/quit", "Alias for /exit"),
-    ("!", "Run a shell command directly and add output to context"),
-)
+from ..product_context import SLASH_COMMANDS
 
 _DIRECT_COMMAND_PROMPT_STYLE = "ansibrightmagenta"
 
@@ -86,7 +77,9 @@ class SlashCommandCompleter:
         text = document.text_before_cursor
         if not text.startswith("/") or " " in text:
             return
-        for command, description in _SLASH_COMMANDS:
+        for item in SLASH_COMMANDS:
+            command = item.command
+            description = item.description
             if command.startswith(text):
                 yield Completion(
                     command,

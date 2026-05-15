@@ -113,7 +113,7 @@ async def test_slash_command_completer_supports_async_completion() -> None:
 
     completions = [item async for item in completer.get_completions_async(Document("/t"), object())]
 
-    assert [item.text for item in completions] == ["/tools"]
+    assert [item.text for item in completions] == ["/tools", "/trace"]
 
 
 def test_slash_command_completer_ignores_plain_text() -> None:
