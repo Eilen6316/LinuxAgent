@@ -9,6 +9,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from ..audit import AuditLog
+from ..command_review import CommandReview, command_review
 from ..execution_display import execution_display_text
 from ..intelligence import ContextManager
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult, UserInterface
@@ -93,6 +94,7 @@ class DirectCommandRunner:
     async def _confirm_if_required(self, command: str, safety: SafetyResult) -> str | bool | None:
         if safety.level is not SafetyLevel.CONFIRM:
             return None
+        review = command_review(command)
         audit_id = await self.audit.begin(
             command=command,
             safety_level=safety.level.value,
@@ -104,27 +106,7 @@ class DirectCommandRunner:
             can_whitelist=safety.can_whitelist,
         )
         response = await self.ui.handle_interrupt(
-            {
-                "command": command,
-                "goal": "Direct shell command mode",
-                "purpose": "Run command from ! prefix without an AI-generated reply",
-                "safety_level": safety.level.value,
-                "matched_rule": safety.matched_rule,
-                "matched_rules": list(safety.matched_rules),
-                "command_source": safety.command_source.value,
-                "risk_score": safety.risk_score,
-                "capabilities": list(safety.capabilities),
-                "risk_details": {
-                    "matched_rules": list(safety.matched_rules),
-                    "capabilities": list(safety.capabilities),
-                    "risk_score": safety.risk_score,
-                    "can_whitelist": safety.can_whitelist,
-                    "reason": safety.reason,
-                },
-                "risk_summary": safety.reason,
-                "is_destructive": _is_destructive(self.command_service, command),
-                "can_whitelist": safety.can_whitelist,
-            }
+            _direct_confirm_payload(self.command_service, command, safety, review)
         )
         decision = str(response.get("decision") or "no")
         await self.audit.record_decision(
@@ -222,6 +204,45 @@ def _context_output(result: ExecutionResult | None, safety: SafetyResult) -> str
 def _is_destructive(command_service: CommandService, command: str) -> bool:
     checker = getattr(command_service.executor, "is_destructive", None)
     return bool(checker(command)) if callable(checker) else False
+
+
+def _direct_confirm_payload(
+    command_service: CommandService,
+    command: str,
+    safety: SafetyResult,
+    review: CommandReview,
+) -> dict[str, Any]:
+    return {
+        "command": command,
+        "goal": "Direct shell command mode",
+        "purpose": "Run command from ! prefix without an AI-generated reply",
+        "safety_level": safety.level.value,
+        "matched_rule": safety.matched_rule,
+        "command_display": review.command_display,
+        "command_truncated": review.command_truncated,
+        "inline_payload": review.inline_payload,
+        "inline_payload_command": review.inline_payload_command,
+        "inline_payload_flag": review.inline_payload_flag,
+        "inline_payload_truncated": review.inline_payload_truncated,
+        "matched_rules": list(safety.matched_rules),
+        "command_source": safety.command_source.value,
+        "risk_score": safety.risk_score,
+        "capabilities": list(safety.capabilities),
+        "risk_details": _direct_risk_details(safety),
+        "risk_summary": safety.reason,
+        "is_destructive": _is_destructive(command_service, command),
+        "can_whitelist": safety.can_whitelist,
+    }
+
+
+def _direct_risk_details(safety: SafetyResult) -> dict[str, Any]:
+    return {
+        "matched_rules": list(safety.matched_rules),
+        "capabilities": list(safety.capabilities),
+        "risk_score": safety.risk_score,
+        "can_whitelist": safety.can_whitelist,
+        "reason": safety.reason,
+    }
 
 
 def _latency_ms(response: dict[str, Any]) -> int | None:

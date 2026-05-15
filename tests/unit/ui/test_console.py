@@ -187,6 +187,46 @@ def test_render_confirm_shows_policy_details_and_whitelist_block() -> None:
     assert "not allowed - policy requires confirmation every time" in rendered
 
 
+def test_render_confirm_shows_inline_payload_with_line_numbers() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+
+    ui._render_confirm(
+        {
+            "type": "confirm_command",
+            "command": "python3 -c 'print(1)'",
+            "safety_level": "CONFIRM",
+            "matched_rules": ["LOLBIN_PYTHON3_EXEC"],
+            "capabilities": ["interpreter.escape"],
+        }
+    )
+
+    rendered = console.export_text()
+    assert "Inline payload (python3 -c)" in rendered
+    assert "1 | print(1)" in rendered
+
+
+def test_render_confirm_marks_truncated_command_and_inline_payload() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+    payload = "print(" + repr("x" * 2000) + ")"
+
+    ui._render_confirm(
+        {
+            "type": "confirm_command",
+            "command": f"python3 -c {payload!r}",
+            "safety_level": "CONFIRM",
+            "matched_rules": ["LOLBIN_PYTHON3_EXEC"],
+            "capabilities": ["interpreter.escape"],
+        }
+    )
+
+    rendered = console.export_text()
+    assert "Command note" in rendered
+    assert "Inline note" in rendered
+    assert "truncated for review; audit keeps the full command" in rendered
+
+
 def test_render_file_patch_confirm_shows_planned_diff() -> None:
     console = Console(record=True, color_system="truecolor", width=120)
     ui = ConsoleUI(console=console)

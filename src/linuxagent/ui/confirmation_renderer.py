@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from ..command_review import command_review, numbered_lines
 from .diff_renderer import (
     DEFAULT_MAX_LINES_PER_FILE,
     DiffRenderer,
@@ -36,7 +37,7 @@ class ConfirmationRenderer:
 
     def render_command(self, payload: dict[str, Any]) -> None:
         table = self._base_table()
-        table.add_row("Command", str(payload.get("command") or ""))
+        self._add_command_rows(table, payload)
         if payload.get("runbook_id"):
             table.add_row(
                 "Runbook",
@@ -63,6 +64,19 @@ class ConfirmationRenderer:
         if payload.get("is_destructive"):
             table.add_row("Destructive", "yes - approval will not be whitelisted")
         self._console.print(self._panel(table, title="Human confirmation required"))
+
+    def _add_command_rows(self, table: Table, payload: dict[str, Any]) -> None:
+        command = str(payload.get("command") or "")
+        table.add_row("Command", _command_display(payload, command))
+        if _command_truncated(payload, command):
+            table.add_row("Command note", "truncated for review; audit keeps the full command")
+        inline_payload = _inline_payload(payload, command)
+        if inline_payload is None:
+            return
+        label = _inline_payload_label(payload)
+        table.add_row(label, numbered_lines(inline_payload))
+        if _inline_payload_truncated(payload, command):
+            table.add_row("Inline note", "truncated for review; audit keeps the full command")
 
     def render_file_patch(self, payload: dict[str, Any]) -> None:
         table = self._base_table()
@@ -254,6 +268,59 @@ def _matched_rules_summary(payload: dict[str, Any]) -> str:
     if rules:
         return "\n".join(rules)
     return str(payload.get("matched_rule") or "?")
+
+
+def _command_display(payload: dict[str, Any], command: str) -> str:
+    display = payload.get("command_display")
+    if isinstance(display, str) and display:
+        return display
+    review = command_review(command)
+    payload["_computed_command_truncated"] = review.command_truncated
+    return review.command_display
+
+
+def _inline_payload(payload: dict[str, Any], command: str) -> str | None:
+    inline_payload = payload.get("inline_payload")
+    if isinstance(inline_payload, str):
+        return inline_payload
+    review = command_review(command)
+    payload["_computed_inline_payload_command"] = review.inline_payload_command
+    payload["_computed_inline_payload_flag"] = review.inline_payload_flag
+    payload["_computed_inline_payload_truncated"] = review.inline_payload_truncated
+    return review.inline_payload
+
+
+def _inline_payload_label(payload: dict[str, Any]) -> str:
+    command = str(
+        payload.get("inline_payload_command")
+        or payload.get("_computed_inline_payload_command")
+        or "inline"
+    )
+    flag = str(
+        payload.get("inline_payload_flag") or payload.get("_computed_inline_payload_flag") or ""
+    )
+    suffix = f" {flag}" if flag else ""
+    return f"Inline payload ({command}{suffix})"
+
+
+def _inline_payload_truncated(payload: dict[str, Any], command: str) -> bool:
+    value = payload.get("inline_payload_truncated")
+    if isinstance(value, bool):
+        return value
+    computed = payload.get("_computed_inline_payload_truncated")
+    if isinstance(computed, bool):
+        return computed
+    return command_review(command).inline_payload_truncated
+
+
+def _command_truncated(payload: dict[str, Any], command: str) -> bool:
+    value = payload.get("command_truncated")
+    if isinstance(value, bool):
+        return value
+    computed = payload.get("_computed_command_truncated")
+    if isinstance(computed, bool):
+        return computed
+    return command_review(command).command_truncated
 
 
 def _high_review_required(payload: dict[str, Any]) -> bool:

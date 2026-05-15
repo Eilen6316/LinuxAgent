@@ -78,6 +78,11 @@ def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() ->
     assert "python3 -c" in body
     assert "cat /etc/os-release" in body
     assert "uname -a" in body
+    assert "long inline interpreter one-liners" in body
+    assert "Do not use" in body
+    assert "when a FilePatchPlan can represent the" in body
+    assert "same change" in body
+    assert "Short inline interpreter commands are acceptable only when they are" in body
     assert "Before calling any tool" in body
     assert "direct_answer" in body
 
@@ -111,6 +116,10 @@ def test_build_file_patch_repair_prompt_has_recovery_variables() -> None:
     assert "NoChangePlan" in str(tmpl.messages[1].prompt.template)
     assert "smallest corrected diff" in str(tmpl.messages[1].prompt.template)
     assert "return a JSON CommandPlan" in str(tmpl.messages[1].prompt.template)
+    assert "Keep that inline command as short" in str(tmpl.messages[1].prompt.template)
+    assert "can be represented as a corrected FilePatchPlan" in str(
+        tmpl.messages[1].prompt.template
+    )
 
 
 def test_build_analysis_prompt_has_result_context_variable() -> None:

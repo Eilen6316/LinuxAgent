@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from ..command_review import command_review
 from ..executors import is_destructive
 from ..interfaces import CommandSource, SafetyLevel, SafetyResult
 from ..plans import CommandPlan
@@ -22,10 +23,17 @@ def build_confirm_payload(
 ) -> dict[str, Any]:
     command = state.get("pending_command")
     safety_level = state.get("safety_level")
+    review = command_review(command or "")
     return {
         "type": "confirm_command",
         "audit_id": audit_id,
         "command": command,
+        "command_display": review.command_display,
+        "command_truncated": review.command_truncated,
+        "inline_payload": review.inline_payload,
+        "inline_payload_command": review.inline_payload_command,
+        "inline_payload_flag": review.inline_payload_flag,
+        "inline_payload_truncated": review.inline_payload_truncated,
         "safety_level": safety_level.value if safety_level else None,
         "matched_rule": state.get("matched_rule"),
         "matched_rules": list(state.get("matched_rules", ())),

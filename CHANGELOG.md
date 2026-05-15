@@ -11,6 +11,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Command confirmations now preserve and display full policy details for
   inline interpreter and LOLBin commands, including all matched rules,
   capabilities, risk score, and the policy whitelist decision.
+- Command confirmations now extract inline interpreter payloads into a
+  numbered review block and mark truncated commands or payloads explicitly,
+  so long `python3 -c` and shell `-c` requests are inspectable before approval.
 - Inline interpreter commands such as `python3 -c` and `bash -c` are no
   longer routed through inherited-stdio interactive execution. Their streamed
   output is captured in `ExecutionResult.stdout`/`stderr` and is available to
@@ -49,6 +52,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Workspace evidence previews for `read_file` now come from the same bounded
   output sent to the agent and include both the start and end of longer read
   windows, making file-edit evidence less misleading.
+- Planner and repair prompts now steer static file or script creation toward
+  `FilePatchPlan` and keep inline interpreter commands short and reviewable
+  when runtime output genuinely requires them.
 
 ## [4.1.0] - 2026-05-07
 

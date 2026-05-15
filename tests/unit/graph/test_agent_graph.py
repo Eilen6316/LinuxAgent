@@ -374,6 +374,10 @@ async def test_graph_inline_python_confirm_payload_exposes_policy_details(tmp_pa
     snapshot = await graph.aget_state(config)
     payload = snapshot.tasks[0].interrupts[0].value
     assert payload["matched_rule"] == "LLM_FIRST_RUN"
+    assert payload["inline_payload"] == "print(1)"
+    assert payload["inline_payload_command"] == "python3"
+    assert payload["inline_payload_flag"] == "-c"
+    assert payload["inline_payload_truncated"] is False
     assert "LOLBIN_PYTHON3_EXEC" in payload["matched_rules"]
     assert "interpreter.escape" in payload["capabilities"]
     assert payload["risk_score"] == 90
@@ -419,6 +423,8 @@ async def test_graph_shell_c_payload_exposes_nested_service_mutation(tmp_path) -
     snapshot = await graph.aget_state(config)
     payload = snapshot.tasks[0].interrupts[0].value
     assert payload["matched_rule"] == "DESTRUCTIVE"
+    assert payload["inline_payload"] == "systemctl restart nginx"
+    assert payload["inline_payload_command"] == "bash"
     assert "LOLBIN_SHELL_C" in payload["matched_rules"]
     assert "service.mutate" in payload["capabilities"]
     assert "interpreter.escape" in payload["capabilities"]
@@ -2016,6 +2022,22 @@ async def test_graph_retries_command_plan_with_shell_syntax(tmp_path) -> None:
     retry_prompt = str(provider.complete_messages[-1][-1].content)
     assert "argv-safe" in retry_prompt
     assert "ps aux --sort=-%cpu | head -6" in retry_prompt
+
+
+async def test_graph_retry_prompt_prefers_file_patch_over_inline_file_writes(tmp_path) -> None:
+    target = tmp_path / "hello.py"
+    bad = command_plan_json(f"python3 -c 'print(1)' > {target}")
+    good = file_patch_plan_json(str(target), "print(1)\n")
+    graph, provider = _graph(tmp_path, [bad, good])
+    config = {"configurable": {"thread_id": "inline-file-write-retry"}}
+
+    await graph.ainvoke(initial_state("create hello.py", source=CommandSource.USER), config=config)
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.tasks[0].interrupts[0].value["type"] == "confirm_file_patch"
+    retry_prompt = str(provider.complete_messages[-1][-1].content)
+    assert "FilePatchPlan" in retry_prompt
+    assert "rather than writing known file contents through python -c or shell -c" in retry_prompt
 
 
 async def test_graph_retries_tool_planning_parse_errors_into_file_patch_plan(

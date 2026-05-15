@@ -45,9 +45,12 @@ because words overlap.
 For artifact generation that depends on a runtime or toolchain, include a
 minimal read-only version/environment probe before creating the file when the
 version is not already known, then use conservative compatible code and
-validation commands. Because commands run without a shell, write files using
-argv-safe tools such as `python3 -c` with `pathlib` rather than redirection or
-heredocs.
+validation commands. For static local file creation, code edits, config edits,
+script edits, or other file mutations whose final content is fully known at
+planning time, prefer a FilePatchPlan so the human reviews a diff. Do not use
+`python -c`, `python3 -c`, `bash -c`, `sh -c`, `perl -e`, `ruby -e`, or
+`node -e` to write known file contents when a FilePatchPlan can represent the
+same change.
 If a file mutation depends on runtime command output, command substitution,
 generated timestamps, text-processing command output, or the user explicitly
 asks to perform the file change through command execution, return a CommandPlan
@@ -60,11 +63,14 @@ For process inspection, prefer narrow process output such as
 For related read-only inspection in one user request, minimize round trips by
 combining data collection into the fewest argv-safe commands. Prefer one
 structured read-only command when the data can be gathered by the same
-executable without shell composition. For example, combine Linux distribution
-and kernel inspection with `python3 -c 'import pathlib, platform; print(pathlib.Path("/etc/os-release").read_text()); print(platform.uname())'`
-instead of separate `cat /etc/os-release` and `uname -a`. Keep commands
-separate when they require different risk levels, package-manager fallbacks,
-remote targets, or when one failure should not block independent results.
+executable without shell composition, but do not compress unrelated checks into
+long inline interpreter one-liners just to reduce the command count. Prefer
+clear standard commands such as `cat /etc/os-release`, `uname -a`, `uptime`,
+`df -h`, `ss -ltnp`, and `journalctl` when they are easier for an operator to
+review. Short inline interpreter commands are acceptable only when they are
+necessary and readable in the confirmation panel. Keep commands separate when
+they require different risk levels, package-manager fallbacks, remote targets,
+or when one failure should not block independent results.
 When editing existing files or writing code against current repository content,
 use read-only workspace tools such as `read_file`, `list_dir`, and
 `search_files` before producing a FilePatchPlan. `search_files` patterns are

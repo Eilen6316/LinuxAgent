@@ -36,8 +36,11 @@ the file mutation, return a JSON CommandPlan instead of another FilePatchPlan.
 Use argv-safe commands only. For example, use `python3 -c` with `pathlib` and
 `subprocess.run(["date"], capture_output=True, text=True, check=True)` to fetch
 `date` output and update the file; do not use shell redirects, pipes, heredocs,
-command substitution, or command chaining. The CommandPlan will still go through
-policy, HITL confirmation, execution, and audit.
+command substitution, or command chaining. Keep that inline command as short
+and reviewable as possible. Do not fallback to `python -c`, `python3 -c`,
+`bash -c`, `sh -c`, `perl -e`, `ruby -e`, or `node -e` for static file content
+that can be represented as a corrected FilePatchPlan. The CommandPlan will
+still go through policy, HITL confirmation, execution, and audit.
 
 Otherwise return only a corrected JSON FilePatchPlan object. Build the new
 unified diff from the current target file snapshot in `Patch failure` or from

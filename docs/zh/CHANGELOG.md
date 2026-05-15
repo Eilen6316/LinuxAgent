@@ -10,6 +10,8 @@ LinuxAgent 的重要变更记录在这里。
 
 - 命令确认现在会保留并展示 inline interpreter 和 LOLBin 命令的完整 policy
   details，包括全部 matched rules、capabilities、risk score 和策略白名单决定。
+- 命令确认现在会把 inline interpreter payload 提取成带行号的独立审阅块，并明确标记
+  被截断的 command 或 payload，使较长的 `python3 -c` 和 shell `-c` 请求在批准前可审阅。
 - `python3 -c`、`bash -c` 等 inline interpreter 命令不再走继承 stdio 的
   interactive 执行路径。流式输出会写入 `ExecutionResult.stdout`/`stderr`，
   并进入命令结果面板和分析 prompt。
@@ -29,6 +31,8 @@ LinuxAgent 的重要变更记录在这里。
   内部的 no-change evidence 校验错误。
 - `read_file` 的 workspace evidence 预览现在来自同一份实际发给 agent 的限流输出；
   对较长读取窗口会同时展示开头和末尾，避免只显示文件头造成误导。
+- Planner 和 repair prompt 现在会引导静态文件或脚本创建优先使用 `FilePatchPlan`；
+  只有确实需要运行时输出时才保留短小、可审阅的 inline interpreter 命令。
 
 ## [4.1.0] - 2026-05-07
 

@@ -585,6 +585,25 @@ async def test_bang_command_requires_confirmation_for_confirm_policy(tmp_path) -
     assert ("ran\n", False) in ui.raw_printed
 
 
+async def test_bang_command_confirmation_includes_inline_payload(tmp_path) -> None:
+    ui = _FakeUI(inputs=["!python3 -c 'print(1)'", "/exit"])
+    command_service = _command_service(
+        safety=SafetyResult(
+            level=SafetyLevel.CONFIRM,
+            matched_rule="LOLBIN_PYTHON3_EXEC",
+            capabilities=("interpreter.escape",),
+        ),
+        result=ExecutionResult("python3 -c 'print(1)'", 0, "1\n", "", 0.1),
+    )
+    agent = _agent(tmp_path, ui=ui, command_service=command_service)
+
+    await agent.run(thread_id="cli")
+
+    assert ui.interrupts[0]["inline_payload"] == "print(1)"
+    assert ui.interrupts[0]["inline_payload_command"] == "python3"
+    assert ui.interrupts[0]["inline_payload_flag"] == "-c"
+
+
 async def test_run_turn_prefers_checkpoint_history(tmp_path) -> None:
     history_path = tmp_path / "history.json"
     chat_service = ChatService(history_path, max_messages=10)
