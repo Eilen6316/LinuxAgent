@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -59,12 +60,18 @@ class PersistentMemorySaver(MemorySaver):  # type: ignore[misc, unused-ignore]
             "writes": _dump_writes(self.writes),
             "blobs": _dump_blobs(self.blobs),
         }
-        tmp_path = self.path.with_name(f"{self.path.name}.tmp")
-        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as file:
-            json.dump(payload, file, ensure_ascii=False, separators=(",", ":"))
+        tmp_path = _write_temp_checkpoint(self.path, payload)
         os.replace(tmp_path, self.path)
         os.chmod(self.path, 0o600)
+
+
+def _write_temp_checkpoint(path: Path, payload: dict[str, Any]) -> Path:
+    fd, raw_tmp_path = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp_path = Path(raw_tmp_path)
+    os.chmod(tmp_path, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False, separators=(",", ":"))
+    return tmp_path
 
 
 def _dump_typed(value: TypedBytes) -> dict[str, str]:
