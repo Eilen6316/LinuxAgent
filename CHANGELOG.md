@@ -81,6 +81,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added optional provider-side prompt cache keys and `llm.usage` telemetry for
   cached input tokens, following Codex's cache-hit observability shape without
   caching final assistant answers locally.
+- Provider-side prompt cache keys now default on; unsupported backends are
+  retried once without the cache key and downgraded in-memory.
 - Workspace evidence previews for `read_file` now come from the same bounded
   output sent to the agent and include both the start and end of longer read
   windows, making file-edit evidence less misleading.

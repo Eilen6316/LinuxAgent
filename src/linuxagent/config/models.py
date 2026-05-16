@@ -112,7 +112,7 @@ class APIConfig(BaseModel):
     temperature: float = Field(default=0.3, ge=0, le=2)
     max_tokens: int = Field(default=2048, ge=1, le=65536)
     token_parameter: Literal["max_completion_tokens", "max_tokens"] = DEFAULT_OUTPUT_LIMIT_PARAMETER
-    prompt_cache: bool = False
+    prompt_cache: bool = True
 
     @model_validator(mode="before")
     @classmethod

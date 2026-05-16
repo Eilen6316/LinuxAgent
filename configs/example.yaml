@@ -31,10 +31,9 @@ api:
   # Token limit parameter name. Some API relays and older OpenAI-compatible
   # backends require max_tokens; newer OpenAI models use max_completion_tokens.
   token_parameter: max_completion_tokens
-  # Send a stable per-thread prompt_cache_key to compatible providers.
-  # Keep false for relays that reject unknown OpenAI parameters. Cached input
-  # token usage is still recorded when the provider reports it.
-  prompt_cache: false
+  # Send a stable per-thread prompt_cache_key. If a compatible relay rejects
+  # the parameter, LinuxAgent retries once without it and disables it in-memory.
+  prompt_cache: true
 
   # Example API relay configuration:
   # provider: openai_compatible

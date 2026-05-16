@@ -60,6 +60,7 @@ class BaseLLMProvider(LLMProvider):
         self._config = config
         self._model = chat_model
         self._last_usage: ProviderUsage | None = None
+        self._prompt_cache_supported = config.prompt_cache
 
     @property
     def config(self) -> APIConfig:
@@ -96,6 +97,7 @@ class BaseLLMProvider(LLMProvider):
         **kwargs: Any,
     ) -> str:
         kwargs = self._request_kwargs(kwargs)
+        result: BaseMessage
         try:
             result = await asyncio.wait_for(
                 self._model.ainvoke(messages, **kwargs),
@@ -105,10 +107,8 @@ class BaseLLMProvider(LLMProvider):
             raise ProviderTimeoutError(
                 f"provider request exceeded timeout ({self._config.timeout}s)"
             ) from exc
-        except ProviderError:
-            raise
         except Exception as exc:
-            raise self._map_error(exc) from exc
+            result = await self._recover_prompt_cache_error(exc, self._model, messages, kwargs)
         self._last_usage = usage_from_message(result)
         return _content_to_str(result.content)
 
@@ -152,7 +152,7 @@ class BaseLLMProvider(LLMProvider):
 
     def _request_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         request_kwargs = dict(kwargs)
-        if not self._config.prompt_cache:
+        if not self._prompt_cache_supported:
             request_kwargs.pop("prompt_cache_key", None)
         return request_kwargs
 
@@ -225,10 +225,54 @@ class BaseLLMProvider(LLMProvider):
             raise ProviderTimeoutError(
                 f"provider request exceeded timeout ({self._config.timeout}s)"
             ) from exc
-        except ProviderError:
-            raise
         except Exception as exc:
+            return await self._recover_prompt_cache_error(exc, model, messages, kwargs)
+
+    async def _recover_prompt_cache_error(
+        self,
+        exc: Exception,
+        model: Any,
+        messages: list[BaseMessage],
+        kwargs: dict[str, Any],
+    ) -> BaseMessage:
+        if not _is_prompt_cache_compat_error(exc, kwargs):
+            if isinstance(exc, ProviderError):
+                raise exc
             raise self._map_error(exc) from exc
+        retry_kwargs = dict(kwargs)
+        retry_kwargs.pop("prompt_cache_key", None)
+        self._prompt_cache_supported = False
+        logger.info("provider rejected prompt_cache_key; retrying without prompt cache")
+        try:
+            return await asyncio.wait_for(
+                model.ainvoke(messages, **retry_kwargs),
+                timeout=self._config.timeout,
+            )
+        except TimeoutError as retry_exc:
+            raise ProviderTimeoutError(
+                f"provider request exceeded timeout ({self._config.timeout}s)"
+            ) from retry_exc
+        except Exception as retry_exc:
+            raise self._map_error(retry_exc) from retry_exc
+
+
+def _is_prompt_cache_compat_error(exc: Exception, kwargs: dict[str, Any]) -> bool:
+    if "prompt_cache_key" not in kwargs:
+        return False
+    message = f"{type(exc).__name__}: {exc}".casefold()
+    if "prompt_cache_key" not in message:
+        return False
+    return any(
+        marker in message
+        for marker in (
+            "unsupported",
+            "unknown",
+            "unrecognized",
+            "unexpected",
+            "invalid parameter",
+            "not a valid parameter",
+        )
+    )
 
 
 def _content_to_str(content: Any) -> str:

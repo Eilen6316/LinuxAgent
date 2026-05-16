@@ -118,6 +118,42 @@ class _ToolCallingModel:
         return self._responses.pop(0)
 
 
+class _PromptCacheRejectingModel(_ToolCallingModel):
+    def __init__(self, responses: list[AIMessage]) -> None:
+        super().__init__(responses)
+        self.rejected_once = False
+
+    async def ainvoke(self, messages: list[BaseMessage], **kwargs: Any) -> AIMessage:
+        if "prompt_cache_key" in kwargs and not self.rejected_once:
+            self.rejected_once = True
+            self.invoke_kwargs.append(dict(kwargs))
+            raise ValueError("unknown parameter: prompt_cache_key")
+        return await super().ainvoke(messages, **kwargs)
+
+
+async def test_complete_retries_without_prompt_cache_key_when_backend_rejects_it() -> None:
+    model = _PromptCacheRejectingModel([AIMessage(content="hello")])
+    provider = BaseLLMProvider(_cfg(prompt_cache=True), model)  # type: ignore[arg-type]
+
+    out = await provider.complete([HumanMessage(content="hi")], prompt_cache_key="thread-key")
+
+    assert out == "hello"
+    assert model.invoke_kwargs[0]["prompt_cache_key"] == "thread-key"
+    assert "prompt_cache_key" not in model.invoke_kwargs[1]
+
+
+async def test_complete_disables_prompt_cache_after_backend_rejects_it() -> None:
+    model = _PromptCacheRejectingModel([AIMessage(content="first"), AIMessage(content="second")])
+    provider = BaseLLMProvider(_cfg(prompt_cache=True), model)  # type: ignore[arg-type]
+
+    first = await provider.complete([HumanMessage(content="hi")], prompt_cache_key="thread-key")
+    second = await provider.complete([HumanMessage(content="again")], prompt_cache_key="thread-key")
+
+    assert first == "first"
+    assert second == "second"
+    assert "prompt_cache_key" not in model.invoke_kwargs[2]
+
+
 async def test_complete_with_tools_resolves_tool_calls() -> None:
     @tool
     async def lookup_status(service: str) -> str:

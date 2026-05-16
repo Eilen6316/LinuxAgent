@@ -85,7 +85,9 @@ class LinuxAgent:
                 await self.cluster_service.close()
 
     async def run_turn(self, user_input: str, *, thread_id: str) -> dict[str, Any]:
-        self.ui.start_working()
+        start_working = getattr(self.ui, "start_working", None)
+        if callable(start_working):
+            start_working()
         config = graph_config(thread_id)
         self.context_manager.replace(await self._history(config))
         state: Any = initial_state(
