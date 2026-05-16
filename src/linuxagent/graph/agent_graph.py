@@ -8,6 +8,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from .file_patch_nodes import (
+    file_patch_verification_update,
     make_apply_file_patch_node,
     make_file_patch_confirm_node,
     make_repair_file_patch_node,
@@ -101,6 +102,7 @@ def _add_file_patch_nodes(graph: Any, deps: GraphDependencies) -> None:
         "apply_file_patch",
         _langgraph_node(make_apply_file_patch_node(deps.audit, deps.file_patch_config)),
     )
+    graph.add_node("file_patch_verification", _langgraph_node(file_patch_verification_update))
     graph.add_node(
         "repair_file_patch",
         _langgraph_node(
@@ -186,8 +188,13 @@ def _add_graph_edges(graph: Any, deps: GraphDependencies) -> None:
     graph.add_conditional_edges(
         "apply_file_patch",
         route_after_file_patch_apply,
-        {"REPAIR_FILE_PATCH": "repair_file_patch", "ANALYZE": "analyze"},
+        {
+            "REPAIR_FILE_PATCH": "repair_file_patch",
+            "VERIFY_FILE_PATCH": "file_patch_verification",
+            "ANALYZE": "analyze",
+        },
     )
+    graph.add_edge("file_patch_verification", "safety_check")
     graph.add_edge("analyze", "respond")
     graph.add_edge("respond", END)
     graph.add_edge("respond_block", END)

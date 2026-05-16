@@ -68,4 +68,6 @@ def make_route_after_execute(max_repair_attempts: int) -> Callable[[AgentState],
 async def route_after_file_patch_apply(state: AgentState) -> str:
     if should_repair_file_patch(state):
         return "REPAIR_FILE_PATCH"
+    if state.get("file_patch_verification_pending"):
+        return "VERIFY_FILE_PATCH"
     return "ANALYZE"

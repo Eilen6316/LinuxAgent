@@ -30,6 +30,7 @@ class AgentState(TypedDict, total=False):
     pending_command: str | None
     command_plan: CommandPlan | None
     file_patch_plan: FilePatchPlan | None
+    file_patch_verification_pending: bool
     file_patch_request_intent: Literal["create", "update", "unknown"]
     file_patch_repair_attempts: int
     file_patch_max_repair_attempts: int
@@ -86,42 +87,61 @@ def initial_state(
         messages=[*prior_messages, HumanMessage(content=user_input)],
         trace_id=None,
         prompt_cache_key=_prompt_cache_key(thread_id),
-        pending_command=None,
-        command_plan=None,
-        file_patch_plan=None,
-        file_patch_request_intent="unknown",
-        file_patch_repair_attempts=0,
-        file_patch_max_repair_attempts=2,
-        command_repair_attempts=0,
-        command_max_repair_attempts=2,
-        file_patch_selected_files=(),
-        selected_runbook=None,
-        runbook_step_index=0,
-        runbook_results=(),
-        plan_result_start_index=0,
-        plan_error=None,
-        command_source=source,
-        selected_hosts=(),
-        direct_response=False,
-        safety_level=None,
-        matched_rule=None,
-        matched_rules=(),
-        safety_reason=None,
-        safety_risk_score=0,
-        safety_capabilities=(),
-        safety_can_whitelist=True,
-        command_permissions=command_permissions,
-        sandbox_preview=None,
-        batch_hosts=(),
-        remote_profiles=(),
-        remote_preflight_commands=(),
-        user_confirmed=False,
-        execution_result=None,
-        execution_results_visible=False,
-        background_job_id=None,
-        skip_command_repair=False,
-        audit_id=None,
+        **_initial_planning_state(source),
+        **_initial_safety_state(command_permissions),
+        **_initial_execution_state(),
     )
+
+
+def _initial_planning_state(source: CommandSource) -> AgentState:
+    return {
+        "pending_command": None,
+        "command_plan": None,
+        "file_patch_plan": None,
+        "file_patch_verification_pending": False,
+        "file_patch_request_intent": "unknown",
+        "file_patch_repair_attempts": 0,
+        "file_patch_max_repair_attempts": 2,
+        "command_repair_attempts": 0,
+        "command_max_repair_attempts": 2,
+        "file_patch_selected_files": (),
+        "selected_runbook": None,
+        "runbook_step_index": 0,
+        "runbook_results": (),
+        "plan_result_start_index": 0,
+        "plan_error": None,
+        "command_source": source,
+        "selected_hosts": (),
+        "direct_response": False,
+    }
+
+
+def _initial_safety_state(command_permissions: tuple[str, ...]) -> AgentState:
+    return {
+        "safety_level": None,
+        "matched_rule": None,
+        "matched_rules": (),
+        "safety_reason": None,
+        "safety_risk_score": 0,
+        "safety_capabilities": (),
+        "safety_can_whitelist": True,
+        "command_permissions": command_permissions,
+        "sandbox_preview": None,
+        "batch_hosts": (),
+        "remote_profiles": (),
+        "remote_preflight_commands": (),
+    }
+
+
+def _initial_execution_state() -> AgentState:
+    return {
+        "user_confirmed": False,
+        "execution_result": None,
+        "execution_results_visible": False,
+        "background_job_id": None,
+        "skip_command_repair": False,
+        "audit_id": None,
+    }
 
 
 def prompt_cache_key_for_thread(thread_id: str) -> str:

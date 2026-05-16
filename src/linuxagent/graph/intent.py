@@ -749,6 +749,7 @@ def _file_patch_update(current_trace_id: str, user_text: str, plan: FilePatchPla
         "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
         "command_plan": None,
         "file_patch_plan": plan,
+        "file_patch_verification_pending": False,
         "file_patch_request_intent": plan.request_intent,
         "file_patch_repair_attempts": 0,
         "file_patch_selected_files": (),
