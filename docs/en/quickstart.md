@@ -64,7 +64,7 @@ conversation context:
 ```
 
 Use `/resume` to reopen a saved thread, `/new` to reset the current
-conversation, and `/jobs` to inspect approved long-running background jobs.
+conversation, and `/job` to inspect approved long-running background jobs.
 
 ## Configuration Notes
 

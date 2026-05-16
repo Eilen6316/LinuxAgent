@@ -451,9 +451,10 @@ menu:
 | `/resume` | Choose a locally saved session with arrow keys / mouse, or enter a number in non-interactive fallbacks; pending HITL confirmations resume immediately |
 | `/new` or `/clear` | Start a fresh empty-context conversation in the same CLI |
 | `/tools` | Show slash/tool entry points currently available |
-| `/jobs` | List in-process background jobs started by approved long-running plans |
+| `/job` | List background jobs started by approved long-running plans |
 | `/job <job_id>` | Show one background job's status, output tail, and artifact paths |
-| `/stop <job_id>` | Request cancellation for a background job |
+| `/job follow <job_id>` | Follow one background job's updates in the current CLI |
+| `/job stop <job_id>` | Request cancellation for a background job |
 | `/help` | Show slash command help |
 | `/exit` or `/quit` | Exit the CLI |
 

@@ -51,6 +51,8 @@ def runtime_event_message(event: dict[str, Any]) -> str | None:
         return _command_event_message(phase, event)
     if event_type == "command_batch":
         return _command_batch_event_message(phase, event)
+    if event_type == "background_job":
+        return _background_job_event_message(phase, event)
     if event_type == "activity":
         return _activity_event_message(phase)
     return None
@@ -71,6 +73,16 @@ def _command_batch_event_message(phase: str, event: dict[str, Any]) -> str | Non
         return f"LinuxAgent 正在并发执行 {count} 条只读命令"
     if phase == "finish":
         return f"LinuxAgent 并发只读命令已完成：{count} 条"
+    return None
+
+
+def _background_job_event_message(phase: str, event: dict[str, Any]) -> str | None:
+    job_id = str(event.get("job_id") or "")
+    status = str(event.get("status") or "")
+    if phase == "start":
+        return f"LinuxAgent 后台任务已启动：{job_id}"
+    if phase == "finish":
+        return f"LinuxAgent 后台任务结束：{job_id}（{status}）"
     return None
 
 

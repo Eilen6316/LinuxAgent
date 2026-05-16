@@ -128,10 +128,10 @@ Use `background` only for bounded long-running operations where the operator
 should keep chatting while the command runs, such as timed monitoring, sampling,
 or report generation. Set `timeout_seconds` to the expected upper bound plus a
 small buffer when duration is known. Do not use background execution for
-unbounded daemons, interactive terminal programs, commands that require live
-stdin, or commands whose next plan step depends on immediate stdout. The command
-still goes through policy, HITL, sandbox execution, audit, and telemetry before
-the background job starts.
+remote `target_hosts`, unbounded daemons, interactive terminal programs,
+commands that require live stdin, or commands whose next plan step depends on
+immediate stdout. The command still goes through policy, HITL, sandbox
+execution, audit, and telemetry before the background job starts.
 For multi-part requests, the commands array must cover every requested outcome
 before the turn can be considered complete. Do not stop at package download or
 installation when the user also asked for configuration, password changes,

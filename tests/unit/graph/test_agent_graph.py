@@ -177,7 +177,7 @@ class _FakeBackgroundJobs:
     def __init__(self) -> None:
         self.started: list[dict[str, Any]] = []
 
-    def start(
+    async def start(
         self,
         command: str,
         *,
@@ -445,6 +445,31 @@ async def test_graph_starts_background_command_after_confirmation(tmp_path) -> N
     answer = str(result["messages"][-1].content)
     assert "后台任务已启动：job-test" in answer
     assert "/job job-test" in answer
+    assert "/job stop job-test" in answer
+
+
+async def test_graph_rejects_remote_background_command_after_confirmation(tmp_path) -> None:
+    payload = json.loads(_command_plan_json_with_hosts("/bin/sleep 5", ["web-1"]))
+    payload["commands"][0]["background"] = True
+    cfg = ClusterConfig(
+        hosts=(ClusterHost(name="web-1", hostname="web-1.example", username="ops"),)
+    )
+    jobs = _FakeBackgroundJobs()
+    graph, _provider = _graph(
+        tmp_path,
+        [json.dumps(payload), "analysis ok"],
+        cluster_service=ClusterService(cfg, _FakeSSH()),  # type: ignore[arg-type]
+        background_jobs=jobs,
+    )
+    config = {"configurable": {"thread_id": "remote-bg"}}
+
+    await graph.ainvoke(initial_state("monitor remote", source=CommandSource.USER), config=config)
+    result = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+
+    assert jobs.started == []
+    assert "background jobs do not support remote targets" in str(result["messages"][-1].content)
 
 
 async def test_graph_inline_python_confirm_payload_exposes_policy_details(tmp_path) -> None:

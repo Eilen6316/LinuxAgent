@@ -387,8 +387,16 @@ async def _start_background_command(
         await _record_command_execution(audit, state, result, current_trace_id)
         await notify_command_result(runtime_observer, current_trace_id, result)
         return _single_command_update(state, result, runtime_observer, current_trace_id)
+    if state.get("selected_hosts") or state.get("batch_hosts"):
+        result = synthetic_result(command, 1, "", "background jobs do not support remote targets")
+        await _record_command_execution(audit, state, result, current_trace_id)
+        await notify_command_result(runtime_observer, current_trace_id, result)
+        return {
+            **_single_command_update(state, result, runtime_observer, current_trace_id),
+            "skip_command_repair": True,
+        }
     step = _current_plan_step(state)
-    snapshot = background_jobs.start(
+    snapshot = await background_jobs.start(
         command,
         goal=_background_goal(state, command),
         timeout_seconds=step.timeout_seconds if step is not None else None,
@@ -657,20 +665,9 @@ def make_analyze_result_node(
         result = state.get("execution_result")
         if result is None:
             return {"messages": [AIMessage(content="没有执行结果可分析。")]}
-        background_job_id = state.get("background_job_id")
-        if background_job_id:
-            return {
-                "trace_id": current_trace_id,
-                "messages": [
-                    AIMessage(
-                        content=(
-                            f"后台任务已启动：{background_job_id}\n"
-                            f"使用 `/job {background_job_id}` 查看进度和输出，"
-                            f"使用 `/stop {background_job_id}` 停止。"
-                        )
-                    )
-                ],
-            }
+        deterministic = _deterministic_analysis_response(state, result, current_trace_id)
+        if deterministic is not None:
+            return deterministic
         result_context = analysis_context(state, result)
         prompt_messages = prompt.format_messages(result_context=result_context)
         try:
@@ -694,3 +691,29 @@ def make_analyze_result_node(
         }
 
     return analyze_result_node
+
+
+def _deterministic_analysis_response(
+    state: AgentState, result: ExecutionResult, current_trace_id: str
+) -> AgentState | None:
+    if state.get("skip_command_repair") and result.exit_code != 0:
+        reason = result.stderr.strip() or result.stdout.strip() or "command failed"
+        return {
+            "trace_id": current_trace_id,
+            "messages": [AIMessage(content=f"已阻止执行：{reason}")],
+        }
+    background_job_id = state.get("background_job_id")
+    if not background_job_id:
+        return None
+    return {
+        "trace_id": current_trace_id,
+        "messages": [
+            AIMessage(
+                content=(
+                    f"后台任务已启动：{background_job_id}\n"
+                    f"使用 `/job {background_job_id}` 查看进度和输出，"
+                    f"使用 `/job stop {background_job_id}` 停止。"
+                )
+            )
+        ],
+    }

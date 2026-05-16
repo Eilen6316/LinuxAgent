@@ -61,6 +61,11 @@ class _FakeBackgroundJobs:
         self.stopped.append(job_id)
         return self.get(job_id)
 
+    async def watch(self, job_id: str):
+        item = self.get(job_id)
+        if item is not None:
+            yield item
+
     async def stop_all(self) -> None:
         self.stopped_all = True
 
@@ -414,7 +419,7 @@ async def test_trace_slash_command_toggles_activity_output(tmp_path) -> None:
 
 async def test_jobs_slash_command_lists_background_jobs(tmp_path) -> None:
     jobs = _FakeBackgroundJobs((_job_snapshot(),))
-    ui = _FakeUI(inputs=["/jobs", "/exit"])
+    ui = _FakeUI(inputs=["/job", "/exit"])
     agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui, background_jobs=jobs)
 
     await agent.run(thread_id="cli")
@@ -438,13 +443,23 @@ async def test_job_slash_command_shows_job_details(tmp_path) -> None:
 
 async def test_stop_slash_command_stops_background_job(tmp_path) -> None:
     jobs = _FakeBackgroundJobs((_job_snapshot(),))
-    ui = _FakeUI(inputs=["/stop job-test", "/exit"])
+    ui = _FakeUI(inputs=["/job stop job-test", "/exit"])
     agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui, background_jobs=jobs)
 
     await agent.run(thread_id="cli")
 
     assert jobs.stopped == ["job-test"]
     assert "已请求停止后台任务：job-test" in "\n".join(ui.printed)
+
+
+async def test_job_follow_slash_command_streams_job_updates(tmp_path) -> None:
+    jobs = _FakeBackgroundJobs((_job_snapshot(),))
+    ui = _FakeUI(inputs=["/job follow job-test", "/exit"])
+    agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui, background_jobs=jobs)
+
+    await agent.run(thread_id="cli")
+
+    assert "后台任务 `job-test`" in "\n".join(ui.printed)
 
 
 async def test_resume_switches_to_saved_session_context(tmp_path) -> None:

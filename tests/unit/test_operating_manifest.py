@@ -34,6 +34,6 @@ def test_operating_manifest_usage_section_describes_background_jobs() -> None:
     context = operating_manifest_context(section_names=("usage",))
 
     assert "# usage" in context
-    assert "/jobs" in context
     assert "/job <job_id>" in context
-    assert "/stop <job_id>" in context
+    assert "/job follow <job_id>" in context
+    assert "/job stop <job_id>" in context

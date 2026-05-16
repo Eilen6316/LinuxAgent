@@ -158,6 +158,8 @@ def should_repair_plan(
     plan = state.get("command_plan")
     if plan is None:
         return False
+    if state.get("skip_command_repair"):
+        return False
     attempts = state.get("command_repair_attempts", 0)
     if attempts >= max_repair_attempts:
         return False

@@ -784,8 +784,7 @@ def test_product_capability_context_describes_resume_and_model_source() -> None:
     assert "learner memory" in context
     assert "read_file, search_files" in context
     assert "/resume - 列出本机保存的会话" in slash_help()
-    assert "/jobs - 列出当前进程内正在运行或已完成的后台任务" in slash_help()
-    assert "/job - 查看指定后台任务；用法：/job <job_id>" in slash_help()
+    assert "/job - 列出/查看/跟随/停止后台任务" in slash_help()
 
 
 def test_runtime_event_message_formats_command_batch() -> None:
@@ -796,6 +795,24 @@ def test_runtime_event_message_formats_command_batch() -> None:
     assert (
         runtime_event_message({"type": "command_batch", "phase": "finish", "count": 3})
         == "LinuxAgent 并发只读命令已完成：3 条"
+    )
+
+
+def test_runtime_event_message_formats_background_job() -> None:
+    assert (
+        runtime_event_message({"type": "background_job", "phase": "start", "job_id": "job-1"})
+        == "LinuxAgent 后台任务已启动：job-1"
+    )
+    assert (
+        runtime_event_message(
+            {
+                "type": "background_job",
+                "phase": "finish",
+                "job_id": "job-1",
+                "status": "succeeded",
+            }
+        )
+        == "LinuxAgent 后台任务结束：job-1（succeeded）"
     )
 
 

@@ -9,29 +9,51 @@ from ..services import BackgroundJobService, BackgroundJobSnapshot
 async def handle_jobs_command(
     ui: UserInterface,
     jobs: BackgroundJobService | None,
-    command: str,
     arg: str,
 ) -> None:
     if jobs is None:
         await ui.print("当前运行时未启用后台任务服务。")
         return
-    if command == "/jobs":
+    parts = arg.split()
+    if not parts:
         await ui.print(render_jobs(jobs.list()))
         return
-    if command == "/job":
-        await ui.print(render_job(jobs.get(arg.strip())) if arg.strip() else "用法：/job <job_id>")
+    action = parts[0]
+    if action == "stop":
+        await _stop_job(ui, jobs, parts[1:])
         return
-    if command == "/stop":
-        job_id = arg.strip()
-        if not job_id:
-            await ui.print("用法：/stop <job_id>")
-            return
-        await ui.print(render_stopped_job(await jobs.stop(job_id)))
+    if action == "follow":
+        await _follow_job(ui, jobs, parts[1:])
+        return
+    await ui.print(render_job(jobs.get(action)))
+
+
+async def _stop_job(ui: UserInterface, jobs: BackgroundJobService, args: list[str]) -> None:
+    if not args:
+        await ui.print("用法：/job stop <job_id>")
+        return
+    await ui.print(render_stopped_job(await jobs.stop(args[0])))
+
+
+async def _follow_job(ui: UserInterface, jobs: BackgroundJobService, args: list[str]) -> None:
+    if not args:
+        await ui.print("用法：/job follow <job_id>")
+        return
+    found = False
+    last_text = ""
+    async for snapshot in jobs.watch(args[0]):
+        found = True
+        text = render_job(snapshot)
+        if text != last_text:
+            await ui.print(text)
+            last_text = text
+    if not found:
+        await ui.print("后台任务不存在。")
 
 
 def render_jobs(items: tuple[BackgroundJobSnapshot, ...]) -> str:
     if not items:
-        return "当前没有后台任务。"
+        return "当前没有后台任务。用法：/job <job_id>、/job follow <job_id>、/job stop <job_id>"
     lines = ["后台任务：", "```text", "ID                         STATUS     AGE      GOAL"]
     lines.extend(_job_line(item) for item in items)
     lines.append("```")

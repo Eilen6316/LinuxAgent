@@ -285,7 +285,7 @@ async def test_background_job_service_runs_and_captures_output() -> None:
     service = BackgroundJobService(CommandService(executor))  # type: ignore[arg-type]
     report_path = Path(tempfile.gettempdir()) / "report.png"
 
-    snapshot = service.start(f"/bin/echo {report_path}", goal="write report")
+    snapshot = await service.start(f"/bin/echo {report_path}", goal="write report")
     await executor.started.wait()
     await asyncio.sleep(0)
     finished = service.get(snapshot.job_id)
@@ -300,12 +300,71 @@ async def test_background_job_service_stops_running_job() -> None:
     executor = _StreamingExecutor()
     service = BackgroundJobService(CommandService(executor))  # type: ignore[arg-type]
 
-    snapshot = service.start("sleep", goal="long task", timeout_seconds=30)
+    snapshot = await service.start("sleep", goal="long task", timeout_seconds=30)
     await executor.started.wait()
     stopped = await service.stop(snapshot.job_id)
 
     assert stopped is not None
     assert stopped.status is JobStatus.STOPPED
+
+
+async def test_background_job_service_persists_finished_jobs(tmp_path) -> None:
+    executor = _StreamingExecutor()
+    path = tmp_path / "jobs.json"
+    events: list[dict[str, object]] = []
+    service = BackgroundJobService(
+        CommandService(executor),  # type: ignore[arg-type]
+        path=path,
+        event_observer=lambda event: events.append(event),
+    )
+
+    snapshot = await service.start("/bin/echo ok", goal="persist")
+    await executor.started.wait()
+    await asyncio.sleep(0)
+    loaded = BackgroundJobService(CommandService(executor), path=path)  # type: ignore[arg-type]
+
+    restored = loaded.get(snapshot.job_id)
+    assert restored is not None
+    assert restored.status is JobStatus.SUCCEEDED
+    assert restored.stdout == "sample\n"
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert [event["phase"] for event in events] == ["start", "finish"]
+
+
+def test_background_job_service_marks_loaded_running_jobs_stopped(tmp_path) -> None:
+    path = tmp_path / "jobs.json"
+    now = datetime.now(UTC).isoformat()
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "jobs": [
+                    {
+                        "job_id": "job-running",
+                        "command": "sleep",
+                        "goal": "old",
+                        "status": "running",
+                        "created_at": now,
+                        "started_at": now,
+                        "finished_at": None,
+                        "timeout_seconds": 30,
+                        "stdout": "",
+                        "stderr": "",
+                        "exit_code": None,
+                        "artifact_paths": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    service = BackgroundJobService(CommandService(_StreamingExecutor()), path=path)  # type: ignore[arg-type]
+    restored = service.get("job-running")
+
+    assert restored is not None
+    assert restored.status is JobStatus.STOPPED
+    assert "restarted" in restored.stderr
 
 
 async def test_run_checked_blocks_blocked_commands() -> None:

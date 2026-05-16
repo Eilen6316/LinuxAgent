@@ -144,7 +144,11 @@ class Container:
     def background_jobs(self) -> BackgroundJobService:
         return self._cached(
             "background_jobs",
-            lambda: BackgroundJobService(self.command_service()),
+            lambda: BackgroundJobService(
+                self.command_service(),
+                path=self._config.ui.history_path.with_name("jobs.json"),
+                event_observer=self._runtime_event_observer(),
+            ),
         )
 
     def context_manager(self) -> ContextManager:
