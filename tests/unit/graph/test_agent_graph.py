@@ -2160,6 +2160,26 @@ async def test_graph_retries_command_plan_with_shell_syntax(tmp_path) -> None:
     assert "ps aux --sort=-%cpu | head -6" in retry_prompt
 
 
+async def test_graph_falls_back_after_repeated_argv_unsafe_plan(tmp_path) -> None:
+    bad = command_plan_json("ls -la /tmp/*.sh /tmp/*.py 2>&1")
+    graph, provider = _graph(tmp_path, [bad, bad, bad])
+    config = {"configurable": {"thread_id": "argv-unsafe-retry-exhausted"}}
+
+    result = await graph.ainvoke(
+        initial_state("查看 /tmp 下有啥脚本", source=CommandSource.USER), config=config
+    )
+
+    output = str(result["messages"][-1].content)
+    assert "已阻止执行" in output
+    assert "argv-safe" in output
+    assert "不支持管道、重定向" in output
+    assert "invalid CommandPlan" not in output
+    assert "Pydantic" not in output
+    assert "Tuple should have at least" not in output
+    assert provider.tool_calls == 0
+    assert len(provider.complete_messages) == 5
+
+
 async def test_graph_retry_prompt_prefers_file_patch_over_inline_file_writes(tmp_path) -> None:
     target = tmp_path / "hello.py"
     bad = command_plan_json(f"python3 -c 'print(1)' > {target}")

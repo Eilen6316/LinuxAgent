@@ -571,7 +571,8 @@ async def _fallback_direct_answer(
             "The previous planner produced no executable command for this user message. "
             f"Planning validation error: {planning_error}. "
             "Answer conversationally in the user's language or ask one concise clarifying "
-            "question. Do not produce a command or JSON."
+            "question. Do not produce a command or JSON. Do not quote internal schema, "
+            "Pydantic, validation, or parser details back to the user."
         ),
     )
     answer = (
@@ -610,8 +611,6 @@ async def _retry_plan_or_error(
     )
     if isinstance(retry_plan, CommandPlan | DirectAnswerPlan | FilePatchPlan | NoChangePlan):
         return retry_plan
-    if _should_retry_parse_error(error) and not _should_retry_parse_error(retry_plan):
-        return _parse_error_update(current_trace_id, str(error))
     if _should_fallback_to_direct_answer(retry_plan):
         return await _fallback_direct_answer(
             context.provider,
@@ -624,6 +623,8 @@ async def _retry_plan_or_error(
             context.product_context,
             context.prompt_cache_key,
         )
+    if _should_retry_parse_error(error):
+        return _parse_error_update(current_trace_id, _argv_retry_exhausted_error())
     return _parse_error_update(current_trace_id, retry_plan)
 
 
@@ -631,6 +632,14 @@ def _should_fallback_to_direct_answer(error: Exception | str) -> bool:
     if isinstance(error, CommandPlanParseError):
         return error.code is PlanParseErrorCode.EMPTY_COMMANDS
     return error == PlanParseErrorCode.EMPTY_COMMANDS.value
+
+
+def _argv_retry_exhausted_error() -> str:
+    return (
+        "规划器连续生成了非 argv-safe 的命令。LinuxAgent 以 argv 方式执行命令，"
+        "不支持管道、重定向、命令替换、命令串联或 shell 通配符；请换成可直接"
+        "作为 argv 执行的命令或更明确的文件匹配条件。"
+    )
 
 
 def _parse_intent_decision(raw: str) -> IntentDecision:
@@ -773,7 +782,11 @@ def _retry_intent_prompt(user_text: str, error: str, rejected_response: str, att
         "inspection or mutation, return a DirectAnswerPlan JSON object. If current "
         "file content already satisfies the request, return a NoChangePlan JSON object "
         "with evidence copied exactly from read_file output. Otherwise return a "
-        "CommandPlan JSON object. Output exactly one valid JSON object and nothing else."
+        "CommandPlan JSON object. Commands are executed as argv without a shell; do not "
+        "use pipes, redirects, command substitution, chaining, environment assignment "
+        "prefixes, or shell-only glob expansion. For filename pattern matching, use a "
+        "short pathlib-based `python3 -c` command or another executable that accepts "
+        "the pattern as argv. Output exactly one valid JSON object and nothing else."
     )
 
 
