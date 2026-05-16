@@ -81,6 +81,10 @@ def _add_subcommands(parser: argparse.ArgumentParser) -> None:
         "mcp",
         help="Run the read-only stdio MCP server.",
     )
+    subparsers.add_parser(
+        "job-daemon",
+        help="Run the local background job supervisor.",
+    )
     audit_parser = subparsers.add_parser(
         "audit",
         help="Audit log utilities.",
@@ -314,10 +318,31 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
     return serve_stdio(server)
 
 
+def _cmd_job_daemon(args: argparse.Namespace) -> int:
+    try:
+        cfg = load_config(cli_path=args.config)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    level: int | str = _verbose_to_level(args.verbose) if args.verbose > 0 else cfg.logging.level
+    configure_logging(level=level, fmt=cfg.logging.format)
+    configure_dependency_logging(quiet=args.verbose == 0)
+    container = Container(cfg)
+    try:
+        asyncio.run(container.build_job_daemon().serve_forever())
+    except KeyboardInterrupt:
+        return 0
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 _COMMANDS = {
     "audit": _cmd_audit,
     "check": _cmd_check,
     "chat": _cmd_chat,
+    "job-daemon": _cmd_job_daemon,
     "mcp": _cmd_mcp,
 }
 

@@ -991,6 +991,29 @@ def test_chat_command_reports_config_error(
     assert "error: boom" in captured.err
 
 
+def test_job_daemon_command_runs_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeDaemon:
+        async def serve_forever(self) -> None:
+            return None
+
+    class _FakeContainer:
+        def __init__(self, config: SimpleNamespace) -> None:
+            del config
+
+        def build_job_daemon(self) -> _FakeDaemon:
+            return _FakeDaemon()
+
+    cfg = SimpleNamespace(logging=SimpleNamespace(level="WARNING", format="console"))
+    monkeypatch.setattr(cli, "load_config", lambda cli_path=None: cfg)
+    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "configure_dependency_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "Container", _FakeContainer)
+
+    assert cli.main(["job-daemon"]) == 0
+
+
 def test_module_entrypoint_raises_system_exit_with_main_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

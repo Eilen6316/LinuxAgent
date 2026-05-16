@@ -107,6 +107,9 @@ monitoring:
   memory_threshold: 90.0
   disk_threshold: 90.0
 
+jobs:
+  daemon_enabled: true
+
 telemetry:
   enabled: true
   exporter: local  # local | none | console | otlp

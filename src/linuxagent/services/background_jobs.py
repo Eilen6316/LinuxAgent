@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from inspect import isawaitable
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any, Protocol, TypeAlias
 from uuid import uuid4
 
 from ..interfaces import ExecutionResult, StreamingCommandRunner
@@ -53,6 +53,33 @@ class BackgroundJobSnapshot:
     def duration_seconds(self) -> float:
         end = self.finished_at or datetime.now(UTC)
         return max(0.0, (end - self.started_at).total_seconds())
+
+
+class BackgroundJobController(Protocol):
+    async def start(
+        self,
+        command: str,
+        *,
+        goal: str,
+        timeout_seconds: float | None = None,
+        artifact_paths: tuple[str, ...] = (),
+    ) -> BackgroundJobSnapshot:
+        """Start a background job and return its initial snapshot."""
+
+    def list(self) -> tuple[BackgroundJobSnapshot, ...]:
+        """Return known background jobs."""
+
+    def get(self, job_id: str) -> BackgroundJobSnapshot | None:
+        """Return one background job snapshot."""
+
+    async def stop(self, job_id: str) -> BackgroundJobSnapshot | None:
+        """Request cancellation for one background job."""
+
+    def watch(self, job_id: str) -> AsyncIterator[BackgroundJobSnapshot]:
+        """Yield snapshots while one job changes."""
+
+    async def stop_all(self) -> None:
+        """Stop process-owned running jobs during shutdown."""
 
 
 @dataclass
@@ -250,6 +277,10 @@ def _sort_key(job: _BackgroundJob) -> tuple[bool, float]:
     return (job.status is not JobStatus.RUNNING, -job.started_at.timestamp())
 
 
+def _snapshot_sort_key(item: BackgroundJobSnapshot) -> tuple[bool, float]:
+    return (item.status is not JobStatus.RUNNING, -item.started_at.timestamp())
+
+
 def _new_job_id() -> str:
     return f"job-{time.strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:6]}"
 
@@ -289,7 +320,7 @@ def _event_payload(phase: str, job: _BackgroundJob) -> dict[str, Any]:
 def _persist_jobs(path: Path, snapshots: tuple[BackgroundJobSnapshot, ...]) -> None:
     payload = {
         "version": JOBS_STORE_VERSION,
-        "jobs": [_snapshot_to_record(item) for item in snapshots],
+        "jobs": [snapshot_to_record(item) for item in snapshots],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f"{path.name}.tmp")
@@ -313,6 +344,24 @@ def _load_jobs(path: Path | None) -> tuple[dict[str, _BackgroundJob], bool]:
     if not isinstance(records, list):
         return {}, False
     return _loaded_jobs_from_records(records)
+
+
+def load_job_snapshots(path: Path) -> tuple[BackgroundJobSnapshot, ...]:
+    if not path.exists():
+        return ()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ()
+    records = raw.get("jobs") if isinstance(raw, dict) else None
+    if not isinstance(records, list):
+        return ()
+    snapshots = [
+        snapshot
+        for record in records
+        if isinstance(record, dict) and (snapshot := snapshot_from_record(record))
+    ]
+    return tuple(sorted(snapshots, key=_snapshot_sort_key))
 
 
 def _loaded_jobs_from_records(records: list[Any]) -> tuple[dict[str, _BackgroundJob], bool]:
@@ -359,7 +408,7 @@ def _mark_loaded_running_job(job: _BackgroundJob) -> tuple[_BackgroundJob, bool]
     return job, True
 
 
-def _snapshot_to_record(item: BackgroundJobSnapshot) -> dict[str, Any]:
+def snapshot_to_record(item: BackgroundJobSnapshot) -> dict[str, Any]:
     return {
         "job_id": item.job_id,
         "command": item.command,
@@ -374,6 +423,26 @@ def _snapshot_to_record(item: BackgroundJobSnapshot) -> dict[str, Any]:
         "exit_code": item.exit_code,
         "artifact_paths": list(item.artifact_paths),
     }
+
+
+def snapshot_from_record(record: dict[str, Any]) -> BackgroundJobSnapshot | None:
+    try:
+        return BackgroundJobSnapshot(
+            job_id=str(record["job_id"]),
+            command=str(record["command"]),
+            goal=str(record.get("goal") or record["command"]),
+            status=JobStatus(str(record.get("status") or "failed")),
+            created_at=_parse_datetime(record.get("created_at")),
+            started_at=_parse_datetime(record.get("started_at")),
+            finished_at=_parse_optional_datetime(record.get("finished_at")),
+            timeout_seconds=float(record.get("timeout_seconds") or DEFAULT_JOB_TIMEOUT_SECONDS),
+            stdout=str(record.get("stdout") or ""),
+            stderr=str(record.get("stderr") or ""),
+            exit_code=_optional_int(record.get("exit_code")),
+            artifact_paths=tuple(str(item) for item in record.get("artifact_paths") or ()),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _parse_datetime(value: Any) -> datetime:

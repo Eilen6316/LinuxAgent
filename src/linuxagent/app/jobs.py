@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from ..interfaces import UserInterface
-from ..services import BackgroundJobService, BackgroundJobSnapshot
+from ..services import BackgroundJobController, BackgroundJobSnapshot, JobDaemonError
 
 
 async def handle_jobs_command(
     ui: UserInterface,
-    jobs: BackgroundJobService | None,
+    jobs: BackgroundJobController | None,
     arg: str,
 ) -> None:
     if jobs is None:
@@ -16,7 +16,7 @@ async def handle_jobs_command(
         return
     parts = arg.split()
     if not parts:
-        await ui.print(render_jobs(jobs.list()))
+        await _print_jobs(ui, jobs)
         return
     action = parts[0]
     if action == "stop":
@@ -25,28 +25,56 @@ async def handle_jobs_command(
     if action == "follow":
         await _follow_job(ui, jobs, parts[1:])
         return
-    await ui.print(render_job(jobs.get(action)))
+    await _print_job(ui, jobs, action)
 
 
-async def _stop_job(ui: UserInterface, jobs: BackgroundJobService, args: list[str]) -> None:
+async def _print_jobs(ui: UserInterface, jobs: BackgroundJobController) -> None:
+    try:
+        await ui.print(render_jobs(jobs.list()))
+    except JobDaemonError as exc:
+        await ui.print(_job_service_error(exc))
+
+
+async def _print_job(ui: UserInterface, jobs: BackgroundJobController, job_id: str) -> None:
+    try:
+        await ui.print(render_job(jobs.get(job_id)))
+    except JobDaemonError as exc:
+        await ui.print(_job_service_error(exc))
+
+
+async def _stop_job(ui: UserInterface, jobs: BackgroundJobController, args: list[str]) -> None:
     if not args:
         await ui.print("用法：/job stop <job_id>")
         return
-    await ui.print(render_stopped_job(await jobs.stop(args[0])))
+    try:
+        await ui.print(render_stopped_job(await jobs.stop(args[0])))
+    except JobDaemonError as exc:
+        await ui.print(_job_service_error(exc))
 
 
-async def _follow_job(ui: UserInterface, jobs: BackgroundJobService, args: list[str]) -> None:
+async def _follow_job(ui: UserInterface, jobs: BackgroundJobController, args: list[str]) -> None:
     if not args:
         await ui.print("用法：/job follow <job_id>")
         return
+    try:
+        if jobs.get(args[0]) is None:
+            await ui.print("后台任务不存在。")
+            return
+    except JobDaemonError as exc:
+        await ui.print(_job_service_error(exc))
+        return
     found = False
     last_text = ""
-    async for snapshot in jobs.watch(args[0]):
-        found = True
-        text = render_job(snapshot)
-        if text != last_text:
-            await ui.print(text)
-            last_text = text
+    try:
+        async for snapshot in jobs.watch(args[0]):
+            found = True
+            text = render_job(snapshot)
+            if text != last_text:
+                await ui.print(text)
+                last_text = text
+    except JobDaemonError as exc:
+        await ui.print(_job_service_error(exc))
+        return
     if not found:
         await ui.print("后台任务不存在。")
 
@@ -111,3 +139,7 @@ def _trim_output(text: str) -> str:
     if len(normalized) <= 2_000:
         return normalized
     return normalized[-2_000:]
+
+
+def _job_service_error(exc: JobDaemonError) -> str:
+    return f"后台任务服务不可用：{exc}。请先启动 `linuxagent job-daemon`。"

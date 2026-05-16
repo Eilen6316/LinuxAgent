@@ -48,11 +48,16 @@ from .sandbox import (
 )
 from .sandbox.models import SandboxRunnerKind
 from .services import (
+    BackgroundJobController,
     BackgroundJobService,
     ChatService,
     ClusterService,
     CommandService,
+    JobDaemonClient,
+    JobDaemonServer,
     MonitoringService,
+    daemon_socket_path,
+    daemon_store_path,
 )
 from .skills import load_skill_manifests, skill_planner_guidance, skill_runbooks
 from .telemetry import TelemetryRecorder
@@ -141,15 +146,38 @@ class Container:
             lambda: CommandService(self.executor(), self.learner()),
         )
 
-    def background_jobs(self) -> BackgroundJobService:
+    def background_jobs(self) -> BackgroundJobController:
         return self._cached(
             "background_jobs",
+            lambda: self._build_background_jobs(),
+        )
+
+    def build_job_daemon(self) -> JobDaemonServer:
+        return JobDaemonServer(socket_path=self.job_daemon_socket_path(), jobs=self.local_jobs())
+
+    def local_jobs(self) -> BackgroundJobService:
+        return self._cached(
+            "local_jobs",
             lambda: BackgroundJobService(
                 self.command_service(),
-                path=self._config.ui.history_path.with_name("jobs.json"),
+                path=self.job_store_path(),
                 event_observer=self._runtime_event_observer(),
             ),
         )
+
+    def job_daemon_socket_path(self) -> Path:
+        return daemon_socket_path(self._config.ui.history_path)
+
+    def job_store_path(self) -> Path:
+        return daemon_store_path(self._config.ui.history_path)
+
+    def _build_background_jobs(self) -> BackgroundJobController:
+        if self._config.jobs.daemon_enabled:
+            return JobDaemonClient(
+                socket_path=self.job_daemon_socket_path(),
+                store_path=self.job_store_path(),
+            )
+        return self.local_jobs()
 
     def context_manager(self) -> ContextManager:
         return self._cached(

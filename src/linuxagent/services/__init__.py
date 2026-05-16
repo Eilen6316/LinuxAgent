@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from .background_jobs import BackgroundJobService, BackgroundJobSnapshot, JobStatus
+from .background_jobs import (
+    BackgroundJobController,
+    BackgroundJobService,
+    BackgroundJobSnapshot,
+    JobStatus,
+)
 from .chat_service import ChatService, ChatSession
 from .cluster_service import ClusterService
 from .command_service import (
@@ -11,6 +16,14 @@ from .command_service import (
     CommandRunResult,
     CommandSafetyError,
     CommandService,
+)
+from .job_daemon import (
+    JobDaemonClient,
+    JobDaemonError,
+    JobDaemonServer,
+    JobDaemonUnavailableError,
+    daemon_socket_path,
+    daemon_store_path,
 )
 from .monitoring_service import (
     MonitoringAlert,
@@ -22,6 +35,7 @@ from .monitoring_service import (
 __all__ = [
     "BackgroundJobService",
     "BackgroundJobSnapshot",
+    "BackgroundJobController",
     "ChatService",
     "ChatSession",
     "ClusterService",
@@ -31,8 +45,14 @@ __all__ = [
     "CommandSafetyError",
     "CommandService",
     "JobStatus",
+    "JobDaemonClient",
+    "JobDaemonError",
+    "JobDaemonServer",
+    "JobDaemonUnavailableError",
     "MonitoringAlert",
     "MonitoringService",
     "collect_system_snapshot",
+    "daemon_socket_path",
+    "daemon_store_path",
     "evaluate_alerts",
 ]

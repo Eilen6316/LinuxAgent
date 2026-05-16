@@ -15,7 +15,7 @@ from ..graph.agent_graph import AgentGraph
 from ..intelligence import ContextManager
 from ..interfaces import CommandSource, UserInterface
 from ..services import (
-    BackgroundJobService,
+    BackgroundJobController,
     ChatService,
     ClusterService,
     CommandService,
@@ -46,7 +46,7 @@ class LinuxAgent:
     context_manager: ContextManager
     monitoring_service: MonitoringService
     cluster_service: ClusterService | None = None
-    background_jobs: BackgroundJobService | None = None
+    background_jobs: BackgroundJobController | None = None
     telemetry: TelemetryRecorder | None = None
     tool_names: tuple[str, ...] = ()
     prompt_cache_enabled: bool = False

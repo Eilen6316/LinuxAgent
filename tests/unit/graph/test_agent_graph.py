@@ -30,6 +30,7 @@ from linuxagent.product_context import product_capability_context
 from linuxagent.providers.errors import ProviderError
 from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.services import BackgroundJobSnapshot, ClusterService, CommandService, JobStatus
+from linuxagent.services.job_daemon import JobDaemonUnavailableError
 from linuxagent.telemetry import TelemetryRecorder
 from linuxagent.tools import ToolRuntimeLimits, build_workspace_tools
 from linuxagent.tools.sandbox import invoke_tool_with_sandbox
@@ -208,6 +209,19 @@ class _FakeBackgroundJobs:
             exit_code=None,
             artifact_paths=artifact_paths,
         )
+
+
+class _UnavailableBackgroundJobs(_FakeBackgroundJobs):
+    async def start(
+        self,
+        command: str,
+        *,
+        goal: str,
+        timeout_seconds: float | None = None,
+        artifact_paths: tuple[str, ...] = (),
+    ) -> BackgroundJobSnapshot:
+        del command, goal, timeout_seconds, artifact_paths
+        raise JobDaemonUnavailableError("job daemon is not running")
 
 
 def _graph(
@@ -470,6 +484,26 @@ async def test_graph_rejects_remote_background_command_after_confirmation(tmp_pa
 
     assert jobs.started == []
     assert "background jobs do not support remote targets" in str(result["messages"][-1].content)
+
+
+async def test_graph_reports_unavailable_job_daemon_without_repair(tmp_path) -> None:
+    payload = json.loads(command_plan_json("/bin/sleep 5", goal="monitor cpu"))
+    payload["commands"][0]["background"] = True
+    graph, _provider = _graph(
+        tmp_path,
+        [json.dumps(payload), "analysis should not run"],
+        background_jobs=_UnavailableBackgroundJobs(),
+    )
+    config = {"configurable": {"thread_id": "bg-unavailable"}}
+
+    await graph.ainvoke(initial_state("monitor cpu", source=CommandSource.USER), config=config)
+    result = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+
+    answer = str(result["messages"][-1].content)
+    assert "job daemon is not running" in answer
+    assert result["skip_command_repair"] is True
 
 
 async def test_graph_inline_python_confirm_payload_exposes_policy_details(tmp_path) -> None:

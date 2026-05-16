@@ -219,6 +219,11 @@ monitoring:
   memory_threshold: 90.0
   disk_threshold: 90.0
 
+jobs:
+  # When true, approved background tasks are sent to a local Unix-socket
+  # supervisor so they can continue independently of the foreground chat loop.
+  daemon_enabled: true
+
 analytics:
   enabled: false
   data_path: ~/.linuxagent/analytics.json

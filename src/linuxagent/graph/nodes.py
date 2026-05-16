@@ -18,7 +18,7 @@ from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLeve
 from ..plans import PlannedCommand
 from ..prompts_loader import build_analysis_prompt
 from ..runbooks import RunbookEngine
-from ..services import BackgroundJobService, ClusterService, CommandService
+from ..services import BackgroundJobController, ClusterService, CommandService, JobDaemonError
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
 from .common import span, trace_id
@@ -81,7 +81,7 @@ class GraphDependencies:
     audit: AuditLog
     checkpointer: Any | None = None
     cluster_service: ClusterService | None = None
-    background_jobs: BackgroundJobService | None = None
+    background_jobs: BackgroundJobController | None = None
     tools: tuple[BaseTool, ...] = ()
     telemetry: TelemetryRecorder | None = None
     runbook_engine: RunbookEngine | None = None
@@ -277,7 +277,7 @@ def make_execute_node(
     command_service: CommandService,
     audit: AuditLog,
     cluster_service: ClusterService | None = None,
-    background_jobs: BackgroundJobService | None = None,
+    background_jobs: BackgroundJobController | None = None,
     telemetry: TelemetryRecorder | None = None,
     runtime_observer: RuntimeEventObserver | None = None,
 ) -> Node:
@@ -300,7 +300,7 @@ async def _execute_node(
     command_service: CommandService,
     audit: AuditLog,
     cluster_service: ClusterService | None,
-    background_jobs: BackgroundJobService | None,
+    background_jobs: BackgroundJobController | None,
     telemetry: TelemetryRecorder | None,
     runtime_observer: RuntimeEventObserver | None,
 ) -> AgentState:
@@ -341,7 +341,7 @@ async def _execute_single_command(
     command_service: CommandService,
     audit: AuditLog,
     cluster_service: ClusterService | None,
-    background_jobs: BackgroundJobService | None,
+    background_jobs: BackgroundJobController | None,
     telemetry: TelemetryRecorder | None,
     runtime_observer: RuntimeEventObserver | None,
     current_trace_id: str,
@@ -377,7 +377,7 @@ async def _execute_single_command(
 async def _start_background_command(
     state: AgentState,
     command: str,
-    background_jobs: BackgroundJobService | None,
+    background_jobs: BackgroundJobController | None,
     audit: AuditLog,
     runtime_observer: RuntimeEventObserver | None,
     current_trace_id: str,
@@ -396,11 +396,20 @@ async def _start_background_command(
             "skip_command_repair": True,
         }
     step = _current_plan_step(state)
-    snapshot = await background_jobs.start(
-        command,
-        goal=_background_goal(state, command),
-        timeout_seconds=step.timeout_seconds if step is not None else None,
-    )
+    try:
+        snapshot = await background_jobs.start(
+            command,
+            goal=_background_goal(state, command),
+            timeout_seconds=step.timeout_seconds if step is not None else None,
+        )
+    except JobDaemonError as exc:
+        result = synthetic_result(command, 1, "", str(exc))
+        await _record_command_execution(audit, state, result, current_trace_id)
+        await notify_command_result(runtime_observer, current_trace_id, result)
+        return {
+            **_single_command_update(state, result, runtime_observer, current_trace_id),
+            "skip_command_repair": True,
+        }
     result = synthetic_result(
         command,
         0,

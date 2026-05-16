@@ -16,6 +16,7 @@ from linuxagent.intelligence import CommandLearner
 from linuxagent.interfaces import ExecutionResult, SafetyLevel, SafetyResult
 from linuxagent.services import (
     BackgroundJobService,
+    BackgroundJobSnapshot,
     ChatService,
     ClusterService,
     CommandBlockedByPolicyError,
@@ -25,6 +26,8 @@ from linuxagent.services import (
     MonitoringService,
     evaluate_alerts,
 )
+from linuxagent.services.background_jobs import JOBS_STORE_VERSION, snapshot_to_record
+from linuxagent.services.job_daemon import JobDaemonClient, JobDaemonServer, daemon_store_path
 
 
 async def test_monitoring_service_start_stop() -> None:
@@ -365,6 +368,83 @@ def test_background_job_service_marks_loaded_running_jobs_stopped(tmp_path) -> N
     assert restored is not None
     assert restored.status is JobStatus.STOPPED
     assert "restarted" in restored.stderr
+
+
+async def test_job_daemon_client_starts_lists_and_stops_jobs(tmp_path) -> None:
+    history_path = tmp_path / "history.json"
+    snapshot = _background_snapshot("job-daemon")
+    daemon_store_path(history_path).write_text(
+        json.dumps(
+            {"version": JOBS_STORE_VERSION, "jobs": [snapshot_to_record(snapshot)]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    client = JobDaemonClient(
+        socket_path=tmp_path / "jobd.sock",
+        store_path=daemon_store_path(history_path),
+    )
+
+    listed = client.list()
+    assert [item.job_id for item in listed] == ["job-daemon"]
+    assert client.get("job-daemon") == snapshot
+
+
+async def test_job_daemon_server_dispatches_start_and_stop(tmp_path) -> None:
+    executor = _StreamingExecutor()
+    service = BackgroundJobService(CommandService(executor))  # type: ignore[arg-type]
+    server = JobDaemonServer(socket_path=tmp_path / "jobd.sock", jobs=service)
+    writer = _MemoryWriter()
+
+    await server._dispatch(
+        {
+            "action": "start",
+            "command": "/bin/echo ok",
+            "goal": "daemon test",
+            "timeout_seconds": 5,
+        },
+        writer,  # type: ignore[arg-type]
+    )
+    await executor.started.wait()
+    response = json.loads(writer.lines[-1])
+    job_id = response["snapshot"]["job_id"]
+
+    await server._dispatch(
+        {"action": "stop", "job_id": job_id},
+        writer,  # type: ignore[arg-type]
+    )
+
+    assert response["ok"] is True
+    assert response["snapshot"]["command"] == "/bin/echo ok"
+    assert json.loads(writer.lines[-1])["snapshot"]["job_id"] == job_id
+
+
+def _background_snapshot(job_id: str) -> BackgroundJobSnapshot:
+    now = datetime.now(UTC)
+    return BackgroundJobSnapshot(
+        job_id=job_id,
+        command="/bin/echo ok",
+        goal="daemon test",
+        status=JobStatus.SUCCEEDED,
+        created_at=now,
+        started_at=now,
+        finished_at=now,
+        timeout_seconds=5,
+        stdout="sample\n",
+        stderr="",
+        exit_code=0,
+    )
+
+
+class _MemoryWriter:
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    def write(self, data: bytes) -> None:
+        self.lines.append(data.decode("utf-8").strip())
+
+    async def drain(self) -> None:
+        return None
 
 
 async def test_run_checked_blocks_blocked_commands() -> None:

@@ -458,6 +458,10 @@ menu:
 | `/help` | Show slash command help |
 | `/exit` or `/quit` | Exit the CLI |
 
+Run `linuxagent job-daemon` to keep approved background jobs supervised by a
+local LinuxAgent process while the foreground chat loop stays free for the next
+conversation turn. The `/job` commands remain the only interactive job controls.
+
 Prefix input with `!` to run an operator-authored command directly:
 
 ```

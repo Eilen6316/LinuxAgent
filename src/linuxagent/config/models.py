@@ -461,6 +461,12 @@ class MonitoringConfig(BaseModel):
     disk_threshold: float = Field(default=90.0, ge=0, le=100)
 
 
+class JobsConfig(BaseModel):
+    model_config = _FROZEN
+
+    daemon_enabled: bool = True
+
+
 class TelemetryConfig(BaseModel):
     model_config = _FROZEN
 
@@ -528,6 +534,7 @@ class AppConfig(BaseModel):
     ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
+    jobs: JobsConfig = Field(default_factory=JobsConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
     analytics: AnalyticsConfig = Field(default_factory=AnalyticsConfig)
     log_analysis: LogAnalysisConfig = Field(default_factory=LogAnalysisConfig)
