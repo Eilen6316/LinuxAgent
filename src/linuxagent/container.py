@@ -21,7 +21,6 @@ from .app.runtime_telemetry import record_runtime_event
 from .audit import AuditLog
 from .audit_sink import HttpAuditSink
 from .cluster import SSHManager
-from .config.models import LLMProviderName
 from .executors import LinuxCommandExecutor
 from .graph import GraphDependencies, build_agent_graph
 from .graph.agent_graph import AgentGraph
@@ -307,13 +306,7 @@ class Container:
     def _intelligence_tools_enabled(self) -> bool:
         if not self._config.intelligence.enabled:
             return False
-        override = self._config.intelligence.tools_enabled
-        if override is not None:
-            return override
-        return self._config.api.provider in (
-            LLMProviderName.OPENAI,
-            LLMProviderName.OPENAI_COMPATIBLE,
-        )
+        return self._config.intelligence.tools_enabled is True
 
     def tools(self) -> list[BaseTool]:
         return self._cached(

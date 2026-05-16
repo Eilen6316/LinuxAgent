@@ -137,6 +137,37 @@ def test_audit_sink_receives_redacted_hash_chained_record(tmp_path) -> None:
     assert verify_audit_log(path).valid is True
 
 
+def test_audit_append_uses_last_valid_record_hash(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+
+    audit.append({"event": "one"})
+    audit.append({"event": "two"})
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+    assert records[0]["prev_hash"] == "0" * 64
+    assert records[1]["prev_hash"] == records[0]["hash"]
+    assert verify_audit_log(path).valid is True
+
+
+def test_audit_append_ignores_trailing_invalid_lines_for_last_hash(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+    audit.append({"event": "one"})
+    first = json.loads(path.read_text(encoding="utf-8"))
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write("\nnot-json\n")
+
+    audit.append({"event": "two"})
+    records = [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("{")
+    ]
+
+    assert records[1]["prev_hash"] == first["hash"]
+
+
 def test_audit_sink_failure_is_recorded_without_blocking_local_append(tmp_path) -> None:
     path = tmp_path / "audit.log"
     audit = AuditLog(path, sink=FailingSink("timeout while sending token=bearer-secret"))

@@ -175,6 +175,8 @@ def record(self, command, result):
 **当前算法**：LLM Embedding API（`text-embedding-3-small` 或兼容端点）+ 磁盘 LRU 缓存
 
 - 缓存目录 `~/.cache/linuxagent/embeddings/`，SHA-256 命名，权限 `0o600`
+- 依赖 embedding 的 LLM tools 是可选能力，默认关闭；需要时显式设置
+  `intelligence.tools_enabled: true`
 - 安装体积从约 500MB (PyTorch 栈) 降到接近零
 - 准确率提升：真实语义向量 vs 统计词频
 
@@ -401,6 +403,7 @@ linuxagent check
 | `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | 本地 LangGraph checkpoint 文件，用于恢复未完成的 HITL 确认 |
 | `logging` | `level` | `WARNING` | `DEBUG` / `INFO` / `WARNING` / ... |
 | `logging` | `format` | `console` | `console`（Rich 彩色） / `json`（生产） |
+| `intelligence` | `tools_enabled` | `false` | 向 LLM 暴露可选的 embedding 推荐 / 知识库 / 相似命令工具 |
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | 语义检索模型；**禁止本地 PyTorch 模型** |
 
 完整样例见 [`configs/example.yaml`](../../configs/example.yaml)。

@@ -8,6 +8,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Audit append now reads the tail of the JSONL log to find the previous hash
+  instead of scanning the whole file on every write.
 - Terminal assistant responses now render Markdown formatting in the Rich
   response panel instead of showing raw Markdown markers such as `**bold**`
   and `###` headings.
@@ -40,6 +42,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Source checkout bootstrap now seeds `~/.config/linuxagent/config.yaml` and
   installs a user-level `~/.local/bin/linuxagent` launcher, so users can start
   LinuxAgent from any directory without activating the checkout virtualenv.
+- Optional embedding-backed intelligence tools are no longer exposed by provider
+  default; set `intelligence.tools_enabled: true` to add recommendation,
+  knowledge-base, and semantic-similarity tools to the LLM catalog.
 - Added a unified tool catalog used by runtime tool binding, `/tools` context,
   product context, and `linuxagent check`; check output now reports each
   tool's sandbox profile, permissions, network access, HITL mode, allowed

@@ -8,6 +8,8 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Fixed
 
+- Audit append 现在从 JSONL 日志尾部读取上一条 hash，不再每次写入都全量扫描
+  审计日志。
 - LLM 可见工具现在会在 catalog metadata 缺失或非法时 fail closed，返回结构化
   denied tool event，而不是把未包装工具绑定进 provider tool loop。
 - Workspace tool 错误现在会显示为简短的操作员可读消息，包含 tool 名称、目标和
@@ -27,6 +29,8 @@ LinuxAgent 的重要变更记录在这里。
   `~/.config/linuxagent/config.yaml`，并安装用户级
   `~/.local/bin/linuxagent` 启动器；用户无需激活项目 venv，也能在任意目录启动
   LinuxAgent。
+- 可选的 embedding-backed intelligence tools 不再按 provider 默认暴露；需要推荐、
+  知识库和语义相似命令工具时，显式设置 `intelligence.tools_enabled: true`。
 - 新增统一 tool catalog，供运行时 tool binding、`/tools` 上下文、product context
   和 `linuxagent check` 复用；check 输出现在会展示每个 tool 的 sandbox profile、
   permissions、network access、HITL mode、allowed roots 和 runner isolation note。

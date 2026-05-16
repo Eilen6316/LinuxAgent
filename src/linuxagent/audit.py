@@ -12,6 +12,7 @@ import json
 import os
 import threading
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +23,7 @@ from .sandbox.models import SandboxResult
 from .security import redact_record
 
 GENESIS_HASH = "0" * 64
+_TAIL_READ_BLOCK_SIZE = 8192
 
 
 @dataclass(frozen=True)
@@ -194,18 +196,35 @@ def verify_audit_log(path: Path) -> AuditVerificationResult:
 def _last_hash(path: Path) -> str:
     if not path.exists():
         return GENESIS_HASH
-    previous = GENESIS_HASH
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
+    for line in _non_empty_lines_reverse(path):
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
-            return previous
-        if not isinstance(record, dict):
-            return previous
-        previous = str(record.get("hash") or previous)
-    return previous
+            continue
+        if isinstance(record, dict):
+            return str(record.get("hash") or GENESIS_HASH)
+    return GENESIS_HASH
+
+
+def _non_empty_lines_reverse(path: Path) -> Iterable[str]:
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        position = handle.tell()
+        pending = b""
+        while position > 0:
+            read_size = min(_TAIL_READ_BLOCK_SIZE, position)
+            position -= read_size
+            handle.seek(position)
+            data = handle.read(read_size) + pending
+            lines = data.split(b"\n")
+            pending = lines[0]
+            for line in reversed(lines[1:]):
+                cleaned = line.rstrip(b"\r")
+                if cleaned.strip():
+                    yield cleaned.decode("utf-8")
+        cleaned = pending.rstrip(b"\r")
+        if cleaned.strip():
+            yield cleaned.decode("utf-8")
 
 
 def _record_hash(record: dict[str, Any]) -> str:

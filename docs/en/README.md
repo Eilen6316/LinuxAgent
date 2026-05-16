@@ -178,6 +178,8 @@ def record(self, command, result):
 **Current**: LLM embedding API (`text-embedding-3-small` or a compatible endpoint) + on-disk LRU cache.
 
 - Cache at `~/.cache/linuxagent/embeddings/`, SHA-256 filenames, `0o600`
+- Embedding-backed LLM tools are optional and disabled by default; enable them
+  with `intelligence.tools_enabled: true`
 - Install footprint drops from ~500MB (PyTorch stack) to near zero
 - Quality improves: real semantic vectors vs bag-of-words
 
@@ -411,6 +413,7 @@ linuxagent check
 | `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | Local LangGraph checkpoint store for pending HITL resume |
 | `logging` | `level` | `WARNING` | `DEBUG` / `INFO` / `WARNING` / ... |
 | `logging` | `format` | `console` | `console` (Rich colour) / `json` (production) |
+| `intelligence` | `tools_enabled` | `false` | Expose optional embedding-backed recommendation / knowledge / similarity tools to the LLM |
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | Semantic search model; **local PyTorch models are disallowed** |
 
 Full example: [`configs/example.yaml`](../../configs/example.yaml).

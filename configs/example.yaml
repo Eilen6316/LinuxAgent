@@ -232,9 +232,9 @@ log_analysis:
 
 intelligence:
   enabled: true
-  # Null keeps provider-specific default behavior: OpenAI-compatible providers
-  # can expose intelligence tools, while non-embedding defaults can skip them.
-  tools_enabled:
+  # Optional embedding-backed LLM tools. Keep disabled unless you explicitly
+  # want recommendations, knowledge search, and semantic command similarity.
+  tools_enabled: false
   context_window: 50
   # Embedding model used for semantic command/log search.
   # MUST be an API-hosted model — local pytorch models are banned.

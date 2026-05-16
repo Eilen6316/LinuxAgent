@@ -779,7 +779,7 @@ async def test_runtime_observer_deduplicates_repeated_activity(
     assert ui.raw == [("ok", False)]
 
 
-def test_container_disables_embedding_tools_for_deepseek_by_default(
+def test_container_disables_embedding_tools_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(container_module, "OpenAIEmbeddings", pytest.fail)
@@ -787,6 +787,15 @@ def test_container_disables_embedding_tools_for_deepseek_by_default(
 
     assert container.intelligence_tools() == []
     assert all(tool.name != "get_command_recommendations" for tool in container.tools())
+
+
+def test_container_disables_embedding_tools_for_openai_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(container_module, "OpenAIEmbeddings", pytest.fail)
+    container = Container(AppConfig.model_validate({"api": {"provider": "openai"}}))
+
+    assert container.intelligence_tools() == []
 
 
 def test_chat_command_runs_agent(

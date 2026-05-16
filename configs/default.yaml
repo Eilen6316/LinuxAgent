@@ -126,7 +126,7 @@ log_analysis:
 
 intelligence:
   enabled: true
-  tools_enabled:
+  tools_enabled: false
   context_window: 50
   embedding_model: text-embedding-3-small
   embedding_cache_dir: ~/.cache/linuxagent/embeddings
