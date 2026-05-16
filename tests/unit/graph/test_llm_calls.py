@@ -27,6 +27,7 @@ class _Usage:
 
 class _Provider:
     last_usage: _Usage | None = None
+    prompt_cache_supported = True
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
         del messages
@@ -58,6 +59,7 @@ async def test_complete_llm_records_cache_usage_telemetry(tmp_path) -> None:
     assert usage["attributes"]["llm.cache_hit"] is True
     assert usage["attributes"]["llm.cached_input_tokens"] == 12
     assert usage["attributes"]["llm.prompt_cache_key"] == "linuxagent:abc"
+    assert usage["attributes"]["llm.prompt_cache_supported"] is True
 
 
 async def test_complete_llm_omits_empty_prompt_cache_key(tmp_path) -> None:

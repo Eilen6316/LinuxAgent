@@ -60,6 +60,39 @@ def test_telemetry_records_tool_event(tmp_path) -> None:
     assert record["attributes"]["args"]["path"] == "README.md"
 
 
+def test_telemetry_aggregates_llm_usage_even_when_export_disabled(tmp_path) -> None:
+    recorder = TelemetryRecorder(tmp_path / "telemetry.jsonl", enabled=False)
+
+    recorder.event(
+        "llm.usage",
+        trace_id="trace-1",
+        attributes={
+            "llm.input_tokens": 20,
+            "llm.cached_input_tokens": 12,
+            "llm.output_tokens": 5,
+            "llm.reasoning_output_tokens": 2,
+            "llm.total_tokens": 25,
+            "llm.cache_hit": True,
+            "llm.prompt_cache_key": "linuxagent:one",
+            "llm.prompt_cache_supported": True,
+        },
+    )
+
+    summary = recorder.llm_usage_summary()
+    assert summary.calls == 1
+    assert summary.cache_hits == 1
+    assert summary.input_tokens == 20
+    assert summary.cached_input_tokens == 12
+    assert summary.output_tokens == 5
+    assert summary.reasoning_output_tokens == 2
+    assert summary.total_tokens == 25
+    assert summary.prompt_cache_keys == 1
+    assert summary.prompt_cache_supported is True
+    assert summary.cache_hit_rate == 1.0
+    assert summary.cached_input_ratio == 0.6
+    assert not (tmp_path / "telemetry.jsonl").exists()
+
+
 async def test_tool_event_observer_records_structured_status(tmp_path) -> None:
     recorder = TelemetryRecorder(tmp_path / "telemetry.jsonl")
     observer = tool_event_observer(recorder, None, "trace-1")

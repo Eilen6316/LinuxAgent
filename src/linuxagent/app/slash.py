@@ -2,11 +2,54 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ..product_context import slash_help
+
+if TYPE_CHECKING:
+    from ..telemetry import LLMUsageSummary
 
 __all__ = ["slash_help", "tools_help"]
 
 
-def tools_help(tool_names: tuple[str, ...]) -> str:
+def tools_help(
+    tool_names: tuple[str, ...],
+    *,
+    usage: LLMUsageSummary | None = None,
+    prompt_cache_enabled: bool = False,
+) -> str:
     names = ", ".join(tool_names) if tool_names else "当前没有启用 LangChain 工具"
-    return f"Slash 命令可直接调用本地功能；LLM 可用工具：{names}"
+    lines = [
+        "Slash 命令可直接调用本地功能；LLM 可用工具：",
+        names,
+        "",
+        "LLM token cache:",
+        _cache_status_line(usage, prompt_cache_enabled),
+    ]
+    return "\n".join(lines)
+
+
+def _cache_status_line(usage: LLMUsageSummary | None, prompt_cache_enabled: bool) -> str:
+    if not prompt_cache_enabled:
+        return "prompt_cache=off"
+    if usage is None or usage.calls == 0:
+        return "prompt_cache=on；本进程还没有收到 provider usage 数据"
+    support = _provider_support_text(usage.prompt_cache_supported)
+    hit_rate = usage.cache_hit_rate * 100
+    cached_ratio = usage.cached_input_ratio * 100
+    return (
+        f"prompt_cache=on；provider_cache={support}；calls={usage.calls}；"
+        f"cache_hits={usage.cache_hits} ({hit_rate:.1f}%)；"
+        f"cached_input_tokens={usage.cached_input_tokens}/{usage.input_tokens} "
+        f"({cached_ratio:.1f}%)；output_tokens={usage.output_tokens}；"
+        f"reasoning_tokens={usage.reasoning_output_tokens}；"
+        f"total_tokens={usage.total_tokens}；threads={usage.prompt_cache_keys}"
+    )
+
+
+def _provider_support_text(supported: bool | None) -> str:
+    if supported is True:
+        return "supported"
+    if supported is False:
+        return "fallback"
+    return "unknown"

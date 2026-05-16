@@ -27,6 +27,8 @@ def test_operating_manifest_cache_section_describes_boundaries() -> None:
 
     assert "# cache" in context
     assert "prompt_cache_key" in context
+    assert "Anthropic-compatible providers" in context
+    assert "/tools" in context
     assert "does not cache shell command results" in context
 
 

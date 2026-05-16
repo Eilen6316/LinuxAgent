@@ -436,6 +436,39 @@ async def test_trace_slash_command_toggles_activity_output(tmp_path) -> None:
     assert ui.printed == ["Trace/activity output is now hidden."]
 
 
+async def test_tools_slash_command_shows_prompt_cache_usage(tmp_path) -> None:
+    telemetry = TelemetryRecorder(tmp_path / "telemetry.jsonl")
+    telemetry.event(
+        "llm.usage",
+        trace_id="trace-1",
+        attributes={
+            "llm.input_tokens": 30,
+            "llm.cached_input_tokens": 15,
+            "llm.output_tokens": 8,
+            "llm.total_tokens": 38,
+            "llm.cache_hit": True,
+            "llm.prompt_cache_key": "linuxagent:key",
+            "llm.prompt_cache_supported": True,
+        },
+    )
+    ui = _FakeUI(inputs=["/tools", "/exit"])
+    agent = _agent(
+        tmp_path,
+        graph=_FakeGraph([]),
+        ui=ui,
+        telemetry=telemetry,
+        prompt_cache_enabled=True,
+    )
+
+    await agent.run(thread_id="cli")
+
+    printed = "\n".join(ui.printed)
+    assert "LLM token cache:" in printed
+    assert "prompt_cache=on" in printed
+    assert "cache_hits=1 (100.0%)" in printed
+    assert "cached_input_tokens=15/30 (50.0%)" in printed
+
+
 async def test_jobs_slash_command_lists_background_jobs(tmp_path) -> None:
     jobs = _FakeBackgroundJobs((_job_snapshot(),))
     ui = _FakeUI(inputs=["/job", "/exit"])

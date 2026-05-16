@@ -74,6 +74,10 @@ class BaseLLMProvider(LLMProvider):
     def last_usage(self) -> ProviderUsage | None:
         return self._last_usage
 
+    @property
+    def prompt_cache_supported(self) -> bool:
+        return self._prompt_cache_supported
+
     # -- complete ---------------------------------------------------------
 
     async def complete(
@@ -96,11 +100,11 @@ class BaseLLMProvider(LLMProvider):
         messages: list[BaseMessage],
         **kwargs: Any,
     ) -> str:
-        kwargs = self._request_kwargs(kwargs)
+        request_messages, request_kwargs = self._prepare_request(messages, kwargs)
         result: BaseMessage
         try:
             result = await asyncio.wait_for(
-                self._model.ainvoke(messages, **kwargs),
+                self._model.ainvoke(request_messages, **request_kwargs),
                 timeout=self._config.timeout,
             )
         except TimeoutError as exc:
@@ -108,7 +112,9 @@ class BaseLLMProvider(LLMProvider):
                 f"provider request exceeded timeout ({self._config.timeout}s)"
             ) from exc
         except Exception as exc:
-            result = await self._recover_prompt_cache_error(exc, self._model, messages, kwargs)
+            result = await self._recover_prompt_cache_error(
+                exc, self._model, request_messages, request_kwargs
+            )
         self._last_usage = usage_from_message(result)
         return _content_to_str(result.content)
 
@@ -122,7 +128,6 @@ class BaseLLMProvider(LLMProvider):
             return await self.complete(messages, **kwargs)
         tool_observer = _pop_tool_observer(kwargs)
         tool_limits = _pop_tool_runtime(kwargs)
-        kwargs = self._request_kwargs(kwargs)
         await _ensure_tool_sandbox_specs(tools, tool_observer)
 
         bound_model = self._model.bind_tools(tools)
@@ -156,6 +161,13 @@ class BaseLLMProvider(LLMProvider):
             request_kwargs.pop("prompt_cache_key", None)
         return request_kwargs
 
+    def _prepare_request(
+        self,
+        messages: list[BaseMessage],
+        kwargs: dict[str, Any],
+    ) -> tuple[list[BaseMessage], dict[str, Any]]:
+        return messages, self._request_kwargs(kwargs)
+
     # -- stream -----------------------------------------------------------
 
     def stream(
@@ -170,9 +182,10 @@ class BaseLLMProvider(LLMProvider):
         messages: list[BaseMessage],
         **kwargs: Any,
     ) -> AsyncIterator[str]:
+        request_messages, request_kwargs = self._prepare_request(messages, kwargs)
         try:
             async with asyncio.timeout(self._config.stream_timeout):
-                async for chunk in self._model.astream(messages, **kwargs):
+                async for chunk in self._model.astream(request_messages, **request_kwargs):
                     yield _content_to_str(chunk.content)
         except TimeoutError as exc:
             raise ProviderTimeoutError(
@@ -216,9 +229,10 @@ class BaseLLMProvider(LLMProvider):
         messages: list[BaseMessage],
         **kwargs: Any,
     ) -> BaseMessage:
+        request_messages, request_kwargs = self._prepare_request(messages, kwargs)
         try:
             return await asyncio.wait_for(
-                model.ainvoke(messages, **kwargs),
+                model.ainvoke(request_messages, **request_kwargs),
                 timeout=self._config.timeout,
             )
         except TimeoutError as exc:
@@ -226,7 +240,9 @@ class BaseLLMProvider(LLMProvider):
                 f"provider request exceeded timeout ({self._config.timeout}s)"
             ) from exc
         except Exception as exc:
-            return await self._recover_prompt_cache_error(exc, model, messages, kwargs)
+            return await self._recover_prompt_cache_error(
+                exc, model, request_messages, request_kwargs
+            )
 
     async def _recover_prompt_cache_error(
         self,
@@ -235,17 +251,22 @@ class BaseLLMProvider(LLMProvider):
         messages: list[BaseMessage],
         kwargs: dict[str, Any],
     ) -> BaseMessage:
-        if not _is_prompt_cache_compat_error(exc, kwargs):
+        if _is_prompt_cache_key_compat_error(exc, kwargs):
+            retry_messages = messages
+            retry_kwargs = dict(kwargs)
+            retry_kwargs.pop("prompt_cache_key", None)
+        elif _is_cache_control_compat_error(exc, messages):
+            retry_messages = _messages_without_cache_control(messages)
+            retry_kwargs = dict(kwargs)
+        else:
             if isinstance(exc, ProviderError):
                 raise exc
             raise self._map_error(exc) from exc
-        retry_kwargs = dict(kwargs)
-        retry_kwargs.pop("prompt_cache_key", None)
         self._prompt_cache_supported = False
-        logger.info("provider rejected prompt_cache_key; retrying without prompt cache")
+        logger.info("provider rejected prompt cache metadata; retrying without prompt cache")
         try:
             return await asyncio.wait_for(
-                model.ainvoke(messages, **retry_kwargs),
+                model.ainvoke(retry_messages, **retry_kwargs),
                 timeout=self._config.timeout,
             )
         except TimeoutError as retry_exc:
@@ -256,12 +277,25 @@ class BaseLLMProvider(LLMProvider):
             raise self._map_error(retry_exc) from retry_exc
 
 
-def _is_prompt_cache_compat_error(exc: Exception, kwargs: dict[str, Any]) -> bool:
+def _is_prompt_cache_key_compat_error(exc: Exception, kwargs: dict[str, Any]) -> bool:
     if "prompt_cache_key" not in kwargs:
         return False
     message = f"{type(exc).__name__}: {exc}".casefold()
     if "prompt_cache_key" not in message:
         return False
+    return _has_unsupported_marker(message)
+
+
+def _is_cache_control_compat_error(exc: Exception, messages: list[BaseMessage]) -> bool:
+    if not _messages_have_cache_control(messages):
+        return False
+    message = f"{type(exc).__name__}: {exc}".casefold()
+    if "cache_control" not in message:
+        return False
+    return _has_unsupported_marker(message)
+
+
+def _has_unsupported_marker(message: str) -> bool:
     return any(
         marker in message
         for marker in (
@@ -273,6 +307,41 @@ def _is_prompt_cache_compat_error(exc: Exception, kwargs: dict[str, Any]) -> boo
             "not a valid parameter",
         )
     )
+
+
+def _messages_have_cache_control(messages: list[BaseMessage]) -> bool:
+    return any(_content_has_cache_control(message.content) for message in messages)
+
+
+def _content_has_cache_control(content: Any) -> bool:
+    if isinstance(content, dict):
+        return "cache_control" in content or any(
+            _content_has_cache_control(value) for value in content.values()
+        )
+    if isinstance(content, list):
+        return any(_content_has_cache_control(item) for item in content)
+    return False
+
+
+def _messages_without_cache_control(messages: list[BaseMessage]) -> list[BaseMessage]:
+    updated: list[BaseMessage] = []
+    for message in messages:
+        updated.append(
+            message.model_copy(update={"content": _strip_cache_control(message.content)})
+        )
+    return updated
+
+
+def _strip_cache_control(content: Any) -> Any:
+    if isinstance(content, dict):
+        return {
+            key: _strip_cache_control(value)
+            for key, value in content.items()
+            if key != "cache_control"
+        }
+    if isinstance(content, list):
+        return [_strip_cache_control(item) for item in content]
+    return content
 
 
 def _content_to_str(content: Any) -> str:

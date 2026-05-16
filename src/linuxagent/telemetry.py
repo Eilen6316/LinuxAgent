@@ -22,9 +22,49 @@ from urllib import error, parse, request
 
 from .security import redact_record
 
+LLM_USAGE_EVENT = "llm.usage"
+
 
 class TelemetryExportError(RuntimeError):
     """Raised when a best-effort telemetry exporter fails."""
+
+
+@dataclass(frozen=True)
+class LLMUsageSummary:
+    calls: int = 0
+    cache_hits: int = 0
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_output_tokens: int = 0
+    total_tokens: int = 0
+    prompt_cache_keys: int = 0
+    prompt_cache_supported: bool | None = None
+
+    @property
+    def cache_hit_rate(self) -> float:
+        if self.calls == 0:
+            return 0.0
+        return self.cache_hits / self.calls
+
+    @property
+    def cached_input_ratio(self) -> float:
+        if self.input_tokens == 0:
+            return 0.0
+        return self.cached_input_tokens / self.input_tokens
+
+
+@dataclass
+class _LLMUsageAccumulator:
+    calls: int = 0
+    cache_hits: int = 0
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_output_tokens: int = 0
+    total_tokens: int = 0
+    prompt_cache_keys: set[str] = field(default_factory=set)
+    prompt_cache_supported: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -35,6 +75,12 @@ class TelemetryRecorder:
     otlp_endpoint: str | None = None
     _lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False, compare=False
+    )
+    _usage_lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False, compare=False
+    )
+    _llm_usage: _LLMUsageAccumulator = field(
+        default_factory=_LLMUsageAccumulator, init=False, repr=False, compare=False
     )
 
     @contextmanager
@@ -66,8 +112,45 @@ class TelemetryRecorder:
         attributes: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> None:
+        self._record_usage_event(name, attributes or {})
         if self.enabled:
             self._append_span(name, trace_id, time.monotonic(), status, attributes, error)
+
+    def llm_usage_summary(self) -> LLMUsageSummary:
+        with self._usage_lock:
+            usage = self._llm_usage
+            return LLMUsageSummary(
+                calls=usage.calls,
+                cache_hits=usage.cache_hits,
+                input_tokens=usage.input_tokens,
+                cached_input_tokens=usage.cached_input_tokens,
+                output_tokens=usage.output_tokens,
+                reasoning_output_tokens=usage.reasoning_output_tokens,
+                total_tokens=usage.total_tokens,
+                prompt_cache_keys=len(usage.prompt_cache_keys),
+                prompt_cache_supported=usage.prompt_cache_supported,
+            )
+
+    def _record_usage_event(self, name: str, attributes: dict[str, Any]) -> None:
+        if name != LLM_USAGE_EVENT:
+            return
+        with self._usage_lock:
+            usage = self._llm_usage
+            usage.calls += 1
+            usage.cache_hits += int(bool(attributes.get("llm.cache_hit")))
+            usage.input_tokens += _int_attribute(attributes, "llm.input_tokens")
+            usage.cached_input_tokens += _int_attribute(attributes, "llm.cached_input_tokens")
+            usage.output_tokens += _int_attribute(attributes, "llm.output_tokens")
+            usage.reasoning_output_tokens += _int_attribute(
+                attributes, "llm.reasoning_output_tokens"
+            )
+            usage.total_tokens += _int_attribute(attributes, "llm.total_tokens")
+            prompt_cache_key = attributes.get("llm.prompt_cache_key")
+            if isinstance(prompt_cache_key, str) and prompt_cache_key:
+                usage.prompt_cache_keys.add(prompt_cache_key)
+            supported = attributes.get("llm.prompt_cache_supported")
+            if isinstance(supported, bool):
+                usage.prompt_cache_supported = supported
 
     def _append_span(
         self,
@@ -159,6 +242,15 @@ def _validate_http_url(url: str) -> None:
     parsed = parse.urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise TelemetryExportError("telemetry OTLP endpoint must be http:// or https://")
+
+
+def _int_attribute(attributes: dict[str, Any], key: str) -> int:
+    value = attributes.get(key)
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(value, 0)
+    return 0
 
 
 def new_trace_id() -> str:

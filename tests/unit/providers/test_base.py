@@ -140,6 +140,7 @@ async def test_complete_retries_without_prompt_cache_key_when_backend_rejects_it
     assert out == "hello"
     assert model.invoke_kwargs[0]["prompt_cache_key"] == "thread-key"
     assert "prompt_cache_key" not in model.invoke_kwargs[1]
+    assert provider.prompt_cache_supported is False
 
 
 async def test_complete_disables_prompt_cache_after_backend_rejects_it() -> None:
@@ -152,6 +153,39 @@ async def test_complete_disables_prompt_cache_after_backend_rejects_it() -> None
     assert first == "first"
     assert second == "second"
     assert "prompt_cache_key" not in model.invoke_kwargs[2]
+
+
+class _CacheControlRejectingModel(_ToolCallingModel):
+    def __init__(self, responses: list[AIMessage]) -> None:
+        super().__init__(responses)
+        self.messages: list[list[BaseMessage]] = []
+        self.rejected_once = False
+
+    async def ainvoke(self, messages: list[BaseMessage], **kwargs: Any) -> AIMessage:
+        self.messages.append(list(messages))
+        content = messages[0].content
+        has_cache_control = (
+            isinstance(content, list)
+            and isinstance(content[0], dict)
+            and "cache_control" in content[0]
+        )
+        if has_cache_control and not self.rejected_once:
+            self.rejected_once = True
+            raise ValueError("unknown field: cache_control")
+        return await super().ainvoke(messages, **kwargs)
+
+
+async def test_complete_retries_without_cache_control_when_backend_rejects_it() -> None:
+    model = _CacheControlRejectingModel([AIMessage(content="hello")])
+    provider = BaseLLMProvider(_cfg(prompt_cache=True), model)  # type: ignore[arg-type]
+    cached_content = [{"type": "text", "text": "stable", "cache_control": {"type": "ephemeral"}}]
+
+    out = await provider.complete([HumanMessage(content=cached_content)])
+
+    assert out == "hello"
+    assert model.messages[0][0].content == cached_content
+    assert model.messages[1][0].content == [{"type": "text", "text": "stable"}]
+    assert provider.prompt_cache_supported is False
 
 
 async def test_complete_with_tools_resolves_tool_calls() -> None:

@@ -18,6 +18,10 @@ class LLMProvider(ABC):
     def last_usage(self) -> Any | None:
         return None
 
+    @property
+    def prompt_cache_supported(self) -> bool | None:
+        return None
+
     @abstractmethod
     async def complete(
         self,

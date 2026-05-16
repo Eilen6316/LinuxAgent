@@ -84,6 +84,9 @@ def _record_llm_usage(options: LLMCallOptions, provider: LLMProvider) -> None:
     if usage is None or not hasattr(usage, "to_attributes"):
         return
     event_attributes = {**_attributes_with_cache_key(options), **usage.to_attributes()}
+    cache_supported = getattr(provider, "prompt_cache_supported", None)
+    if cache_supported is not None:
+        event_attributes["llm.prompt_cache_supported"] = bool(cache_supported)
     options.telemetry.event("llm.usage", trace_id=options.trace_id, attributes=event_attributes)
 
 

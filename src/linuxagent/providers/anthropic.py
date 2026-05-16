@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from langchain_core.messages import BaseMessage, SystemMessage
+
 from ..config.models import APIConfig, LLMProviderName
 from .base import BaseLLMProvider
 from .errors import (
@@ -58,6 +60,21 @@ class AnthropicProvider(BaseLLMProvider):
     def __init__(self, config: APIConfig) -> None:
         super().__init__(config, _build_chat_model(config))
 
+    def _prepare_request(
+        self,
+        messages: list[BaseMessage],
+        kwargs: dict[str, Any],
+    ) -> tuple[list[BaseMessage], dict[str, Any]]:
+        request_kwargs = dict(kwargs)
+        prompt_cache_key = request_kwargs.pop("prompt_cache_key", None)
+        if (
+            not self._config.prompt_cache
+            or not self._prompt_cache_supported
+            or not prompt_cache_key
+        ):
+            return messages, request_kwargs
+        return _messages_with_cache_control(messages), request_kwargs
+
     def _map_error(self, exc: BaseException) -> ProviderError:
         # anthropic SDK exception surface mirrors openai's; match by class name
         # so this module stays importable without the optional extra.
@@ -73,3 +90,46 @@ class AnthropicProvider(BaseLLMProvider):
             if "Connection" in name:
                 return ProviderConnectionError(str(exc))
         return super()._map_error(exc)
+
+
+def _messages_with_cache_control(messages: list[BaseMessage]) -> list[BaseMessage]:
+    if not messages:
+        return messages
+    index = _cache_breakpoint_index(messages)
+    if index is None:
+        return messages
+    cached = _message_with_cache_control(messages[index])
+    return [*messages[:index], cached, *messages[index + 1 :]]
+
+
+def _cache_breakpoint_index(messages: list[BaseMessage]) -> int | None:
+    for index, message in enumerate(messages):
+        if isinstance(message, SystemMessage):
+            return index
+    return 0
+
+
+def _message_with_cache_control(message: BaseMessage) -> BaseMessage:
+    content = message.content
+    if isinstance(content, str):
+        block = {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+        return message.model_copy(update={"content": [block]})
+    if isinstance(content, list):
+        updated = _content_blocks_with_cache_control(content)
+        return message.model_copy(update={"content": updated})
+    return message
+
+
+def _content_blocks_with_cache_control(content: list[Any]) -> list[Any]:
+    blocks = [dict(item) if isinstance(item, dict) else item for item in content]
+    for index in range(len(blocks) - 1, -1, -1):
+        block = blocks[index]
+        if isinstance(block, dict) and _is_cacheable_content_block(block):
+            block["cache_control"] = {"type": "ephemeral"}
+            return blocks
+    return blocks
+
+
+def _is_cacheable_content_block(block: dict[str, Any]) -> bool:
+    block_type = block.get("type")
+    return block_type is None or block_type == "text"

@@ -22,7 +22,14 @@ async def handle_slash(agent: LinuxAgent, line: str, thread_id: str) -> str | No
             await agent.ui.print(slash_help())
             return thread_id
         case "/tools":
-            await agent.ui.print(tools_help(agent.tool_names))
+            usage = agent.telemetry.llm_usage_summary() if agent.telemetry is not None else None
+            await agent.ui.print(
+                tools_help(
+                    agent.tool_names,
+                    usage=usage,
+                    prompt_cache_enabled=agent.prompt_cache_enabled,
+                )
+            )
             return thread_id
         case "/trace":
             await handle_trace_command(agent.ui, rest)
