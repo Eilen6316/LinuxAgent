@@ -102,7 +102,9 @@ schema. Do not include markdown or prose:
       "command": "single argv-safe command string",
       "purpose": "why this command is needed",
       "read_only": true,
-      "target_hosts": []
+      "target_hosts": [],
+      "background": false,
+      "timeout_seconds": null
     }}
   ],
   "risk_summary": "short risk summary",
@@ -122,6 +124,14 @@ Use `target_hosts` as structured execution scope: leave it empty for local
 execution, put exact configured host names or hostnames for remote execution,
 and use `["*"]` only when the user explicitly asks to target every configured
 cluster host.
+Use `background` only for bounded long-running operations where the operator
+should keep chatting while the command runs, such as timed monitoring, sampling,
+or report generation. Set `timeout_seconds` to the expected upper bound plus a
+small buffer when duration is known. Do not use background execution for
+unbounded daemons, interactive terminal programs, commands that require live
+stdin, or commands whose next plan step depends on immediate stdout. The command
+still goes through policy, HITL, sandbox execution, audit, and telemetry before
+the background job starts.
 For multi-part requests, the commands array must cover every requested outcome
 before the turn can be considered complete. Do not stop at package download or
 installation when the user also asked for configuration, password changes,

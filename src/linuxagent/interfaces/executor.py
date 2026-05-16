@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Protocol
 
 from ..sandbox.models import SandboxResult
 
@@ -81,8 +81,10 @@ class CommandExecutor(ABC):
         *,
         on_stdout: OutputCallback,
         on_stderr: OutputCallback,
+        timeout_seconds: float | None = None,
     ) -> ExecutionResult:
         """Run a command while streaming stdout/stderr to callbacks."""
+        del timeout_seconds
         result = await self.execute(command)
         if result.stdout:
             await on_stdout(result.stdout)
@@ -102,3 +104,15 @@ class CommandExecutor(ABC):
         ``source`` drives the HITL upgrade (R-HITL-01): LLM-sourced commands
         judged SAFE are raised to CONFIRM on first appearance within a session.
         """
+
+
+class StreamingCommandRunner(Protocol):
+    async def run_streaming(
+        self,
+        command: str,
+        *,
+        on_stdout: OutputCallback,
+        on_stderr: OutputCallback,
+        timeout_seconds: float | None = None,
+    ) -> ExecutionResult:
+        """Run a command while streaming stdout/stderr to callbacks."""

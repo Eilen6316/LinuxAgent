@@ -107,6 +107,8 @@ class PlannedCommand(BaseModel):
     purpose: str = Field(min_length=1)
     read_only: bool
     target_hosts: tuple[str, ...] = ()
+    background: bool = False
+    timeout_seconds: float | None = Field(default=None, gt=0, le=86400)
 
     @field_validator("command")
     @classmethod
@@ -321,6 +323,7 @@ def command_plan_json(
                 "purpose": goal,
                 "read_only": read_only,
                 "target_hosts": [],
+                "background": False,
             }
         ],
         "risk_summary": "Generated command plan.",

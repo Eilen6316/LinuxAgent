@@ -234,9 +234,10 @@ class LinuxCommandExecutor(CommandExecutor):
         *,
         on_stdout: OutputCallback,
         on_stderr: OutputCallback,
+        timeout_seconds: float | None = None,
     ) -> ExecutionResult:
         """Run ``command`` while streaming stdout/stderr chunks."""
-        payload = self._prepare(command)
+        payload = self._prepare(command, timeout_seconds=timeout_seconds)
         start = time.monotonic()
         callback_budget = _CallbackBudget(self._config.output_bytes)
         try:
@@ -263,7 +264,7 @@ class LinuxCommandExecutor(CommandExecutor):
 
     # -- Helpers ----------------------------------------------------------
 
-    def _prepare(self, command: str) -> _SpawnPayload:
+    def _prepare(self, command: str, *, timeout_seconds: float | None = None) -> _SpawnPayload:
         verdict = self.is_safe(command)
         if verdict.level is SafetyLevel.BLOCK:
             raise CommandBlockedError(verdict)
@@ -289,7 +290,9 @@ class LinuxCommandExecutor(CommandExecutor):
                 )
             )
 
-        return _SpawnPayload(request=self._sandbox_request(command, argv, verdict))
+        return _SpawnPayload(
+            request=self._sandbox_request(command, argv, verdict, timeout_seconds=timeout_seconds)
+        )
 
     # -- Whitelist access -------------------------------------------------
 
@@ -306,12 +309,14 @@ class LinuxCommandExecutor(CommandExecutor):
         command: str,
         argv: list[str],
         verdict: SafetyResult,
+        *,
+        timeout_seconds: float | None = None,
     ) -> SandboxRequest:
         return SandboxRequest(
             command=command,
             argv=tuple(argv),
             cwd=Path.cwd(),
-            timeout=self._config.command_timeout,
+            timeout=timeout_seconds or self._config.command_timeout,
             profile=profile_for_safety(
                 verdict,
                 default_profile=self._sandbox_config.default_profile,

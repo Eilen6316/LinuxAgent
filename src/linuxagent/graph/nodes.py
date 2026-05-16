@@ -18,7 +18,7 @@ from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLeve
 from ..plans import PlannedCommand
 from ..prompts_loader import build_analysis_prompt
 from ..runbooks import RunbookEngine
-from ..services import ClusterService, CommandService
+from ..services import BackgroundJobService, ClusterService, CommandService
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
 from .common import span, trace_id
@@ -81,6 +81,7 @@ class GraphDependencies:
     audit: AuditLog
     checkpointer: Any | None = None
     cluster_service: ClusterService | None = None
+    background_jobs: BackgroundJobService | None = None
     tools: tuple[BaseTool, ...] = ()
     telemetry: TelemetryRecorder | None = None
     runbook_engine: RunbookEngine | None = None
@@ -276,6 +277,7 @@ def make_execute_node(
     command_service: CommandService,
     audit: AuditLog,
     cluster_service: ClusterService | None = None,
+    background_jobs: BackgroundJobService | None = None,
     telemetry: TelemetryRecorder | None = None,
     runtime_observer: RuntimeEventObserver | None = None,
 ) -> Node:
@@ -285,6 +287,7 @@ def make_execute_node(
             command_service,
             audit,
             cluster_service,
+            background_jobs,
             telemetry,
             runtime_observer,
         )
@@ -297,6 +300,7 @@ async def _execute_node(
     command_service: CommandService,
     audit: AuditLog,
     cluster_service: ClusterService | None,
+    background_jobs: BackgroundJobService | None,
     telemetry: TelemetryRecorder | None,
     runtime_observer: RuntimeEventObserver | None,
 ) -> AgentState:
@@ -324,6 +328,7 @@ async def _execute_node(
         command_service,
         audit,
         cluster_service,
+        background_jobs,
         telemetry,
         runtime_observer,
         current_trace_id,
@@ -336,10 +341,20 @@ async def _execute_single_command(
     command_service: CommandService,
     audit: AuditLog,
     cluster_service: ClusterService | None,
+    background_jobs: BackgroundJobService | None,
     telemetry: TelemetryRecorder | None,
     runtime_observer: RuntimeEventObserver | None,
     current_trace_id: str,
 ) -> AgentState:
+    if _current_step_background(state):
+        return await _start_background_command(
+            state,
+            command,
+            background_jobs,
+            audit,
+            runtime_observer,
+            current_trace_id,
+        )
     attributes: dict[str, object] = {"cluster": bool(state.get("selected_hosts"))}
     try:
         with span(telemetry, "command.execute", current_trace_id, attributes):
@@ -357,6 +372,59 @@ async def _execute_single_command(
     await _record_command_execution(audit, state, result, current_trace_id)
     await notify_command_result(runtime_observer, current_trace_id, result)
     return _single_command_update(state, result, runtime_observer, current_trace_id)
+
+
+async def _start_background_command(
+    state: AgentState,
+    command: str,
+    background_jobs: BackgroundJobService | None,
+    audit: AuditLog,
+    runtime_observer: RuntimeEventObserver | None,
+    current_trace_id: str,
+) -> AgentState:
+    if background_jobs is None:
+        result = synthetic_result(command, 1, "", "background jobs are not available")
+        await _record_command_execution(audit, state, result, current_trace_id)
+        await notify_command_result(runtime_observer, current_trace_id, result)
+        return _single_command_update(state, result, runtime_observer, current_trace_id)
+    step = _current_plan_step(state)
+    snapshot = background_jobs.start(
+        command,
+        goal=_background_goal(state, command),
+        timeout_seconds=step.timeout_seconds if step is not None else None,
+    )
+    result = synthetic_result(
+        command,
+        0,
+        f"background job started: {snapshot.job_id}",
+        "",
+    )
+    await _record_command_execution(audit, state, result, current_trace_id)
+    await notify_command_result(runtime_observer, current_trace_id, result)
+    return {
+        **_single_command_update(state, result, runtime_observer, current_trace_id),
+        "background_job_id": snapshot.job_id,
+    }
+
+
+def _current_step_background(state: AgentState) -> bool:
+    step = _current_plan_step(state)
+    return bool(step and step.background)
+
+
+def _background_goal(state: AgentState, command: str) -> str:
+    plan = state.get("command_plan")
+    return plan.goal if plan is not None else command
+
+
+def _current_plan_step(state: AgentState) -> PlannedCommand | None:
+    plan = state.get("command_plan")
+    if plan is None:
+        return None
+    index = state.get("runbook_step_index", 0)
+    if not 0 <= index < len(plan.commands):
+        return None
+    return plan.commands[index]
 
 
 def _single_command_update(
@@ -471,12 +539,16 @@ def _parallel_read_only_batch(
     if current_index >= len(plan.commands):
         return ()
     current_step = plan.commands[current_index]
+    if current_step.background:
+        return ()
     if current_step.command != current_command:
         return ()
     source = state.get("command_source") or CommandSource.USER
     batch: list[BatchStep] = []
     for index, step in enumerate(plan.commands[current_index:], start=current_index):
         if not _plan_step_is_local_read_only(step):
+            break
+        if step.background:
             break
         if index == current_index:
             if not _current_step_can_enter_batch(state):
@@ -585,6 +657,20 @@ def make_analyze_result_node(
         result = state.get("execution_result")
         if result is None:
             return {"messages": [AIMessage(content="没有执行结果可分析。")]}
+        background_job_id = state.get("background_job_id")
+        if background_job_id:
+            return {
+                "trace_id": current_trace_id,
+                "messages": [
+                    AIMessage(
+                        content=(
+                            f"后台任务已启动：{background_job_id}\n"
+                            f"使用 `/job {background_job_id}` 查看进度和输出，"
+                            f"使用 `/stop {background_job_id}` 停止。"
+                        )
+                    )
+                ],
+            }
         result_context = analysis_context(state, result)
         prompt_messages = prompt.format_messages(result_context=result_context)
         try:

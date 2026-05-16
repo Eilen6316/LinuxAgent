@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .background_jobs import BackgroundJobService, BackgroundJobSnapshot, JobStatus
 from .chat_service import ChatService, ChatSession
 from .cluster_service import ClusterService
 from .command_service import (
@@ -19,6 +20,8 @@ from .monitoring_service import (
 )
 
 __all__ = [
+    "BackgroundJobService",
+    "BackgroundJobSnapshot",
     "ChatService",
     "ChatSession",
     "ClusterService",
@@ -27,6 +30,7 @@ __all__ = [
     "CommandRunResult",
     "CommandSafetyError",
     "CommandService",
+    "JobStatus",
     "MonitoringAlert",
     "MonitoringService",
     "collect_system_snapshot",

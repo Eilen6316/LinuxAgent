@@ -71,6 +71,17 @@ def test_parse_command_plan_accepts_cluster_wildcard_target() -> None:
     assert plan.primary.target_hosts == ("*",)
 
 
+def test_parse_command_plan_accepts_background_metadata() -> None:
+    payload = json.loads(command_plan_json("/bin/sleep 5"))
+    payload["commands"][0]["background"] = True
+    payload["commands"][0]["timeout_seconds"] = 10
+
+    plan = parse_command_plan(json.dumps(payload))
+
+    assert plan.primary.background is True
+    assert plan.primary.timeout_seconds == 10
+
+
 @pytest.mark.parametrize(
     "command",
     [

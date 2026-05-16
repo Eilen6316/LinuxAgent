@@ -63,8 +63,8 @@ conversation context:
 !uname -a
 ```
 
-Use `/resume` to reopen a saved thread and `/new` to reset the current
-conversation.
+Use `/resume` to reopen a saved thread, `/new` to reset the current
+conversation, and `/jobs` to inspect approved long-running background jobs.
 
 ## Configuration Notes
 

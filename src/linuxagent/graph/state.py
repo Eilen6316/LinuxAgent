@@ -65,6 +65,7 @@ class AgentState(TypedDict, total=False):
     user_confirmed: bool
     execution_result: ExecutionResult | None
     execution_results_visible: bool
+    background_job_id: str | None
 
     # Audit correlation ID — one per HITL round-trip.
     audit_id: str | None
@@ -116,6 +117,7 @@ def initial_state(
         user_confirmed=False,
         execution_result=None,
         execution_results_visible=False,
+        background_job_id=None,
         audit_id=None,
     )
 

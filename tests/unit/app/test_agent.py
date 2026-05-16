@@ -14,7 +14,7 @@ from linuxagent.app import LinuxAgent
 from linuxagent.audit import AuditLog
 from linuxagent.intelligence import ContextManager
 from linuxagent.interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
-from linuxagent.services import ChatService, CommandService
+from linuxagent.services import BackgroundJobSnapshot, ChatService, CommandService, JobStatus
 from linuxagent.telemetry import TelemetryRecorder
 
 
@@ -43,6 +43,45 @@ class _FakeClusterService:
 
     async def close(self) -> None:
         self.closed = True
+
+
+class _FakeBackgroundJobs:
+    def __init__(self, items: tuple[BackgroundJobSnapshot, ...] = ()) -> None:
+        self.items = items
+        self.stopped_all = False
+        self.stopped: list[str] = []
+
+    def list(self) -> tuple[BackgroundJobSnapshot, ...]:
+        return self.items
+
+    def get(self, job_id: str) -> BackgroundJobSnapshot | None:
+        return next((item for item in self.items if item.job_id == job_id), None)
+
+    async def stop(self, job_id: str) -> BackgroundJobSnapshot | None:
+        self.stopped.append(job_id)
+        return self.get(job_id)
+
+    async def stop_all(self) -> None:
+        self.stopped_all = True
+
+
+def _job_snapshot(job_id: str = "job-test") -> BackgroundJobSnapshot:
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+    return BackgroundJobSnapshot(
+        job_id=job_id,
+        command="/bin/sleep 5",
+        goal="monitor cpu",
+        status=JobStatus.RUNNING,
+        created_at=now,
+        started_at=now,
+        finished_at=None,
+        timeout_seconds=10,
+        stdout="sample\n",
+        stderr="",
+        exit_code=None,
+    )
 
 
 class _FakeUI:
@@ -193,6 +232,7 @@ def _agent(
     chat_service: ChatService | None = None,
     context_manager: ContextManager | None = None,
     command_service: CommandService | None = None,
+    background_jobs: _FakeBackgroundJobs | None = None,
     telemetry: TelemetryRecorder | None = None,
     prompt_cache_enabled: bool = False,
 ):
@@ -204,6 +244,7 @@ def _agent(
         audit=AuditLog(tmp_path / "audit.log"),
         context_manager=context_manager or ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
+        background_jobs=background_jobs,  # type: ignore[arg-type]
         telemetry=telemetry,
         prompt_cache_enabled=prompt_cache_enabled,
     )
@@ -369,6 +410,41 @@ async def test_trace_slash_command_toggles_activity_output(tmp_path) -> None:
 
     assert ui.activity_visible is False
     assert ui.printed == ["Trace/activity output is now hidden."]
+
+
+async def test_jobs_slash_command_lists_background_jobs(tmp_path) -> None:
+    jobs = _FakeBackgroundJobs((_job_snapshot(),))
+    ui = _FakeUI(inputs=["/jobs", "/exit"])
+    agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui, background_jobs=jobs)
+
+    await agent.run(thread_id="cli")
+
+    assert "job-test" in "\n".join(ui.printed)
+    assert "monitor cpu" in "\n".join(ui.printed)
+    assert jobs.stopped_all is True
+
+
+async def test_job_slash_command_shows_job_details(tmp_path) -> None:
+    jobs = _FakeBackgroundJobs((_job_snapshot(),))
+    ui = _FakeUI(inputs=["/job job-test", "/exit"])
+    agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui, background_jobs=jobs)
+
+    await agent.run(thread_id="cli")
+
+    printed = "\n".join(ui.printed)
+    assert "status: running" in printed
+    assert "sample" in printed
+
+
+async def test_stop_slash_command_stops_background_job(tmp_path) -> None:
+    jobs = _FakeBackgroundJobs((_job_snapshot(),))
+    ui = _FakeUI(inputs=["/stop job-test", "/exit"])
+    agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui, background_jobs=jobs)
+
+    await agent.run(thread_id="cli")
+
+    assert jobs.stopped == ["job-test"]
+    assert "已请求停止后台任务：job-test" in "\n".join(ui.printed)
 
 
 async def test_resume_switches_to_saved_session_context(tmp_path) -> None:

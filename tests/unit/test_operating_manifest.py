@@ -28,3 +28,12 @@ def test_operating_manifest_cache_section_describes_boundaries() -> None:
     assert "# cache" in context
     assert "prompt_cache_key" in context
     assert "does not cache shell command results" in context
+
+
+def test_operating_manifest_usage_section_describes_background_jobs() -> None:
+    context = operating_manifest_context(section_names=("usage",))
+
+    assert "# usage" in context
+    assert "/jobs" in context
+    assert "/job <job_id>" in context
+    assert "/stop <job_id>" in context

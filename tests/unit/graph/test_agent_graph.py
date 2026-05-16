@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -28,7 +29,7 @@ from linuxagent.plans import command_plan_json, file_patch_plan_json
 from linuxagent.product_context import product_capability_context
 from linuxagent.providers.errors import ProviderError
 from linuxagent.runbooks import RunbookEngine, load_runbooks
-from linuxagent.services import ClusterService, CommandService
+from linuxagent.services import BackgroundJobSnapshot, ClusterService, CommandService, JobStatus
 from linuxagent.telemetry import TelemetryRecorder
 from linuxagent.tools import ToolRuntimeLimits, build_workspace_tools
 from linuxagent.tools.sandbox import invoke_tool_with_sandbox
@@ -172,6 +173,43 @@ class _FakeSSH:
         return None
 
 
+class _FakeBackgroundJobs:
+    def __init__(self) -> None:
+        self.started: list[dict[str, Any]] = []
+
+    def start(
+        self,
+        command: str,
+        *,
+        goal: str,
+        timeout_seconds: float | None = None,
+        artifact_paths: tuple[str, ...] = (),
+    ) -> BackgroundJobSnapshot:
+        self.started.append(
+            {
+                "command": command,
+                "goal": goal,
+                "timeout_seconds": timeout_seconds,
+                "artifact_paths": artifact_paths,
+            }
+        )
+        now = datetime.now(UTC)
+        return BackgroundJobSnapshot(
+            job_id="job-test",
+            command=command,
+            goal=goal,
+            status=JobStatus.RUNNING,
+            created_at=now,
+            started_at=now,
+            finished_at=None,
+            timeout_seconds=timeout_seconds or 60,
+            stdout="",
+            stderr="",
+            exit_code=None,
+            artifact_paths=artifact_paths,
+        )
+
+
 def _graph(
     tmp_path: Path,
     responses: list[str],
@@ -182,6 +220,7 @@ def _graph(
     tools: tuple[Any, ...] = (),
     tool_observer: Any | None = None,
     runtime_observer: Any | None = None,
+    background_jobs: Any | None = None,
     checkpointer: Any | None = None,
     security_config: SecurityConfig | None = None,
     telemetry: TelemetryRecorder | None = None,
@@ -198,6 +237,7 @@ def _graph(
         audit=AuditLog(tmp_path / "audit.log"),
         checkpointer=checkpointer,
         cluster_service=cluster_service,
+        background_jobs=background_jobs,
         tools=tools,  # type: ignore[arg-type]
         runbook_engine=runbook_engine,
         file_patch_config=file_patch_config or FilePatchConfig(),
@@ -379,6 +419,32 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     assert None not in trace_ids
     begin_record = next(record for record in audit_records if record["event"] == "confirm_begin")
     assert begin_record["sandbox_preview"]["runner"] == "noop"
+
+
+async def test_graph_starts_background_command_after_confirmation(tmp_path) -> None:
+    payload = json.loads(command_plan_json("/bin/sleep 5", goal="monitor cpu"))
+    payload["commands"][0]["background"] = True
+    payload["commands"][0]["timeout_seconds"] = 10
+    jobs = _FakeBackgroundJobs()
+    graph, _provider = _graph(tmp_path, [json.dumps(payload)], background_jobs=jobs)
+    config = {"configurable": {"thread_id": "bg"}}
+
+    await graph.ainvoke(initial_state("monitor cpu", source=CommandSource.USER), config=config)
+    result = await graph.ainvoke(
+        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    )
+
+    assert jobs.started == [
+        {
+            "command": "/bin/sleep 5",
+            "goal": "monitor cpu",
+            "timeout_seconds": 10.0,
+            "artifact_paths": (),
+        }
+    ]
+    answer = str(result["messages"][-1].content)
+    assert "后台任务已启动：job-test" in answer
+    assert "/job job-test" in answer
 
 
 async def test_graph_inline_python_confirm_payload_exposes_policy_details(tmp_path) -> None:

@@ -9,6 +9,7 @@ from .executor import (
     OutputCallback,
     SafetyLevel,
     SafetyResult,
+    StreamingCommandRunner,
 )
 from .llm_provider import LLMProvider
 from .remote_executor import RemoteCommandExecutor
@@ -25,5 +26,6 @@ __all__ = [
     "RemoteCommandExecutor",
     "SafetyLevel",
     "SafetyResult",
+    "StreamingCommandRunner",
     "UserInterface",
 ]

@@ -4,7 +4,6 @@ import asyncio
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
-from uuid import uuid4
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -15,7 +14,13 @@ from ..graph import initial_state
 from ..graph.agent_graph import AgentGraph
 from ..intelligence import ContextManager
 from ..interfaces import CommandSource, UserInterface
-from ..services import ChatService, ClusterService, CommandService, MonitoringService
+from ..services import (
+    BackgroundJobService,
+    ChatService,
+    ClusterService,
+    CommandService,
+    MonitoringService,
+)
 from ..telemetry import TelemetryRecorder
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
@@ -28,8 +33,7 @@ from .resume import (
     resume_list,
     session_title,
 )
-from .slash import slash_help, tools_help
-from .trace import handle_trace_command
+from .slash_router import handle_slash
 
 
 @dataclass
@@ -42,6 +46,7 @@ class LinuxAgent:
     context_manager: ContextManager
     monitoring_service: MonitoringService
     cluster_service: ClusterService | None = None
+    background_jobs: BackgroundJobService | None = None
     telemetry: TelemetryRecorder | None = None
     tool_names: tuple[str, ...] = ()
     prompt_cache_enabled: bool = False
@@ -80,6 +85,8 @@ class LinuxAgent:
                     continue
                 await self.run_turn(user_input, thread_id=active_thread_id)
         finally:
+            if self.background_jobs is not None:
+                await self.background_jobs.stop_all()
             await self.monitoring_service.stop()
             if self.cluster_service is not None:
                 await self.cluster_service.close()
@@ -174,31 +181,7 @@ class LinuxAgent:
         return ()
 
     async def _handle_slash(self, line: str, thread_id: str) -> str | None:
-        if not line.startswith("/"):
-            return None
-        command, _, rest = line.partition(" ")
-        match command:
-            case "/help":
-                await self.ui.print(slash_help())
-                return thread_id
-            case "/tools":
-                await self.ui.print(tools_help(self.tool_names))
-                return thread_id
-            case "/trace":
-                await handle_trace_command(self.ui, rest)
-                return thread_id
-            case "/resume":
-                return await self._handle_resume_command(rest.strip(), thread_id) or thread_id
-            case "/new" | "/clear":
-                self.context_manager.replace([])
-                new_thread_id = f"cli-{uuid4().hex}"
-                await self.ui.print("已开启新对话。当前上下文为空；需要旧会话时使用 /resume。")
-                return new_thread_id
-            case "/exit" | "/quit":
-                return "exit"
-            case _:
-                await self.ui.print("未知命令。输入 /help 查看可用命令。")
-                return thread_id
+        return await handle_slash(self, line, thread_id)
 
     async def _handle_resume_command(self, arg: str, thread_id: str) -> str | None:
         del thread_id

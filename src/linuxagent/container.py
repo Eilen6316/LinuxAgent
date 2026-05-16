@@ -47,7 +47,13 @@ from .sandbox import (
     SandboxRunner,
 )
 from .sandbox.models import SandboxRunnerKind
-from .services import ChatService, ClusterService, CommandService, MonitoringService
+from .services import (
+    BackgroundJobService,
+    ChatService,
+    ClusterService,
+    CommandService,
+    MonitoringService,
+)
 from .skills import load_skill_manifests, skill_planner_guidance, skill_runbooks
 from .telemetry import TelemetryRecorder
 from .tools import (
@@ -90,6 +96,7 @@ class Container:
             context_manager=self.context_manager(),
             monitoring_service=self.monitoring_service(),
             cluster_service=self.cluster_service(),
+            background_jobs=self.background_jobs(),
             telemetry=self.telemetry(),
             tool_names=tuple(item.name for item in self.tool_catalog().items),
             prompt_cache_enabled=self._config.api.prompt_cache,
@@ -132,6 +139,12 @@ class Container:
         return self._cached(
             "command_service",
             lambda: CommandService(self.executor(), self.learner()),
+        )
+
+    def background_jobs(self) -> BackgroundJobService:
+        return self._cached(
+            "background_jobs",
+            lambda: BackgroundJobService(self.command_service()),
         )
 
     def context_manager(self) -> ContextManager:
@@ -185,6 +198,7 @@ class Container:
                     audit=self.audit_log(),
                     checkpointer=self.checkpointer(),
                     cluster_service=self.cluster_service(),
+                    background_jobs=self.background_jobs(),
                     tools=tuple(self.tools()),
                     telemetry=self.telemetry(),
                     runbook_engine=self.runbook_engine(),

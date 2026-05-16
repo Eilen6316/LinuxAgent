@@ -81,12 +81,12 @@ class CommandService:
         *,
         on_stdout: OutputCallback,
         on_stderr: OutputCallback,
+        timeout_seconds: float | None = None,
     ) -> ExecutionResult:
-        result = await self._executor.execute_streaming(
-            command,
-            on_stdout=on_stdout,
-            on_stderr=on_stderr,
-        )
+        kwargs: dict[str, Any] = {"on_stdout": on_stdout, "on_stderr": on_stderr}
+        if timeout_seconds is not None:
+            kwargs["timeout_seconds"] = timeout_seconds
+        result = await self._executor.execute_streaming(command, **kwargs)
         self._record(command, result)
         return result
 

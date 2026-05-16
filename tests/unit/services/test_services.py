@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, messages_to_dict
@@ -13,11 +15,13 @@ from linuxagent.config.models import ClusterConfig, ClusterHost, MonitoringConfi
 from linuxagent.intelligence import CommandLearner
 from linuxagent.interfaces import ExecutionResult, SafetyLevel, SafetyResult
 from linuxagent.services import (
+    BackgroundJobService,
     ChatService,
     ClusterService,
     CommandBlockedByPolicyError,
     CommandConfirmationRequiredError,
     CommandService,
+    JobStatus,
     MonitoringService,
     evaluate_alerts,
 )
@@ -241,6 +245,27 @@ class _FakeExecutor:
         return self._safety
 
 
+class _StreamingExecutor(_FakeExecutor):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = asyncio.Event()
+
+    async def execute_streaming(
+        self,
+        command: str,
+        *,
+        on_stdout,
+        on_stderr,
+        timeout_seconds: float | None = None,
+    ) -> ExecutionResult:
+        del on_stderr
+        self.started.set()
+        await on_stdout("sample\n")
+        if command == "sleep":
+            await asyncio.sleep(timeout_seconds or 30)
+        return ExecutionResult(command, 0, "sample\n", "", 0.1)
+
+
 async def test_command_service_records_learner_state(tmp_path) -> None:
     learner_path = tmp_path / "learner.json"
     learner = CommandLearner(learner_path)
@@ -253,6 +278,34 @@ async def test_command_service_records_learner_state(tmp_path) -> None:
     assert stats is not None
     assert stats.count == 1
     assert json.loads(learner_path.read_text(encoding="utf-8"))
+
+
+async def test_background_job_service_runs_and_captures_output() -> None:
+    executor = _StreamingExecutor()
+    service = BackgroundJobService(CommandService(executor))  # type: ignore[arg-type]
+    report_path = Path(tempfile.gettempdir()) / "report.png"
+
+    snapshot = service.start(f"/bin/echo {report_path}", goal="write report")
+    await executor.started.wait()
+    await asyncio.sleep(0)
+    finished = service.get(snapshot.job_id)
+
+    assert finished is not None
+    assert finished.status is JobStatus.SUCCEEDED
+    assert finished.stdout == "sample\n"
+    assert finished.artifact_paths == (str(report_path),)
+
+
+async def test_background_job_service_stops_running_job() -> None:
+    executor = _StreamingExecutor()
+    service = BackgroundJobService(CommandService(executor))  # type: ignore[arg-type]
+
+    snapshot = service.start("sleep", goal="long task", timeout_seconds=30)
+    await executor.started.wait()
+    stopped = await service.stop(snapshot.job_id)
+
+    assert stopped is not None
+    assert stopped.status is JobStatus.STOPPED
 
 
 async def test_run_checked_blocks_blocked_commands() -> None:

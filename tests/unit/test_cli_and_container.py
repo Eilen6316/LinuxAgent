@@ -736,7 +736,7 @@ def test_tool_activity_message_marks_finished_tools_as_transient() -> None:
         }
     )
 
-    assert message == ("LinuxAgent 正在整理目录 workspace\n" "  list_dir · 2 items")
+    assert message == ("LinuxAgent 正在整理目录 workspace\n  list_dir · 2 items")
 
 
 async def test_tool_observer_sends_tool_events_to_activity(
@@ -768,9 +768,7 @@ async def test_tool_observer_sends_tool_events_to_activity(
         }
     )
 
-    assert ui.activities == [
-        "LinuxAgent 正在整理文件 workspace/disk_info.sh\n" "  read_file · 1 line"
-    ]
+    assert ui.activities == ["LinuxAgent 正在整理文件 workspace/disk_info.sh\n  read_file · 1 line"]
     assert ui.raw == []
 
 
@@ -786,6 +784,8 @@ def test_product_capability_context_describes_resume_and_model_source() -> None:
     assert "learner memory" in context
     assert "read_file, search_files" in context
     assert "/resume - 列出本机保存的会话" in slash_help()
+    assert "/jobs - 列出当前进程内正在运行或已完成的后台任务" in slash_help()
+    assert "/job - 查看指定后台任务；用法：/job <job_id>" in slash_help()
 
 
 def test_runtime_event_message_formats_command_batch() -> None:

@@ -124,6 +124,7 @@ def _add_execution_nodes(graph: Any, deps: GraphDependencies) -> None:
                 deps.command_service,
                 deps.audit,
                 deps.cluster_service,
+                deps.background_jobs,
                 deps.telemetry,
                 deps.runtime_observer,
             )
