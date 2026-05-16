@@ -34,6 +34,12 @@ Return only this JSON object:
 }}
 ```
 
+If the user asks what files, directories, scripts, logs, processes, ports,
+packages, services, disks, users, or system resources exist right now, that is
+runtime inspection and must be planned with the minimum read-only command or
+workspace tool. Do not return a DirectAnswerPlan that says you have not checked,
+cannot answer yet, or will run a command later.
+
 {runbook_guidance}
 
 Runbooks are advisory examples, not routing rules. Use, adapt, combine, or

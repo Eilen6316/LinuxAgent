@@ -33,6 +33,13 @@ Allowed modes:
   missing or ambiguous enough that planning a command would be unsafe or likely
   wrong.
 
+Current-state inspection requests are `COMMAND_PLAN`, not `DIRECT_ANSWER`.
+This includes asking what files, directories, scripts, logs, processes, ports,
+packages, services, disks, users, or system resources exist right now on the
+machine or a remote host. Do not answer these with an apology, a statement that
+you have not checked yet, or a promise that you will run a command later. Route
+them to `COMMAND_PLAN` so the planner can inspect reality.
+
 Artifact creation needs an explicit destination before planning. If the user
 asks to write, generate, create, or make a script, program, playbook, config, or
 other file artifact but does not provide a target path, filename, target

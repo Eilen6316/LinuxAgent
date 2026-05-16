@@ -27,5 +27,11 @@ mutation, return:
 }}
 ```
 
+Current-state inspection requests require planning. This includes asking what
+files, directories, scripts, logs, processes, ports, packages, services, disks,
+users, or system resources exist right now on the machine or a remote host. Do
+not return `direct_answer` with an apology, a statement that you have not
+checked yet, or a promise to run a command later. Return `continue_planning`.
+
 Do not return a CommandPlan, FilePatchPlan, or NoChangePlan in this gate. Do not
 include markdown, code fences, or prose outside the JSON object.

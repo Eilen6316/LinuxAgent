@@ -59,6 +59,9 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "Artifact creation needs an explicit destination" in body
     assert "Do not guess `/tmp`" in body
     assert "LinuxAgent self-description" in body
+    assert "Current-state inspection requests are `COMMAND_PLAN`" in body
+    assert "what files, directories, scripts" in body
+    assert "so the planner can inspect reality" in body
     assert '"answer_context": "none"' in body
     assert "`self_manual`" in body
 
@@ -88,6 +91,8 @@ def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() ->
     assert "Short inline interpreter commands are acceptable only when they are" in body
     assert "Before calling any tool" in body
     assert "direct_answer" in body
+    assert "runtime inspection and must be planned" in body
+    assert "Do not return a DirectAnswerPlan that says you have not checked" in body
 
 
 def test_build_planner_gate_prompt_has_user_input_variable() -> None:
@@ -99,6 +104,8 @@ def test_build_planner_gate_prompt_has_user_input_variable() -> None:
     assert "pre-tool planning gate" in body
     assert "direct_answer" in body
     assert "continue_planning" in body
+    assert "Current-state inspection requests require planning" in body
+    assert "Return `continue_planning`" in body
 
 
 def test_build_repair_prompt_has_recovery_variables() -> None:
