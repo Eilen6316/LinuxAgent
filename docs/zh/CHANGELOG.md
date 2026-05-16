@@ -23,6 +23,10 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Changed
 
+- 源码 checkout 的 bootstrap 现在会初始化
+  `~/.config/linuxagent/config.yaml`，并安装用户级
+  `~/.local/bin/linuxagent` 启动器；用户无需激活项目 venv，也能在任意目录启动
+  LinuxAgent。
 - 新增统一 tool catalog，供运行时 tool binding、`/tools` 上下文、product context
   和 `linuxagent check` 复用；check 输出现在会展示每个 tool 的 sandbox profile、
   permissions、network access、HITL mode、allowed roots 和 runner isolation note。

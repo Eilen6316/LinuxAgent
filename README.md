@@ -69,11 +69,13 @@ not just a set of claims in the README:
 git clone https://github.com/Eilen6316/LinuxAgent.git
 cd LinuxAgent
 ./scripts/bootstrap.sh
-source .venv/bin/activate
 ```
 
-Then edit `./config.yaml` and set a provider. The core paths are OpenAI,
-DeepSeek, local Ollama/OpenAI-compatible models, and Anthropic:
+Then edit `~/.config/linuxagent/config.yaml` and set a provider. The bootstrap
+script creates a user-level `linuxagent` launcher in `~/.local/bin`; make sure
+that directory is on `PATH` if your shell does not already include it. The core
+paths are OpenAI, DeepSeek, local Ollama/OpenAI-compatible models, and
+Anthropic:
 
 ```yaml
 api:
@@ -333,7 +335,7 @@ make verify-build
 
 | Path | Use when |
 |---|---|
-| `./scripts/bootstrap.sh` | You are working from a source checkout |
+| `./scripts/bootstrap.sh` | You are working from a source checkout and want `linuxagent` available from any directory |
 | `pip install -c constraints.txt https://github.com/Eilen6316/LinuxAgent/releases/download/v4.1.0/linuxagent-4.1.0-py3-none-any.whl` | You want the published GitHub Release wheel |
 | `pip install linuxagent` | You want the PyPI package after the release is published |
 | `pip install -e ".[dev]"` | You are developing or running the full local gate |

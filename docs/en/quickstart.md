@@ -9,10 +9,12 @@ operator-approved command.
 git clone https://github.com/Eilen6316/LinuxAgent.git
 cd LinuxAgent
 ./scripts/bootstrap.sh
-source .venv/bin/activate
 ```
 
-Edit the generated `config.yaml` and set one provider.
+Edit the generated `~/.config/linuxagent/config.yaml` and set one provider.
+The bootstrap script keeps dependencies in the checkout `.venv` and installs a
+user-level `~/.local/bin/linuxagent` launcher, so the command can be started
+from any directory. If `linuxagent` is not found, add `~/.local/bin` to `PATH`.
 
 Remote provider:
 
@@ -66,8 +68,10 @@ conversation.
 
 ## Configuration Notes
 
-LinuxAgent reads configuration from `config.yaml`. The file must be owned by
-the current user and `chmod 600`; real secrets are not loaded from `.env`.
+LinuxAgent reads configuration from `~/.config/linuxagent/config.yaml` by
+default. A `./config.yaml` in the current directory can still override it for a
+specific workspace. User config files must be owned by the current user and
+`chmod 600`; real secrets are not loaded from `.env`.
 
 For API relays or other OpenAI-compatible endpoints:
 

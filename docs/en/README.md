@@ -260,8 +260,7 @@ policy:
 ```bash
 git clone https://github.com/Eilen6316/LinuxAgent.git
 cd LinuxAgent
-./scripts/bootstrap.sh     # creates .venv + pip install -e ".[dev]" + seeds config.yaml(0600)
-source .venv/bin/activate
+./scripts/bootstrap.sh     # creates .venv + global config + ~/.local/bin/linuxagent
 ```
 
 ### Manual
@@ -270,9 +269,14 @@ source .venv/bin/activate
 python3.11 -m venv .venv   # or python3.12
 source .venv/bin/activate
 pip install -e ".[dev]"
-cp configs/example.yaml config.yaml
-chmod 600 config.yaml      # required; the loader rejects user configs not at 0600
+mkdir -p ~/.config/linuxagent ~/.local/bin
+cp configs/example.yaml ~/.config/linuxagent/config.yaml
+chmod 600 ~/.config/linuxagent/config.yaml
+ln -sf "$PWD/.venv/bin/linuxagent" ~/.local/bin/linuxagent
 ```
+
+Ensure `~/.local/bin` is on `PATH`, then `linuxagent` can start from any
+directory without activating the checkout virtual environment.
 
 ### Optional extras
 
@@ -294,7 +298,7 @@ pip install -e ".[pyinstaller]"   # single-binary packaging
 ### Minimal working config
 
 ```yaml
-# ./config.yaml (chmod 600)
+# ~/.config/linuxagent/config.yaml (chmod 600)
 api:
   api_key: "sk-replace-me"   # required
 ```
@@ -731,10 +735,10 @@ jq 'select(.event=="confirm_decision" and .decision!="yes")' ~/.linuxagent/audit
 ## FAQ
 
 **Q: `linuxagent check` complains `must have permissions 0600`?**
-A: R-SEC-04 requires user configs to be `0o600` and owned by the invoking user. Run `chmod 600 config.yaml`.
+A: R-SEC-04 requires user configs to be `0o600` and owned by the invoking user. Run `chmod 600 ~/.config/linuxagent/config.yaml`.
 
 **Q: `linuxagent chat` raises `api.api_key is required`?**
-A: Set a real value for `api.api_key` in `./config.yaml`.
+A: Set a real value for `api.api_key` in `~/.config/linuxagent/config.yaml`, or in a workspace-local `./config.yaml` if you intentionally override the global config.
 
 **Q: Why was my command blocked?**
 A: Look for `matched_rule` in stderr:

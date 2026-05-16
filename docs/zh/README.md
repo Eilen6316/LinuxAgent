@@ -255,8 +255,7 @@ policy:
 ```bash
 git clone https://github.com/Eilen6316/LinuxAgent.git
 cd LinuxAgent
-./scripts/bootstrap.sh     # 建 .venv + pip install -e ".[dev]" + seed config.yaml(0600)
-source .venv/bin/activate
+./scripts/bootstrap.sh     # 建 .venv + 全局配置 + ~/.local/bin/linuxagent
 ```
 
 ### 手动
@@ -265,9 +264,14 @@ source .venv/bin/activate
 python3.11 -m venv .venv   # 或 python3.12
 source .venv/bin/activate
 pip install -e ".[dev]"
-cp configs/example.yaml config.yaml
-chmod 600 config.yaml      # 必须！loader 拒绝非 0600 的用户配置
+mkdir -p ~/.config/linuxagent ~/.local/bin
+cp configs/example.yaml ~/.config/linuxagent/config.yaml
+chmod 600 ~/.config/linuxagent/config.yaml
+ln -sf "$PWD/.venv/bin/linuxagent" ~/.local/bin/linuxagent
 ```
+
+确保 `~/.local/bin` 在 `PATH` 中，之后无需激活项目 venv，也无需停留在仓库目录，
+任意目录都可以直接运行 `linuxagent`。
 
 ### 可选扩展
 
@@ -289,7 +293,7 @@ pip install -e ".[pyinstaller]"   # 打包单二进制
 ### 最小可用配置
 
 ```yaml
-# ./config.yaml (chmod 600)
+# ~/.config/linuxagent/config.yaml (chmod 600)
 api:
   api_key: "sk-replace-me"   # 必填
 ```
@@ -684,10 +688,10 @@ jq 'select(.event=="confirm_decision" and .decision!="yes")' ~/.linuxagent/audit
 ## 常见问题
 
 **Q：`linuxagent check` 报 `must have permissions 0600`？**
-A：R-SEC-04 强制用户配置必须是 `0o600` + 当前用户所有。运行 `chmod 600 config.yaml`。
+A：R-SEC-04 强制用户配置必须是 `0o600` + 当前用户所有。运行 `chmod 600 ~/.config/linuxagent/config.yaml`。
 
 **Q：`linuxagent chat` 报 `api.api_key is required`？**
-A：在 `./config.yaml` 的 `api.api_key` 填入真实 key。
+A：在 `~/.config/linuxagent/config.yaml` 的 `api.api_key` 填入真实 key；如果你故意使用工作区覆盖配置，也可以写在当前目录的 `./config.yaml`。
 
 **Q：为什么我的命令被 BLOCK？**
 A：看 stderr 里的 `matched_rule`：

@@ -37,6 +37,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Source checkout bootstrap now seeds `~/.config/linuxagent/config.yaml` and
+  installs a user-level `~/.local/bin/linuxagent` launcher, so users can start
+  LinuxAgent from any directory without activating the checkout virtualenv.
 - Added a unified tool catalog used by runtime tool binding, `/tools` context,
   product context, and `linuxagent check`; check output now reports each
   tool's sandbox profile, permissions, network access, HITL mode, allowed
