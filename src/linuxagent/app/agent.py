@@ -20,7 +20,7 @@ from ..telemetry import TelemetryRecorder
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
 from .graph_config import graph_config
-from .output import print_assistant_response
+from .output import print_assistant_response, start_working
 from .resume import (
     ResumeSessionItem,
     render_resumed_session,
@@ -85,9 +85,7 @@ class LinuxAgent:
                 await self.cluster_service.close()
 
     async def run_turn(self, user_input: str, *, thread_id: str) -> dict[str, Any]:
-        start_working = getattr(self.ui, "start_working", None)
-        if callable(start_working):
-            start_working()
+        start_working(self.ui)
         config = graph_config(thread_id)
         self.context_manager.replace(await self._history(config))
         state: Any = initial_state(

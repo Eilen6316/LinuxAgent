@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from linuxagent.app.output import print_assistant_response
+from linuxagent.app.output import print_assistant_response, start_working
 
 
 class _MarkdownUI:
@@ -23,6 +23,26 @@ class _PlainUI:
 
     async def print(self, text: str) -> None:
         self.plain.append(text)
+
+
+class _WorkingUI:
+    def __init__(self) -> None:
+        self.started = 0
+
+    def start_working(self) -> None:
+        self.started += 1
+
+
+def test_start_working_uses_optional_ui_capability() -> None:
+    ui = _WorkingUI()
+
+    start_working(ui)  # type: ignore[arg-type]
+
+    assert ui.started == 1
+
+
+def test_start_working_ignores_plain_ui() -> None:
+    start_working(_PlainUI())  # type: ignore[arg-type]
 
 
 async def test_print_assistant_response_prefers_markdown_ui() -> None:
