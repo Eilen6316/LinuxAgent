@@ -66,7 +66,8 @@ conversation context:
 Use `/resume` to reopen a saved thread, `/new` to reset the current
 conversation, and `/job` to inspect approved long-running background jobs.
 Start `linuxagent job-daemon` in a separate process when those jobs should keep
-running independently of the foreground chat loop.
+running independently of the foreground chat loop, or use `/job daemon` for
+systemd user service guidance.
 
 ## Configuration Notes
 

@@ -10,6 +10,7 @@ from ..services import (
     BackgroundJobRuntimeStatus,
     BackgroundJobSnapshot,
     JobDaemonError,
+    JobDaemonUnit,
 )
 
 
@@ -17,6 +18,8 @@ async def handle_jobs_command(
     ui: UserInterface,
     jobs: BackgroundJobController | None,
     arg: str,
+    *,
+    daemon_unit: JobDaemonUnit | None = None,
 ) -> None:
     if jobs is None:
         await ui.print("当前运行时未启用后台任务服务。")
@@ -28,6 +31,9 @@ async def handle_jobs_command(
     action = parts[0]
     if action == "status":
         await _print_status(ui, jobs)
+        return
+    if action == "daemon":
+        await _print_daemon_help(ui, daemon_unit, parts[1:])
         return
     if action == "stop":
         await _stop_job(ui, jobs, parts[1:])
@@ -57,6 +63,21 @@ async def _print_status(ui: UserInterface, jobs: BackgroundJobController) -> Non
         await ui.print(render_job_runtime_status(await jobs.status()))
     except JobDaemonError as exc:
         await ui.print(_job_service_error(exc))
+
+
+async def _print_daemon_help(
+    ui: UserInterface,
+    unit: JobDaemonUnit | None,
+    args: list[str],
+) -> None:
+    if unit is None:
+        await ui.print("当前运行时没有 job daemon systemd unit 信息。")
+        return
+    if args and args[0] == "install":
+        unit.install()
+        await ui.print(render_job_daemon_installed(unit))
+        return
+    await ui.print(render_job_daemon_help(unit, show_unit="unit" in args))
 
 
 async def _stop_job(ui: UserInterface, jobs: BackgroundJobController, args: list[str]) -> None:
@@ -98,7 +119,7 @@ async def _follow_job(ui: UserInterface, jobs: BackgroundJobController, args: li
 
 def render_jobs(items: tuple[BackgroundJobSnapshot, ...]) -> str:
     if not items:
-        return "当前没有后台任务。用法：/job status、/job <job_id>、/job follow <job_id>、/job stop <job_id>"
+        return "当前没有后台任务。用法：/job status、/job daemon、/job <job_id>、/job follow <job_id>、/job stop <job_id>"
     lines = ["后台任务：", "```text", "ID                         STATUS     AGE      GOAL"]
     lines.extend(_job_line(item) for item in items)
     lines.append("```")
@@ -147,6 +168,37 @@ def render_job_runtime_status(status: BackgroundJobRuntimeStatus) -> str:
         lines.append(f"error: {status.error}")
     lines.append("```")
     return "\n".join(lines)
+
+
+def render_job_daemon_help(unit: JobDaemonUnit, *, show_unit: bool = False) -> str:
+    lines = [
+        "后台任务 daemon：",
+        "",
+        "```text",
+        f"unit: {unit.path}",
+        "install: /job daemon install",
+        "reload: systemctl --user daemon-reload",
+        f"enable: {unit.enable_command}",
+        f"status: {unit.status_command}",
+        "```",
+    ]
+    if show_unit and unit.content:
+        lines.extend(["", "unit file:", "```ini", unit.content.rstrip(), "```"])
+    return "\n".join(lines)
+
+
+def render_job_daemon_installed(unit: JobDaemonUnit) -> str:
+    return "\n".join(
+        [
+            f"已写入 job daemon systemd unit：{unit.path}",
+            "",
+            "```text",
+            "systemctl --user daemon-reload",
+            unit.enable_command,
+            unit.status_command,
+            "```",
+        ]
+    )
 
 
 def render_stopped_job(item: BackgroundJobSnapshot | None) -> str:

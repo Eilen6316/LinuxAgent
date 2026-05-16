@@ -26,6 +26,7 @@ from .job_daemon import (
     daemon_socket_path,
     daemon_store_path,
 )
+from .job_daemon_unit import JobDaemonUnit, build_job_daemon_unit, job_daemon_unit_path
 from .monitoring_service import (
     MonitoringAlert,
     MonitoringService,
@@ -51,10 +52,13 @@ __all__ = [
     "JobDaemonError",
     "JobDaemonServer",
     "JobDaemonUnavailableError",
+    "JobDaemonUnit",
     "MonitoringAlert",
     "MonitoringService",
+    "build_job_daemon_unit",
     "collect_system_snapshot",
     "daemon_socket_path",
     "daemon_store_path",
     "evaluate_alerts",
+    "job_daemon_unit_path",
 ]

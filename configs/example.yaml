@@ -223,6 +223,10 @@ jobs:
   # When true, approved background tasks are sent to a local Unix-socket
   # supervisor so they can continue independently of the foreground chat loop.
   daemon_enabled: true
+  # Finished job snapshots older than retention_days are pruned when jobs are persisted.
+  retention_days: 30
+  # Keep at most this many finished job snapshots after age-based pruning.
+  max_history: 200
 
 analytics:
   enabled: false

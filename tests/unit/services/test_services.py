@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,11 @@ from linuxagent.services import (
     MonitoringService,
     evaluate_alerts,
 )
-from linuxagent.services.background_jobs import JOBS_STORE_VERSION, snapshot_to_record
+from linuxagent.services.background_jobs import (
+    JOBS_STORE_VERSION,
+    pruned_job_snapshots,
+    snapshot_to_record,
+)
 from linuxagent.services.job_daemon import JobDaemonClient, JobDaemonServer, daemon_store_path
 
 
@@ -385,6 +390,23 @@ def test_background_job_service_marks_loaded_running_jobs_stopped(tmp_path) -> N
     assert "restarted" in restored.stderr
 
 
+def test_background_job_retention_keeps_running_and_recent_history() -> None:
+    now = datetime.now(UTC)
+    running = _background_snapshot_at("job-running", JobStatus.RUNNING, now)
+    recent = _background_snapshot_at("job-recent", JobStatus.SUCCEEDED, now)
+    older = _background_snapshot_at("job-older", JobStatus.SUCCEEDED, now - timedelta(days=5))
+    stale = _background_snapshot_at("job-stale", JobStatus.FAILED, now - timedelta(days=40))
+
+    kept = pruned_job_snapshots(
+        (older, running, recent, stale),
+        max_history=1,
+        retention_days=30,
+        now=now,
+    )
+
+    assert [item.job_id for item in kept] == ["job-running", "job-recent"]
+
+
 async def test_job_daemon_client_starts_lists_and_stops_jobs(tmp_path) -> None:
     history_path = tmp_path / "history.json"
     snapshot = _background_snapshot("job-daemon")
@@ -469,20 +491,76 @@ async def test_job_daemon_server_dispatches_ping(tmp_path) -> None:
     assert json.loads(writer.lines[-1]) == {"ok": True}
 
 
+async def test_job_daemon_unix_socket_e2e(tmp_path) -> None:
+    socket_path = tmp_path / "jobd.sock"
+    if not _af_unix_bind_available(socket_path):
+        pytest.skip("AF_UNIX socket bind is unavailable in this environment")
+    executor = _StreamingExecutor()
+    service = BackgroundJobService(
+        CommandService(executor),  # type: ignore[arg-type]
+        path=tmp_path / "jobs.json",
+    )
+    server = JobDaemonServer(socket_path=socket_path, jobs=service)
+    client = JobDaemonClient(socket_path=socket_path, store_path=tmp_path / "jobs.json")
+    server_task = asyncio.create_task(server.serve_forever())
+    try:
+        await _wait_for_socket(socket_path)
+        status = await client.status()
+        snapshot = await client.start("/bin/echo ok", goal="daemon e2e", timeout_seconds=5)
+        await executor.started.wait()
+        await asyncio.sleep(0)
+        listed = client.list()
+    finally:
+        server_task.cancel()
+        await asyncio.gather(server_task, return_exceptions=True)
+
+    assert status.available is True
+    assert snapshot.job_id in {item.job_id for item in listed}
+    assert listed[0].status is JobStatus.SUCCEEDED
+
+
+def _af_unix_bind_available(path: Path) -> bool:
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        server.bind(str(path))
+    except OSError:
+        return False
+    finally:
+        server.close()
+        path.unlink(missing_ok=True)
+    return True
+
+
+async def _wait_for_socket(path: Path) -> None:
+    for _ in range(50):
+        if await asyncio.to_thread(path.exists):
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("job daemon socket was not created")
+
+
 def _background_snapshot(job_id: str) -> BackgroundJobSnapshot:
     now = datetime.now(UTC)
+    return _background_snapshot_at(job_id, JobStatus.SUCCEEDED, now)
+
+
+def _background_snapshot_at(
+    job_id: str,
+    status: JobStatus,
+    timestamp: datetime,
+) -> BackgroundJobSnapshot:
     return BackgroundJobSnapshot(
         job_id=job_id,
         command="/bin/echo ok",
         goal="daemon test",
-        status=JobStatus.SUCCEEDED,
-        created_at=now,
-        started_at=now,
-        finished_at=now,
+        status=status,
+        created_at=timestamp,
+        started_at=timestamp,
+        finished_at=None if status is JobStatus.RUNNING else timestamp,
         timeout_seconds=5,
         stdout="sample\n",
         stderr="",
-        exit_code=0,
+        exit_code=None if status is JobStatus.RUNNING else 0,
     )
 
 

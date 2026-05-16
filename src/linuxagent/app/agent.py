@@ -19,6 +19,7 @@ from ..services import (
     ChatService,
     ClusterService,
     CommandService,
+    JobDaemonUnit,
     MonitoringService,
 )
 from ..telemetry import TelemetryRecorder
@@ -47,6 +48,7 @@ class LinuxAgent:
     monitoring_service: MonitoringService
     cluster_service: ClusterService | None = None
     background_jobs: BackgroundJobController | None = None
+    job_daemon_unit: JobDaemonUnit | None = None
     telemetry: TelemetryRecorder | None = None
     tool_names: tuple[str, ...] = ()
     prompt_cache_enabled: bool = False

@@ -465,6 +465,8 @@ class JobsConfig(BaseModel):
     model_config = _FROZEN
 
     daemon_enabled: bool = True
+    max_history: int = Field(default=200, ge=1)
+    retention_days: int = Field(default=30, ge=1)
 
 
 class TelemetryConfig(BaseModel):

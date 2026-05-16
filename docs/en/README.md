@@ -453,6 +453,8 @@ menu:
 | `/tools` | Show slash/tool entry points currently available |
 | `/job` | List background jobs started by approved long-running plans |
 | `/job status` | Show background job runtime health, socket/store paths, and job counts |
+| `/job daemon` | Show local job daemon lifecycle commands and systemd user service guidance |
+| `/job daemon install` | Write the LinuxAgent job daemon systemd user service file |
 | `/job <job_id>` | Show one background job's status, output tail, and artifact paths |
 | `/job follow <job_id>` | Follow one background job's updates in the current CLI |
 | `/job stop <job_id>` | Request cancellation for a background job |
@@ -461,7 +463,8 @@ menu:
 
 Run `linuxagent job-daemon` to keep approved background jobs supervised by a
 local LinuxAgent process while the foreground chat loop stays free for the next
-conversation turn. The `/job` commands remain the only interactive job controls.
+conversation turn. Use `/job daemon` for systemd user service guidance. The
+`/job` commands remain the only interactive job controls.
 
 Prefix input with `!` to run an operator-authored command directly:
 

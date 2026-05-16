@@ -28,7 +28,12 @@ async def handle_slash(agent: LinuxAgent, line: str, thread_id: str) -> str | No
             await handle_trace_command(agent.ui, rest)
             return thread_id
         case "/job":
-            await handle_jobs_command(agent.ui, agent.background_jobs, rest.strip())
+            await handle_jobs_command(
+                agent.ui,
+                agent.background_jobs,
+                rest.strip(),
+                daemon_unit=agent.job_daemon_unit,
+            )
             return thread_id
         case "/resume":
             return await agent._handle_resume_command(rest.strip(), thread_id) or thread_id

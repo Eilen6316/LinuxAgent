@@ -68,6 +68,8 @@ CONFIG_REQUIRED_PATHS = (
     ("logging", "format"),
     ("monitoring", "enabled"),
     ("jobs", "daemon_enabled"),
+    ("jobs", "max_history"),
+    ("jobs", "retention_days"),
     ("analytics", "enabled"),
     ("analytics", "data_path"),
     ("log_analysis", "enabled"),
@@ -151,6 +153,8 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.skills.manifests == ()
     assert cfg.ui.max_chat_history == 20
     assert cfg.jobs.daemon_enabled is True
+    assert cfg.jobs.max_history == 200
+    assert cfg.jobs.retention_days == 30
 
 
 def test_secret_hidden_in_repr() -> None:

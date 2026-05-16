@@ -23,7 +23,7 @@ SLASH_COMMANDS: tuple[SlashCommand, ...] = (
     SlashCommand("/trace", "显示或隐藏活动状态；用法：/trace on 或 /trace off"),
     SlashCommand(
         "/job",
-        "列出/诊断/查看/跟随/停止后台任务；用法：/job [status|<job_id>|follow <job_id>|stop <job_id>]",
+        "列出/诊断/daemon/查看/跟随/停止后台任务；用法：/job [status|daemon|<job_id>|follow <job_id>|stop <job_id>]",
     ),
     SlashCommand("/exit", "退出 LinuxAgent"),
     SlashCommand("/quit", "等同于 /exit"),

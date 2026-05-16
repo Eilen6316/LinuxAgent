@@ -455,6 +455,20 @@ def test_container_returns_config_instance() -> None:
     assert container.config is cfg
 
 
+def test_container_builds_job_daemon_unit() -> None:
+    config_path = Path("config.yaml")
+    container = Container(
+        AppConfig.model_validate({"telemetry": {"enabled": False}}),
+        config_path=config_path,
+    )
+    unit = container.job_daemon_unit()
+
+    assert unit.name == "linuxagent-job-daemon.service"
+    assert "ExecStart=" in unit.content
+    assert "job-daemon" in unit.content
+    assert "--config config.yaml" in unit.content
+
+
 def test_container_builds_configured_sandbox_runner() -> None:
     local_cfg = AppConfig.model_validate({"sandbox": {"enabled": True, "runner": "local"}})
     bwrap_cfg = AppConfig.model_validate({"sandbox": {"enabled": True, "runner": "bubblewrap"}})
@@ -784,7 +798,7 @@ def test_product_capability_context_describes_resume_and_model_source() -> None:
     assert "learner memory" in context
     assert "read_file, search_files" in context
     assert "/resume - 列出本机保存的会话" in slash_help()
-    assert "/job - 列出/诊断/查看/跟随/停止后台任务" in slash_help()
+    assert "/job - 列出/诊断/daemon/查看/跟随/停止后台任务" in slash_help()
 
 
 def test_runtime_event_message_formats_command_batch() -> None:
@@ -888,8 +902,13 @@ def test_chat_command_runs_agent(
             self.saved = True
 
     class _FakeContainer:
-        def __init__(self, config: SimpleNamespace) -> None:
-            del config
+        def __init__(
+            self,
+            config: SimpleNamespace,
+            *,
+            config_path: Path | None = None,
+        ) -> None:
+            del config, config_path
             self._chat = _FakeChatService()
 
         def chat_service(self) -> _FakeChatService:
@@ -942,8 +961,13 @@ def test_chat_verbose_leaves_dependency_info_logs_enabled(
             return None
 
     class _FakeContainer:
-        def __init__(self, config: SimpleNamespace) -> None:
-            del config
+        def __init__(
+            self,
+            config: SimpleNamespace,
+            *,
+            config_path: Path | None = None,
+        ) -> None:
+            del config, config_path
 
         def chat_service(self) -> _FakeChatService:
             return _FakeChatService()
@@ -999,8 +1023,13 @@ def test_job_daemon_command_runs_server(
             return None
 
     class _FakeContainer:
-        def __init__(self, config: SimpleNamespace) -> None:
-            del config
+        def __init__(
+            self,
+            config: SimpleNamespace,
+            *,
+            config_path: Path | None = None,
+        ) -> None:
+            del config, config_path
 
         def build_job_daemon(self) -> _FakeDaemon:
             return _FakeDaemon()

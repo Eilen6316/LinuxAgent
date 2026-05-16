@@ -129,7 +129,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
     configure_logging(level=_verbose_to_level(args.verbose))
     try:
         cfg = load_config(cli_path=args.config)
-        container = Container(cfg)
+        container = Container(cfg, config_path=args.config)
         skill_summary = _skill_summary(container)
         tool_catalog = container.tool_catalog()
     except (ConfigError, ValueError) as exc:
@@ -160,7 +160,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     configure_logging(level=level, fmt=cfg.logging.format)
     configure_dependency_logging(quiet=args.verbose == 0)
 
-    container = Container(cfg)
+    container = Container(cfg, config_path=args.config)
     chat_service = container.chat_service()
     chat_service.load()
     try:
@@ -306,7 +306,7 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
     if not cfg.mcp.enabled:
         print("error: mcp.enabled is false", file=sys.stderr)
         return 1
-    container = Container(cfg)
+    container = Container(cfg, config_path=args.config)
     server = McpServer(
         container.policy_engine(),
         cfg.audit.path,
@@ -327,7 +327,7 @@ def _cmd_job_daemon(args: argparse.Namespace) -> int:
     level: int | str = _verbose_to_level(args.verbose) if args.verbose > 0 else cfg.logging.level
     configure_logging(level=level, fmt=cfg.logging.format)
     configure_dependency_logging(quiet=args.verbose == 0)
-    container = Container(cfg)
+    container = Container(cfg, config_path=args.config)
     try:
         asyncio.run(container.build_job_daemon().serve_forever())
     except KeyboardInterrupt:

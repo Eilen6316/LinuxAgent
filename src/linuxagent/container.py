@@ -55,7 +55,9 @@ from .services import (
     CommandService,
     JobDaemonClient,
     JobDaemonServer,
+    JobDaemonUnit,
     MonitoringService,
+    build_job_daemon_unit,
     daemon_socket_path,
     daemon_store_path,
 )
@@ -81,8 +83,9 @@ _T = TypeVar("_T")
 class Container:
     """Holds configuration and lazily-built singletons."""
 
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, *, config_path: Path | None = None) -> None:
         self._config = config
+        self._config_path = config_path
         self._singletons: dict[str, object] = {}
         self._streamed_outputs: set[tuple[str, str]] = set()
         self._last_activity_message = ""
@@ -102,6 +105,7 @@ class Container:
             monitoring_service=self.monitoring_service(),
             cluster_service=self.cluster_service(),
             background_jobs=self.background_jobs(),
+            job_daemon_unit=self.job_daemon_unit(),
             telemetry=self.telemetry(),
             tool_names=tuple(item.name for item in self.tool_catalog().items),
             prompt_cache_enabled=self._config.api.prompt_cache,
@@ -155,12 +159,17 @@ class Container:
     def build_job_daemon(self) -> JobDaemonServer:
         return JobDaemonServer(socket_path=self.job_daemon_socket_path(), jobs=self.local_jobs())
 
+    def job_daemon_unit(self) -> JobDaemonUnit:
+        return build_job_daemon_unit(config_path=self._config_path)
+
     def local_jobs(self) -> BackgroundJobService:
         return self._cached(
             "local_jobs",
             lambda: BackgroundJobService(
                 self.command_service(),
                 path=self.job_store_path(),
+                max_history=self._config.jobs.max_history,
+                retention_days=self._config.jobs.retention_days,
                 event_observer=self._runtime_event_observer(),
             ),
         )

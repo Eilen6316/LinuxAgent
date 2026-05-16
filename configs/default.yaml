@@ -109,6 +109,8 @@ monitoring:
 
 jobs:
   daemon_enabled: true
+  max_history: 200
+  retention_days: 30
 
 telemetry:
   enabled: true

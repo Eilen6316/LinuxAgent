@@ -20,6 +20,7 @@ from linuxagent.services import (
     ChatService,
     CommandService,
     JobStatus,
+    build_job_daemon_unit,
 )
 from linuxagent.telemetry import TelemetryRecorder
 
@@ -254,6 +255,7 @@ def _agent(
     context_manager: ContextManager | None = None,
     command_service: CommandService | None = None,
     background_jobs: _FakeBackgroundJobs | None = None,
+    job_daemon_unit=None,
     telemetry: TelemetryRecorder | None = None,
     prompt_cache_enabled: bool = False,
 ):
@@ -266,6 +268,7 @@ def _agent(
         context_manager=context_manager or ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
         background_jobs=background_jobs,  # type: ignore[arg-type]
+        job_daemon_unit=job_daemon_unit,
         telemetry=telemetry,
         prompt_cache_enabled=prompt_cache_enabled,
     )
@@ -456,6 +459,46 @@ async def test_job_status_slash_command_reports_runtime(tmp_path) -> None:
     assert "mode: daemon" in printed
     assert "state: available" in printed
     assert "1 running / 1 total" in printed
+
+
+async def test_job_daemon_slash_command_prints_install_guidance(tmp_path) -> None:
+    unit = build_job_daemon_unit(config_path=tmp_path / "config.yaml")
+    jobs = _FakeBackgroundJobs()
+    ui = _FakeUI(inputs=["/job daemon unit", "/exit"])
+    agent = _agent(
+        tmp_path,
+        graph=_FakeGraph([]),
+        ui=ui,
+        background_jobs=jobs,
+        job_daemon_unit=unit,
+    )
+
+    await agent.run(thread_id="cli")
+
+    printed = "\n".join(ui.printed)
+    assert "/job daemon install" in printed
+    assert "systemctl --user enable --now linuxagent-job-daemon.service" in printed
+    assert "ExecStart=" in printed
+
+
+async def test_job_daemon_install_writes_user_unit(tmp_path) -> None:
+    unit = build_job_daemon_unit(config_path=tmp_path / "config.yaml")
+    jobs = _FakeBackgroundJobs()
+    ui = _FakeUI(inputs=["/job daemon install", "/exit"])
+    agent = _agent(
+        tmp_path,
+        graph=_FakeGraph([]),
+        ui=ui,
+        background_jobs=jobs,
+        job_daemon_unit=unit,
+    )
+
+    await agent.run(thread_id="cli")
+
+    assert unit.path.exists()
+    assert unit.path.stat().st_mode & 0o777 == 0o600
+    assert "job-daemon" in unit.path.read_text(encoding="utf-8")
+    assert "daemon-reload" in "\n".join(ui.printed)
 
 
 async def test_job_slash_command_shows_job_details(tmp_path) -> None:

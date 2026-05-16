@@ -35,6 +35,7 @@ def test_operating_manifest_usage_section_describes_background_jobs() -> None:
 
     assert "# usage" in context
     assert "/job status" in context
+    assert "/job daemon" in context
     assert "/job <job_id>" in context
     assert "/job follow <job_id>" in context
     assert "/job stop <job_id>" in context

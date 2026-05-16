@@ -9,7 +9,7 @@ import shlex
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from inspect import isawaitable
 from pathlib import Path
@@ -22,6 +22,8 @@ StringParts: TypeAlias = list[str]
 
 JOB_OUTPUT_LIMIT = 16_000
 DEFAULT_JOB_TIMEOUT_SECONDS = 900.0
+DEFAULT_JOB_MAX_HISTORY = 200
+DEFAULT_JOB_RETENTION_DAYS = 30
 JOBS_STORE_VERSION = 1
 RESTARTED_JOB_MESSAGE = "[stopped: LinuxAgent restarted before this job completed]\n"
 BackgroundJobEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
@@ -120,11 +122,15 @@ class BackgroundJobService:
         *,
         path: Path | None = None,
         default_timeout_seconds: float = DEFAULT_JOB_TIMEOUT_SECONDS,
+        max_history: int = DEFAULT_JOB_MAX_HISTORY,
+        retention_days: int = DEFAULT_JOB_RETENTION_DAYS,
         event_observer: BackgroundJobEventObserver | None = None,
     ) -> None:
         self._command_service = command_service
         self._path = path
         self._default_timeout_seconds = default_timeout_seconds
+        self._max_history = max_history
+        self._retention_days = retention_days
         self._event_observer = event_observer
         self._jobs, migrated = _load_jobs(path)
         self._watchers: dict[str, set[asyncio.Queue[BackgroundJobSnapshot]]] = {}
@@ -258,7 +264,20 @@ class BackgroundJobService:
     def _persist(self) -> None:
         if self._path is None:
             return
-        _persist_jobs(self._path, self.list())
+        snapshots = self._pruned_snapshots()
+        _persist_jobs(self._path, snapshots)
+
+    def _pruned_snapshots(self) -> tuple[BackgroundJobSnapshot, ...]:
+        snapshots = pruned_job_snapshots(
+            self.list(),
+            max_history=self._max_history,
+            retention_days=self._retention_days,
+        )
+        kept_ids = {item.job_id for item in snapshots}
+        for job_id, job in tuple(self._jobs.items()):
+            if job_id not in kept_ids and job.status is not JobStatus.RUNNING:
+                self._jobs.pop(job_id, None)
+        return snapshots
 
 
 async def _append_output(parts: StringParts, text: str) -> None:
@@ -303,6 +322,29 @@ def _sort_key(job: _BackgroundJob) -> tuple[bool, float]:
 
 def _snapshot_sort_key(item: BackgroundJobSnapshot) -> tuple[bool, float]:
     return (item.status is not JobStatus.RUNNING, -item.started_at.timestamp())
+
+
+def pruned_job_snapshots(
+    snapshots: tuple[BackgroundJobSnapshot, ...],
+    *,
+    max_history: int,
+    retention_days: int,
+    now: datetime | None = None,
+) -> tuple[BackgroundJobSnapshot, ...]:
+    reference = now or datetime.now(UTC)
+    cutoff = reference - timedelta(days=retention_days)
+    running = tuple(item for item in snapshots if item.status is JobStatus.RUNNING)
+    finished = tuple(
+        item
+        for item in snapshots
+        if item.status is not JobStatus.RUNNING and _finished_at_or_started_at(item) >= cutoff
+    )
+    kept_finished = tuple(sorted(finished, key=_snapshot_sort_key)[:max_history])
+    return tuple(sorted((*running, *kept_finished), key=_snapshot_sort_key))
+
+
+def _finished_at_or_started_at(item: BackgroundJobSnapshot) -> datetime:
+    return item.finished_at or item.started_at
 
 
 def _new_job_id() -> str:
