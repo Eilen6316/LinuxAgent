@@ -587,10 +587,7 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     ui = ConsoleUI(console=console)
 
     await ui.print_activity(
-        "LinuxAgent 正在更新工具结果\n"
-        "  已读取文件 /tmp/disk_info.sh\n"
-        "  证据预览:\n"
-        "  - 1:#!/bin/bash"
+        "LinuxAgent 正在整理文件 workspace/disk_info.sh\n" "  read_file · 95 lines"
     )
 
     assert ui._working_status is not None
@@ -599,9 +596,8 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     rendered = render_console.export_text()
     assert "Working (" in rendered
     assert "esc to interrupt" in rendered
-    assert "更新工具结果" in rendered
-    assert "已读取文件 /tmp/disk_info.sh" in rendered
-    assert "1:#!/bin/bash" in rendered
+    assert "整理文件 workspace/disk_info.sh" in rendered
+    assert "read_file · 95 lines" in rendered
 
     await ui.print("done")
 

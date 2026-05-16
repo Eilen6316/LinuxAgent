@@ -736,13 +736,7 @@ def test_tool_activity_message_marks_finished_tools_as_transient() -> None:
         }
     )
 
-    assert message == (
-        "LinuxAgent 正在更新工具结果\n"
-        "  已列目录 workspace\n"
-        "  证据预览:\n"
-        "  - disk_info.sh\n"
-        "  - find_largest_files.py"
-    )
+    assert message == ("LinuxAgent 正在整理目录 workspace\n" "  list_dir · 2 items")
 
 
 async def test_tool_observer_sends_tool_events_to_activity(
@@ -775,10 +769,7 @@ async def test_tool_observer_sends_tool_events_to_activity(
     )
 
     assert ui.activities == [
-        "LinuxAgent 正在更新工具结果\n"
-        "  已读取文件 workspace/disk_info.sh\n"
-        "  证据预览:\n"
-        "  - 1:#!/bin/bash"
+        "LinuxAgent 正在整理文件 workspace/disk_info.sh\n" "  read_file · 1 line"
     ]
     assert ui.raw == []
 

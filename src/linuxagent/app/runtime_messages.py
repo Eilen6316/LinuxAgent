@@ -27,14 +27,17 @@ def tool_event_message(event: dict[str, Any]) -> str | None:
 
 
 def tool_activity_message(event: dict[str, Any]) -> str | None:
-    message = tool_event_message(event)
-    if message is None:
-        return None
-    if message.startswith("LinuxAgent 正在"):
-        return message
     phase = str(event.get("phase") or "")
-    heading = "LinuxAgent 正在更新工具结果" if phase == "end" else "LinuxAgent 正在更新工具状态"
-    return f"{heading}\n{_tool_activity_detail(message)}"
+    tool_name = str(event.get("tool_name") or "")
+    raw_args = event.get("args")
+    args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
+    if phase == "start":
+        return _tool_start_message(tool_name, args)
+    if phase == "error":
+        return _tool_activity_error(tool_name, args, event)
+    if phase == "end":
+        return _tool_activity_end(tool_name, args, event)
+    return None
 
 
 def command_event_key(event: dict[str, Any]) -> tuple[str, str]:
@@ -177,11 +180,61 @@ def _tool_evidence_message(heading: str, evidence: tuple[str, ...]) -> str:
     return f"{heading}\n  证据预览:\n{bullets}"
 
 
-def _tool_activity_detail(message: str) -> str:
-    lines = message.splitlines()
-    if lines and lines[0].startswith("LinuxAgent "):
-        lines[0] = lines[0].removeprefix("LinuxAgent ").strip()
-    return "\n".join(f"  {line.strip()}" for line in lines if line.strip())
+def _tool_activity_error(tool_name: str, args: dict[str, Any], event: dict[str, Any]) -> str:
+    status = str(event.get("status") or "error")
+    target = _tool_target(tool_name, args)
+    label = f"{tool_name} {target}".strip()
+    return _tool_activity_summary("LinuxAgent 正在记录工具状态", f"{label} · {status}")
+
+
+def _tool_activity_end(tool_name: str, args: dict[str, Any], event: dict[str, Any]) -> str | None:
+    status = str(event.get("status") or "")
+    if status not in {"allowed", "truncated"}:
+        return None
+    output = str(event.get("output_text") or event.get("output_preview") or "")
+    suffix = " · truncated" if status == "truncated" or event.get("truncated") else ""
+    if tool_name == "read_file":
+        target = str(args.get("path") or "").strip()
+        return _tool_activity_summary(
+            f"LinuxAgent 正在整理文件 {target}".strip(),
+            f"read_file · {_count_label(_line_count(output), 'line', 'lines')}{suffix}",
+        )
+    if tool_name == "list_dir":
+        target = str(args.get("path") or ".").strip()
+        return _tool_activity_summary(
+            f"LinuxAgent 正在整理目录 {target}",
+            f"list_dir · {_count_label(_tool_item_count(output), 'item', 'items')}{suffix}",
+        )
+    if tool_name == "search_files":
+        root = args.get("root") or "."
+        pattern = args.get("pattern") or ""
+        return _tool_activity_summary(
+            f"LinuxAgent 正在整理搜索结果 {root}: {pattern}",
+            f"search_files · {_count_label(_tool_item_count(output), 'match', 'matches')}{suffix}",
+        )
+    return _tool_activity_summary("LinuxAgent 正在更新工具结果", f"{tool_name} · done{suffix}")
+
+
+def _tool_activity_summary(heading: str, detail: str) -> str:
+    return f"{heading}\n  {detail}"
+
+
+def _line_count(text: str) -> int:
+    if not text.strip():
+        return 0
+    return len(text.splitlines())
+
+
+def _tool_item_count(preview: str) -> int:
+    items = _json_preview_items(preview)
+    if items:
+        return len(items)
+    return len([line for line in preview.splitlines() if line.strip()])
+
+
+def _count_label(count: int, singular: str, plural: str) -> str:
+    word = singular if count == 1 else plural
+    return f"{count} {word}"
 
 
 def _tool_evidence_summary(preview: str) -> tuple[str, ...]:
