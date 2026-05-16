@@ -58,10 +58,9 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     body = str(tmpl.messages[0].prompt.template)
     assert "Artifact creation needs an explicit destination" in body
     assert "Do not guess `/tmp`" in body
-    assert '"你的作者是谁"' in body
-    assert '"你是谁开发的"' in body
-    assert '"你能联网搜索你是谁开发的吗"' in body
-    assert "Return mode: `DIRECT_ANSWER`" in body
+    assert "LinuxAgent self-description" in body
+    assert '"answer_context": "none"' in body
+    assert "`self_manual`" in body
 
 
 def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() -> None:

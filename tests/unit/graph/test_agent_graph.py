@@ -1565,7 +1565,7 @@ async def test_graph_answers_capability_question_without_command(tmp_path) -> No
     config = {"configurable": {"thread_id": "capabilities"}}
 
     result = await graph.ainvoke(
-        initial_state("你都能做什么", source=CommandSource.USER), config=config
+        initial_state("请概述 LinuxAgent 的能力边界", source=CommandSource.USER), config=config
     )
 
     assert "dynamic capability answer" in str(result["messages"][-1].content)
@@ -1585,7 +1585,9 @@ async def test_graph_passes_thread_prompt_cache_key_to_provider(tmp_path) -> Non
     )
 
     await graph.ainvoke(
-        initial_state("你是谁", source=CommandSource.USER, thread_id="cache-thread"),
+        initial_state(
+            "请说明 LinuxAgent 的身份", source=CommandSource.USER, thread_id="cache-thread"
+        ),
         config={"configurable": {"thread_id": "cache-thread"}},
     )
 
@@ -1595,9 +1597,9 @@ async def test_graph_passes_thread_prompt_cache_key_to_provider(tmp_path) -> Non
 
 async def test_graph_answers_product_meta_questions_without_planning(tmp_path) -> None:
     questions = (
-        "你的作者是谁",
-        "你是谁开发的",
-        "你能联网搜索你是谁开发的吗",
+        "请介绍 LinuxAgent 的维护与能力边界",
+        "LinuxAgent 如何说明自己的运行机制",
+        "LinuxAgent 支持哪些 CLI 会话能力",
     )
     for question in questions:
         answer = "LinuxAgent contributors"
@@ -1633,7 +1635,7 @@ async def test_graph_accepts_planner_direct_answer_when_router_misroutes(tmp_pat
     config = {"configurable": {"thread_id": "planner-direct-answer"}}
 
     result = await graph.ainvoke(
-        initial_state("你的作者是谁", source=CommandSource.USER),
+        initial_state("请说明 LinuxAgent 的项目归属信息", source=CommandSource.USER),
         config=config,
     )
 
@@ -1659,7 +1661,7 @@ async def test_graph_passes_product_context_to_direct_answer_paths(tmp_path) -> 
     config = {"configurable": {"thread_id": "resume-meta"}}
 
     result = await graph.ainvoke(
-        initial_state("你的/resume 的功能是干啥的", source=CommandSource.USER),
+        initial_state("请说明 /resume 命令的用途", source=CommandSource.USER),
         config=config,
     )
 
@@ -1687,7 +1689,7 @@ async def test_graph_loads_operating_manifest_only_for_self_manual_direct_answer
     )
 
     result = await graph.ainvoke(
-        initial_state("说一下你的工具和安全边界", source=CommandSource.USER),
+        initial_state("请概述 LinuxAgent 工具和安全边界", source=CommandSource.USER),
         config={"configurable": {"thread_id": "manifest-direct"}},
     )
 
@@ -2226,7 +2228,7 @@ async def test_graph_falls_back_to_direct_answer_for_empty_command_plan(tmp_path
     config = {"configurable": {"thread_id": "empty-plan-fallback"}}
 
     result = await graph.ainvoke(
-        initial_state("你的作者是谁", source=CommandSource.USER), config=config
+        initial_state("请介绍 LinuxAgent 的项目背景", source=CommandSource.USER), config=config
     )
 
     assert "LinuxAgent contributors" in str(result["messages"][-1].content)

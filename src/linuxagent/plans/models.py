@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -33,8 +34,29 @@ _SHELL_CONTROL_TOKENS = frozenset(
 _SHELL_ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*")
 
 
+class PlanParseErrorCode(StrEnum):
+    INVALID_JSON = "invalid_json"
+    INVALID_SHAPE = "invalid_shape"
+    INVALID_SCHEMA = "invalid_schema"
+    EMPTY_COMMANDS = "empty_commands"
+    ARGV_UNSAFE = "argv_unsafe"
+
+
 class CommandPlanParseError(ValueError):
     """Raised when the LLM does not return a valid CommandPlan JSON object."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: PlanParseErrorCode = PlanParseErrorCode.INVALID_SCHEMA,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class ArgvUnsafeCommandError(ValueError):
+    """Raised when a planned command requires shell semantics."""
 
 
 class NoChangePlanParseError(ValueError):
@@ -138,13 +160,21 @@ def parse_command_plan(text: str) -> CommandPlan:
     try:
         raw = json.loads(payload)
     except json.JSONDecodeError as exc:
-        raise CommandPlanParseError(f"LLM response is not valid JSON: {exc.msg}") from exc
+        raise CommandPlanParseError(
+            f"LLM response is not valid JSON: {exc.msg}",
+            code=PlanParseErrorCode.INVALID_JSON,
+        ) from exc
     if not isinstance(raw, dict):
-        raise CommandPlanParseError("LLM response JSON must be an object")
+        raise CommandPlanParseError(
+            "LLM response JSON must be an object",
+            code=PlanParseErrorCode.INVALID_SHAPE,
+        )
     try:
         return CommandPlan.model_validate(raw)
     except ValidationError as exc:
-        raise CommandPlanParseError(_format_validation_error(exc)) from exc
+        raise CommandPlanParseError(
+            _format_validation_error(exc), code=_command_plan_error_code(exc)
+        ) from exc
 
 
 def parse_no_change_plan(text: str) -> NoChangePlan:
@@ -219,7 +249,10 @@ def _extract_json_payload(text: str) -> str:
         return stripped
     match = re.fullmatch(r"```(?:json)?\s*(\{.*\})\s*```", stripped, flags=re.DOTALL)
     if match is None:
-        raise CommandPlanParseError("LLM response must be a JSON CommandPlan object")
+        raise CommandPlanParseError(
+            "LLM response must be a JSON CommandPlan object",
+            code=PlanParseErrorCode.INVALID_SHAPE,
+        )
     return match.group(1)
 
 
@@ -235,13 +268,15 @@ def _validate_argv_safe_command(command: str) -> str:
         raise ValueError("command must not be empty")
     offending = next((token for token in tokens if token in _SHELL_CONTROL_TOKENS), None)
     if offending is not None:
-        raise ValueError(
+        raise ArgvUnsafeCommandError(
             f"command must be argv-safe; shell control operator {offending!r} is not supported"
         )
     if any("`" in token for token in tokens):
-        raise ValueError("command must be argv-safe; shell backtick substitution is not supported")
+        raise ArgvUnsafeCommandError(
+            "command must be argv-safe; shell backtick substitution is not supported"
+        )
     if _SHELL_ENV_ASSIGNMENT.fullmatch(tokens[0]):
-        raise ValueError(
+        raise ArgvUnsafeCommandError(
             "command must be argv-safe; leading environment assignments are not supported"
         )
     return command
@@ -262,6 +297,16 @@ def _format_validation_error(exc: ValidationError, model_name: str = "CommandPla
         loc = ".".join(str(part) for part in err["loc"])
         parts.append(f"{loc}: {err['msg']} (input={err.get('input')!r})")
     return f"invalid {model_name}: " + "; ".join(parts)
+
+
+def _command_plan_error_code(exc: ValidationError) -> PlanParseErrorCode:
+    for err in exc.errors():
+        if tuple(err.get("loc", ())) == ("commands",) and err.get("type") == "too_short":
+            return PlanParseErrorCode.EMPTY_COMMANDS
+        ctx = err.get("ctx")
+        if isinstance(ctx, dict) and isinstance(ctx.get("error"), ArgvUnsafeCommandError):
+            return PlanParseErrorCode.ARGV_UNSAFE
+    return PlanParseErrorCode.INVALID_SCHEMA
 
 
 def command_plan_json(

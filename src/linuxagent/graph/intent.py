@@ -24,6 +24,7 @@ from ..plans import (
     FilePatchPlanParseError,
     NoChangePlan,
     NoChangePlanParseError,
+    PlanParseErrorCode,
     parse_command_plan,
     parse_continue_planning_plan,
     parse_direct_answer_plan,
@@ -277,7 +278,7 @@ async def _build_command_plan(
         NoChangePlanParseError,
     ) as exc:
         return await _recover_plan_parse_error(
-            context, messages, user_text, current_trace_id, str(exc), proposed
+            context, messages, user_text, current_trace_id, exc, proposed
         )
 
 
@@ -306,7 +307,8 @@ def _parse_actionable_work(
                 raise CommandPlanParseError(
                     _combined_plan_parse_error(
                         direct_answer_exc, no_change_exc, patch_exc, command_exc
-                    )
+                    ),
+                    code=command_exc.code,
                 ) from command_exc
 
 
@@ -496,7 +498,7 @@ async def _recover_plan_parse_error(
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
-    error: str,
+    error: Exception | str,
     rejected_response: str,
 ) -> CommandPlan | DirectAnswerPlan | FilePatchPlan | NoChangePlan | AgentState:
     if _should_retry_parse_error(error):
@@ -510,20 +512,20 @@ async def _recover_plan_parse_error(
             messages,
             user_text,
             current_trace_id,
-            error,
+            str(error),
             context.telemetry,
             context.product_context,
             context.prompt_cache_key,
         )
     if not context.tools:
-        return _parse_error_update(current_trace_id, error)
+        return _parse_error_update(current_trace_id, str(error))
     return await _retry_plan_or_error(
         context, messages, user_text, current_trace_id, error, rejected_response
     )
 
 
-def _should_retry_parse_error(error: str) -> bool:
-    return "argv-safe" in error
+def _should_retry_parse_error(error: Exception | str) -> bool:
+    return isinstance(error, CommandPlanParseError) and error.code is PlanParseErrorCode.ARGV_UNSAFE
 
 
 async def _route_intent(
@@ -590,7 +592,7 @@ async def _retry_plan_or_error(
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
-    error: str,
+    error: Exception | str,
     rejected_response: str = "",
 ) -> CommandPlan | DirectAnswerPlan | FilePatchPlan | NoChangePlan | AgentState:
     retry_plan = await _retry_command_plan(
@@ -601,7 +603,7 @@ async def _retry_plan_or_error(
         context.runbook_guidance,
         context.product_context,
         current_trace_id,
-        error,
+        str(error),
         rejected_response,
         context.telemetry,
         context.prompt_cache_key,
@@ -609,7 +611,7 @@ async def _retry_plan_or_error(
     if isinstance(retry_plan, CommandPlan | DirectAnswerPlan | FilePatchPlan | NoChangePlan):
         return retry_plan
     if _should_retry_parse_error(error) and not _should_retry_parse_error(retry_plan):
-        return _parse_error_update(current_trace_id, error)
+        return _parse_error_update(current_trace_id, str(error))
     if _should_fallback_to_direct_answer(retry_plan):
         return await _fallback_direct_answer(
             context.provider,
@@ -625,9 +627,10 @@ async def _retry_plan_or_error(
     return _parse_error_update(current_trace_id, retry_plan)
 
 
-def _should_fallback_to_direct_answer(error: str) -> bool:
-    normalized = error.casefold()
-    return "commands" in normalized and "at least 1 item" in normalized
+def _should_fallback_to_direct_answer(error: Exception | str) -> bool:
+    if isinstance(error, CommandPlanParseError):
+        return error.code is PlanParseErrorCode.EMPTY_COMMANDS
+    return error == PlanParseErrorCode.EMPTY_COMMANDS.value
 
 
 def _parse_intent_decision(raw: str) -> IntentDecision:
@@ -818,9 +821,15 @@ async def _retry_command_plan(
             FilePatchPlanParseError,
             NoChangePlanParseError,
         ) as exc:
-            current_error = str(exc)
+            current_error = _retry_error_message(exc)
             current_response = retry_proposed
     return current_error
+
+
+def _retry_error_message(exc: Exception) -> str:
+    if isinstance(exc, CommandPlanParseError) and exc.code is PlanParseErrorCode.EMPTY_COMMANDS:
+        return exc.code.value
+    return str(exc)
 
 
 async def _complete_retry_plan(

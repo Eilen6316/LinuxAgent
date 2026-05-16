@@ -11,6 +11,7 @@ from linuxagent.plans import (
     ContinuePlanningPlanParseError,
     DirectAnswerPlanParseError,
     NoChangePlanParseError,
+    PlanParseErrorCode,
     command_plan_json,
     parse_command_plan,
     parse_continue_planning_plan,
@@ -109,6 +110,23 @@ def test_parse_command_plan_rejects_non_json_text() -> None:
 def test_parse_command_plan_rejects_invalid_schema() -> None:
     with pytest.raises(CommandPlanParseError, match="invalid CommandPlan"):
         parse_command_plan('{"goal": "missing commands"}')
+
+
+def test_parse_command_plan_exposes_empty_commands_error_code() -> None:
+    payload = json.loads(command_plan_json("/bin/echo hi"))
+    payload["commands"] = []
+
+    with pytest.raises(CommandPlanParseError) as exc_info:
+        parse_command_plan(json.dumps(payload))
+
+    assert exc_info.value.code is PlanParseErrorCode.EMPTY_COMMANDS
+
+
+def test_parse_command_plan_exposes_argv_error_code() -> None:
+    with pytest.raises(CommandPlanParseError) as exc_info:
+        parse_command_plan(command_plan_json("ps aux | head -5"))
+
+    assert exc_info.value.code is PlanParseErrorCode.ARGV_UNSAFE
 
 
 def test_parse_no_change_plan_accepts_json_object() -> None:
