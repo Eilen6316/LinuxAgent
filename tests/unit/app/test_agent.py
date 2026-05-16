@@ -14,7 +14,13 @@ from linuxagent.app import LinuxAgent
 from linuxagent.audit import AuditLog
 from linuxagent.intelligence import ContextManager
 from linuxagent.interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
-from linuxagent.services import BackgroundJobSnapshot, ChatService, CommandService, JobStatus
+from linuxagent.services import (
+    BackgroundJobRuntimeStatus,
+    BackgroundJobSnapshot,
+    ChatService,
+    CommandService,
+    JobStatus,
+)
 from linuxagent.telemetry import TelemetryRecorder
 
 
@@ -65,6 +71,16 @@ class _FakeBackgroundJobs:
         item = self.get(job_id)
         if item is not None:
             yield item
+
+    async def status(self) -> BackgroundJobRuntimeStatus:
+        return BackgroundJobRuntimeStatus(
+            mode="daemon",
+            available=True,
+            total_jobs=len(self.items),
+            running_jobs=sum(1 for item in self.items if item.status is JobStatus.RUNNING),
+            socket_path=Path("jobd.sock"),
+            store_path=Path("jobs.json"),
+        )
 
     async def stop_all(self) -> None:
         self.stopped_all = True
@@ -427,6 +443,19 @@ async def test_jobs_slash_command_lists_background_jobs(tmp_path) -> None:
     assert "job-test" in "\n".join(ui.printed)
     assert "monitor cpu" in "\n".join(ui.printed)
     assert jobs.stopped_all is True
+
+
+async def test_job_status_slash_command_reports_runtime(tmp_path) -> None:
+    jobs = _FakeBackgroundJobs((_job_snapshot(),))
+    ui = _FakeUI(inputs=["/job status", "/exit"])
+    agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui, background_jobs=jobs)
+
+    await agent.run(thread_id="cli")
+
+    printed = "\n".join(ui.printed)
+    assert "mode: daemon" in printed
+    assert "state: available" in printed
+    assert "1 running / 1 total" in printed
 
 
 async def test_job_slash_command_shows_job_details(tmp_path) -> None:

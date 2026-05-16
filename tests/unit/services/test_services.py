@@ -311,6 +311,21 @@ async def test_background_job_service_stops_running_job() -> None:
     assert stopped.status is JobStatus.STOPPED
 
 
+async def test_background_job_service_reports_runtime_status(tmp_path) -> None:
+    service = BackgroundJobService(
+        CommandService(_StreamingExecutor()),  # type: ignore[arg-type]
+        path=tmp_path / "jobs.json",
+    )
+
+    status = await service.status()
+
+    assert status.mode == "in-process"
+    assert status.available is True
+    assert status.total_jobs == 0
+    assert status.running_jobs == 0
+    assert status.store_path == tmp_path / "jobs.json"
+
+
 async def test_background_job_service_persists_finished_jobs(tmp_path) -> None:
     executor = _StreamingExecutor()
     path = tmp_path / "jobs.json"
@@ -390,6 +405,31 @@ async def test_job_daemon_client_starts_lists_and_stops_jobs(tmp_path) -> None:
     assert client.get("job-daemon") == snapshot
 
 
+async def test_job_daemon_client_status_reports_unavailable_daemon(tmp_path) -> None:
+    history_path = tmp_path / "history.json"
+    snapshot = _background_snapshot("job-daemon")
+    daemon_store_path(history_path).write_text(
+        json.dumps(
+            {"version": JOBS_STORE_VERSION, "jobs": [snapshot_to_record(snapshot)]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    client = JobDaemonClient(
+        socket_path=tmp_path / "missing.sock",
+        store_path=daemon_store_path(history_path),
+    )
+
+    status = await client.status()
+
+    assert status.mode == "daemon"
+    assert status.available is False
+    assert status.total_jobs == 1
+    assert status.running_jobs == 0
+    assert status.socket_path == tmp_path / "missing.sock"
+    assert "job daemon is not running" in (status.error or "")
+
+
 async def test_job_daemon_server_dispatches_start_and_stop(tmp_path) -> None:
     executor = _StreamingExecutor()
     service = BackgroundJobService(CommandService(executor))  # type: ignore[arg-type]
@@ -417,6 +457,16 @@ async def test_job_daemon_server_dispatches_start_and_stop(tmp_path) -> None:
     assert response["ok"] is True
     assert response["snapshot"]["command"] == "/bin/echo ok"
     assert json.loads(writer.lines[-1])["snapshot"]["job_id"] == job_id
+
+
+async def test_job_daemon_server_dispatches_ping(tmp_path) -> None:
+    service = BackgroundJobService(CommandService(_StreamingExecutor()))  # type: ignore[arg-type]
+    server = JobDaemonServer(socket_path=tmp_path / "jobd.sock", jobs=service)
+    writer = _MemoryWriter()
+
+    await server._dispatch({"action": "ping"}, writer)  # type: ignore[arg-type]
+
+    assert json.loads(writer.lines[-1]) == {"ok": True}
 
 
 def _background_snapshot(job_id: str) -> BackgroundJobSnapshot:

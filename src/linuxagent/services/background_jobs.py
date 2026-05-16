@@ -55,6 +55,17 @@ class BackgroundJobSnapshot:
         return max(0.0, (end - self.started_at).total_seconds())
 
 
+@dataclass(frozen=True)
+class BackgroundJobRuntimeStatus:
+    mode: str
+    available: bool
+    total_jobs: int
+    running_jobs: int
+    store_path: Path | None = None
+    socket_path: Path | None = None
+    error: str | None = None
+
+
 class BackgroundJobController(Protocol):
     async def start(
         self,
@@ -77,6 +88,9 @@ class BackgroundJobController(Protocol):
 
     def watch(self, job_id: str) -> AsyncIterator[BackgroundJobSnapshot]:
         """Yield snapshots while one job changes."""
+
+    async def status(self) -> BackgroundJobRuntimeStatus:
+        """Return controller health and persisted job counts."""
 
     async def stop_all(self) -> None:
         """Stop process-owned running jobs during shutdown."""
@@ -187,6 +201,16 @@ class BackgroundJobService:
                 job.task.cancel()
         await asyncio.gather(
             *(job.task for job in running if job.task is not None), return_exceptions=True
+        )
+
+    async def status(self) -> BackgroundJobRuntimeStatus:
+        items = self.list()
+        return BackgroundJobRuntimeStatus(
+            mode="in-process",
+            available=True,
+            total_jobs=len(items),
+            running_jobs=sum(1 for item in items if item.status is JobStatus.RUNNING),
+            store_path=self._path,
         )
 
     async def _run_job(self, job_id: str, command: str, timeout_seconds: float) -> None:

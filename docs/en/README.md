@@ -452,6 +452,7 @@ menu:
 | `/new` or `/clear` | Start a fresh empty-context conversation in the same CLI |
 | `/tools` | Show slash/tool entry points currently available |
 | `/job` | List background jobs started by approved long-running plans |
+| `/job status` | Show background job runtime health, socket/store paths, and job counts |
 | `/job <job_id>` | Show one background job's status, output tail, and artifact paths |
 | `/job follow <job_id>` | Follow one background job's updates in the current CLI |
 | `/job stop <job_id>` | Request cancellation for a background job |

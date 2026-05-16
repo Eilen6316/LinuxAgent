@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ..interfaces import UserInterface
-from ..services import BackgroundJobController, BackgroundJobSnapshot, JobDaemonError
+from ..services import (
+    BackgroundJobController,
+    BackgroundJobRuntimeStatus,
+    BackgroundJobSnapshot,
+    JobDaemonError,
+)
 
 
 async def handle_jobs_command(
@@ -19,6 +26,9 @@ async def handle_jobs_command(
         await _print_jobs(ui, jobs)
         return
     action = parts[0]
+    if action == "status":
+        await _print_status(ui, jobs)
+        return
     if action == "stop":
         await _stop_job(ui, jobs, parts[1:])
         return
@@ -38,6 +48,13 @@ async def _print_jobs(ui: UserInterface, jobs: BackgroundJobController) -> None:
 async def _print_job(ui: UserInterface, jobs: BackgroundJobController, job_id: str) -> None:
     try:
         await ui.print(render_job(jobs.get(job_id)))
+    except JobDaemonError as exc:
+        await ui.print(_job_service_error(exc))
+
+
+async def _print_status(ui: UserInterface, jobs: BackgroundJobController) -> None:
+    try:
+        await ui.print(render_job_runtime_status(await jobs.status()))
     except JobDaemonError as exc:
         await ui.print(_job_service_error(exc))
 
@@ -81,7 +98,7 @@ async def _follow_job(ui: UserInterface, jobs: BackgroundJobController, args: li
 
 def render_jobs(items: tuple[BackgroundJobSnapshot, ...]) -> str:
     if not items:
-        return "当前没有后台任务。用法：/job <job_id>、/job follow <job_id>、/job stop <job_id>"
+        return "当前没有后台任务。用法：/job status、/job <job_id>、/job follow <job_id>、/job stop <job_id>"
     lines = ["后台任务：", "```text", "ID                         STATUS     AGE      GOAL"]
     lines.extend(_job_line(item) for item in items)
     lines.append("```")
@@ -113,6 +130,25 @@ def render_job(item: BackgroundJobSnapshot | None) -> str:
     return "\n".join(parts)
 
 
+def render_job_runtime_status(status: BackgroundJobRuntimeStatus) -> str:
+    state = "available" if status.available else "unavailable"
+    lines = [
+        "后台任务运行时：",
+        "```text",
+        f"mode: {status.mode}",
+        f"state: {state}",
+        f"jobs: {status.running_jobs} running / {status.total_jobs} total",
+    ]
+    if status.socket_path is not None:
+        lines.append(f"socket: {_display_path(status.socket_path)}")
+    if status.store_path is not None:
+        lines.append(f"store: {_display_path(status.store_path)}")
+    if status.error:
+        lines.append(f"error: {status.error}")
+    lines.append("```")
+    return "\n".join(lines)
+
+
 def render_stopped_job(item: BackgroundJobSnapshot | None) -> str:
     if item is None:
         return "后台任务不存在。"
@@ -139,6 +175,10 @@ def _trim_output(text: str) -> str:
     if len(normalized) <= 2_000:
         return normalized
     return normalized[-2_000:]
+
+
+def _display_path(path: Path) -> str:
+    return str(path)
 
 
 def _job_service_error(exc: JobDaemonError) -> str:

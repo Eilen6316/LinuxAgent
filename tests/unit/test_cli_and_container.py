@@ -784,7 +784,7 @@ def test_product_capability_context_describes_resume_and_model_source() -> None:
     assert "learner memory" in context
     assert "read_file, search_files" in context
     assert "/resume - 列出本机保存的会话" in slash_help()
-    assert "/job - 列出/查看/跟随/停止后台任务" in slash_help()
+    assert "/job - 列出/诊断/查看/跟随/停止后台任务" in slash_help()
 
 
 def test_runtime_event_message_formats_command_batch() -> None:

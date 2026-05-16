@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .background_jobs import (
     BackgroundJobController,
+    BackgroundJobRuntimeStatus,
     BackgroundJobService,
     BackgroundJobSnapshot,
     JobStatus,
@@ -34,6 +35,7 @@ from .monitoring_service import (
 
 __all__ = [
     "BackgroundJobService",
+    "BackgroundJobRuntimeStatus",
     "BackgroundJobSnapshot",
     "BackgroundJobController",
     "ChatService",

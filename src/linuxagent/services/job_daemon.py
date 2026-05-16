@@ -11,8 +11,10 @@ from typing import Any
 
 from .background_jobs import (
     BackgroundJobController,
+    BackgroundJobRuntimeStatus,
     BackgroundJobService,
     BackgroundJobSnapshot,
+    JobStatus,
     load_job_snapshots,
     snapshot_from_record,
     snapshot_to_record,
@@ -75,6 +77,14 @@ class JobDaemonClient(BackgroundJobController):
 
     async def stop_all(self) -> None:
         return None
+
+    async def status(self) -> BackgroundJobRuntimeStatus:
+        items = self.list()
+        try:
+            await self._request({"action": "ping"})
+        except JobDaemonError as exc:
+            return _runtime_status(items, self._socket_path, self._store_path, str(exc))
+        return _runtime_status(items, self._socket_path, self._store_path, None)
 
     async def _request(self, payload: dict[str, Any]) -> dict[str, Any]:
         reader, writer = await _connect(self._socket_path)
@@ -147,6 +157,9 @@ class JobDaemonServer:
         if action == "watch":
             await self._watch(_job_id(request), writer)
             return
+        if action == "ping":
+            await _write_json(writer, {"ok": True})
+            return
         raise JobDaemonError(f"unsupported job daemon action: {action or '<empty>'}")
 
     async def _start(self, request: dict[str, Any]) -> BackgroundJobSnapshot:
@@ -172,6 +185,23 @@ def daemon_socket_path(history_path: Path) -> Path:
 
 def daemon_store_path(history_path: Path) -> Path:
     return history_path.with_name("jobs.json")
+
+
+def _runtime_status(
+    items: tuple[BackgroundJobSnapshot, ...],
+    socket_path: Path,
+    store_path: Path,
+    error: str | None,
+) -> BackgroundJobRuntimeStatus:
+    return BackgroundJobRuntimeStatus(
+        mode="daemon",
+        available=error is None,
+        total_jobs=len(items),
+        running_jobs=sum(1 for item in items if item.status is JobStatus.RUNNING),
+        socket_path=socket_path,
+        store_path=store_path,
+        error=error,
+    )
 
 
 async def _prepare_socket(path: Path) -> None:
