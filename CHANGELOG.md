@@ -57,6 +57,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   LinuxAgent product context, including `/resume`, session history,
   checkpointing, learner memory boundaries, and the configured provider/model
   source, so self-capability questions stay accurate.
+- LinuxAgent self-capability questions are now routed through the operating
+  manifest direct-answer path, so cache, memory, tool, safety, resume, and
+  network-boundary answers come from the same maintainable self manual instead
+  of cache-specific prompt rules.
 - Slash-command help and completion now share one command catalog.
 - `linuxagent audit summary` and `linuxagent audit inspect` now provide
   read-only audit diagnostics with decision counts, safety counts, hash-chain

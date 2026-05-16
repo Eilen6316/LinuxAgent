@@ -60,11 +60,17 @@ class IntentMode(StrEnum):
     CLARIFY = "CLARIFY"
 
 
+class AnswerContext(StrEnum):
+    NONE = "none"
+    SELF_MANUAL = "self_manual"
+
+
 @dataclass(frozen=True)
 class IntentDecision:
     mode: IntentMode
     answer: str
     reason: str
+    answer_context: AnswerContext = AnswerContext.NONE
 
 
 @dataclass(frozen=True)
@@ -143,7 +149,12 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
         user_text,
         current_trace_id,
     )
-    if intent.mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY}:
+    if intent.mode is IntentMode.CLARIFY:
+        return _direct_response_update(current_trace_id, intent.answer)
+    if intent.mode is IntentMode.DIRECT_ANSWER:
+        if intent.answer_context is AnswerContext.SELF_MANUAL:
+            answer = await _complete_direct_answer(context, messages, user_text, current_trace_id)
+            return _direct_response_update(current_trace_id, answer)
         return _direct_response_update(current_trace_id, intent.answer)
     gate = await _plan_gate(context, messages, user_text, current_trace_id)
     if gate is not None:
@@ -234,7 +245,7 @@ async def _no_change_update(
                     current_trace_id,
                     retry_error,
                     context.telemetry,
-                    context.direct_answer_context(),
+                    context.product_context,
                     context.prompt_cache_key,
                 )
             return _parse_error_update(current_trace_id, retry_error)
@@ -501,7 +512,7 @@ async def _recover_plan_parse_error(
             current_trace_id,
             error,
             context.telemetry,
-            context.direct_answer_context(),
+            context.product_context,
             context.prompt_cache_key,
         )
     if not context.tools:
@@ -523,7 +534,7 @@ async def _route_intent(
 ) -> IntentDecision:
     router_messages = context.intent_router_prompt.format_messages(
         chat_history=messages[:-1],
-        product_context=context.direct_answer_context(),
+        product_context=context.product_context,
         user_input=user_text,
     )
     raw = (
@@ -608,7 +619,7 @@ async def _retry_plan_or_error(
             current_trace_id,
             retry_plan,
             context.telemetry,
-            context.direct_answer_context(),
+            context.product_context,
             context.prompt_cache_key,
         )
     return _parse_error_update(current_trace_id, retry_plan)
@@ -632,9 +643,22 @@ def _parse_intent_decision(raw: str) -> IntentDecision:
         mode = IntentMode.COMMAND_PLAN
     answer = str(payload.get("answer", "")).strip()
     reason = str(payload.get("reason", "")).strip()
-    if mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY} and not answer:
+    answer_context = _parse_answer_context(payload, mode)
+    if mode is IntentMode.CLARIFY and not answer:
         return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
-    return IntentDecision(mode, answer, reason)
+    if mode is IntentMode.DIRECT_ANSWER and answer_context is AnswerContext.NONE and not answer:
+        return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
+    return IntentDecision(mode, answer, reason, answer_context)
+
+
+def _parse_answer_context(payload: dict[str, Any], mode: IntentMode) -> AnswerContext:
+    if mode is not IntentMode.DIRECT_ANSWER:
+        return AnswerContext.NONE
+    raw = str(payload.get("answer_context", AnswerContext.NONE.value)).strip()
+    try:
+        return AnswerContext(raw)
+    except ValueError:
+        return AnswerContext.NONE
 
 
 def _direct_response_update(current_trace_id: str, response: str) -> AgentState:

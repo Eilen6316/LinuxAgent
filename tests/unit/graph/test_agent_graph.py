@@ -214,8 +214,21 @@ def _runbook_engine() -> RunbookEngine:
     return RunbookEngine(load_runbooks(Path(__file__).resolve().parents[3] / "runbooks"))
 
 
-def _router_response(mode: str, answer: str = "", reason: str = "test route") -> str:
-    return json.dumps({"mode": mode, "answer": answer, "reason": reason}, ensure_ascii=False)
+def _router_response(
+    mode: str,
+    answer: str = "",
+    reason: str = "test route",
+    answer_context: str = "none",
+) -> str:
+    return json.dumps(
+        {
+            "mode": mode,
+            "answer": answer,
+            "reason": reason,
+            "answer_context": answer_context,
+        },
+        ensure_ascii=False,
+    )
 
 
 def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
@@ -1587,9 +1600,10 @@ async def test_graph_answers_product_meta_questions_without_planning(tmp_path) -
         "你能联网搜索你是谁开发的吗",
     )
     for question in questions:
+        answer = "LinuxAgent contributors"
         graph, provider = _graph(
             tmp_path,
-            [_router_response("DIRECT_ANSWER", "LinuxAgent contributors")],
+            [_router_response("DIRECT_ANSWER", answer_context="self_manual"), answer],
         )
         config = {"configurable": {"thread_id": f"meta-{abs(hash(question))}"}}
 
@@ -1597,8 +1611,8 @@ async def test_graph_answers_product_meta_questions_without_planning(tmp_path) -
             initial_state(question, source=CommandSource.USER), config=config
         )
 
-        assert "LinuxAgent contributors" in str(result["messages"][-1].content)
-        assert len(provider.complete_messages) == 1
+        assert answer in str(result["messages"][-1].content)
+        assert len(provider.complete_messages) == 2
         assert provider.tool_calls == 0
         snapshot = await graph.aget_state(config)
         assert not snapshot.tasks
@@ -1661,11 +1675,13 @@ async def test_graph_passes_product_context_to_direct_answer_paths(tmp_path) -> 
     assert snapshot.values["direct_response"] is True
 
 
-async def test_graph_injects_operating_manifest_into_router_direct_answer(tmp_path) -> None:
-    manifest = operating_manifest_context(section_names=("tools", "safety"))
+async def test_graph_loads_operating_manifest_only_for_self_manual_direct_answer(
+    tmp_path,
+) -> None:
+    manifest = operating_manifest_context(section_names=("tools", "safety", "cache"))
     graph, provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "router manifest answer")],
+        [_router_response("DIRECT_ANSWER", answer_context="self_manual"), "manual answer"],
         product_context=product_capability_context(provider="deepseek", model="deepseek-chat"),
         operating_manifest=manifest,
     )
@@ -1675,13 +1691,17 @@ async def test_graph_injects_operating_manifest_into_router_direct_answer(tmp_pa
         config={"configurable": {"thread_id": "manifest-direct"}},
     )
 
-    assert "router manifest answer" in str(result["messages"][-1].content)
-    assert len(provider.complete_messages) == 1
+    assert "manual answer" in str(result["messages"][-1].content)
+    assert len(provider.complete_messages) == 2
     prompts = [
         "\n".join(str(message.content) for message in call) for call in provider.complete_messages
     ]
-    assert "# tools" in prompts[-1]
-    assert "# safety" in prompts[-1]
+    assert "# tools" not in prompts[0]
+    assert "# safety" not in prompts[0]
+    assert "# cache" not in prompts[0]
+    assert "# tools" in prompts[1]
+    assert "# safety" in prompts[1]
+    assert "# cache" in prompts[1]
 
 
 async def test_graph_continues_planning_when_planner_gate_fails(tmp_path) -> None:
@@ -1713,9 +1733,11 @@ async def test_graph_continues_planning_when_planner_gate_fails(tmp_path) -> Non
 
 
 async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> None:
+    manifest = operating_manifest_context(section_names=("tools", "safety"))
     graph, provider = _graph(
         tmp_path,
         [_router_response("DIRECT_ANSWER", "router supplied direct answer")],
+        operating_manifest=manifest,
     )
     config = {"configurable": {"thread_id": "daily-chat"}}
 
@@ -1725,6 +1747,9 @@ async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> N
 
     assert "router supplied direct answer" in str(result["messages"][-1].content)
     assert len(provider.complete_messages) == 1
+    prompt = "\n".join(str(message.content) for message in provider.complete_messages[0])
+    assert "# tools" not in prompt
+    assert "# safety" not in prompt
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
     assert snapshot.values.get("pending_command") is None
@@ -1777,6 +1802,39 @@ async def test_graph_falls_back_to_direct_answer_for_history_question_nochange(
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
     assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_fallback_direct_answer_does_not_load_operating_manifest(
+    tmp_path,
+) -> None:
+    empty_plan = json.dumps(
+        {
+            "goal": "meta question",
+            "commands": [],
+            "risk_summary": "",
+            "preflight_checks": [],
+            "verification_commands": [],
+            "rollback_commands": [],
+            "requires_root": False,
+            "expected_side_effects": [],
+        }
+    )
+    answer = "fallback answer"
+    graph, provider = _graph(
+        tmp_path,
+        [empty_plan, answer],
+        operating_manifest=operating_manifest_context(section_names=("tools", "safety")),
+    )
+
+    result = await graph.ainvoke(
+        initial_state("普通概念问题", source=CommandSource.USER),
+        config={"configurable": {"thread_id": "fallback-no-manifest"}},
+    )
+
+    assert answer in str(result["messages"][-1].content)
+    fallback_prompt = "\n".join(str(message.content) for message in provider.complete_messages[-1])
+    assert "# tools" not in fallback_prompt
+    assert "# safety" not in fallback_prompt
 
 
 async def test_graph_clarifies_artifact_creation_without_destination(tmp_path) -> None:

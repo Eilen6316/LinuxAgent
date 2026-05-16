@@ -24,7 +24,8 @@ Return only one JSON object with this exact shape:
 {{
   "mode": "DIRECT_ANSWER",
   "answer": "answer to show the user, or an empty string for COMMAND_PLAN",
-  "reason": "short routing reason"
+  "reason": "short routing reason",
+  "answer_context": "none"
 }}
 ```
 
@@ -53,6 +54,15 @@ For `DIRECT_ANSWER`, put the final answer to show the user in `answer`, in the
 user's language. Do not write a draft, placeholder, or routing note. For
 `CLARIFY`, ask a concise clarifying question in `answer`. For `COMMAND_PLAN`,
 use an empty string for `answer`.
+
+For `DIRECT_ANSWER`, set `answer_context` to `self_manual` when the user is
+asking about LinuxAgent itself, including identity, capabilities, limits,
+configured model/provider, runtime behavior, safety model, available tools,
+network/search boundaries, or CLI commands. In that case `answer` may be empty
+because a dedicated direct-answer step will load LinuxAgent's operating
+manifest. Set `answer_context` to `none` for ordinary conversation, concepts,
+history questions, or how-to guidance that is not about LinuxAgent itself. For
+`COMMAND_PLAN` and `CLARIFY`, always set `answer_context` to `none`.
 
 Routing examples:
 

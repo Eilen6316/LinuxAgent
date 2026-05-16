@@ -10,6 +10,7 @@ def test_manifest_index_lists_sections() -> None:
 
     assert "LinuxAgent operating manifest sections:" in index
     assert "- tools:" in index
+    assert "- cache:" in index
     assert "- safety:" in index
 
 
@@ -19,3 +20,11 @@ def test_operating_manifest_context_can_select_sections() -> None:
     assert "# tools" in context
     assert "ToolSandboxSpec" in context
     assert "# safety" not in context
+
+
+def test_operating_manifest_cache_section_describes_boundaries() -> None:
+    context = operating_manifest_context(section_names=("cache",))
+
+    assert "# cache" in context
+    assert "prompt_cache_key" in context
+    assert "does not cache shell command results" in context

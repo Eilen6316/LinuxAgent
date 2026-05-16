@@ -23,6 +23,7 @@ MANIFEST_SECTIONS: tuple[ManifestSection, ...] = (
         "session_resume", "Session resume and checkpoints", "manifest/session_resume.md"
     ),
     ManifestSection("memory", "History and learner memory", "manifest/memory.md"),
+    ManifestSection("cache", "Prompt cache and non-cached execution", "manifest/cache.md"),
     ManifestSection("tools", "Tool catalog and sandbox metadata", "manifest/tools.md"),
     ManifestSection("execution", "Execution and output analysis", "manifest/execution.md"),
     ManifestSection("safety", "Policy, HITL, and audit", "manifest/safety.md"),

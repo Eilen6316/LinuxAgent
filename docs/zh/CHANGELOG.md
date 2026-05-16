@@ -40,6 +40,9 @@ LinuxAgent 的重要变更记录在这里。
 - 直接回答、intent router 和规划 prompt 现在会收到简洁的 LinuxAgent 产品上下文，
   覆盖 `/resume`、会话历史、checkpoint、learner memory 边界以及当前
   provider/model 来源，使自身能力类问题回答更准确。
+- LinuxAgent 自身能力类问题现在会进入 operating manifest 直接回答路径；cache、
+  memory、tool、safety、resume、network boundary 等回答来自同一份可维护的自身
+  说明书，而不是散落在 prompt 里的专项规则。
 - Slash command 帮助和补全现在共用同一个命令目录。
 - 新增 `linuxagent audit summary` 和 `linuxagent audit inspect` 只读审计诊断，
   可查看决策统计、safety 统计、hash-chain 状态和脱敏后的近期命令明细。
