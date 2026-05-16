@@ -130,6 +130,7 @@ def test_config_yaml_samples_document_supported_providers(name: str) -> None:
 def test_defaults_populate_every_section() -> None:
     cfg = AppConfig.model_validate({})
     assert cfg.api.provider == LLMProviderName.DEEPSEEK
+    assert cfg.api.prompt_cache is False
     assert cfg.security.session_whitelist_enabled is True
     assert cfg.policy.path is None
     assert cfg.policy.include_builtin is True

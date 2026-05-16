@@ -14,6 +14,10 @@ if TYPE_CHECKING:
 class LLMProvider(ABC):
     """Async LLM provider wrapping a LangChain chat model."""
 
+    @property
+    def last_usage(self) -> Any | None:
+        return None
+
     @abstractmethod
     async def complete(
         self,

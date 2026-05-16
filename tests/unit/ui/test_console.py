@@ -546,6 +546,52 @@ async def test_console_print_treats_model_output_as_plain_text() -> None:
     assert "[bold]Rocky[/bold] **Linux**" in rendered
 
 
+async def test_console_print_markdown_renders_model_output() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_markdown("### 能力\n\n- **执行命令**：查看系统")
+
+    rendered = console.export_text()
+    assert "能力" in rendered
+    assert "执行命令：查看系统" in rendered
+    assert "**执行命令**" not in rendered
+
+
+async def test_console_print_activity_uses_transient_working_status(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_activity("LinuxAgent 正在规划命令")
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "Working: 规划命令" in rendered
+    assert "esc to interrupt" in rendered
+    assert "╭" not in rendered
+    assert "│" not in rendered
+    assert "╰" not in rendered
+    assert "\n" not in rendered.rstrip("\n")
+
+    await ui.print("done")
+
+    assert ui._working_status is None
+
+
+async def test_console_print_activity_keeps_non_working_messages_plain(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_activity("LinuxAgent 命令结束：exit 0")
+
+    assert ui._working_status is None
+    assert "LinuxAgent 命令结束：exit 0" in console.export_text()
+
+
 async def test_console_print_execution_result_can_omit_streamed_output() -> None:
     console = Console(record=True, width=120)
     ui = ConsoleUI(console=console)

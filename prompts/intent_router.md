@@ -49,7 +49,8 @@ working directory, or a home directory. If chat_history already names a target
 directory or file and the new request clearly continues that work, you may route
 to `COMMAND_PLAN`.
 
-For `DIRECT_ANSWER`, put the answer in `answer` in the user's language. For
+For `DIRECT_ANSWER`, put the final answer to show the user in `answer`, in the
+user's language. Do not write a draft, placeholder, or routing note. For
 `CLARIFY`, ask a concise clarifying question in `answer`. For `COMMAND_PLAN`,
 use an empty string for `answer`.
 

@@ -39,9 +39,11 @@ class _FakeProvider:
         self._responses = responses
         self.tool_calls = 0
         self.complete_messages: list[list[BaseMessage]] = []
+        self.complete_kwargs: list[dict[str, Any]] = []
+        self.last_usage = None
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
-        del kwargs
+        self.complete_kwargs.append(dict(kwargs))
         self.complete_messages.append(messages)
         if _is_intent_router_call(messages):
             if self._responses and _is_intent_router_response(self._responses[0]):
@@ -56,7 +58,7 @@ class _FakeProvider:
         return "analysis ok"
 
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
-        del kwargs
+        self.complete_kwargs.append(dict(kwargs))
         self.complete_messages.append(messages)
         self.tool_calls += 1
         assert tools
@@ -1545,7 +1547,7 @@ async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> N
 async def test_graph_answers_capability_question_without_command(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "router draft"), "dynamic capability answer"],
+        [_router_response("DIRECT_ANSWER", "dynamic capability answer")],
     )
     config = {"configurable": {"thread_id": "capabilities"}}
 
@@ -1554,12 +1556,28 @@ async def test_graph_answers_capability_question_without_command(tmp_path) -> No
     )
 
     assert "dynamic capability answer" in str(result["messages"][-1].content)
-    assert len(provider.complete_messages) == 2
+    assert len(provider.complete_messages) == 1
     assert provider.tool_calls == 0
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
     assert snapshot.values.get("pending_command") is None
     assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_passes_thread_prompt_cache_key_to_provider(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [_router_response("DIRECT_ANSWER", "cached answer")],
+        checkpointer=PersistentMemorySaver(tmp_path / "checkpoint.sqlite"),
+    )
+
+    await graph.ainvoke(
+        initial_state("你是谁", source=CommandSource.USER, thread_id="cache-thread"),
+        config={"configurable": {"thread_id": "cache-thread"}},
+    )
+
+    key = provider.complete_kwargs[0]["prompt_cache_key"]
+    assert key.startswith("linuxagent:")
 
 
 async def test_graph_answers_product_meta_questions_without_planning(tmp_path) -> None:
@@ -1571,7 +1589,7 @@ async def test_graph_answers_product_meta_questions_without_planning(tmp_path) -
     for question in questions:
         graph, provider = _graph(
             tmp_path,
-            [_router_response("DIRECT_ANSWER", "router draft"), "LinuxAgent contributors"],
+            [_router_response("DIRECT_ANSWER", "LinuxAgent contributors")],
         )
         config = {"configurable": {"thread_id": f"meta-{abs(hash(question))}"}}
 
@@ -1580,7 +1598,7 @@ async def test_graph_answers_product_meta_questions_without_planning(tmp_path) -
         )
 
         assert "LinuxAgent contributors" in str(result["messages"][-1].content)
-        assert len(provider.complete_messages) == 2
+        assert len(provider.complete_messages) == 1
         assert provider.tool_calls == 0
         snapshot = await graph.aget_state(config)
         assert not snapshot.tasks
@@ -1643,14 +1661,11 @@ async def test_graph_passes_product_context_to_direct_answer_paths(tmp_path) -> 
     assert snapshot.values["direct_response"] is True
 
 
-async def test_graph_injects_operating_manifest_only_for_direct_answer(tmp_path) -> None:
+async def test_graph_injects_operating_manifest_into_router_direct_answer(tmp_path) -> None:
     manifest = operating_manifest_context(section_names=("tools", "safety"))
     graph, provider = _graph(
         tmp_path,
-        [
-            _router_response("DIRECT_ANSWER", "router draft"),
-            "manifest answer",
-        ],
+        [_router_response("DIRECT_ANSWER", "router manifest answer")],
         product_context=product_capability_context(provider="deepseek", model="deepseek-chat"),
         operating_manifest=manifest,
     )
@@ -1660,7 +1675,8 @@ async def test_graph_injects_operating_manifest_only_for_direct_answer(tmp_path)
         config={"configurable": {"thread_id": "manifest-direct"}},
     )
 
-    assert "manifest answer" in str(result["messages"][-1].content)
+    assert "router manifest answer" in str(result["messages"][-1].content)
+    assert len(provider.complete_messages) == 1
     prompts = [
         "\n".join(str(message.content) for message in call) for call in provider.complete_messages
     ]
@@ -1699,7 +1715,7 @@ async def test_graph_continues_planning_when_planner_gate_fails(tmp_path) -> Non
 async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "router draft"), "router supplied direct answer"],
+        [_router_response("DIRECT_ANSWER", "router supplied direct answer")],
     )
     config = {"configurable": {"thread_id": "daily-chat"}}
 
@@ -1708,7 +1724,7 @@ async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> N
     )
 
     assert "router supplied direct answer" in str(result["messages"][-1].content)
-    assert len(provider.complete_messages) == 2
+    assert len(provider.complete_messages) == 1
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
     assert snapshot.values.get("pending_command") is None
@@ -1718,7 +1734,7 @@ async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> N
 async def test_graph_answers_howto_without_command_panel(tmp_path) -> None:
     graph, _provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "router draft"), "router supplied how-to answer"],
+        [_router_response("DIRECT_ANSWER", "router supplied how-to answer")],
     )
     config = {"configurable": {"thread_id": "howto-chat"}}
 

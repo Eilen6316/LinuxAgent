@@ -93,6 +93,7 @@ class Container:
             cluster_service=self.cluster_service(),
             telemetry=self.telemetry(),
             tool_names=tuple(item.name for item in self.tool_catalog().items),
+            prompt_cache_enabled=self._config.api.prompt_cache,
         )
 
     def audit_log(self) -> AuditLog:

@@ -38,9 +38,10 @@ from ..prompts_loader import build_file_patch_repair_prompt
 from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
-from .common import span, trace_id
+from .common import trace_id
 from .execution import synthetic_result
 from .intent import ToolEventObserver, tool_event_observer
+from .llm_calls import LLMCallOptions, complete_llm, complete_llm_with_tools
 from .payloads import decision, latency_ms
 from .state import AgentState
 
@@ -153,12 +154,14 @@ def make_repair_file_patch_node(
     telemetry: TelemetryRecorder | None = None,
     tool_observer: ToolEventObserver | None = None,
     tool_runtime_limits: ToolRuntimeLimits | None = None,
+    prompt_cache_key: str | None = None,
 ) -> Node:
     prompt = build_file_patch_repair_prompt()
     runtime_limits = tool_runtime_limits or ToolRuntimeLimits()
 
     async def repair_file_patch_node(state: AgentState) -> Command[Any]:
         current_trace_id = trace_id(state)
+        cache_key = state.get("prompt_cache_key") or prompt_cache_key
         await _notify_repair_start(state, telemetry, tool_observer, current_trace_id)
         prompt_messages = prompt.format_messages(
             runbook_guidance="No runbook guidance is available for file patch repair.",
@@ -178,6 +181,7 @@ def make_repair_file_patch_node(
                 tool_observer,
                 telemetry,
                 runtime_limits,
+                cache_key,
             )
         except (
             CommandPlanParseError,
@@ -203,6 +207,7 @@ async def _complete_repair_candidate_plan(
     tool_observer: ToolEventObserver | None,
     telemetry: TelemetryRecorder | None,
     runtime_limits: ToolRuntimeLimits,
+    prompt_cache_key: str | None,
 ) -> CommandPlan | FilePatchPlan | NoChangePlan:
     proposed = await _complete_repair_plan_with_fallback(
         provider,
@@ -212,6 +217,7 @@ async def _complete_repair_candidate_plan(
         tool_observer,
         current_trace_id,
         runtime_limits,
+        prompt_cache_key,
     )
     return await _complete_valid_repair_plan(
         provider,
@@ -221,6 +227,7 @@ async def _complete_repair_candidate_plan(
         current_trace_id,
         proposed,
         telemetry,
+        prompt_cache_key,
     )
 
 
@@ -241,6 +248,7 @@ async def _complete_repair_plan_with_fallback(
     observer: ToolEventObserver | None,
     current_trace_id: str,
     tool_runtime_limits: ToolRuntimeLimits,
+    prompt_cache_key: str | None,
 ) -> str:
     try:
         return await _complete_repair_plan(
@@ -251,6 +259,7 @@ async def _complete_repair_plan_with_fallback(
             observer,
             current_trace_id,
             tool_runtime_limits,
+            prompt_cache_key,
         )
     except ProviderError:
         if not tools:
@@ -263,6 +272,7 @@ async def _complete_repair_plan_with_fallback(
         observer,
         current_trace_id,
         tool_runtime_limits,
+        prompt_cache_key,
     )
 
 
@@ -288,6 +298,7 @@ async def _complete_valid_repair_plan(
     current_trace_id: str,
     proposed: str,
     telemetry: TelemetryRecorder | None,
+    prompt_cache_key: str | None,
 ) -> CommandPlan | FilePatchPlan | NoChangePlan:
     current = proposed
     for _ in _remaining_internal_repair_attempts(state, config):
@@ -299,13 +310,29 @@ async def _complete_valid_repair_plan(
             return plan
         except (FilePatchPlanParseError, NoChangePlanParseError) as exc:
             current = await _retry_repair_plan_json(
-                provider, prompt, state, config, current_trace_id, current, str(exc), telemetry
+                provider,
+                prompt,
+                state,
+                config,
+                current_trace_id,
+                current,
+                str(exc),
+                telemetry,
+                prompt_cache_key,
             )
         except FilePatchApplyError as exc:
             if not _is_repairable_patch_error(str(exc)):
                 raise
             current = await _retry_repair_plan_json(
-                provider, prompt, state, config, current_trace_id, current, str(exc), telemetry
+                provider,
+                prompt,
+                state,
+                config,
+                current_trace_id,
+                current,
+                str(exc),
+                telemetry,
+                prompt_cache_key,
             )
     plan = _parse_repair_candidate(current)
     if isinstance(plan, CommandPlan | NoChangePlan):
@@ -361,6 +388,7 @@ async def _retry_repair_plan_json(
     proposed: str,
     error: str,
     telemetry: TelemetryRecorder | None,
+    prompt_cache_key: str | None,
 ) -> str:
     prompt_messages = prompt.format_messages(
         runbook_guidance="No runbook guidance is available for file patch repair.",
@@ -368,8 +396,16 @@ async def _retry_repair_plan_json(
         previous_plan=_previous_plan_json(state),
         failure_context=_retry_failure_context(state, config, proposed, error),
     )
-    with span(telemetry, "llm.complete", current_trace_id, {"node": "repair_file_patch"}):
-        return (await provider.complete(prompt_messages)).strip()
+    return (
+        await complete_llm(
+            provider,
+            prompt_messages,
+            telemetry=telemetry,
+            trace_id=current_trace_id,
+            attributes={"node": "repair_file_patch", "retry": "json_only"},
+            prompt_cache_key=prompt_cache_key,
+        )
+    ).strip()
 
 
 async def _complete_repair_plan(
@@ -380,13 +416,30 @@ async def _complete_repair_plan(
     observer: ToolEventObserver | None,
     current_trace_id: str,
     tool_runtime_limits: ToolRuntimeLimits,
+    prompt_cache_key: str | None,
 ) -> str:
     if not tools:
-        return (await provider.complete(prompt_messages)).strip()
+        return (
+            await complete_llm(
+                provider,
+                prompt_messages,
+                telemetry=telemetry,
+                trace_id=current_trace_id,
+                attributes={"node": "repair_file_patch"},
+                prompt_cache_key=prompt_cache_key,
+            )
+        ).strip()
     return (
-        await provider.complete_with_tools(
+        await complete_llm_with_tools(
+            provider,
             prompt_messages,
             list(tools),
+            options=LLMCallOptions(
+                telemetry,
+                current_trace_id,
+                {"node": "repair_file_patch"},
+                prompt_cache_key,
+            ),
             tool_runtime_limits=tool_runtime_limits,
             tool_observer=tool_event_observer(telemetry, observer, current_trace_id),
         )

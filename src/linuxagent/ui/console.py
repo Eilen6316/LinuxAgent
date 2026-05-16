@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import select
 import sys
 import termios
 import time
@@ -14,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.text import Text
@@ -30,6 +30,7 @@ from .diff_renderer import (
 )
 from .prompt_session import PromptSessionManager, SlashCommandCompleter
 from .resume_selector import ResumeSelector
+from .working_status import WorkingStatus
 
 __all__ = ["ConsoleUI", "SlashCommandCompleter"]
 
@@ -49,6 +50,7 @@ class ConsoleUI(UserInterface):
         self._prompt_symbol = prompt_symbol
         self._history_path = history_path or (Path.home() / ".linuxagent" / "prompt_history")
         self._activity_visible = True
+        self._working_status: WorkingStatus | None = None
         self._prompt_session = PromptSessionManager(
             theme=theme,
             prompt_symbol=prompt_symbol,
@@ -72,6 +74,7 @@ class ConsoleUI(UserInterface):
 
     async def handle_interrupt(self, payload: dict[str, Any]) -> dict[str, Any]:
         started = time.monotonic()
+        self.clear_activity()
         if not sys.stdin.isatty():
             return {"decision": "non_tty_auto_deny", "latency_ms": 0}
         self._confirmation_renderer.render(payload)
@@ -80,31 +83,60 @@ class ConsoleUI(UserInterface):
         return response
 
     async def print(self, text: str) -> None:
+        self.clear_activity()
         self._console.print(Panel(Text(text), border_style=self._panel_style()))
 
+    async def print_markdown(self, text: str) -> None:
+        self.clear_activity()
+        self._console.print(Panel(Markdown(text), border_style=self._panel_style()))
+
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
+        self.clear_activity()
         rendered = Text(text, style="red") if stderr else Text(text)
         self._console.print(rendered, end="")
 
     async def print_execution_result(
         self, result: ExecutionResult, *, include_output: bool = True
     ) -> None:
+        self.clear_activity()
         display = execution_display_text(result, include_output=include_output)
         style = "green" if result.exit_code == 0 else "red"
         title = f"Command result · exit {result.exit_code}"
         self._console.print(Panel(Text(display.text), title=title, border_style=style))
 
     async def print_activity(self, text: str) -> None:
-        if self._activity_visible:
-            self._console.print(Text(text, style="dim"))
+        if not self._activity_visible:
+            return
+        if text.startswith("LinuxAgent 正在") and sys.stdin.isatty() and self._console.is_terminal:
+            self.start_working(text)
+            return
+        self.clear_activity()
+        self._console.print(Text(text, style="dim"))
+
+    def start_working(self, text: str = "Working") -> None:
+        if not self._activity_visible:
+            return
+        if not sys.stdin.isatty() or not self._console.is_terminal:
+            return
+        if self._working_status is None:
+            self._working_status = WorkingStatus(self._console, theme=self._theme)
+        self._working_status.update(text)
+
+    def clear_activity(self) -> None:
+        if self._working_status is not None:
+            self._working_status.stop()
+            self._working_status = None
 
     def set_activity_visible(self, visible: bool) -> None:
+        if not visible:
+            self.clear_activity()
         self._activity_visible = visible
 
     def supports_resume_selector(self) -> bool:
         return sys.stdin.isatty()
 
     async def choose_resume_session(self, sessions: list[Any]) -> str | None:
+        self.clear_activity()
         if not sys.stdin.isatty():
             return None
         return await ResumeSelector(sessions).choose()
@@ -115,6 +147,7 @@ class ConsoleUI(UserInterface):
         return await _wait_for_escape()
 
     def _print_hero(self) -> None:
+        self.clear_activity()
         self._console.print(self._hero_text())
 
     def _hero_text(self) -> Text:
@@ -131,9 +164,11 @@ class ConsoleUI(UserInterface):
         return hero
 
     def _render_confirm(self, payload: dict[str, Any]) -> None:
+        self.clear_activity()
         self._confirmation_renderer.render_command(payload)
 
     def _render_file_patch_confirm(self, payload: dict[str, Any]) -> None:
+        self.clear_activity()
         self._confirmation_renderer.render_file_patch(payload)
 
     def _build_prompt(self, current_text: str = "") -> list[tuple[str, str]]:
@@ -300,13 +335,20 @@ def _resume_choice_label(session: Any) -> str:
 
 async def _wait_for_escape() -> str:
     fd = sys.stdin.fileno()
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[str] = loop.create_future()
     old_attrs = termios.tcgetattr(fd)
+
+    def on_input() -> None:
+        if future.done():
+            return
+        if os.read(fd, 1) == b"\x1b":
+            future.set_result("escape")
+
     try:
         tty.setcbreak(fd)
-        while True:
-            await asyncio.sleep(0.05)
-            readable, _, _ = select.select([sys.stdin], [], [], 0)
-            if readable and os.read(fd, 1) == b"\x1b":
-                return "escape"
+        loop.add_reader(fd, on_input)
+        return await future
     finally:
+        loop.remove_reader(fd)
         termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)

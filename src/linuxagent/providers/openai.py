@@ -33,6 +33,7 @@ def _api_key(config: APIConfig) -> SecretStr:
 
 def _build_chat_model(config: APIConfig) -> ChatOpenAI:
     # ``max_retries=0`` hands retry control to BaseLLMProvider.
+    disabled_params = None if config.prompt_cache else {"prompt_cache_key": None}
     if config.token_parameter == LEGACY_LIMIT_PARAMETER:
         return ChatOpenAI(
             model=config.model,
@@ -41,6 +42,7 @@ def _build_chat_model(config: APIConfig) -> ChatOpenAI:
             timeout=config.timeout,
             temperature=config.temperature,
             max_retries=0,
+            disabled_params=disabled_params,
             model_kwargs={LEGACY_LIMIT_PARAMETER: config.max_tokens},
         )
     return ChatOpenAI(
@@ -50,6 +52,7 @@ def _build_chat_model(config: APIConfig) -> ChatOpenAI:
         timeout=config.timeout,
         temperature=config.temperature,
         max_retries=0,
+        disabled_params=disabled_params,
         max_completion_tokens=config.max_tokens,
     )
 

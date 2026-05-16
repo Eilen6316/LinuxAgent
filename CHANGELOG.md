@@ -8,6 +8,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Terminal assistant responses now render Markdown formatting in the Rich
+  response panel instead of showing raw Markdown markers such as `**bold**`
+  and `###` headings.
+- Interactive terminals now show transient working status for activity events,
+  with a compact animated `Working` label that is cleared before confirmations,
+  command output, and final responses.
+- Simple conversational replies now use the intent router's final
+  `DIRECT_ANSWER`/`CLARIFY` response directly, avoiding an extra serialized LLM
+  completion before showing the answer.
 - LLM-visible tools now fail closed when their catalog metadata is missing or
   invalid, returning structured denied tool events instead of binding unsafe
   tools into the provider loop.
@@ -69,6 +78,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Conversation-history questions now stay on the direct-answer path instead of
   falling into command or file planning, so chat-only requests do not expose
   internal no-change evidence errors.
+- Added optional provider-side prompt cache keys and `llm.usage` telemetry for
+  cached input tokens, following Codex's cache-hit observability shape without
+  caching final assistant answers locally.
 - Workspace evidence previews for `read_file` now come from the same bounded
   output sent to the agent and include both the start and end of longer read
   windows, making file-edit evidence less misleading.

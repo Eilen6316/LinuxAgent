@@ -12,6 +12,7 @@ api:
   temperature: 0.3
   max_tokens: 2048
   token_parameter: max_completion_tokens  # max_completion_tokens | max_tokens
+  prompt_cache: false       # opt in to stable per-thread prompt_cache_key when supported
 
 security:
   command_timeout: 30.0

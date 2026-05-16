@@ -36,6 +36,10 @@ class UserInterface(ABC):
     async def print(self, text: str) -> None:
         """Display ``text`` to the user."""
 
+    async def print_markdown(self, text: str) -> None:
+        """Display Markdown-formatted assistant text when the UI supports it."""
+        await self.print(text)
+
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
         """Display raw command output without extra decoration."""
         del stderr
@@ -44,6 +48,14 @@ class UserInterface(ABC):
     async def print_activity(self, text: str) -> None:
         """Display a high-level runtime activity event."""
         await self.print_raw(f"{text}\n")
+
+    def start_working(self, text: str = "Working") -> None:
+        """Start a transient working display before detailed activity events."""
+        del text
+
+    def clear_activity(self) -> None:
+        """Clear any transient activity display before normal output."""
+        return None
 
     def set_activity_visible(self, visible: bool) -> None:
         """Toggle high-level runtime activity event visibility."""

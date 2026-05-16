@@ -56,6 +56,7 @@ class _FakeUI:
             else interrupt_response
         )
         self.printed: list[str] = []
+        self.markdown_printed: list[str] = []
         self.raw_printed: list[tuple[str, bool]] = []
         self.interrupts: list[dict[str, Any]] = []
         self.cancel_immediately = False
@@ -63,6 +64,7 @@ class _FakeUI:
         self.resume_selector_enabled = False
         self.resume_sessions: list[Any] = []
         self.activity_visible: bool | None = None
+        self.working: list[str] = []
 
     async def input_stream(self):
         for item in self._inputs:
@@ -75,11 +77,17 @@ class _FakeUI:
     async def print(self, text: str) -> None:
         self.printed.append(text)
 
+    async def print_markdown(self, text: str) -> None:
+        self.markdown_printed.append(text)
+
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
         self.raw_printed.append((text, stderr))
 
     def set_activity_visible(self, visible: bool) -> None:
         self.activity_visible = visible
+
+    def start_working(self, text: str = "Working") -> None:
+        self.working.append(text)
 
     async def wait_for_cancel(self) -> str:
         if self.cancel_immediately:
@@ -186,6 +194,7 @@ def _agent(
     context_manager: ContextManager | None = None,
     command_service: CommandService | None = None,
     telemetry: TelemetryRecorder | None = None,
+    prompt_cache_enabled: bool = False,
 ):
     return LinuxAgent(
         graph=graph or _FakeGraph([]),  # type: ignore[arg-type]
@@ -196,6 +205,7 @@ def _agent(
         context_manager=context_manager or ContextManager(10),
         monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
         telemetry=telemetry,
+        prompt_cache_enabled=prompt_cache_enabled,
     )
 
 
@@ -228,7 +238,9 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
     result = await agent.run_turn("now", thread_id="t1")
 
     assert str(result["messages"][-1].content) == "done"
-    assert ui.printed == ["done"]
+    assert ui.working == ["Working"]
+    assert ui.printed == []
+    assert ui.markdown_printed == ["done"]
     first_call = graph.calls[0]
     assert first_call["command_source"] is CommandSource.USER
     assert [message.content for message in first_call["messages"]] == ["now"]
@@ -238,6 +250,17 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
         "now",
         "done",
     ]
+
+
+async def test_run_turn_adds_prompt_cache_key_when_enabled(tmp_path) -> None:
+    graph = _FakeGraph([{"messages": [HumanMessage(content="hi"), AIMessage(content="done")]}])
+    agent = _agent(tmp_path, graph=graph, prompt_cache_enabled=True)
+
+    await agent.run_turn("hi", thread_id="cache-thread")
+
+    first_call = graph.calls[0]
+    assert first_call["prompt_cache_key"].startswith("linuxagent:")
+    assert first_call["prompt_cache_key"] != "cache-thread"
 
 
 async def test_run_turn_escape_cancels_inflight_graph(tmp_path) -> None:
@@ -278,7 +301,8 @@ async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
     await agent.run_turn("run", thread_id="t2")
 
     assert ui.interrupts == [{"type": "confirm_command"}]
-    assert ui.printed == ["ok"]
+    assert ui.printed == []
+    assert ui.markdown_printed == ["ok"]
 
 
 async def test_run_starts_and_stops_services(tmp_path) -> None:
@@ -452,7 +476,7 @@ async def test_resume_continues_pending_interrupt(tmp_path) -> None:
     assert ui.interrupts == [{"type": "confirm_command", "command": "ls"}]
     assert isinstance(graph.calls[0], Command)
     assert "pending confirm" in ui.resume_sessions[0].label
-    assert "done" in "\n".join(ui.printed)
+    assert ui.markdown_printed == ["done"]
 
 
 async def test_new_slash_command_resets_active_context(tmp_path) -> None:

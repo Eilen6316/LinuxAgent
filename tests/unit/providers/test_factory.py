@@ -157,6 +157,50 @@ def test_openai_provider_uses_configured_token_parameter(
     assert "max_completion_tokens" not in captured
 
 
+def test_openai_provider_can_disable_prompt_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(openai_module, "ChatOpenAI", _FakeChatOpenAI)
+    cfg = APIConfig(
+        provider=LLMProviderName.OPENAI_COMPATIBLE,
+        api_key="sk-test",
+        model="relay-model",
+        prompt_cache=False,
+    )
+
+    OpenAIProvider(cfg)
+
+    assert captured["disabled_params"] == {"prompt_cache_key": None}
+
+
+def test_openai_provider_can_enable_prompt_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(openai_module, "ChatOpenAI", _FakeChatOpenAI)
+    cfg = APIConfig(
+        provider=LLMProviderName.OPENAI_COMPATIBLE,
+        api_key="sk-test",
+        model="relay-model",
+        prompt_cache=True,
+    )
+
+    OpenAIProvider(cfg)
+
+    assert captured["disabled_params"] is None
+
+
 def test_local_openai_provider_uses_placeholder_key(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 

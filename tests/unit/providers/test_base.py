@@ -71,17 +71,50 @@ async def test_complete_multimodal_content_joined() -> None:
     assert out == "hello world"
 
 
+async def test_complete_records_usage_metadata() -> None:
+    usage = {
+        "input_tokens": 10,
+        "output_tokens": 3,
+        "total_tokens": 13,
+        "input_token_details": {"cache_read": 7},
+        "output_token_details": {"reasoning": 2},
+    }
+    model = _ToolCallingModel([AIMessage(content="hello", usage_metadata=usage)])
+    provider = BaseLLMProvider(_cfg(prompt_cache=True), model)  # type: ignore[arg-type]
+
+    out = await provider.complete([HumanMessage(content="hi")], prompt_cache_key="thread-key")
+
+    assert out == "hello"
+    assert provider.last_usage is not None
+    assert provider.last_usage.cached_input_tokens == 7
+    assert provider.last_usage.reasoning_output_tokens == 2
+    assert provider.last_usage.cache_hit is True
+    assert model.invoke_kwargs[0]["prompt_cache_key"] == "thread-key"
+
+
+async def test_complete_drops_prompt_cache_key_when_disabled() -> None:
+    model = _ToolCallingModel([AIMessage(content="hello")])
+    provider = BaseLLMProvider(_cfg(prompt_cache=False), model)  # type: ignore[arg-type]
+
+    out = await provider.complete([HumanMessage(content="hi")], prompt_cache_key="thread-key")
+
+    assert out == "hello"
+    assert "prompt_cache_key" not in model.invoke_kwargs[0]
+
+
 class _ToolCallingModel:
     def __init__(self, responses: list[AIMessage]) -> None:
         self._responses = list(responses)
         self.bound_tools = []
+        self.invoke_kwargs: list[dict[str, Any]] = []
 
     def bind_tools(self, tools):
         self.bound_tools = list(tools)
         return self
 
     async def ainvoke(self, messages: list[BaseMessage], **kwargs: Any) -> AIMessage:
-        del messages, kwargs
+        del messages
+        self.invoke_kwargs.append(dict(kwargs))
         return self._responses.pop(0)
 
 
@@ -113,6 +146,59 @@ async def test_complete_with_tools_resolves_tool_calls() -> None:
     )
     assert out == "systemctl status nginx"
     assert [tool.name for tool in model.bound_tools] == ["lookup_status"]
+
+
+async def test_complete_with_tools_accumulates_usage_metadata() -> None:
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    first_usage = {
+        "input_tokens": 20,
+        "output_tokens": 2,
+        "total_tokens": 22,
+        "input_token_details": {"cache_read": 12},
+    }
+    second_usage = {
+        "input_tokens": 10,
+        "output_tokens": 4,
+        "total_tokens": 14,
+        "output_token_details": {"reasoning": 3},
+    }
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "lookup_status",
+                        "args": {"service": "nginx"},
+                        "id": "1",
+                        "type": "tool_call",
+                    }
+                ],
+                usage_metadata=first_usage,
+            ),
+            AIMessage(content="systemctl status nginx", usage_metadata=second_usage),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(prompt_cache=True), model)  # type: ignore[arg-type]
+
+    out = await provider.complete_with_tools(
+        [HumanMessage(content="check nginx")],
+        [_sandboxed(lookup_status)],
+        prompt_cache_key="thread-key",
+    )
+
+    assert out == "systemctl status nginx"
+    assert provider.last_usage is not None
+    assert provider.last_usage.input_tokens == 30
+    assert provider.last_usage.cached_input_tokens == 12
+    assert provider.last_usage.output_tokens == 6
+    assert provider.last_usage.reasoning_output_tokens == 3
+    assert model.invoke_kwargs[0]["prompt_cache_key"] == "thread-key"
+    assert model.invoke_kwargs[1]["prompt_cache_key"] == "thread-key"
 
 
 async def test_complete_with_tools_rejects_unwrapped_tool_before_binding() -> None:

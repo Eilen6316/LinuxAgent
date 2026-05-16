@@ -31,6 +31,7 @@ from .execution import (
     synthetic_result,
 )
 from .intent import make_parse_intent_node
+from .llm_calls import complete_llm
 from .payloads import build_confirm_payload, decision, latency_ms, may_whitelist, permissions
 from .runbook_planning import next_plan_step_update
 from .safety_nodes import make_safety_check_node
@@ -575,6 +576,7 @@ def make_analyze_result_node(
     provider: LLMProvider,
     telemetry: TelemetryRecorder | None = None,
     runtime_observer: RuntimeEventObserver | None = None,
+    prompt_cache_key: str | None = None,
 ) -> Node:
     prompt = build_analysis_prompt()
 
@@ -587,8 +589,14 @@ def make_analyze_result_node(
         prompt_messages = prompt.format_messages(result_context=result_context)
         try:
             await notify_event(runtime_observer, {"type": "activity", "phase": "analyze"})
-            with span(telemetry, "llm.complete", current_trace_id, {"node": "analyze"}):
-                analysis = await provider.complete(prompt_messages)
+            analysis = await complete_llm(
+                provider,
+                prompt_messages,
+                telemetry=telemetry,
+                trace_id=current_trace_id,
+                attributes={"node": "analyze"},
+                prompt_cache_key=state.get("prompt_cache_key") or prompt_cache_key,
+            )
         except Exception:  # noqa: BLE001 - keep graph resilient when provider analysis fails
             analysis = result_context
         return {

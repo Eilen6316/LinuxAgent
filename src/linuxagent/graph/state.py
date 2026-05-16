@@ -8,6 +8,7 @@ update).
 
 from __future__ import annotations
 
+import hashlib
 from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -25,6 +26,7 @@ class AgentState(TypedDict, total=False):
 
     # Populated by parse_intent; consumed by safety_check + execute.
     trace_id: str | None
+    prompt_cache_key: str | None
     pending_command: str | None
     command_plan: CommandPlan | None
     file_patch_plan: FilePatchPlan | None
@@ -74,12 +76,14 @@ def initial_state(
     source: CommandSource = CommandSource.USER,
     history: list[BaseMessage] | None = None,
     command_permissions: tuple[str, ...] = (),
+    thread_id: str | None = None,
 ) -> AgentState:
     """Convenience: seed an empty :class:`AgentState` for a single turn."""
     prior_messages = [] if history is None else list(history)
     return AgentState(
         messages=[*prior_messages, HumanMessage(content=user_input)],
         trace_id=None,
+        prompt_cache_key=_prompt_cache_key(thread_id),
         pending_command=None,
         command_plan=None,
         file_patch_plan=None,
@@ -114,3 +118,15 @@ def initial_state(
         execution_results_visible=False,
         audit_id=None,
     )
+
+
+def prompt_cache_key_for_thread(thread_id: str) -> str:
+    """Return a stable, non-secret prompt cache key for one chat thread."""
+    digest = hashlib.sha256(thread_id.encode("utf-8")).hexdigest()[:32]
+    return f"linuxagent:{digest}"
+
+
+def _prompt_cache_key(thread_id: str | None) -> str | None:
+    if not thread_id:
+        return None
+    return prompt_cache_key_for_thread(thread_id)

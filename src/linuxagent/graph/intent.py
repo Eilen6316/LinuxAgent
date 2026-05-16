@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
@@ -41,8 +41,9 @@ from ..runbooks import RunbookEngine
 from ..services import ClusterService
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
-from .common import span, trace_id
+from .common import trace_id
 from .events import RuntimeEventObserver, notify_event
+from .llm_calls import LLMCallOptions, complete_llm, complete_llm_with_tools
 from .runbook_planning import build_runbook_guidance
 from .state import AgentState
 
@@ -82,6 +83,7 @@ class IntentNodeContext:
     tool_runtime_limits: ToolRuntimeLimits
     product_context: str
     operating_manifest: str
+    prompt_cache_key: str | None
 
     def direct_answer_context(self) -> str:
         manifest = self.operating_manifest.strip()
@@ -102,6 +104,7 @@ def make_parse_intent_node(
     tool_runtime_limits: ToolRuntimeLimits | None = None,
     product_context: str = "",
     operating_manifest: str = "",
+    prompt_cache_key: str | None = None,
 ) -> Node:
     context = IntentNodeContext(
         provider=provider,
@@ -118,6 +121,7 @@ def make_parse_intent_node(
         tool_runtime_limits=tool_runtime_limits or ToolRuntimeLimits(),
         product_context=product_context,
         operating_manifest=operating_manifest,
+        prompt_cache_key=prompt_cache_key,
     )
 
     async def parse_intent_node(state: AgentState) -> AgentState:
@@ -127,6 +131,7 @@ def make_parse_intent_node(
 
 
 async def _parse_intent_update(context: IntentNodeContext, state: AgentState) -> AgentState:
+    context = _context_for_state(context, state)
     observed_tool_outputs: list[str] = []
     current_trace_id = trace_id(state)
     messages = list(state.get("messages", []))
@@ -139,9 +144,7 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
         current_trace_id,
     )
     if intent.mode in {IntentMode.DIRECT_ANSWER, IntentMode.CLARIFY}:
-        return await _complete_direct_response(
-            context, messages, user_text, current_trace_id, intent
-        )
+        return _direct_response_update(current_trace_id, intent.answer)
     gate = await _plan_gate(context, messages, user_text, current_trace_id)
     if gate is not None:
         return _direct_response_update(current_trace_id, gate.answer)
@@ -152,6 +155,13 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     return await _planned_outcome_update(
         context, messages, user_text, current_trace_id, outcome, observed_tool_outputs
     )
+
+
+def _context_for_state(context: IntentNodeContext, state: AgentState) -> IntentNodeContext:
+    prompt_cache_key = state.get("prompt_cache_key") or context.prompt_cache_key
+    if prompt_cache_key == context.prompt_cache_key:
+        return context
+    return replace(context, prompt_cache_key=prompt_cache_key)
 
 
 async def _planned_outcome_update(
@@ -175,22 +185,6 @@ async def _planned_outcome_update(
     return outcome
 
 
-async def _complete_direct_response(
-    context: IntentNodeContext,
-    messages: list[BaseMessage],
-    user_text: str,
-    current_trace_id: str,
-    intent: IntentDecision,
-) -> AgentState:
-    if intent.mode is IntentMode.CLARIFY:
-        return _direct_response_update(current_trace_id, intent.answer)
-    try:
-        answer = await _complete_direct_answer(context, messages, user_text, current_trace_id)
-    except ProviderError:
-        return _direct_response_update(current_trace_id, intent.answer)
-    return _direct_response_update(current_trace_id, answer or intent.answer)
-
-
 async def _complete_direct_answer(
     context: IntentNodeContext,
     messages: list[BaseMessage],
@@ -202,13 +196,16 @@ async def _complete_direct_answer(
         product_context=context.direct_answer_context(),
         user_input=user_text,
     )
-    with span(
-        context.telemetry,
-        "llm.complete",
-        current_trace_id,
-        {"node": "parse_intent", "mode": "direct_answer"},
-    ):
-        return (await context.provider.complete(prompt_messages)).strip()
+    return (
+        await complete_llm(
+            context.provider,
+            prompt_messages,
+            telemetry=context.telemetry,
+            trace_id=current_trace_id,
+            attributes={"node": "parse_intent", "mode": "direct_answer"},
+            prompt_cache_key=context.prompt_cache_key,
+        )
+    ).strip()
 
 
 async def _no_change_update(
@@ -238,6 +235,7 @@ async def _no_change_update(
                     retry_error,
                     context.telemetry,
                     context.direct_answer_context(),
+                    context.prompt_cache_key,
                 )
             return _parse_error_update(current_trace_id, retry_error)
     return await _planned_outcome_update(
@@ -361,23 +359,38 @@ async def _complete_plan_candidate(
         runbook_guidance=context.runbook_guidance,
         user_input=user_text,
     )
-    with span(context.telemetry, "llm.complete", current_trace_id, {"node": "parse_intent"}):
-        if not context.tools:
-            return (await context.provider.complete(prompt_messages)).strip(), None
-        try:
-            proposed = await context.provider.complete_with_tools(
+    if not context.tools:
+        return (
+            await complete_llm(
+                context.provider,
                 prompt_messages,
-                list(context.tools),
-                tool_runtime_limits=context.tool_runtime_limits,
-                tool_observer=tool_event_observer(
-                    context.telemetry,
-                    context.tool_observer,
-                    current_trace_id,
-                    observed_tool_outputs,
-                ),
+                telemetry=context.telemetry,
+                trace_id=current_trace_id,
+                attributes={"node": "parse_intent"},
+                prompt_cache_key=context.prompt_cache_key,
             )
-        except ProviderError as exc:
-            return "", str(exc)
+        ).strip(), None
+    try:
+        proposed = await complete_llm_with_tools(
+            context.provider,
+            prompt_messages,
+            list(context.tools),
+            options=LLMCallOptions(
+                context.telemetry,
+                current_trace_id,
+                {"node": "parse_intent"},
+                context.prompt_cache_key,
+            ),
+            tool_runtime_limits=context.tool_runtime_limits,
+            tool_observer=tool_event_observer(
+                context.telemetry,
+                context.tool_observer,
+                current_trace_id,
+                observed_tool_outputs,
+            ),
+        )
+    except ProviderError as exc:
+        return "", str(exc)
     return proposed.strip(), None
 
 
@@ -393,13 +406,16 @@ async def _plan_gate(
         user_input=user_text,
     )
     try:
-        with span(
-            context.telemetry,
-            "llm.complete",
-            current_trace_id,
-            {"node": "parse_intent", "mode": "planner_gate"},
-        ):
-            raw = (await context.provider.complete(prompt_messages)).strip()
+        raw = (
+            await complete_llm(
+                context.provider,
+                prompt_messages,
+                telemetry=context.telemetry,
+                trace_id=current_trace_id,
+                attributes={"node": "parse_intent", "mode": "planner_gate"},
+                prompt_cache_key=context.prompt_cache_key,
+            )
+        ).strip()
     except ProviderError:
         return None
     try:
@@ -486,6 +502,7 @@ async def _recover_plan_parse_error(
             error,
             context.telemetry,
             context.direct_answer_context(),
+            context.prompt_cache_key,
         )
     if not context.tools:
         return _parse_error_update(current_trace_id, error)
@@ -506,16 +523,19 @@ async def _route_intent(
 ) -> IntentDecision:
     router_messages = context.intent_router_prompt.format_messages(
         chat_history=messages[:-1],
-        product_context=context.product_context,
+        product_context=context.direct_answer_context(),
         user_input=user_text,
     )
-    with span(
-        context.telemetry,
-        "llm.complete",
-        current_trace_id,
-        {"node": "parse_intent", "mode": "intent_router"},
-    ):
-        raw = (await context.provider.complete(router_messages)).strip()
+    raw = (
+        await complete_llm(
+            context.provider,
+            router_messages,
+            telemetry=context.telemetry,
+            trace_id=current_trace_id,
+            attributes={"node": "parse_intent", "mode": "intent_router"},
+            prompt_cache_key=context.prompt_cache_key,
+        )
+    ).strip()
     return _parse_intent_decision(raw)
 
 
@@ -528,6 +548,7 @@ async def _fallback_direct_answer(
     planning_error: str,
     telemetry: TelemetryRecorder | None,
     product_context: str,
+    prompt_cache_key: str | None,
 ) -> AgentState:
     prompt_messages = direct_answer_prompt.format_messages(
         chat_history=messages[:-1],
@@ -540,13 +561,16 @@ async def _fallback_direct_answer(
             "question. Do not produce a command or JSON."
         ),
     )
-    with span(
-        telemetry,
-        "llm.complete",
-        current_trace_id,
-        {"node": "parse_intent", "fallback": "direct_answer"},
-    ):
-        answer = (await provider.complete(prompt_messages)).strip()
+    answer = (
+        await complete_llm(
+            provider,
+            prompt_messages,
+            telemetry=telemetry,
+            trace_id=current_trace_id,
+            attributes={"node": "parse_intent", "fallback": "direct_answer"},
+            prompt_cache_key=prompt_cache_key,
+        )
+    ).strip()
     return _direct_response_update(current_trace_id, answer)
 
 
@@ -569,6 +593,7 @@ async def _retry_plan_or_error(
         error,
         rejected_response,
         context.telemetry,
+        context.prompt_cache_key,
     )
     if isinstance(retry_plan, CommandPlan | DirectAnswerPlan | FilePatchPlan | NoChangePlan):
         return retry_plan
@@ -584,6 +609,7 @@ async def _retry_plan_or_error(
             retry_plan,
             context.telemetry,
             context.direct_answer_context(),
+            context.prompt_cache_key,
         )
     return _parse_error_update(current_trace_id, retry_plan)
 
@@ -741,6 +767,7 @@ async def _retry_command_plan(
     error: str,
     rejected_response: str,
     telemetry: TelemetryRecorder | None,
+    prompt_cache_key: str | None,
 ) -> CommandPlan | DirectAnswerPlan | FilePatchPlan | NoChangePlan | str:
     current_error = error
     current_response = rejected_response
@@ -757,6 +784,7 @@ async def _retry_command_plan(
             current_response,
             attempt,
             telemetry,
+            prompt_cache_key,
         )
         try:
             return _parse_planned_work(retry_proposed)
@@ -783,6 +811,7 @@ async def _complete_retry_plan(
     rejected_response: str,
     attempt: int,
     telemetry: TelemetryRecorder | None,
+    prompt_cache_key: str | None,
 ) -> str:
     retry_messages = prompt.format_messages(
         chat_history=messages[:-1],
@@ -790,13 +819,16 @@ async def _complete_retry_plan(
         runbook_guidance=runbook_guidance,
         user_input=_retry_intent_prompt(user_text, error, rejected_response, attempt),
     )
-    with span(
-        telemetry,
-        "llm.complete",
-        current_trace_id,
-        {"node": "parse_intent", "retry": "json_only", "attempt": attempt},
-    ):
-        return (await provider.complete(retry_messages)).strip()
+    return (
+        await complete_llm(
+            provider,
+            retry_messages,
+            telemetry=telemetry,
+            trace_id=current_trace_id,
+            attributes={"node": "parse_intent", "retry": "json_only", "attempt": attempt},
+            prompt_cache_key=prompt_cache_key,
+        )
+    ).strip()
 
 
 def _selected_hosts_for_plan(

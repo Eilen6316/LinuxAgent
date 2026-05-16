@@ -47,6 +47,7 @@ from .errors import (
     ProviderRateLimitError,
     ProviderTimeoutError,
 )
+from .usage import ProviderUsage, merge_usage, usage_from_message
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class BaseLLMProvider(LLMProvider):
     def __init__(self, config: APIConfig, chat_model: BaseChatModel) -> None:
         self._config = config
         self._model = chat_model
+        self._last_usage: ProviderUsage | None = None
 
     @property
     def config(self) -> APIConfig:
@@ -66,6 +68,10 @@ class BaseLLMProvider(LLMProvider):
     @property
     def chat_model(self) -> BaseChatModel:
         return self._model
+
+    @property
+    def last_usage(self) -> ProviderUsage | None:
+        return self._last_usage
 
     # -- complete ---------------------------------------------------------
 
@@ -89,6 +95,7 @@ class BaseLLMProvider(LLMProvider):
         messages: list[BaseMessage],
         **kwargs: Any,
     ) -> str:
+        kwargs = self._request_kwargs(kwargs)
         try:
             result = await asyncio.wait_for(
                 self._model.ainvoke(messages, **kwargs),
@@ -102,6 +109,7 @@ class BaseLLMProvider(LLMProvider):
             raise
         except Exception as exc:
             raise self._map_error(exc) from exc
+        self._last_usage = usage_from_message(result)
         return _content_to_str(result.content)
 
     async def complete_with_tools(
@@ -114,16 +122,19 @@ class BaseLLMProvider(LLMProvider):
             return await self.complete(messages, **kwargs)
         tool_observer = _pop_tool_observer(kwargs)
         tool_limits = _pop_tool_runtime(kwargs)
+        kwargs = self._request_kwargs(kwargs)
         await _ensure_tool_sandbox_specs(tools, tool_observer)
 
         bound_model = self._model.bind_tools(tools)
         history = list(messages)
         tool_map = {tool.name: tool for tool in tools}
         total_tool_output_chars = 0
+        self._last_usage = None
 
         for _ in range(tool_limits.max_rounds):
             result = await self._invoke_with_retry(bound_model, history, **kwargs)
             ai_message = _coerce_ai_message(result)
+            self._last_usage = merge_usage(self._last_usage, usage_from_message(ai_message))
             history.append(ai_message)
             if not ai_message.tool_calls:
                 return _content_to_str(ai_message.content)
@@ -138,6 +149,12 @@ class BaseLLMProvider(LLMProvider):
             history.extend(tool_messages)
 
         raise ProviderError("tool loop exceeded max rounds")
+
+    def _request_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        request_kwargs = dict(kwargs)
+        if not self._config.prompt_cache:
+            request_kwargs.pop("prompt_cache_key", None)
+        return request_kwargs
 
     # -- stream -----------------------------------------------------------
 

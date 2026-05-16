@@ -20,6 +20,7 @@ from ..telemetry import TelemetryRecorder
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
 from .graph_config import graph_config
+from .output import print_assistant_response
 from .resume import (
     ResumeSessionItem,
     render_resumed_session,
@@ -43,6 +44,7 @@ class LinuxAgent:
     cluster_service: ClusterService | None = None
     telemetry: TelemetryRecorder | None = None
     tool_names: tuple[str, ...] = ()
+    prompt_cache_enabled: bool = False
 
     def __post_init__(self) -> None:
         self._history_threads: set[str] = set()
@@ -83,14 +85,15 @@ class LinuxAgent:
                 await self.cluster_service.close()
 
     async def run_turn(self, user_input: str, *, thread_id: str) -> dict[str, Any]:
+        self.ui.start_working()
         config = graph_config(thread_id)
         self.context_manager.replace(await self._history(config))
-        history = self.context_manager.snapshot()
         state: Any = initial_state(
             user_input,
             source=CommandSource.USER,
-            history=history,
+            history=self.context_manager.snapshot(),
             command_permissions=await self._command_permissions(config),
+            thread_id=thread_id if self.prompt_cache_enabled else None,
         )
         while True:
             result = await self._ainvoke_with_cancel(state, config)
@@ -104,7 +107,7 @@ class LinuxAgent:
                         self.context_manager.add([HumanMessage(content=user_input)])
                     self._persist_active_history(thread_id)
                     await print_execution_results(self.ui, result)
-                    await self.ui.print(str(result["messages"][-1].content))
+                    await print_assistant_response(self.ui, str(result["messages"][-1].content))
                 return result if isinstance(result, dict) else {}
             payload = interrupts[0].value
             response = await self.ui.handle_interrupt(payload)
@@ -125,8 +128,6 @@ class LinuxAgent:
             result = await invoke_task
             return result if isinstance(result, dict) else {}
         invoke_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await invoke_task
         await self.ui.print("已终止当前 AI 工作。")
         return None
 
@@ -291,7 +292,7 @@ class LinuxAgent:
             self.context_manager.replace(await self._history(config))
             self._persist_active_history(thread_id)
             await print_execution_results(self.ui, result)
-            await self.ui.print(str(result["messages"][-1].content))
+            await print_assistant_response(self.ui, str(result["messages"][-1].content))
         return True
 
     def _persist_active_history(self, thread_id: str) -> None:

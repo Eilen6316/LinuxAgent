@@ -14,8 +14,9 @@ from ..interfaces import CommandSource, LLMProvider
 from ..plans import CommandPlan, CommandPlanParseError, parse_command_plan
 from ..prompts_loader import build_repair_prompt
 from ..telemetry import TelemetryRecorder
-from .common import span, trace_id
+from .common import trace_id
 from .events import RuntimeEventObserver, notify_event
+from .llm_calls import complete_llm
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -29,11 +30,13 @@ def make_repair_plan_node(
     max_repair_attempts: int = DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS,
     telemetry: TelemetryRecorder | None = None,
     runtime_observer: RuntimeEventObserver | None = None,
+    prompt_cache_key: str | None = None,
 ) -> Node:
     prompt = build_repair_prompt()
 
     async def repair_plan_node(state: AgentState) -> AgentState:
         current_trace_id = trace_id(state)
+        cache_key = state.get("prompt_cache_key") or prompt_cache_key
         await notify_event(runtime_observer, {"type": "activity", "phase": "repair_plan"})
         try:
             plan = await _complete_valid_repair_plan(
@@ -42,6 +45,7 @@ def make_repair_plan_node(
                 state,
                 current_trace_id,
                 telemetry,
+                cache_key,
             )
         except CommandPlanParseError as exc:
             return _repair_error(current_trace_id, str(exc))
@@ -89,12 +93,20 @@ async def _complete_valid_repair_plan(
     state: AgentState,
     current_trace_id: str,
     telemetry: TelemetryRecorder | None,
+    prompt_cache_key: str | None,
 ) -> CommandPlan:
     error = ""
     rejected_response = ""
     for attempt in range(MAX_REPAIR_PLAN_PARSE_RETRIES + 1):
         proposed = await _complete_repair_plan(
-            provider, prompt, state, current_trace_id, telemetry, error, rejected_response
+            provider,
+            prompt,
+            state,
+            current_trace_id,
+            telemetry,
+            prompt_cache_key,
+            error,
+            rejected_response,
         )
         try:
             return parse_command_plan(proposed)
@@ -112,6 +124,7 @@ async def _complete_repair_plan(
     state: AgentState,
     current_trace_id: str,
     telemetry: TelemetryRecorder | None,
+    prompt_cache_key: str | None,
     validation_error: str,
     rejected_response: str,
 ) -> str:
@@ -125,8 +138,16 @@ async def _complete_repair_plan(
             rejected_response=rejected_response,
         ),
     )
-    with span(telemetry, "llm.complete", current_trace_id, {"node": "repair_plan"}):
-        return (await provider.complete(prompt_messages)).strip()
+    return (
+        await complete_llm(
+            provider,
+            prompt_messages,
+            telemetry=telemetry,
+            trace_id=current_trace_id,
+            attributes={"node": "repair_plan"},
+            prompt_cache_key=prompt_cache_key,
+        )
+    ).strip()
 
 
 def should_repair_plan(
