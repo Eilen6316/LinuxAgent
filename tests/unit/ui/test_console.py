@@ -581,6 +581,33 @@ async def test_console_print_activity_uses_transient_working_status(monkeypatch)
     assert ui._working_status is None
 
 
+async def test_console_print_activity_supports_multiline_working_status(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_activity(
+        "LinuxAgent 正在更新工具结果\n"
+        "  已读取文件 /tmp/disk_info.sh\n"
+        "  证据预览:\n"
+        "  - 1:#!/bin/bash"
+    )
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "Working (" in rendered
+    assert "esc to interrupt" in rendered
+    assert "更新工具结果" in rendered
+    assert "已读取文件 /tmp/disk_info.sh" in rendered
+    assert "1:#!/bin/bash" in rendered
+
+    await ui.print("done")
+
+    assert ui._working_status is None
+
+
 async def test_console_print_activity_keeps_non_working_messages_plain(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     console = Console(record=True, width=120, force_terminal=True)

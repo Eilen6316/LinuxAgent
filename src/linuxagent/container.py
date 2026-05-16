@@ -16,7 +16,7 @@ from langchain_core.tools import BaseTool
 from langchain_openai import OpenAIEmbeddings
 
 from .app import LinuxAgent
-from .app.runtime_messages import command_event_key, runtime_event_message, tool_event_message
+from .app.runtime_messages import command_event_key, runtime_event_message, tool_activity_message
 from .app.runtime_telemetry import record_runtime_event
 from .audit import AuditLog
 from .audit_sink import HttpAuditSink
@@ -349,9 +349,9 @@ class Container:
 
     def _tool_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
-            message = tool_event_message(event)
+            message = tool_activity_message(event)
             if message:
-                await self.ui().print_raw(f"{message}\n")
+                await self.ui().print_activity(message)
 
         return observe
 

@@ -15,7 +15,11 @@ import pytest
 
 import linuxagent.cli as cli
 import linuxagent.container as container_module
-from linuxagent.app.runtime_messages import runtime_event_message, tool_event_message
+from linuxagent.app.runtime_messages import (
+    runtime_event_message,
+    tool_activity_message,
+    tool_event_message,
+)
 from linuxagent.audit import AuditLog
 from linuxagent.config.loader import ConfigError
 from linuxagent.config.models import AppConfig
@@ -719,6 +723,64 @@ def test_tool_event_message_formats_workspace_tools() -> None:
         )
         == "LinuxAgent 已列目录 workspace\n  证据预览:\n  - disk_info.sh\n  - notes.txt"
     )
+
+
+def test_tool_activity_message_marks_finished_tools_as_transient() -> None:
+    message = tool_activity_message(
+        {
+            "phase": "end",
+            "status": "allowed",
+            "tool_name": "list_dir",
+            "args": {"path": "workspace"},
+            "output_preview": json.dumps(["disk_info.sh", "find_largest_files.py"]),
+        }
+    )
+
+    assert message == (
+        "LinuxAgent 正在更新工具结果\n"
+        "  已列目录 workspace\n"
+        "  证据预览:\n"
+        "  - disk_info.sh\n"
+        "  - find_largest_files.py"
+    )
+
+
+async def test_tool_observer_sends_tool_events_to_activity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeUI:
+        def __init__(self) -> None:
+            self.activities: list[str] = []
+            self.raw: list[tuple[str, bool]] = []
+
+        async def print_activity(self, text: str) -> None:
+            self.activities.append(text)
+
+        async def print_raw(self, text: str, *, stderr: bool = False) -> None:
+            self.raw.append((text, stderr))
+
+    ui = _FakeUI()
+    monkeypatch.setattr(container_module.Container, "ui", lambda self: ui)
+    container = Container(AppConfig.model_validate({"telemetry": {"enabled": False}}))
+    observer = container._tool_event_observer()
+
+    await observer(
+        {
+            "phase": "end",
+            "status": "allowed",
+            "tool_name": "read_file",
+            "args": {"path": "workspace/disk_info.sh"},
+            "output_preview": "1:#!/bin/bash",
+        }
+    )
+
+    assert ui.activities == [
+        "LinuxAgent 正在更新工具结果\n"
+        "  已读取文件 workspace/disk_info.sh\n"
+        "  证据预览:\n"
+        "  - 1:#!/bin/bash"
+    ]
+    assert ui.raw == []
 
 
 def test_product_capability_context_describes_resume_and_model_source() -> None:

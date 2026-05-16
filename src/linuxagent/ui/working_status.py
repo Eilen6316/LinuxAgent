@@ -44,12 +44,22 @@ class WorkingStatus:
 
     def _render(self) -> Text:
         elapsed = max(0, int(time.monotonic() - self._started_at))
+        suffix = f" ({elapsed}s • esc to interrupt)"
+        if "\n" not in self._message:
+            return Text.assemble(
+                (_activity_indicator(), self._accent_style()),
+                " ",
+                ("Working", "bold"),
+                (f": {self._message}", "bold") if self._message != "Working" else "",
+                (suffix, "dim"),
+            )
         return Text.assemble(
             (_activity_indicator(), self._accent_style()),
             " ",
             ("Working", "bold"),
-            (f": {self._message}", "bold") if self._message != "Working" else "",
-            (f" ({elapsed}s • esc to interrupt)", "dim"),
+            (suffix, "dim"),
+            "\n",
+            (self._message, "bold"),
         )
 
     def _accent_style(self) -> str:

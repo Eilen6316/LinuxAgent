@@ -26,6 +26,17 @@ def tool_event_message(event: dict[str, Any]) -> str | None:
     return None
 
 
+def tool_activity_message(event: dict[str, Any]) -> str | None:
+    message = tool_event_message(event)
+    if message is None:
+        return None
+    if message.startswith("LinuxAgent 正在"):
+        return message
+    phase = str(event.get("phase") or "")
+    heading = "LinuxAgent 正在更新工具结果" if phase == "end" else "LinuxAgent 正在更新工具状态"
+    return f"{heading}\n{_tool_activity_detail(message)}"
+
+
 def command_event_key(event: dict[str, Any]) -> tuple[str, str]:
     return (str(event.get("trace_id") or ""), str(event.get("command") or ""))
 
@@ -164,6 +175,13 @@ def _tool_end_message(tool_name: str, args: dict[str, Any], event: dict[str, Any
 def _tool_evidence_message(heading: str, evidence: tuple[str, ...]) -> str:
     bullets = "\n".join(f"  - {item}" for item in evidence)
     return f"{heading}\n  证据预览:\n{bullets}"
+
+
+def _tool_activity_detail(message: str) -> str:
+    lines = message.splitlines()
+    if lines and lines[0].startswith("LinuxAgent "):
+        lines[0] = lines[0].removeprefix("LinuxAgent ").strip()
+    return "\n".join(f"  {line.strip()}" for line in lines if line.strip())
 
 
 def _tool_evidence_summary(preview: str) -> tuple[str, ...]:
