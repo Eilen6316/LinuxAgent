@@ -6,6 +6,9 @@ common:
   enabled: "enabled"
   disabled: "disabled"
   none: "none"
+  "true": "true"
+  "false": "false"
+  unknown: "unknown"
 format:
   item_count: "{count} items"
 slash:
@@ -98,6 +101,22 @@ jobs:
   daemon_installed: "Wrote job daemon systemd unit: {path}"
   stop_requested: "Requested background job stop: {job_id} (status={status})"
   service_unavailable: "Background job service is unavailable: {error}. Start `linuxagent job-daemon` first."
+  runtime_jobs: "jobs: {running} running / {total} total"
+  field:
+    status: "status"
+    duration: "duration"
+    timeout: "timeout"
+    goal: "goal"
+    command: "command"
+    exit_code: "exit_code"
+    artifacts: "artifacts"
+    stdout: "stdout"
+    stderr: "stderr"
+    mode: "mode"
+    state: "state"
+    socket: "socket"
+    store: "store"
+    error: "error"
 runtime:
   command_start: "LinuxAgent is running command: {command}"
   command_finish: "LinuxAgent command finished: exit {exit_code}"
@@ -137,21 +156,8 @@ graph:
   done: "Operation completed."
   no_execution_result: "No execution result to analyze."
   background_started: "Background job started: {job_id}\nUse `/job {job_id}` to view progress and output, and `/job stop {job_id}` to stop it."
-mcp:
-  tools:
-    policy:
-      title: "LinuxAgent Policy Classifier"
-      description: "Classify a command with LinuxAgent policy without executing it."
-    audit:
-      title: "LinuxAgent Audit Verifier"
-      description: "Verify the configured LinuxAgent audit hash chain."
-  resources:
-    runbooks_summary:
-      name: "LinuxAgent Runbook Summary"
-      description: "Read-only summary of configured LinuxAgent runbooks."
-    skills_summary:
-      name: "LinuxAgent Skill Summary"
-      description: "Read-only summary of configured LinuxAgent Skill manifests."
+  no_change_evidence: "{answer}\n\nEvidence:\n{evidence}"
+  argv_retry_exhausted: "The planner repeatedly produced commands that are not argv-safe. LinuxAgent executes commands through argv and does not support pipes, redirects, command substitution, command chaining, or shell globs here. Use commands that can run directly as argv, or provide more specific file matching constraints."
 policy:
   reason:
     INPUT_VALIDATION: "Command failed structural validation"
@@ -227,6 +233,15 @@ policy:
     interactive_editor_or_pager_can_escape_to_shell: "Interactive editor or pager can escape to shell"
     batch_command_requires_confirmation: "Batch command requires confirmation"
     allowed_by_current_conversation_permission: "Allowed by current conversation permission"
+tool_catalog:
+  field:
+    sandbox_enabled: "sandbox_enabled"
+    isolation_note: "isolation_note"
+  isolation:
+    sandbox_disabled: "diagnostic only; sandbox is disabled"
+    noop: "diagnostic only; noop runner does not enforce isolation"
+    local: "process limits only; no filesystem or network isolation"
+    bubblewrap: "bubblewrap may enforce supported profiles when available"
 ui:
   console:
     command_result_title: "Command result · exit {exit_code}"

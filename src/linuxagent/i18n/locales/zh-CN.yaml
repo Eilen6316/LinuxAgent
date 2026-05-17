@@ -6,6 +6,9 @@ common:
   enabled: "已启用"
   disabled: "已禁用"
   none: "无"
+  "true": "是"
+  "false": "否"
+  unknown: "未知"
 format:
   item_count: "{count} 项"
 slash:
@@ -98,6 +101,22 @@ jobs:
   daemon_installed: "已写入 job daemon systemd unit：{path}"
   stop_requested: "已请求停止后台任务：{job_id}（status={status}）"
   service_unavailable: "后台任务服务不可用：{error}。请先启动 `linuxagent job-daemon`。"
+  runtime_jobs: "jobs：{running} running / {total} total"
+  field:
+    status: "状态"
+    duration: "持续时间"
+    timeout: "超时"
+    goal: "目标"
+    command: "命令"
+    exit_code: "退出码"
+    artifacts: "产物"
+    stdout: "标准输出"
+    stderr: "标准错误"
+    mode: "模式"
+    state: "状态"
+    socket: "socket"
+    store: "store"
+    error: "错误"
 runtime:
   command_start: "LinuxAgent 正在执行命令：{command}"
   command_finish: "LinuxAgent 命令结束：exit {exit_code}"
@@ -137,21 +156,8 @@ graph:
   done: "操作已完成。"
   no_execution_result: "没有执行结果可分析。"
   background_started: "后台任务已启动：{job_id}\n使用 `/job {job_id}` 查看进度和输出，使用 `/job stop {job_id}` 停止。"
-mcp:
-  tools:
-    policy:
-      title: "LinuxAgent 策略分类器"
-      description: "仅使用 LinuxAgent 策略分类命令，不执行命令。"
-    audit:
-      title: "LinuxAgent 审计验证器"
-      description: "验证已配置的 LinuxAgent audit hash chain。"
-  resources:
-    runbooks_summary:
-      name: "LinuxAgent Runbook 摘要"
-      description: "已配置 LinuxAgent runbook 的只读摘要。"
-    skills_summary:
-      name: "LinuxAgent Skill 摘要"
-      description: "已配置 LinuxAgent Skill manifest 的只读摘要。"
+  no_change_evidence: "{answer}\n\n依据：\n{evidence}"
+  argv_retry_exhausted: "规划器连续生成了非 argv-safe 的命令。LinuxAgent 以 argv 方式执行命令，不支持管道、重定向、命令替换、命令串联或 shell 通配符；请换成可直接作为 argv 执行的命令或更明确的文件匹配条件。"
 policy:
   reason:
     INPUT_VALIDATION: "命令未通过结构校验"
@@ -227,6 +233,15 @@ policy:
     interactive_editor_or_pager_can_escape_to_shell: "交互式编辑器或分页器可逃逸到 shell"
     batch_command_requires_confirmation: "批量命令需要确认"
     allowed_by_current_conversation_permission: "已被当前对话权限允许"
+tool_catalog:
+  field:
+    sandbox_enabled: "sandbox_enabled"
+    isolation_note: "隔离说明"
+  isolation:
+    sandbox_disabled: "仅诊断；sandbox 已禁用"
+    noop: "仅诊断；noop runner 不执行隔离"
+    local: "仅进程限制；不隔离文件系统或网络"
+    bubblewrap: "bubblewrap 可在可用时执行受支持的 profile"
 ui:
   console:
     command_result_title: "命令结果 · exit {exit_code}"

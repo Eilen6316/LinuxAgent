@@ -92,8 +92,8 @@ def test_check_command_success(
     assert "skills=已禁用" in captured.out
     assert "monitoring_alerts=无" in captured.out
     assert "tool_catalog:" in captured.out
-    assert "name=execute_command status=ok profile=privileged_passthrough" in captured.out
-    assert "network_access=true" in captured.out
+    assert "name=execute_command status=正常 profile=privileged_passthrough" in captured.out
+    assert "network_access=是" in captured.out
 
 
 def test_check_command_reports_monitoring_alerts(
@@ -182,7 +182,7 @@ def test_check_command_fails_for_invalid_tool_catalog(
 
     assert code == 1
     assert "tool_catalog:" in captured.out
-    assert "status: error" in captured.out
+    assert "status: 错误" in captured.out
     assert "unsafe_tool" in captured.out
     assert "missing linuxagent_sandbox" in captured.out
 
@@ -837,6 +837,8 @@ def test_product_capability_context_describes_resume_and_model_source() -> None:
     assert "/resume 是 LinuxAgent 内置命令" in context
     assert "learner memory" in context
     assert "read_file, search_files" in context
+    assert "/resume: list saved local sessions" in context
+    assert "/resume: 列出本机保存的会话" not in context
     assert "/resume - 列出本机保存的会话" in slash_help()
     assert "/job - 列出/诊断/daemon/查看/跟随/停止后台任务" in slash_help()
     assert "/wizard" not in slash_help()

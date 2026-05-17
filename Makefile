@@ -71,6 +71,8 @@ security:
 	@if [ -d src/linuxagent/graph ]; then ! grep -rn "input(" src/linuxagent/graph/; fi
 	@echo "--> sandbox bypass red-lines"
 	@$(PYTHON) scripts/check_sandbox_rules.py
+	@echo "--> i18n hardcoded runtime strings"
+	@$(PYTHON) scripts/i18n_audit.py
 	@echo "--> bandit"
 	@$(PYTHON) -m bandit -q -r src/linuxagent/ -ll
 

@@ -23,11 +23,13 @@ from linuxagent.config.models import (
     ClusterHost,
     ClusterRemoteProfile,
     FilePatchConfig,
+    LanguageCode,
     SandboxConfig,
     SecurityConfig,
 )
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
+from linuxagent.i18n import Translator
 from linuxagent.interfaces import ExecutionResult
 from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.sandbox import (
@@ -186,6 +188,7 @@ class HarnessRunner:
                 tool_runtime_limits,
             )
             cluster_service = _cluster_service(scenario.setup.get("cluster_hosts", []))
+            translator = _translator(scenario.setup.get("language"))
             runbook_engine = None
             if scenario.setup.get("runbooks_enabled", False):
                 runbook_engine = RunbookEngine(load_runbooks(_REPO_ROOT / "runbooks"))
@@ -210,6 +213,7 @@ class HarnessRunner:
                     if scenario.setup.get("workspace_tools", False)
                     else None,
                     tool_runtime_limits=tool_runtime_limits,
+                    translator=translator,
                 )
             )
             thread_id = scenario.name.replace(" ", "-")
@@ -322,6 +326,12 @@ def _sandbox_config(raw: dict[str, Any]) -> SandboxConfig:
 
 def _security_config(raw: dict[str, Any]) -> SecurityConfig:
     return SecurityConfig.model_validate(raw)
+
+
+def _translator(raw: Any) -> Translator:
+    if raw is None:
+        return Translator(LanguageCode.ZH_CN)
+    return Translator(LanguageCode(str(raw)))
 
 
 def _path_config(raw: dict[str, Any]) -> dict[str, Any]:

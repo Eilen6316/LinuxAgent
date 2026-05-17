@@ -8,7 +8,6 @@ from pathlib import Path
 
 from linuxagent.audit import AuditLog
 from linuxagent.config.models import LanguageCode
-from linuxagent.i18n import Translator
 from linuxagent.mcp_server import McpServer, serve_stdio
 from linuxagent.policy import DEFAULT_POLICY_ENGINE
 from linuxagent.runbooks import Runbook, RunbookStep
@@ -34,13 +33,12 @@ def test_mcp_initialize_and_tools_list(tmp_path: Path) -> None:
     assert names == ["linuxagent.policy.classify", "linuxagent.audit.verify"]
 
 
-def test_mcp_tools_list_localizes_display_metadata_without_changing_names(
+def test_mcp_tools_list_keeps_protocol_metadata_stable_when_language_changes(
     tmp_path: Path,
 ) -> None:
     server = McpServer(
         DEFAULT_POLICY_ENGINE,
         tmp_path / "audit.log",
-        translator=Translator(LanguageCode.ZH_CN),
     )
 
     response = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
@@ -48,7 +46,10 @@ def test_mcp_tools_list_localizes_display_metadata_without_changing_names(
     assert response is not None
     tools = response["result"]["tools"]
     assert tools[0]["name"] == "linuxagent.policy.classify"
-    assert tools[0]["title"] == "LinuxAgent 策略分类器"
+    assert tools[0]["title"] == "LinuxAgent Policy Classifier"
+    assert (
+        tools[0]["description"] == "Classify a command with LinuxAgent policy without executing it."
+    )
     assert tools[0]["inputSchema"]["properties"]["command"]["type"] == "string"
 
 
@@ -80,13 +81,12 @@ def test_mcp_resources_list_honors_configured_allowlist(tmp_path: Path) -> None:
     assert uris == ["linuxagent://runbooks/summary"]
 
 
-def test_mcp_resources_list_localizes_display_metadata_without_changing_uris(
+def test_mcp_resources_list_keeps_protocol_metadata_stable_when_language_changes(
     tmp_path: Path,
 ) -> None:
     server = McpServer(
         DEFAULT_POLICY_ENGINE,
         tmp_path / "audit.log",
-        translator=Translator(LanguageCode.ZH_CN),
     )
 
     response = server.handle({"jsonrpc": "2.0", "id": 7, "method": "resources/list"})
@@ -94,7 +94,8 @@ def test_mcp_resources_list_localizes_display_metadata_without_changing_uris(
     assert response is not None
     resources = response["result"]["resources"]
     assert resources[0]["uri"] == "linuxagent://runbooks/summary"
-    assert resources[0]["name"] == "LinuxAgent Runbook 摘要"
+    assert resources[0]["name"] == "LinuxAgent Runbook Summary"
+    assert resources[0]["description"] == "Read-only summary of configured LinuxAgent runbooks."
     assert resources[0]["mimeType"] == "application/json"
 
 
@@ -117,7 +118,6 @@ def test_mcp_runbook_summary_resource_is_read_only(tmp_path: Path) -> None:
                 ),
             ),
         ),
-        translator=Translator(LanguageCode.ZH_CN),
     )
 
     response = server.handle(
@@ -134,14 +134,14 @@ def test_mcp_runbook_summary_resource_is_read_only(tmp_path: Path) -> None:
     assert content["runbooks"] == [
         {
             "id": "skill.disk.quick",
-            "title": "磁盘快速检查",
+            "title": "Disk quick check",
             "step_count": 1,
             "safety_posture": "read_only",
-            "steps": [{"purpose": "显示文件系统使用情况", "read_only": True}],
+            "steps": [{"purpose": "Show filesystem usage", "read_only": True}],
         }
     ]
     assert "df -h" not in response["result"]["contents"][0]["text"]
-    assert "Show filesystem usage" not in response["result"]["contents"][0]["text"]
+    assert "磁盘快速检查" not in response["result"]["contents"][0]["text"]
 
 
 def test_mcp_runbook_summary_reports_policy_gated_posture(tmp_path: Path) -> None:
@@ -211,7 +211,6 @@ def test_mcp_skill_summary_resource_reports_manifest_metadata(tmp_path: Path) ->
                 ),
             ),
         ),
-        translator=Translator(LanguageCode.ZH_CN),
     )
 
     response = server.handle(
@@ -231,7 +230,7 @@ def test_mcp_skill_summary_resource_reports_manifest_metadata(tmp_path: Path) ->
             {
                 "name": "disk-pack",
                 "version": "1.0",
-                "description": "磁盘指导",
+                "description": "Disk guidance",
                 "permissions": ["filesystem.inspect"],
                 "has_planner_guidance": True,
                 "runbooks": ["skill.disk.quick"],
@@ -239,7 +238,7 @@ def test_mcp_skill_summary_resource_reports_manifest_metadata(tmp_path: Path) ->
         ],
     }
     assert "Prefer df before du" not in response["result"]["contents"][0]["text"]
-    assert "Disk guidance" not in response["result"]["contents"][0]["text"]
+    assert "磁盘指导" not in response["result"]["contents"][0]["text"]
 
 
 def test_mcp_skill_summary_resource_reports_disabled_when_no_skills(tmp_path: Path) -> None:

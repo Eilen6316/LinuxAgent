@@ -520,8 +520,8 @@ async def test_job_status_slash_command_reports_runtime(tmp_path) -> None:
     await agent.run(thread_id="cli")
 
     printed = "\n".join(ui.printed)
-    assert "mode: daemon" in printed
-    assert "state: available" in printed
+    assert "模式: daemon" in printed
+    assert "状态: available" in printed
     assert "1 running / 1 total" in printed
 
 
@@ -573,7 +573,7 @@ async def test_job_slash_command_shows_job_details(tmp_path) -> None:
     await agent.run(thread_id="cli")
 
     printed = "\n".join(ui.printed)
-    assert "status: running" in printed
+    assert "状态: running" in printed
     assert "sample" in printed
 
 

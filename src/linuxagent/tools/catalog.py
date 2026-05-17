@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from langchain_core.tools import BaseTool
 
+from ..i18n import Translator, default_translator
 from ..sandbox import SandboxRunnerKind
 from .sandbox import SANDBOX_METADATA_KEY, ToolHITLMode, tool_sandbox_record
 
@@ -65,15 +66,17 @@ def format_tool_catalog_check(
     *,
     runner: SandboxRunnerKind,
     sandbox_enabled: bool,
+    translator: Translator | None = None,
 ) -> str:
+    tr = translator or default_translator()
     lines = [
         "tool_catalog:",
-        f"  status: {'ok' if report.ok else 'error'}",
+        f"  status: {_status(report.ok, tr)}",
         f"  runner: {runner.value}",
-        f"  sandbox_enabled: {str(sandbox_enabled).lower()}",
-        f"  isolation_note: {_isolation_note(runner, sandbox_enabled)}",
+        f"  {tr.t('tool_catalog.field.sandbox_enabled')}: {_bool(sandbox_enabled, tr)}",
+        f"  {tr.t('tool_catalog.field.isolation_note')}: {_isolation_note(runner, sandbox_enabled, tr)}",
     ]
-    lines.extend(_format_tool_item(item) for item in report.items)
+    lines.extend(_format_tool_item(item, tr) for item in report.items)
     return "\n".join(lines)
 
 
@@ -133,20 +136,21 @@ def _permission_errors(permissions: dict[object, object]) -> tuple[str, ...]:
     return tuple(errors)
 
 
-def _format_tool_item(item: ToolCatalogItem) -> str:
-    status = "ok" if item.ok else "error"
+def _format_tool_item(item: ToolCatalogItem, translator: Translator) -> str:
+    status = _status(item.ok, translator)
     return (
         f"  - name={item.name} status={status} profile={_profile(item)} "
-        f"permissions={_permissions_summary(item)} network_access={_permission(item, 'network_access')} "
+        f"permissions={_permissions_summary(item, translator)} "
+        f"network_access={_permission(item, 'network_access', translator)} "
         f"hitl={_hitl(item)} allowed_roots={_allowed_roots(item)}"
         f"{_error_suffix(item)}"
     )
 
 
-def _permissions_summary(item: ToolCatalogItem) -> str:
+def _permissions_summary(item: ToolCatalogItem, translator: Translator) -> str:
     permissions = _permissions(item)
     active = [key for key in _SUMMARY_PERMISSION_KEYS if permissions.get(key) is True]
-    return ",".join(active) if active else "none"
+    return ",".join(active) if active else translator.t("common.none")
 
 
 def _permissions(item: ToolCatalogItem) -> dict[str, object]:
@@ -163,11 +167,11 @@ def _profile(item: ToolCatalogItem) -> str:
     return str(value) if isinstance(value, str) and value else "missing"
 
 
-def _permission(item: ToolCatalogItem, key: str) -> str:
+def _permission(item: ToolCatalogItem, key: str, translator: Translator | None = None) -> str:
     value = _permissions(item).get(key)
     if isinstance(value, bool):
-        return str(value).lower()
-    return "unknown"
+        return _bool(value, translator) if translator is not None else str(value).lower()
+    return translator.t("common.unknown") if translator is not None else "unknown"
 
 
 def _hitl(item: ToolCatalogItem) -> str:
@@ -192,14 +196,26 @@ def _tool_name(tool: BaseTool) -> str:
     return str(getattr(tool, "name", "") or "<unnamed>")
 
 
-def _isolation_note(runner: SandboxRunnerKind, sandbox_enabled: bool) -> str:
+def _isolation_note(
+    runner: SandboxRunnerKind,
+    sandbox_enabled: bool,
+    translator: Translator,
+) -> str:
     if not sandbox_enabled:
-        return "diagnostic only; sandbox is disabled"
+        return translator.t("tool_catalog.isolation.sandbox_disabled")
     if runner is SandboxRunnerKind.NOOP:
-        return "diagnostic only; noop runner does not enforce isolation"
+        return translator.t("tool_catalog.isolation.noop")
     if runner is SandboxRunnerKind.LOCAL:
-        return "process limits only; no filesystem or network isolation"
-    return "bubblewrap may enforce supported profiles when available"
+        return translator.t("tool_catalog.isolation.local")
+    return translator.t("tool_catalog.isolation.bubblewrap")
+
+
+def _status(ok: bool, translator: Translator) -> str:
+    return translator.t("common.ok") if ok else translator.t("common.error")
+
+
+def _bool(value: bool, translator: Translator) -> str:
+    return translator.t("common.true") if value else translator.t("common.false")
 
 
 _SANDBOX_PROFILE_VALUES = {

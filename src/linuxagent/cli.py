@@ -149,6 +149,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
             tool_catalog,
             runner=cfg.sandbox.runner,
             sandbox_enabled=cfg.sandbox.enabled,
+            translator=translator,
         )
     )
     return 0 if tool_catalog.ok else 1
@@ -342,7 +343,6 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
         resources=cfg.mcp.resources,
         runbooks=container.runbook_engine().runbooks,
         skills=container.skill_manifests(),
-        translator=container.translator(),
     )
     return serve_stdio(server)
 

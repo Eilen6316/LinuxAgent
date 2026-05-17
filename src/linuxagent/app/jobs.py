@@ -150,22 +150,22 @@ def render_job(item: BackgroundJobSnapshot | None, *, translator: Translator | N
     parts = [
         tr.t("jobs.item_title", job_id=item.job_id),
         "",
-        f"status: {item.status.value}",
-        f"duration: {_format_duration(item.duration_seconds)}",
-        f"timeout: {_format_duration(item.timeout_seconds)}",
-        f"goal: {item.goal}",
-        f"command: {item.command}",
+        f"{tr.t('jobs.field.status')}: {item.status.value}",
+        f"{tr.t('jobs.field.duration')}: {_format_duration(item.duration_seconds)}",
+        f"{tr.t('jobs.field.timeout')}: {_format_duration(item.timeout_seconds)}",
+        f"{tr.t('jobs.field.goal')}: {item.goal}",
+        f"{tr.t('jobs.field.command')}: {item.command}",
     ]
     if item.exit_code is not None:
-        parts.append(f"exit_code: {item.exit_code}")
+        parts.append(f"{tr.t('jobs.field.exit_code')}: {item.exit_code}")
     if item.artifact_paths:
-        parts.append("artifacts: " + ", ".join(item.artifact_paths))
+        parts.append(f"{tr.t('jobs.field.artifacts')}: " + ", ".join(item.artifact_paths))
     stdout = _trim_output(item.stdout)
     stderr = _trim_output(item.stderr)
     if stdout:
-        parts.append(f"stdout:\n```text\n{stdout}\n```")
+        parts.append(f"{tr.t('jobs.field.stdout')}:\n```text\n{stdout}\n```")
     if stderr:
-        parts.append(f"stderr:\n```text\n{stderr}\n```")
+        parts.append(f"{tr.t('jobs.field.stderr')}:\n```text\n{stderr}\n```")
     return "\n".join(parts)
 
 
@@ -181,16 +181,20 @@ def render_job_runtime_status(
     lines = [
         tr.t("jobs.runtime_title"),
         "```text",
-        f"mode: {status.mode}",
-        f"state: {state}",
-        f"jobs: {status.running_jobs} running / {status.total_jobs} total",
+        f"{tr.t('jobs.field.mode')}: {status.mode}",
+        f"{tr.t('jobs.field.state')}: {state}",
+        tr.t(
+            "jobs.runtime_jobs",
+            running=status.running_jobs,
+            total=status.total_jobs,
+        ),
     ]
     if status.socket_path is not None:
-        lines.append(f"socket: {_display_path(status.socket_path)}")
+        lines.append(f"{tr.t('jobs.field.socket')}: {_display_path(status.socket_path)}")
     if status.store_path is not None:
-        lines.append(f"store: {_display_path(status.store_path)}")
+        lines.append(f"{tr.t('jobs.field.store')}: {_display_path(status.store_path)}")
     if status.error:
-        lines.append(f"error: {status.error}")
+        lines.append(f"{tr.t('jobs.field.error')}: {status.error}")
     lines.append("```")
     return "\n".join(lines)
 

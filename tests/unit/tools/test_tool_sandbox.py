@@ -77,10 +77,10 @@ def test_tool_catalog_check_formats_permissions() -> None:
         sandbox_enabled=False,
     )
 
-    assert "status: ok" in output
+    assert "status: 正常" in output
     assert "runner: noop" in output
-    assert "diagnostic only" in output
-    assert "name=read_window status=ok profile=read_only" in output
+    assert "仅诊断" in output
+    assert "name=read_window status=正常 profile=read_only" in output
     assert "permissions=read_files" in output
 
 

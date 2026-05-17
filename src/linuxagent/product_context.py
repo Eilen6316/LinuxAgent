@@ -27,6 +27,18 @@ _SLASH_COMMAND_KEYS: tuple[tuple[str, str], ...] = (
     ("/quit", "slash.commands.quit"),
     ("!<command>", "slash.commands.bang"),
 )
+_MODEL_SLASH_COMMANDS: tuple[SlashCommand, ...] = (
+    SlashCommand("/help", "show built-in command help"),
+    SlashCommand("/resume", "list saved local sessions and resume a selected thread"),
+    SlashCommand("/new", "start a new empty conversation"),
+    SlashCommand("/clear", "clear current conversation context"),
+    SlashCommand("/tools", "show tool and prompt-cache status for this process"),
+    SlashCommand("/trace", "toggle trace id display"),
+    SlashCommand("/job", "list, inspect, follow, stop, or manage background jobs"),
+    SlashCommand("/exit", "exit the CLI"),
+    SlashCommand("/quit", "exit the CLI"),
+    SlashCommand("!<command>", "run an explicit direct shell command through policy and HITL"),
+)
 
 
 def slash_commands(translator: Translator | None = None) -> tuple[SlashCommand, ...]:
@@ -56,9 +68,7 @@ def product_capability_context(
     if provider and model:
         runtime = f"当前配置 provider={provider}, model={model}"
     tools = ", ".join(name for name in tool_names if name) or "未启用额外 LLM 工具"
-    commands = "; ".join(
-        f"{item.command}: {item.description}" for item in slash_commands(default_translator())
-    )
+    commands = "; ".join(f"{item.command}: {item.description}" for item in _MODEL_SLASH_COMMANDS)
     return load_prompt("product_context.md").format(
         runtime=runtime,
         slash_commands=commands,

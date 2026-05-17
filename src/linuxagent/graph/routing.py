@@ -21,6 +21,8 @@ def make_respond_block_node(
 
     async def respond_block(state: AgentState) -> AgentState:
         reason = state.get("safety_reason") or "command blocked by safety policy"
+        if reason == default_translator().t("graph.argv_retry_exhausted"):
+            reason = tr.t("graph.argv_retry_exhausted")
         return {"messages": [AIMessage(content=tr.t("graph.blocked", reason=reason))]}
 
     return respond_block

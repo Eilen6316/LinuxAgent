@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Any
 
@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool
 from langgraph.types import Command
 
+from ..i18n import Translator, default_translator
 from ..interfaces import CommandSource, LLMProvider
 from ..plans import (
     CommandPlan,
@@ -107,6 +108,7 @@ class IntentNodeContext:
     product_context: str
     operating_manifest: str
     prompt_cache_key: str | None
+    translator: Translator = field(default_factory=default_translator)
 
     def direct_answer_context(self) -> str:
         manifest = self.operating_manifest.strip()
@@ -128,6 +130,7 @@ def make_parse_intent_node(
     product_context: str = "",
     operating_manifest: str = "",
     prompt_cache_key: str | None = None,
+    translator: Translator | None = None,
 ) -> Node:
     context = IntentNodeContext(
         provider=provider,
@@ -147,6 +150,7 @@ def make_parse_intent_node(
         product_context=product_context,
         operating_manifest=operating_manifest,
         prompt_cache_key=prompt_cache_key,
+        translator=translator or default_translator(),
     )
 
     async def parse_intent_node(state: AgentState) -> AgentState:
@@ -322,7 +326,9 @@ async def _no_change_update(
 ) -> AgentState:
     evidence_error = _no_change_evidence_error(context, plan, observed_tool_outputs)
     if evidence_error is None:
-        return _direct_response_update(current_trace_id, _no_change_answer(plan))
+        return _direct_response_update(
+            current_trace_id, _no_change_answer(plan, context.translator)
+        )
     recovered = await _recover_plan_parse_error(
         context, messages, user_text, current_trace_id, evidence_error, plan.model_dump_json()
     )
@@ -435,13 +441,17 @@ def _no_change_evidence_error(
     return None
 
 
-def _no_change_answer(plan: NoChangePlan) -> str:
+def _no_change_answer(plan: NoChangePlan, translator: Translator) -> str:
     if not plan.evidence:
         return plan.answer
     evidence = "\n".join(
         f"- {_trim_no_change_evidence(item)}" for item in plan.evidence[:NO_CHANGE_EVIDENCE_ITEMS]
     )
-    return f"{plan.answer}\n\n依据：\n{evidence}"
+    return translator.t(
+        "graph.no_change_evidence",
+        answer=plan.answer,
+        evidence=evidence,
+    )
 
 
 def _trim_no_change_evidence(value: str) -> str:
@@ -716,7 +726,9 @@ async def _retry_plan_or_error(
             context.prompt_cache_key,
         )
     if _should_retry_parse_error(error):
-        return _parse_error_update(current_trace_id, _argv_retry_exhausted_error())
+        return _parse_error_update(
+            current_trace_id, _argv_retry_exhausted_error(context.translator)
+        )
     return _parse_error_update(current_trace_id, retry_plan)
 
 
@@ -726,12 +738,8 @@ def _should_fallback_to_direct_answer(error: Exception | str) -> bool:
     return error == PlanParseErrorCode.EMPTY_COMMANDS.value
 
 
-def _argv_retry_exhausted_error() -> str:
-    return (
-        "规划器连续生成了非 argv-safe 的命令。LinuxAgent 以 argv 方式执行命令，"
-        "不支持管道、重定向、命令替换、命令串联或 shell 通配符；请换成可直接"
-        "作为 argv 执行的命令或更明确的文件匹配条件。"
-    )
+def _argv_retry_exhausted_error(translator: Translator) -> str:
+    return translator.t("graph.argv_retry_exhausted")
 
 
 def _parse_intent_decision(raw: str) -> IntentDecision:
