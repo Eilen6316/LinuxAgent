@@ -96,6 +96,12 @@ def test_get_system_info_includes_threshold_alerts() -> None:
 def test_build_system_tools_returns_both() -> None:
     tools = build_system_tools(_executor())
     names = {t.name for t in tools}
+    assert names == {"get_system_info", "search_logs"}
+
+
+def test_build_system_tools_opt_in_adds_execute_command() -> None:
+    tools = build_system_tools(_executor(), enable_execute_command=True)
+    names = {t.name for t in tools}
     assert names == {"execute_command", "get_system_info", "search_logs"}
 
 

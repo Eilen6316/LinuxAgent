@@ -173,14 +173,17 @@ def build_system_tools(
     allowed_log_roots: tuple[Path, ...] = DEFAULT_LOG_ROOTS,
     monitoring_config: MonitoringConfig | None = None,
     tool_config: SandboxToolConfig | None = None,
+    enable_execute_command: bool = False,
 ) -> list[BaseTool]:
     """Assemble the default tool set the agent is granted."""
     limits = tool_config or SandboxToolConfig()
-    return [
-        make_execute_command_tool(executor, limits),
+    tools = [
         make_get_system_info_tool(monitoring_config, limits),
         make_search_logs_tool(allowed_log_roots, tool_config=limits),
     ]
+    if enable_execute_command:
+        tools.insert(0, make_execute_command_tool(executor, limits))
+    return tools
 
 
 def _search_log_matches(

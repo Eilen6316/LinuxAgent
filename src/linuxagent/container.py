@@ -350,6 +350,7 @@ class Container:
                 ),
                 monitoring_config=self._config.monitoring,
                 tool_config=self._config.sandbox.tools,
+                enable_execute_command=self._config.sandbox.tools.enable_execute_command,
             ),
         )
 

@@ -396,6 +396,7 @@ linuxagent check
 | `sandbox` | `default_profile` | `system_inspect` | Default profile recorded for commands without stronger policy capabilities |
 | `sandbox` | `network` | `inherit` | `inherit`, `disabled`, `loopback_only`, or `allowlist`; unsupported policies fail closed for safe profiles |
 | `sandbox.tools` | `max_rounds` | `3` | Maximum tool-calling rounds per planner request |
+| `sandbox.tools` | `enable_execute_command` | `false` | Opt-in for the direct LLM-visible command execution tool; normal command execution should use the HITL graph |
 | `sandbox.tools` | `timeout_seconds` | `5.0` | Per-tool runtime timeout |
 | `sandbox.tools` | `max_output_chars` | `20000` | Per-tool output budget before truncation |
 | `sandbox.tools` | `max_total_output_chars` | `60000` | Cumulative tool output budget per planner request |
@@ -526,30 +527,34 @@ redirection.
 2. Every LLM tool carries sandbox metadata with explicit permissions:
    `read_files`, `write_files`, `execute_commands`, `system_inspect`,
    `network_access`, and `hitl` mode.
-3. Tool calls are bounded by `sandbox.tools`: per-call timeout, per-call output
+3. The direct `execute_command` tool is excluded from the LLM catalog by default.
+   Command planning and execution should use the main HITL graph. If
+   `sandbox.tools.enable_execute_command=true` is set, the tool still refuses
+   CONFIRM and BLOCK commands and only runs commands classified SAFE by policy.
+4. Tool calls are bounded by `sandbox.tools`: per-call timeout, per-call output
    limit, cumulative per-request output limit, and maximum tool-calling rounds.
    Tool exceptions, timeouts, truncation, denied calls, and repaired dangling
    tool-call history are returned to the model as structured redacted tool
    results instead of raw provider errors.
-4. Tool runtime events are runtime/telemetry events, not command audit records.
+5. Tool runtime events are runtime/telemetry events, not command audit records.
    They include tool name, sandbox profile, permission summary, status, output
    size, and redacted args/output preview. Full tool output is kept out of
    telemetry attributes.
-5. The terminal shows observable tool activity such as `LinuxAgent is reading
+6. The terminal shows observable tool activity such as `LinuxAgent is reading
    /tmp/disk_info.sh`, then prints concise evidence from completed workspace
    tool calls, such as line-numbered `read_file` snippets or `search_files`
    matches. If the planner concludes that no file change is needed, the final
    answer includes the cited evidence so the operator can see which file lines
    or search results supported the judgment. Tool failures are surfaced clearly.
-6. The model must return a structured `FilePatchPlan` with `request_intent`,
+7. The model must return a structured `FilePatchPlan` with `request_intent`,
    target files, unified diff, risk summary, verification commands, and optional
    permission changes.
-7. Before writing, LinuxAgent shows a diff confirmation panel with per-file
+8. Before writing, LinuxAgent shows a diff confirmation panel with per-file
    `+N / -M` stats, compact code snippets, elevated-risk paths, permission
    changes, and verification commands.
-8. Small diffs are not shown twice. Large diffs are paged, and extra review is
+9. Small diffs are not shown twice. Large diffs are paged, and extra review is
    requested only when hidden pages exist.
-9. Multi-file patches can be accepted per file, so the operator can apply only
+10. Multi-file patches can be accepted per file, so the operator can apply only
    the files they approve.
 
 After approval, LinuxAgent applies the patch transactionally. It validates

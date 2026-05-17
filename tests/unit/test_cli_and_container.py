@@ -92,8 +92,8 @@ def test_check_command_success(
     assert "skills=已禁用" in captured.out
     assert "monitoring_alerts=无" in captured.out
     assert "tool_catalog:" in captured.out
-    assert "name=execute_command status=正常 profile=privileged_passthrough" in captured.out
-    assert "network_access=是" in captured.out
+    assert "name=execute_command" not in captured.out
+    assert "name=get_system_info status=正常 profile=system_inspect" in captured.out
 
 
 def test_check_command_reports_monitoring_alerts(
@@ -586,6 +586,7 @@ def test_container_passes_monitoring_config_to_system_tools(
         del executor
         captured["monitoring_config"] = kwargs["monitoring_config"]
         captured["tool_config"] = kwargs["tool_config"]
+        captured["enable_execute_command"] = kwargs["enable_execute_command"]
         return []
 
     monkeypatch.setattr(container_module, "build_system_tools", fake_build_system_tools)
@@ -595,6 +596,25 @@ def test_container_passes_monitoring_config_to_system_tools(
     assert runtime.system_tools() == []
     assert captured["monitoring_config"].cpu_threshold == 12.0
     assert captured["tool_config"] == cfg.sandbox.tools
+    assert captured["enable_execute_command"] is False
+
+
+def test_container_passes_execute_command_opt_in_to_system_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_build_system_tools(executor, **kwargs):
+        del executor
+        captured["enable_execute_command"] = kwargs["enable_execute_command"]
+        return []
+
+    monkeypatch.setattr(container_module, "build_system_tools", fake_build_system_tools)
+    cfg = AppConfig.model_validate({"sandbox": {"tools": {"enable_execute_command": True}}})
+    runtime = Container(cfg)
+
+    assert runtime.system_tools() == []
+    assert captured["enable_execute_command"] is True
 
 
 def test_container_adds_workspace_tools(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -140,6 +140,9 @@ sandbox:
     process_count:
     output_bytes:
   tools:
+    # Keep the direct LLM-visible command execution tool disabled by default.
+    # Normal command execution should flow through the HITL graph.
+    enable_execute_command: false
     max_rounds: 3
     timeout_seconds: 5.0
     max_output_chars: 20000

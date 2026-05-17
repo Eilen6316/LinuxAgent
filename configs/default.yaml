@@ -59,6 +59,7 @@ sandbox:
     process_count:
     output_bytes:
   tools:
+    enable_execute_command: false
     max_rounds: 3
     timeout_seconds: 5.0
     max_output_chars: 20000

@@ -244,6 +244,7 @@ class SandboxResourceLimitsConfig(BaseModel):
 class SandboxToolConfig(BaseModel):
     model_config = _FROZEN
 
+    enable_execute_command: bool = False
     max_rounds: int = Field(default=3, ge=1, le=10)
     timeout_seconds: float = Field(default=5.0, gt=0, le=60)
     max_output_chars: int = Field(default=20000, ge=1000, le=200000)
