@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from langchain_core.tools import BaseTool
-from langchain_openai import OpenAIEmbeddings
 
 from .app import LinuxAgent
 from .app.runtime_messages import command_event_key, runtime_event_message, tool_activity_message
@@ -22,23 +21,15 @@ from .audit import AuditLog
 from .audit_sink import HttpAuditSink
 from .cluster import SSHManager
 from .executors import LinuxCommandExecutor
-from .graph import GraphDependencies, GraphRuntime, build_agent_graph
+from .graph import GraphRuntime
 from .graph.agent_graph import AgentGraph
 from .graph.checkpoint import PersistentMemorySaver
 from .i18n import Translator
 from .interfaces import ExecutionResult, LLMProvider, UserInterface
 from .operating_manifest import operating_manifest_context
 from .policy import PolicyEngine, runtime_policy_config
-from .product_context import product_capability_context
-from .providers import provider_factory
 from .runbooks import RunbookEngine, find_runbooks_dir, load_runbooks
-from .sandbox import (
-    BubblewrapSandboxRunner,
-    LocalProcessSandboxRunner,
-    NoopSandboxRunner,
-    SandboxRunner,
-)
-from .sandbox.models import SandboxRunnerKind
+from .sandbox import SandboxRunner
 from .services import (
     BackgroundJobController,
     BackgroundJobService,
@@ -55,16 +46,7 @@ from .services import (
 )
 from .skills import load_skill_manifests, skill_planner_guidance, skill_runbooks
 from .telemetry import TelemetryRecorder
-from .tools import (
-    ToolCatalogReport,
-    ToolRuntimeLimits,
-    build_intelligence_tools,
-    build_system_tools,
-    build_workspace_tools,
-    compact_tool_catalog_summary,
-    inspect_tool_catalog,
-)
-from .ui import ConsoleUI, WizardAwareUserInterface
+from .tools import ToolCatalogReport, ToolRuntimeLimits
 from .usage_insights import (
     CommandLearner,
     ContextManager,
@@ -74,8 +56,22 @@ from .usage_insights import (
     PatternAnalyzer,
     RecommendationEngine,
 )
+from .wiring.graph import build_graph, build_graph_runtime
+from .wiring.providers import build_embeddings, build_provider
+from .wiring.sandbox import build_sandbox_runner
+from .wiring.tools import (
+    build_intelligence_tool_list,
+    build_product_context,
+    build_system_tool_list,
+    build_tool_catalog,
+    build_tool_runtime_limits,
+    intelligence_tools_enabled,
+)
+from .wiring.ui import build_ui
 
 if TYPE_CHECKING:
+    from langchain_openai import OpenAIEmbeddings
+
     from .config.models import AppConfig
     from .skills import SkillManifest
 _T = TypeVar("_T")
@@ -214,11 +210,7 @@ class Container:
         )
 
     def _build_sandbox_runner(self) -> SandboxRunner:
-        if self._config.sandbox.runner is SandboxRunnerKind.LOCAL:
-            return LocalProcessSandboxRunner(enabled=self._config.sandbox.enabled)
-        if self._config.sandbox.runner is SandboxRunnerKind.BUBBLEWRAP:
-            return BubblewrapSandboxRunner(enabled=self._config.sandbox.enabled)
-        return NoopSandboxRunner(enabled=self._config.sandbox.enabled)
+        return build_sandbox_runner(self._config.sandbox)
 
     def policy_engine(self) -> PolicyEngine:
         return self._cached(
@@ -234,31 +226,28 @@ class Container:
     def graph(self) -> AgentGraph:
         return self._cached(
             "graph",
-            lambda: build_agent_graph(
-                GraphDependencies(
-                    provider=self.provider(),
-                    command_service=self.command_service(),
-                    audit=self.audit_log(),
-                    checkpointer=self.checkpointer(),
-                    cluster_service=self.cluster_service(),
-                    background_jobs=self.background_jobs(),
-                    tools=tuple(self.tools()),
-                    telemetry=self.telemetry(),
-                    runbook_engine=self.runbook_engine(),
-                    command_plan_config=self._config.command_plan,
-                    file_patch_config=self._config.file_patch,
-                    tool_observer=self._tool_event_observer(),
-                    runtime_observer=self._runtime_event_observer(),
-                    tool_runtime_limits=self.tool_runtime_limits(),
-                    product_context=self.product_context(),
-                    operating_manifest=self.operating_manifest(),
-                    translator=self.translator(),
-                )
+            lambda: build_graph(
+                self._config,
+                provider=self.provider(),
+                command_service=self.command_service(),
+                audit=self.audit_log(),
+                checkpointer=self.checkpointer(),
+                cluster_service=self.cluster_service(),
+                background_jobs=self.background_jobs(),
+                tools=tuple(self.tools()),
+                telemetry=self.telemetry(),
+                runbook_engine=self.runbook_engine(),
+                tool_observer=self._tool_event_observer(),
+                runtime_observer=self._runtime_event_observer(),
+                tool_runtime_limits=self.tool_runtime_limits(),
+                product_context=self.product_context(),
+                operating_manifest=self.operating_manifest(),
+                translator=self.translator(),
             ),
         )
 
     def graph_runtime(self) -> GraphRuntime:
-        return self._cached("graph_runtime", lambda: GraphRuntime(self.graph()))
+        return self._cached("graph_runtime", lambda: build_graph_runtime(self.graph()))
 
     def checkpointer(self) -> PersistentMemorySaver:
         return self._cached(
@@ -298,7 +287,7 @@ class Container:
         )
 
     def provider(self) -> LLMProvider:
-        return self._cached("provider", lambda: provider_factory(self._config.api))
+        return self._cached("provider", lambda: build_provider(self._config.api))
 
     def recommendation_engine(self) -> RecommendationEngine:
         return self._cached(
@@ -343,38 +332,26 @@ class Container:
     def system_tools(self) -> list[BaseTool]:
         return self._cached(
             "system_tools",
-            lambda: build_system_tools(
-                self.executor(),
-                allowed_log_roots=tuple(
-                    {path.parent for path in self._config.log_analysis.default_log_paths}
-                ),
-                monitoring_config=self._config.monitoring,
-                tool_config=self._config.sandbox.tools,
-                enable_execute_command=self._config.sandbox.tools.enable_execute_command,
-            ),
+            lambda: build_system_tool_list(self._config, self.executor()),
         )
 
     def intelligence_tools(self) -> list[BaseTool]:
         def factory() -> list[BaseTool]:
-            if not self._intelligence_tools_enabled():
+            if not intelligence_tools_enabled(self._config):
                 return []
-            command_candidates = [command for command, _ in self.learner().top_commands(limit=50)]
-            if not command_candidates:
-                command_candidates = list(self._config.intelligence.default_command_candidates)
-            return build_intelligence_tools(
+            return build_intelligence_tool_list(
+                self._config,
+                learner=self.learner(),
                 recommendation_engine=self.recommendation_engine(),
                 knowledge_base=self.knowledge_base(),
                 pattern_analyzer=self.pattern_analyzer(),
                 nlp_enhancer=self.nlp_enhancer(),
-                command_candidates=command_candidates,
             )
 
-        return self._cached("intelligence_tools", factory)
-
-    def _intelligence_tools_enabled(self) -> bool:
-        if not self._config.intelligence.enabled:
-            return False
-        return self._config.intelligence.tools_enabled is True
+        return self._cached(
+            "intelligence_tools",
+            factory,
+        )
 
     def tools(self) -> list[BaseTool]:
         return self._cached(
@@ -385,32 +362,18 @@ class Container:
     def tool_catalog(self) -> ToolCatalogReport:
         return self._cached(
             "tool_catalog",
-            lambda: inspect_tool_catalog(
-                [
-                    *self.system_tools(),
-                    *build_workspace_tools(self._config.file_patch, self._config.sandbox.tools),
-                    *self.intelligence_tools(),
-                ]
+            lambda: build_tool_catalog(
+                self._config,
+                system_tools=self.system_tools(),
+                intelligence_tools=self.intelligence_tools(),
             ),
         )
 
     def tool_runtime_limits(self) -> ToolRuntimeLimits:
-        tools = self._config.sandbox.tools
-        return ToolRuntimeLimits(
-            max_rounds=tools.max_rounds,
-            timeout_seconds=tools.timeout_seconds,
-            max_output_chars=tools.max_output_chars,
-            max_total_output_chars=tools.max_total_output_chars,
-        )
+        return build_tool_runtime_limits(self._config)
 
     def product_context(self) -> str:
-        catalog = self.tool_catalog()
-        return product_capability_context(
-            provider=self._config.api.provider.value,
-            model=self._config.api.model,
-            tool_names=tuple(item.name for item in catalog.items),
-            tool_catalog=compact_tool_catalog_summary(catalog),
-        )
+        return build_product_context(self._config, self.tool_catalog())
 
     def operating_manifest(self) -> str:
         return self._cached("operating_manifest", operating_manifest_context)
@@ -454,25 +417,13 @@ class Container:
     def ui(self) -> UserInterface:
         return self._cached(
             "ui",
-            lambda: WizardAwareUserInterface(
-                ConsoleUI(
-                    theme=self._config.ui.theme,
-                    prompt_symbol=self._config.ui.prompt_symbol,
-                    history_path=self._config.ui.history_path.with_name("prompt_history"),
-                    translator=self.translator(),
-                ),
-                translator=self.translator(),
-            ),
+            lambda: build_ui(self._config.ui, self.translator()),
         )
 
     def embeddings(self) -> OpenAIEmbeddings:
         return self._cached(
             "embeddings",
-            lambda: OpenAIEmbeddings(
-                model=self._config.intelligence.embedding_model,
-                api_key=self._config.api.api_key,
-                base_url=self._config.api.base_url,
-            ),
+            lambda: build_embeddings(self._config.api, self._config.intelligence),
         )
 
     def _cached(self, key: str, factory: Callable[[], _T]) -> _T:

@@ -15,6 +15,7 @@ import pytest
 
 import linuxagent.cli as cli
 import linuxagent.container as container_module
+import linuxagent.wiring.tools as tools_wiring
 from linuxagent.app.runtime_messages import (
     runtime_event_message,
     tool_activity_message,
@@ -582,14 +583,14 @@ def test_container_passes_monitoring_config_to_system_tools(
 ) -> None:
     captured: dict[str, Any] = {}
 
-    def fake_build_system_tools(executor, **kwargs):
+    def fake_build_system_tool_list(config, executor):
         del executor
-        captured["monitoring_config"] = kwargs["monitoring_config"]
-        captured["tool_config"] = kwargs["tool_config"]
-        captured["enable_execute_command"] = kwargs["enable_execute_command"]
+        captured["monitoring_config"] = config.monitoring
+        captured["tool_config"] = config.sandbox.tools
+        captured["enable_execute_command"] = config.sandbox.tools.enable_execute_command
         return []
 
-    monkeypatch.setattr(container_module, "build_system_tools", fake_build_system_tools)
+    monkeypatch.setattr(container_module, "build_system_tool_list", fake_build_system_tool_list)
     cfg = AppConfig.model_validate({"monitoring": {"cpu_threshold": 12.0}})
     runtime = Container(cfg)
 
@@ -604,12 +605,12 @@ def test_container_passes_execute_command_opt_in_to_system_tools(
 ) -> None:
     captured: dict[str, Any] = {}
 
-    def fake_build_system_tools(executor, **kwargs):
+    def fake_build_system_tool_list(config, executor):
         del executor
-        captured["enable_execute_command"] = kwargs["enable_execute_command"]
+        captured["enable_execute_command"] = config.sandbox.tools.enable_execute_command
         return []
 
-    monkeypatch.setattr(container_module, "build_system_tools", fake_build_system_tools)
+    monkeypatch.setattr(container_module, "build_system_tool_list", fake_build_system_tool_list)
     cfg = AppConfig.model_validate({"sandbox": {"tools": {"enable_execute_command": True}}})
     runtime = Container(cfg)
 
@@ -630,7 +631,7 @@ def test_container_adds_workspace_tools(monkeypatch: pytest.MonkeyPatch, tmp_pat
             )
         ]
 
-    monkeypatch.setattr(container_module, "build_workspace_tools", fake_build_workspace_tools)
+    monkeypatch.setattr(tools_wiring, "build_workspace_tools", fake_build_workspace_tools)
     cfg = AppConfig.model_validate(
         {
             "file_patch": {"allow_roots": [tmp_path]},
@@ -661,16 +662,17 @@ def test_container_builds_cached_runtime(
             del kwargs
             self.config = config
 
-    monkeypatch.setattr(container_module, "provider_factory", lambda config: fake_provider)
+    monkeypatch.setattr(container_module, "build_provider", lambda config: fake_provider)
 
-    def fake_build_agent_graph(deps):
-        captured["tool_observer"] = deps.tool_observer
-        captured["product_context"] = deps.product_context
-        captured["translator"] = deps.translator
+    def fake_build_graph(config, **kwargs):
+        del config
+        captured["tool_observer"] = kwargs["tool_observer"]
+        captured["product_context"] = kwargs["product_context"]
+        captured["translator"] = kwargs["translator"]
         return fake_graph
 
-    monkeypatch.setattr(container_module, "build_agent_graph", fake_build_agent_graph)
-    monkeypatch.setattr(container_module, "OpenAIEmbeddings", _FakeEmbeddings)
+    monkeypatch.setattr(container_module, "build_graph", fake_build_graph)
+    monkeypatch.setattr(container_module, "build_embeddings", lambda *_: _FakeEmbeddings())
     monkeypatch.setattr(container_module, "SSHManager", _FakeSSHManager)
 
     container = Container(
@@ -970,7 +972,7 @@ async def test_runtime_observer_deduplicates_repeated_activity(
 def test_container_disables_embedding_tools_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(container_module, "OpenAIEmbeddings", pytest.fail)
+    monkeypatch.setattr(container_module, "build_embeddings", pytest.fail)
     container = Container(AppConfig.model_validate({}))
 
     assert container.intelligence_tools() == []
@@ -980,7 +982,7 @@ def test_container_disables_embedding_tools_by_default(
 def test_container_disables_embedding_tools_for_openai_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(container_module, "OpenAIEmbeddings", pytest.fail)
+    monkeypatch.setattr(container_module, "build_embeddings", pytest.fail)
     container = Container(AppConfig.model_validate({"api": {"provider": "openai"}}))
 
     assert container.intelligence_tools() == []
