@@ -38,7 +38,7 @@ from tenacity import (
 )
 
 from ..config.models import APIConfig
-from ..interfaces import LLMProvider
+from ..interfaces import LLM_CALL_METADATA_KEY, LLMProvider
 from ..security import redact_record
 from ..tools.catalog import ToolCatalogReport, inspect_tool_catalog
 from ..tools.sandbox import ToolRuntimeLimits, invoke_tool_with_sandbox, tool_sandbox_record
@@ -158,6 +158,7 @@ class BaseLLMProvider(LLMProvider):
 
     def _request_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         request_kwargs = dict(kwargs)
+        request_kwargs.pop(LLM_CALL_METADATA_KEY, None)
         if not self._prompt_cache_supported:
             request_kwargs.pop("prompt_cache_key", None)
         return request_kwargs

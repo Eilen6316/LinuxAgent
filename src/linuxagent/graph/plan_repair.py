@@ -266,7 +266,12 @@ async def _complete_retry_plan(
             retry_messages,
             telemetry=telemetry,
             trace_id=current_trace_id,
-            attributes={"node": "parse_intent", "retry": "json_only", "attempt": attempt},
+            attributes={
+                "node": "parse_intent",
+                "mode": "planner_retry",
+                "retry": "json_only",
+                "attempt": attempt,
+            },
             prompt_cache_key=prompt_cache_key,
         )
     ).strip()

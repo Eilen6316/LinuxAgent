@@ -23,6 +23,7 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from langchain_core.tools import tool
 
 from linuxagent.config.models import APIConfig
+from linuxagent.interfaces import LLM_CALL_METADATA_KEY
 from linuxagent.providers.base import BaseLLMProvider
 from linuxagent.providers.errors import (
     ProviderConnectionError,
@@ -131,6 +132,19 @@ async def test_complete_drops_prompt_cache_key_when_disabled() -> None:
 
     assert out == "hello"
     assert "prompt_cache_key" not in model.invoke_kwargs[0]
+
+
+async def test_complete_strips_internal_llm_call_metadata() -> None:
+    model = _ToolCallingModel([AIMessage(content="hello")])
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    out = await provider.complete(
+        [HumanMessage(content="hi")],
+        **{LLM_CALL_METADATA_KEY: {"trace_id": "trace-1", "attributes": {"node": "test"}}},
+    )
+
+    assert out == "hello"
+    assert LLM_CALL_METADATA_KEY not in model.invoke_kwargs[0]
 
 
 class _ToolCallingModel:

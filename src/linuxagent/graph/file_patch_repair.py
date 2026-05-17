@@ -312,7 +312,7 @@ async def _retry_repair_plan_json(
             prompt_messages,
             telemetry=telemetry,
             trace_id=current_trace_id,
-            attributes={"node": "repair_file_patch", "retry": "json_only"},
+            attributes={"node": "repair_file_patch", "mode": "repair_retry", "retry": "json_only"},
             prompt_cache_key=prompt_cache_key,
         )
     ).strip()
@@ -335,7 +335,7 @@ async def _complete_repair_plan(
                 prompt_messages,
                 telemetry=telemetry,
                 trace_id=current_trace_id,
-                attributes={"node": "repair_file_patch"},
+                attributes={"node": "repair_file_patch", "mode": "repair"},
                 prompt_cache_key=prompt_cache_key,
             )
         ).strip()
@@ -347,7 +347,7 @@ async def _complete_repair_plan(
             options=LLMCallOptions(
                 telemetry,
                 current_trace_id,
-                {"node": "repair_file_patch"},
+                {"node": "repair_file_patch", "mode": "repair"},
                 prompt_cache_key,
             ),
             tool_runtime_limits=tool_runtime_limits,

@@ -8,6 +8,7 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 
 from linuxagent.graph.llm_calls import complete_llm
+from linuxagent.interfaces import LLM_CALL_METADATA_KEY
 from linuxagent.telemetry import TelemetryRecorder
 
 
@@ -51,6 +52,10 @@ async def test_complete_llm_records_cache_usage_telemetry(tmp_path) -> None:
 
     assert result == "ok"
     assert provider.kwargs["prompt_cache_key"] == "linuxagent:abc"
+    assert provider.kwargs[LLM_CALL_METADATA_KEY] == {
+        "trace_id": "trace-1",
+        "attributes": {"node": "parse_intent"},
+    }
     records = [
         json.loads(line)
         for line in (tmp_path / "telemetry.jsonl").read_text(encoding="utf-8").splitlines()
@@ -76,3 +81,4 @@ async def test_complete_llm_omits_empty_prompt_cache_key(tmp_path) -> None:
 
     assert result == "ok"
     assert "prompt_cache_key" not in provider.kwargs
+    assert provider.kwargs[LLM_CALL_METADATA_KEY]["trace_id"] == "trace-1"

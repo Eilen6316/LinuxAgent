@@ -30,7 +30,7 @@ from linuxagent.config.models import (
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.i18n import Translator
-from linuxagent.interfaces import ExecutionResult
+from linuxagent.interfaces import LLM_CALL_METADATA_KEY, ExecutionResult
 from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.sandbox import (
     BubblewrapSandboxRunner,
@@ -61,12 +61,12 @@ class _FakeProvider:
         self._responses = list(responses)
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
-        del kwargs
-        if _is_intent_router_call(messages):
+        del messages
+        if _is_llm_call(kwargs, node="parse_intent", mode="intent_router"):
             if self._responses and _is_intent_router_response(self._responses[0]):
                 return self._responses.pop(0)
             return _router_response("COMMAND_PLAN")
-        if _is_direct_answer_review_call(messages):
+        if _is_llm_call(kwargs, node="parse_intent", mode="direct_answer_review"):
             if self._responses and _is_direct_answer_review_response(self._responses[0]):
                 return self._responses.pop(0)
             return _direct_answer_review_response()
@@ -113,8 +113,14 @@ def _direct_answer_review_response(
     return json.dumps({"mode": mode, "reason": reason}, ensure_ascii=False)
 
 
-def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
-    return bool(messages) and "intent router" in str(messages[0].content).casefold()
+def _is_llm_call(kwargs: dict[str, Any], *, node: str, mode: str | None = None) -> bool:
+    metadata = kwargs.get(LLM_CALL_METADATA_KEY)
+    if not isinstance(metadata, dict):
+        return False
+    attributes = metadata.get("attributes")
+    if not isinstance(attributes, dict) or attributes.get("node") != node:
+        return False
+    return mode is None or attributes.get("mode") == mode
 
 
 def _is_intent_router_response(text: str) -> bool:
@@ -130,10 +136,6 @@ def _is_intent_router_response(text: str) -> bool:
         "CLARIFY",
         "WIZARD_NEEDED",
     }
-
-
-def _is_direct_answer_review_call(messages: list[BaseMessage]) -> bool:
-    return bool(messages) and "direct_answer reviewer" in str(messages[0].content).casefold()
 
 
 def _is_direct_answer_review_response(text: object) -> bool:

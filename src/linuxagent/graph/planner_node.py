@@ -74,7 +74,7 @@ async def _complete_plan_candidate(
                 prompt_messages,
                 telemetry=context.telemetry,
                 trace_id=current_trace_id,
-                attributes={"node": "parse_intent"},
+                attributes={"node": "parse_intent", "mode": "planner"},
                 prompt_cache_key=context.prompt_cache_key,
             )
         ).strip(), None
@@ -86,7 +86,7 @@ async def _complete_plan_candidate(
             options=LLMCallOptions(
                 context.telemetry,
                 current_trace_id,
-                {"node": "parse_intent"},
+                {"node": "parse_intent", "mode": "planner"},
                 context.prompt_cache_key,
             ),
             tool_runtime_limits=context.tool_runtime_limits,

@@ -48,7 +48,7 @@ def make_analyze_result_node(
                 prompt_messages,
                 telemetry=telemetry,
                 trace_id=current_trace_id,
-                attributes={"node": "analyze"},
+                attributes={"node": "analyze", "mode": "analysis"},
                 prompt_cache_key=state.get("prompt_cache_key") or prompt_cache_key,
             )
         except Exception:  # noqa: BLE001 - keep graph resilient when provider analysis fails

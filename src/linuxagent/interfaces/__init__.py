@@ -11,7 +11,7 @@ from .executor import (
     SafetyResult,
     StreamingCommandRunner,
 )
-from .llm_provider import LLMProvider
+from .llm_provider import LLM_CALL_METADATA_KEY, LLMProvider
 from .remote_executor import RemoteCommandExecutor
 from .service import BaseService
 from .ui import UserInterface
@@ -21,6 +21,7 @@ __all__ = [
     "CommandExecutor",
     "CommandSource",
     "ExecutionResult",
+    "LLM_CALL_METADATA_KEY",
     "LLMProvider",
     "OutputCallback",
     "RemoteCommandExecutor",

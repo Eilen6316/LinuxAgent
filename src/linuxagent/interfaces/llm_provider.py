@@ -10,6 +10,8 @@ if TYPE_CHECKING:
     from langchain_core.messages import BaseMessage
     from langchain_core.tools import BaseTool
 
+LLM_CALL_METADATA_KEY = "linuxagent_llm_call"
+
 
 class LLMProvider(ABC):
     """Async LLM provider wrapping a LangChain chat model."""

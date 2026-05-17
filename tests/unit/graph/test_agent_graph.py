@@ -26,7 +26,7 @@ from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.graph.checkpoint import PersistentMemorySaver
 from linuxagent.i18n import Translator
-from linuxagent.interfaces import CommandSource, ExecutionResult
+from linuxagent.interfaces import LLM_CALL_METADATA_KEY, CommandSource, ExecutionResult
 from linuxagent.operating_manifest import operating_manifest_context
 from linuxagent.plans import command_plan_json, file_patch_plan_json
 from linuxagent.product_context import product_capability_context
@@ -45,20 +45,20 @@ class _FakeProvider:
         self.tool_calls = 0
         self.complete_messages: list[list[BaseMessage]] = []
         self.complete_kwargs: list[dict[str, Any]] = []
+        self.complete_metadata: list[dict[str, Any]] = []
         self.last_usage = None
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
-        self.complete_kwargs.append(dict(kwargs))
-        self.complete_messages.append(messages)
-        if _is_intent_router_call(messages):
+        self._record_call(messages, kwargs)
+        if _is_llm_call(kwargs, node="parse_intent", mode="intent_router"):
             if self._responses and _is_intent_router_response(self._responses[0]):
                 return self._responses.pop(0)
             return _router_response("COMMAND_PLAN")
-        if _is_direct_answer_review_call(messages):
+        if _is_llm_call(kwargs, node="parse_intent", mode="direct_answer_review"):
             if self._responses and _is_direct_answer_review_response(self._responses[0]):
                 return self._responses.pop(0)
             return _direct_answer_review_response()
-        if _is_planner_gate_call(messages):
+        if _is_llm_call(kwargs, node="parse_intent", mode="planner_gate"):
             if self._responses and _is_planner_gate_response(self._responses[0]):
                 return self._responses.pop(0)
             return _continue_planning_plan_json()
@@ -67,8 +67,7 @@ class _FakeProvider:
         return "analysis ok"
 
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
-        self.complete_kwargs.append(dict(kwargs))
-        self.complete_messages.append(messages)
+        self._record_call(messages, kwargs)
         self.tool_calls += 1
         assert tools
         if self._responses:
@@ -79,28 +78,33 @@ class _FakeProvider:
         del messages, kwargs
         raise NotImplementedError
 
+    def _record_call(self, messages: list[BaseMessage], kwargs: dict[str, Any]) -> None:
+        self.complete_kwargs.append(dict(kwargs))
+        self.complete_metadata.append(_llm_metadata(kwargs))
+        self.complete_messages.append(messages)
+
 
 class _ScriptedToolProvider(_FakeProvider):
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
-        if _is_intent_router_call(messages):
-            self.complete_messages.append(messages)
+        self._record_call(messages, kwargs)
+        if _is_llm_call(kwargs, node="parse_intent", mode="intent_router"):
             if self._responses and _is_intent_router_response(self._responses[0]):
                 return str(self._responses.pop(0))
             return _router_response("COMMAND_PLAN")
-        if _is_direct_answer_review_call(messages):
-            self.complete_messages.append(messages)
+        if _is_llm_call(kwargs, node="parse_intent", mode="direct_answer_review"):
             if self._responses and _is_direct_answer_review_response(self._responses[0]):
                 return str(self._responses.pop(0))
             return _direct_answer_review_response()
-        if _is_planner_gate_call(messages):
-            self.complete_messages.append(messages)
+        if _is_llm_call(kwargs, node="parse_intent", mode="planner_gate"):
             if self._responses and _is_planner_gate_response(self._responses[0]):
                 return str(self._responses.pop(0))
             return _continue_planning_plan_json()
-        return await super().complete(messages, **kwargs)
+        if self._responses:
+            return str(self._responses.pop(0))
+        return "analysis ok"
 
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
-        self.complete_messages.append(messages)
+        self._record_call(messages, kwargs)
         self.tool_calls += 1
         if not self._responses:
             return "analysis ok"
@@ -139,26 +143,25 @@ class _ToolLoopFailingProvider(_FakeProvider):
 
 class _PlannerGateFailingProvider(_FakeProvider):
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
-        if _is_planner_gate_call(messages):
-            del kwargs
-            self.complete_messages.append(messages)
+        if _is_llm_call(kwargs, node="parse_intent", mode="planner_gate"):
+            self._record_call(messages, kwargs)
             raise ProviderError("planner gate unavailable")
         return await super().complete(messages, **kwargs)
 
 
 class _WizardPlannerFailingProvider(_FakeProvider):
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
-        if _is_wizard_planner_call(messages):
-            self.complete_messages.append(messages)
+        if _is_llm_call(kwargs, node="wizard_planner", mode="plan"):
+            self._record_call(messages, kwargs)
             raise ProviderError("wizard planner unavailable")
         return await super().complete(messages, **kwargs)
 
 
 class _RepairToolTimeoutProvider(_FakeProvider):
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
-        if _is_file_patch_repair_call(messages):
-            del tools, kwargs
-            self.complete_messages.append(messages)
+        if _is_llm_call(kwargs, node="repair_file_patch", mode="repair"):
+            del tools
+            self._record_call(messages, kwargs)
             self.tool_calls += 1
             raise ProviderError("provider request exceeded timeout (30.0s)")
         return await super().complete_with_tools(messages, tools, **kwargs)
@@ -166,8 +169,8 @@ class _RepairToolTimeoutProvider(_FakeProvider):
 
 class _RepairTimeoutProvider(_FakeProvider):
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
-        if _is_file_patch_repair_call(messages):
-            self.complete_messages.append(messages)
+        if _is_llm_call(kwargs, node="repair_file_patch", mode="repair"):
+            self._record_call(messages, kwargs)
             raise ProviderError("provider request exceeded timeout (30.0s)")
         return await super().complete(messages, **kwargs)
 
@@ -312,10 +315,42 @@ def _direct_answer_review_response(
     return json.dumps({"mode": mode, "reason": reason}, ensure_ascii=False)
 
 
-def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
-    return bool(messages) and str(messages[0].content).casefold().startswith(
-        "you are linuxagent's intent router."
+def _llm_metadata(kwargs: dict[str, Any]) -> dict[str, Any]:
+    metadata = kwargs.get(LLM_CALL_METADATA_KEY)
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _llm_attributes(kwargs: dict[str, Any]) -> dict[str, Any]:
+    attributes = _llm_metadata(kwargs).get("attributes")
+    return attributes if isinstance(attributes, dict) else {}
+
+
+def _is_llm_call(kwargs: dict[str, Any], *, node: str, mode: str | None = None) -> bool:
+    attributes = _llm_attributes(kwargs)
+    if attributes.get("node") != node:
+        return False
+    return mode is None or attributes.get("mode") == mode
+
+
+def _has_llm_call(provider: _FakeProvider, *, node: str, mode: str | None = None) -> bool:
+    return any(
+        _metadata_matches(metadata, node=node, mode=mode) for metadata in provider.complete_metadata
     )
+
+
+def _llm_call_count(provider: _FakeProvider, *, node: str, mode: str | None = None) -> int:
+    return sum(
+        1
+        for metadata in provider.complete_metadata
+        if _metadata_matches(metadata, node=node, mode=mode)
+    )
+
+
+def _metadata_matches(metadata: dict[str, Any], *, node: str, mode: str | None = None) -> bool:
+    attributes = metadata.get("attributes")
+    if not isinstance(attributes, dict) or attributes.get("node") != node:
+        return False
+    return mode is None or attributes.get("mode") == mode
 
 
 def _is_intent_router_response(text: str) -> bool:
@@ -331,24 +366,6 @@ def _is_intent_router_response(text: str) -> bool:
         "CLARIFY",
         "WIZARD_NEEDED",
     }
-
-
-def _is_planner_gate_call(messages: list[BaseMessage]) -> bool:
-    return bool(messages) and str(messages[0].content).casefold().startswith(
-        "you are linuxagent's pre-tool planning gate."
-    )
-
-
-def _is_wizard_planner_call(messages: list[BaseMessage]) -> bool:
-    return bool(messages) and "WizardPlan schema" in str(messages[0].content)
-
-
-def _is_wizard_response_call(messages: list[BaseMessage]) -> bool:
-    return bool(messages) and "wizard 状态" in str(messages[0].content)
-
-
-def _is_direct_answer_review_call(messages: list[BaseMessage]) -> bool:
-    return bool(messages) and "DIRECT_ANSWER reviewer" in str(messages[0].content)
 
 
 def _is_direct_answer_review_response(text: object) -> bool:
@@ -375,10 +392,6 @@ def _is_planner_gate_response(text: object) -> bool:
         "direct_answer",
         "continue_planning",
     }
-
-
-def _is_file_patch_repair_call(messages: list[BaseMessage]) -> bool:
-    return bool(messages) and "Previous FilePatchPlan JSON" in str(messages[-1].content)
 
 
 def _command_plan_json_with_hosts(command: str, hosts: list[str]) -> str:
@@ -503,7 +516,7 @@ def _wizard_submit_result() -> dict[str, Any]:
 
 
 async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
-    graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo hi"), "analysis ok"])
+    graph, provider = _graph(tmp_path, [command_plan_json("/bin/echo hi"), "analysis ok"])
     config = {"configurable": {"thread_id": "t1"}}
     result = await graph.ainvoke(initial_state("say hi", source=CommandSource.USER), config=config)
 
@@ -519,6 +532,10 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
         Command(resume={"decision": "yes", "latency_ms": 1}), config=config
     )
     assert "analysis ok" in str(resumed["messages"][-1].content)
+    assert _has_llm_call(provider, node="parse_intent", mode="intent_router")
+    assert _has_llm_call(provider, node="parse_intent", mode="planner_gate")
+    assert _has_llm_call(provider, node="parse_intent", mode="planner")
+    assert _has_llm_call(provider, node="analyze", mode="analysis")
     audit_records = [
         json.loads(line)
         for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
@@ -531,7 +548,7 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
 
 
 async def test_graph_wizard_needed_emits_stable_wizard_payload_schema(tmp_path) -> None:
-    graph, _provider = _graph(
+    graph, provider = _graph(
         tmp_path,
         [_router_response("WIZARD_NEEDED"), _wizard_plan_json()],
     )
@@ -579,7 +596,7 @@ async def test_graph_direct_answer_review_can_escalate_to_wizard(tmp_path) -> No
     payload = snapshot.tasks[0].interrupts[0].value
     assert payload["type"] == "wizard"
     assert snapshot.values["wizard_context"] == "帮我做一个个性化方案"
-    assert any(_is_direct_answer_review_call(messages) for messages in provider.complete_messages)
+    assert _has_llm_call(provider, node="parse_intent", mode="direct_answer_review")
 
 
 async def test_graph_direct_answer_review_respects_non_interactive_gate(tmp_path) -> None:
@@ -602,7 +619,7 @@ async def test_graph_direct_answer_review_respects_non_interactive_gate(tmp_path
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
     assert snapshot.values.get("wizard_context") is None
-    assert any(_is_wizard_response_call(messages) for messages in provider.complete_messages)
+    assert _has_llm_call(provider, node="parse_intent", mode="wizard_gate_response")
 
 
 async def test_graph_wizard_submit_resume_records_result_without_command(tmp_path) -> None:
@@ -670,11 +687,11 @@ async def test_graph_wizard_completed_bypasses_router_direct_answer(tmp_path) ->
     snapshot = await graph.aget_state(config)
     assert snapshot.values["pending_command"] == "/bin/echo hi"
     assert snapshot.values["direct_response"] is False
-    assert not any(_is_intent_router_call(messages) for messages in provider.complete_messages)
+    assert not _has_llm_call(provider, node="parse_intent", mode="intent_router")
 
 
 async def test_graph_wizard_payload_includes_stable_state_on_resume(tmp_path) -> None:
-    graph, _provider = _graph(
+    graph, provider = _graph(
         tmp_path,
         [_router_response("WIZARD_NEEDED"), _wizard_plan_json()],
     )
@@ -696,7 +713,7 @@ async def test_graph_wizard_payload_includes_stable_state_on_resume(tmp_path) ->
 
 
 async def test_graph_wizard_checkpoint_resume_updates_stable_state(tmp_path) -> None:
-    graph, _provider = _graph(
+    graph, provider = _graph(
         tmp_path,
         [_router_response("WIZARD_NEEDED"), _wizard_plan_json()],
     )
@@ -841,7 +858,7 @@ async def test_graph_wizard_planner_parse_failed_uses_model_response(tmp_path) -
     assert snapshot.values.get("pending_command") is None
     assert snapshot.values["direct_response"] is True
     assert str(result["messages"][-1].content) == "wizard parse reply"
-    assert any(_is_wizard_response_call(messages) for messages in provider.complete_messages)
+    assert _has_llm_call(provider, node="wizard", mode="response")
     audit_records = [
         json.loads(line)
         for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
@@ -886,7 +903,7 @@ async def test_graph_wizard_loop_guard_prevents_second_interrupt_after_failure(t
     assert snapshot.values.get("pending_command") is None
     assert snapshot.values["direct_response"] is True
     assert str(result["messages"][-1].content) == "wizard loop guard reply"
-    assert sum(_is_wizard_planner_call(messages) for messages in provider.complete_messages) == 1
+    assert _llm_call_count(provider, node="wizard_planner", mode="plan") == 1
 
 
 async def test_graph_wizard_planner_provider_failed_uses_model_response(tmp_path) -> None:
@@ -1417,7 +1434,7 @@ async def test_graph_repairs_create_patch_when_target_exists(tmp_path) -> None:
     alternate = tmp_path / "disk_info_1.sh"
     target.write_text("existing\n", encoding="utf-8")
     repaired_plan = file_patch_plan_json(str(alternate), "#!/bin/sh\necho disk\n")
-    graph, _provider = _graph(
+    graph, provider = _graph(
         tmp_path,
         [file_patch_plan_json(str(target), "#!/bin/sh\necho disk\n"), repaired_plan, "analysis ok"],
     )
@@ -1434,6 +1451,7 @@ async def test_graph_repairs_create_patch_when_target_exists(tmp_path) -> None:
     assert interrupts[0].value["repair_attempt"] == 1
     assert str(alternate) in interrupts[0].value["files_changed"]
     assert str(target) not in interrupts[0].value["files_changed"]
+    assert _has_llm_call(provider, node="repair_file_patch", mode="repair")
 
     resumed = await graph.ainvoke(
         Command(resume={"decision": "yes", "latency_ms": 1}), config=config
@@ -1451,7 +1469,7 @@ async def test_graph_retries_file_patch_repair_when_response_is_not_json(
     alternate = tmp_path / "disk_info_1.sh"
     target.write_text("existing\n", encoding="utf-8")
     repaired_plan = file_patch_plan_json(str(alternate), "#!/bin/sh\necho disk\n")
-    graph, _provider = _graph(
+    graph, provider = _graph(
         tmp_path,
         [
             file_patch_plan_json(str(target), "#!/bin/sh\necho disk\n"),
@@ -1472,6 +1490,7 @@ async def test_graph_retries_file_patch_repair_when_response_is_not_json(
     assert interrupts[0].value["type"] == "confirm_file_patch"
     assert interrupts[0].value["repair_attempt"] == 1
     assert "+echo disk" in interrupts[0].value["unified_diff"]
+    assert _has_llm_call(provider, node="repair_file_patch", mode="repair_retry")
 
     resumed = await graph.ainvoke(
         Command(resume={"decision": "yes", "latency_ms": 1}), config=config

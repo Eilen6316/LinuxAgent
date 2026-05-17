@@ -65,7 +65,7 @@ class WizardPlanner:
                 messages,
                 telemetry=telemetry,
                 trace_id=trace_id,
-                attributes={"node": "wizard_planner"},
+                attributes={"node": "wizard_planner", "mode": "plan"},
                 prompt_cache_key=prompt_cache_key,
             )
         except Exception as exc:

@@ -10,7 +10,7 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 from langchain_core.tools import BaseTool
 
-from ..interfaces import LLMProvider
+from ..interfaces import LLM_CALL_METADATA_KEY, LLMProvider
 from ..telemetry import TelemetryRecorder
 
 ToolObserver = Callable[[dict[str, Any]], Any]
@@ -35,7 +35,7 @@ async def complete_llm(
 ) -> str:
     options = LLMCallOptions(telemetry, trace_id, attributes, prompt_cache_key)
     with _llm_span(options):
-        response = await provider.complete(messages, **_cache_kwargs(options))
+        response = await provider.complete(messages, **_provider_kwargs(options))
     _record_llm_usage(options, provider)
     return response
 
@@ -50,7 +50,7 @@ async def complete_llm_with_tools(
     tool_observer: ToolObserver,
 ) -> str:
     call_kwargs = {
-        **_cache_kwargs(options),
+        **_provider_kwargs(options),
         "tool_runtime_limits": tool_runtime_limits,
         "tool_observer": tool_observer,
     }
@@ -68,6 +68,16 @@ def _cache_kwargs(options: LLMCallOptions) -> dict[str, str]:
     if not options.prompt_cache_key:
         return {}
     return {"prompt_cache_key": options.prompt_cache_key}
+
+
+def _provider_kwargs(options: LLMCallOptions) -> dict[str, Any]:
+    return {
+        **_cache_kwargs(options),
+        LLM_CALL_METADATA_KEY: {
+            "trace_id": options.trace_id,
+            "attributes": dict(options.attributes),
+        },
+    }
 
 
 def _llm_span(options: LLMCallOptions) -> Any:

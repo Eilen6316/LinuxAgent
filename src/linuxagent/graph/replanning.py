@@ -130,7 +130,7 @@ async def _complete_repair_plan(
             prompt_messages,
             telemetry=telemetry,
             trace_id=current_trace_id,
-            attributes={"node": "repair_plan"},
+            attributes={"node": "repair_plan", "mode": "command_repair"},
             prompt_cache_key=prompt_cache_key,
         )
     ).strip()
