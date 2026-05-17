@@ -6,6 +6,7 @@ import shlex
 from typing import Any
 
 from ..interfaces import CommandSource, SafetyLevel
+from ..policy.capabilities import DESTRUCTIVE_CAPABILITY_PREFIXES
 from ..services import CommandService
 from .payloads import may_whitelist
 from .state import AgentState
@@ -51,20 +52,9 @@ def conversation_permissions_enabled(command_service: CommandService) -> bool:
 
 
 def has_destructive_capability(capabilities: tuple[str, ...]) -> bool:
-    destructive_prefixes = (
-        "filesystem.delete",
-        "filesystem.truncate",
-        "block_device.",
-        "service.mutate",
-        "package.remove",
-        "container.mutate",
-        "kubernetes.",
-        "network.firewall",
-        "identity.mutate",
-        "cron.mutate",
-        "privilege.sudo",
+    return any(
+        capability.startswith(DESTRUCTIVE_CAPABILITY_PREFIXES) for capability in capabilities
     )
-    return any(capability.startswith(destructive_prefixes) for capability in capabilities)
 
 
 def _current_command(state: AgentState) -> tuple[str, ...]:

@@ -30,6 +30,7 @@ from ..interfaces import (
     SafetyResult,
 )
 from ..policy import DEFAULT_POLICY_ENGINE, PolicyDecision, PolicyEngine
+from ..policy.capabilities import DESTRUCTIVE_CAPABILITY_PREFIXES
 from ..sandbox.models import (
     SandboxRequest,
     SandboxRunner,
@@ -392,20 +393,9 @@ def _sandbox_unavailable_record(
 
 
 def _has_destructive_capability(capabilities: tuple[str, ...]) -> bool:
-    destructive_prefixes = (
-        "filesystem.delete",
-        "filesystem.truncate",
-        "block_device.",
-        "service.mutate",
-        "package.remove",
-        "container.mutate",
-        "kubernetes.",
-        "network.firewall",
-        "identity.mutate",
-        "cron.mutate",
-        "privilege.sudo",
+    return any(
+        capability.startswith(DESTRUCTIVE_CAPABILITY_PREFIXES) for capability in capabilities
     )
-    return any(capability.startswith(destructive_prefixes) for capability in capabilities)
 
 
 def _limited_callback(callback: OutputCallback, budget: _CallbackBudget) -> OutputCallback:

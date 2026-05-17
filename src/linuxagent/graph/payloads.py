@@ -9,6 +9,7 @@ from ..command_review import command_review
 from ..executors import is_destructive
 from ..interfaces import CommandSource, SafetyLevel, SafetyResult
 from ..plans import CommandPlan
+from ..policy.capabilities import DESTRUCTIVE_CAPABILITY_PREFIXES
 from ..runbooks import Runbook
 from .state import AgentState
 
@@ -71,20 +72,9 @@ def _is_destructive(command: str, capabilities: tuple[str, ...]) -> bool:
 
 
 def _has_destructive_capability(capabilities: tuple[str, ...]) -> bool:
-    destructive_prefixes = (
-        "filesystem.delete",
-        "filesystem.truncate",
-        "block_device.",
-        "service.mutate",
-        "package.remove",
-        "container.mutate",
-        "kubernetes.",
-        "network.firewall",
-        "identity.mutate",
-        "cron.mutate",
-        "privilege.sudo",
+    return any(
+        capability.startswith(DESTRUCTIVE_CAPABILITY_PREFIXES) for capability in capabilities
     )
-    return any(capability.startswith(destructive_prefixes) for capability in capabilities)
 
 
 def decision(response: Any) -> str:
