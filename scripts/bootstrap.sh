@@ -42,6 +42,7 @@ default_shell_profile() {
 
 install_config_env() {
     local profile_path="$1"
+    local profile_mode=""
     local quoted_config
     local tmp_profile
 
@@ -49,6 +50,7 @@ install_config_env() {
     mkdir -p "$(dirname "$profile_path")"
     tmp_profile="${profile_path}.tmp.$$"
     if [[ -f "$profile_path" ]]; then
+        profile_mode="$(stat -c '%a' "$profile_path" 2>/dev/null || stat -f '%Lp' "$profile_path")"
         awk -v begin="$ENV_MARKER_BEGIN" -v end="$ENV_MARKER_END" '
             $0 == begin { skip = 1; next }
             $0 == end { skip = 0; next }
@@ -64,6 +66,9 @@ install_config_env() {
         printf '%s\n' "$ENV_MARKER_END"
     } >> "$tmp_profile"
     mv "$tmp_profile" "$profile_path"
+    if [[ -n "$profile_mode" ]]; then
+        chmod "$profile_mode" "$profile_path"
+    fi
 }
 
 echo "==> Using ${PYTHON} -> $(${PYTHON} --version 2>&1)"

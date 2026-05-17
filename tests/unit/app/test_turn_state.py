@@ -45,6 +45,27 @@ async def test_new_turn_state_does_not_carry_completed_wizard_guard() -> None:
     assert state["wizard_failed_reason"] is None
 
 
+async def test_new_turn_state_carries_non_submit_wizard_guard_with_saved_plan() -> None:
+    state = await new_turn_state(
+        _Graph(
+            {
+                "wizard_attempted": True,
+                "wizard_plan": {"title": "Needs input", "steps": []},
+                "wizard_result": {"status": "cancel"},
+            }
+        ),
+        graph_config("thread"),
+        "continue",
+        history=[],
+        command_permissions=(),
+        prompt_cache_thread_id=None,
+        ui_interactive=True,
+    )
+
+    assert state["wizard_attempted"] is True
+    assert state["wizard_result"] == {"status": "cancel"}
+
+
 class _Graph:
     def __init__(self, values: dict[str, Any]) -> None:
         self._values = values

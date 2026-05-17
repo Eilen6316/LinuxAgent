@@ -39,6 +39,7 @@ from tenacity import (
 
 from ..config.models import APIConfig
 from ..interfaces import LLMProvider
+from ..security import redact_record
 from ..tools.catalog import ToolCatalogReport, inspect_tool_catalog
 from ..tools.sandbox import ToolRuntimeLimits, invoke_tool_with_sandbox, tool_sandbox_record
 from .errors import (
@@ -495,11 +496,12 @@ def _tool_event(
     started: float | None = None,
     tool: BaseTool | None = None,
 ) -> dict[str, Any]:
+    redacted_args = redact_record({"args": args}).get("args", {})
     event: dict[str, Any] = {
         "phase": phase,
         "status": "started",
         "tool_name": tool_name,
-        "args": args,
+        "args": redacted_args if isinstance(redacted_args, dict) else {},
     }
     if tool is not None:
         event["sandbox"] = tool_sandbox_record(tool)

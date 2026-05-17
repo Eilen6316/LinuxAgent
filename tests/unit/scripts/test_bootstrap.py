@@ -69,6 +69,42 @@ def test_bootstrap_exports_config_path_and_launcher_fallback(tmp_path: Path) -> 
     assert expected_export in launcher_text
 
 
+def test_bootstrap_preserves_existing_profile_permissions(tmp_path: Path) -> None:
+    repo = _copy_bootstrap_repo(tmp_path)
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    _write_fake_python(fake_bin / "python3")
+    _write_fake_python(fake_bin / "python")
+    _write_executable(fake_bin / "pip", "#!/usr/bin/env bash\nexit 0\n")
+    _write_executable(fake_bin / "pre-commit", "#!/usr/bin/env bash\nexit 0\n")
+
+    home = tmp_path / "home"
+    profile = tmp_path / "profile"
+    profile.write_text("export EXISTING=1\n", encoding="utf-8")
+    profile.chmod(0o600)
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "PYTHON": "python3",
+        "SHELL": "/bin/bash",
+        "LINUXAGENT_SHELL_PROFILE": str(profile),
+    }
+
+    subprocess.run(
+        [str(repo / "scripts" / "bootstrap.sh")],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert stat.S_IMODE(profile.stat().st_mode) == 0o600
+    assert "export EXISTING=1" in profile.read_text(encoding="utf-8")
+
+
 def _write_fake_python(path: Path) -> None:
     _write_executable(
         path,
@@ -96,3 +132,19 @@ exit 0
 def _write_executable(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
     path.chmod(0o755)
+
+
+def _copy_bootstrap_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    configs = repo / "configs"
+    scripts.mkdir(parents=True)
+    configs.mkdir()
+    bootstrap = scripts / "bootstrap.sh"
+    bootstrap.write_text(
+        (_REPO_ROOT / "scripts" / "bootstrap.sh").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    bootstrap.chmod(0o755)
+    (configs / "example.yaml").write_text("api:\n  api_key: ''\n", encoding="utf-8")
+    return repo

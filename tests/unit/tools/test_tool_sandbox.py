@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from langchain_core.tools import tool
 
@@ -97,3 +99,48 @@ async def test_tool_event_keeps_full_limited_output_for_ui_evidence() -> None:
 
     assert result.event["output_text"] == result.content
     assert result.event["output_preview"] == result.content[:500]
+
+
+async def test_sync_tool_timeout_returns_structured_timeout() -> None:
+    @tool
+    def slow_sync_tool() -> str:
+        """Sleep longer than the configured tool timeout."""
+        time.sleep(0.2)
+        return "late"
+
+    result = await invoke_tool_with_sandbox(
+        attach_tool_sandbox(
+            slow_sync_tool,
+            ToolSandboxSpec(profile=SandboxProfile.READ_ONLY, timeout_seconds=0.05),
+        ),
+        {},
+        limits=ToolRuntimeLimits(timeout_seconds=0.05, max_output_chars=200),
+        remaining_total_chars=200,
+    )
+
+    assert result.event["phase"] == "error"
+    assert result.event["status"] == "timeout"
+    assert "tool exceeded 0.05s" in result.content
+
+
+async def test_tool_event_redacts_sensitive_args() -> None:
+    @tool
+    def echo_secret(api_key: str, authorization: str, query: str) -> str:
+        """Return a benign string while receiving sensitive arguments."""
+        del api_key, authorization, query
+        return "ok"
+
+    result = await invoke_tool_with_sandbox(
+        attach_tool_sandbox(echo_secret, ToolSandboxSpec(profile=SandboxProfile.READ_ONLY)),
+        {
+            "api_key": "sk-1234567890abcdef",
+            "authorization": "Bearer secret-token-value",
+            "query": "token=visible-secret",
+        },
+        limits=ToolRuntimeLimits(max_output_chars=200),
+        remaining_total_chars=200,
+    )
+
+    assert result.event["args"]["api_key"] == "***redacted***"
+    assert result.event["args"]["authorization"] == "***redacted***"
+    assert result.event["args"]["query"] == "token=***redacted***"

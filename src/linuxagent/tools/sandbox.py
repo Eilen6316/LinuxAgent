@@ -125,7 +125,7 @@ async def invoke_tool_with_sandbox(
 async def _invoke_tool(tool: BaseTool, args: dict[str, Any]) -> Any:
     if _has_async_tool_callable(tool):
         return await tool.ainvoke(args)
-    return tool.invoke(args)
+    return await asyncio.to_thread(tool.invoke, args)
 
 
 def _has_async_tool_callable(tool: BaseTool) -> bool:
@@ -217,11 +217,12 @@ def _tool_event(
     *,
     truncated: bool = False,
 ) -> dict[str, Any]:
+    redacted_args = redact_record({"args": args}).get("args", {})
     return {
         "phase": phase,
         "status": status,
         "tool_name": tool.name,
-        "args": args,
+        "args": redacted_args if isinstance(redacted_args, dict) else {},
         "sandbox": tool_sandbox_record(tool),
         "output_preview": output[:500],
         "output_text": output,

@@ -55,9 +55,9 @@ def _carry_wizard_guard(state: AgentState, values: dict[str, Any]) -> None:
 def _should_carry_wizard_guard(values: dict[str, Any]) -> bool:
     if values.get("wizard_completed") is True:
         return False
+    result = values.get("wizard_result")
+    if isinstance(result, dict):
+        return result.get("status") != "submit"
     if values.get("wizard_plan") is not None:
         return False
-    if values.get("wizard_failed_reason") is not None:
-        return True
-    result = values.get("wizard_result")
-    return isinstance(result, dict) and result.get("status") != "submit"
+    return values.get("wizard_failed_reason") is not None

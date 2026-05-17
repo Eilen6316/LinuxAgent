@@ -541,6 +541,47 @@ async def test_complete_with_tools_times_out_tool_call() -> None:
     assert events[1]["status"] == "timeout"
 
 
+async def test_complete_with_tools_redacts_start_event_args() -> None:
+    events: list[dict[str, Any]] = []
+
+    @tool
+    async def lookup(api_key: str, query: str) -> str:
+        """Return a fake lookup result."""
+        del api_key, query
+        return "ok"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "lookup",
+                        "args": {
+                            "api_key": "sk-1234567890abcdef",
+                            "query": "token=visible-secret",
+                        },
+                        "id": "1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="lookup")],
+        [_sandboxed(lookup)],
+        tool_observer=events.append,
+    )
+
+    assert events[0]["phase"] == "start"
+    assert events[0]["args"]["api_key"] == "***redacted***"
+    assert events[0]["args"]["query"] == "token=***redacted***"
+
+
 async def test_complete_with_tools_uses_configured_max_rounds() -> None:
     @tool
     async def lookup_status(service: str) -> str:

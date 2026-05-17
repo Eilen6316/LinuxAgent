@@ -29,7 +29,7 @@ api:
   timeout: 30.0
   stream_timeout: 60.0
   max_retries: 3
-  temperature: 0.7
+  temperature: 0.3
   max_tokens: 2048
   # Token limit parameter name. Some API relays and older OpenAI-compatible
   # backends require max_tokens; newer OpenAI models use max_completion_tokens.

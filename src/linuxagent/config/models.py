@@ -109,7 +109,7 @@ class APIConfig(BaseModel):
     timeout: float = Field(default=30.0, gt=0, le=300)
     stream_timeout: float = Field(default=60.0, gt=0, le=600)
     max_retries: int = Field(default=3, ge=0, le=10)
-    temperature: float = Field(default=0.7, ge=0, le=2)
+    temperature: float = Field(default=0.3, ge=0, le=2)
     max_tokens: int = Field(default=2048, ge=1, le=65536)
     token_parameter: Literal["max_completion_tokens", "max_tokens"] = DEFAULT_OUTPUT_LIMIT_PARAMETER
     prompt_cache: bool = True
