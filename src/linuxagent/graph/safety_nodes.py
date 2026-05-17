@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shlex
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
@@ -13,6 +12,7 @@ from ..config.models import ClusterHost
 from ..interfaces import CommandSource, SafetyLevel
 from ..services import ClusterService, CommandService
 from ..telemetry import TelemetryRecorder
+from .command_permissions import conversation_permissions_enabled, normalize_command
 from .common import span, trace_id
 from .events import RuntimeEventObserver, notify_event
 from .state import AgentState
@@ -80,7 +80,7 @@ def _selected_safety_update(
         command,
         verdict,
         batch_hosts,
-        permissions_enabled=_conversation_permissions_enabled(command_service),
+        permissions_enabled=conversation_permissions_enabled(command_service),
     )
     if batch_hosts and level is SafetyLevel.SAFE:
         level = SafetyLevel.CONFIRM
@@ -202,11 +202,6 @@ def _permission_adjusted_level(
     return cast(SafetyLevel, verdict.level)
 
 
-def _conversation_permissions_enabled(command_service: CommandService) -> bool:
-    executor = getattr(command_service, "executor", None)
-    return bool(getattr(executor, "session_whitelist_enabled", True))
-
-
 def _sandbox_preview(
     command_service: CommandService,
     command: str,
@@ -244,20 +239,10 @@ def _safety_reason(
 
 
 def _has_permission(state: AgentState, command: str) -> bool:
-    key = _normalize_command(command)
+    key = normalize_command(command)
     if key is None:
         return False
     return key in state.get("command_permissions", ())
-
-
-def _normalize_command(command: str) -> str | None:
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return None
-    if not tokens:
-        return None
-    return " ".join(tokens)
 
 
 def _can_whitelist(verdict: Any) -> bool:
