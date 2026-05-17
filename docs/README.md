@@ -13,6 +13,7 @@ homepage.
 | [自动参数收集向导](zh/auto-wizard.md) | 中文自动 wizard 触发、交互、恢复和安全边界说明 |
 | [Quick Start](en/quickstart.md) | Short installation and first-run walkthrough |
 | [Development Guide](en/development.md) | Local development and test workflow |
+| [中文开发指南](zh/development.md) | 中文本地开发流程和架构稳定性门禁 |
 | [Provider Matrix](en/provider-matrix.md) | Supported provider paths, token parameters, and compatibility report format |
 | [Provider 兼容矩阵](zh/provider-matrix.md) | 中文 provider 兼容路径和反馈格式 |
 | [Runbook Authoring](en/runbook-authoring.md) | How to add safe YAML runbook guidance |

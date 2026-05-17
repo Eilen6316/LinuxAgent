@@ -95,6 +95,8 @@ jobs:
         run: python scripts/check_code_rules.py
       - name: Architecture boundaries
         run: python scripts/check_arch_boundaries.py
+      - name: Architecture stability budget
+        run: python scripts/check_architecture_budget.py
       - name: R-SEC-01 ban shell=True
         run: '! grep -rn "shell=True" src/linuxagent/'
       - name: R-SEC-03 ban AutoAddPolicy

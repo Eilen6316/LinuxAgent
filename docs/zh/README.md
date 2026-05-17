@@ -784,7 +784,7 @@ make verify-build  # build + wheel 安装 + package data 检查
 linuxagent audit verify
 ```
 
-更多细节见 [开发指南](../en/development.md)。
+更多细节见 [开发指南](development.md)。
 
 ---
 
@@ -809,7 +809,7 @@ git push origin v4.1.0     # 触发 release.yml
 - [Provider 兼容矩阵](provider-matrix.md) / [Provider Matrix](../en/provider-matrix.md)
 - [操作员安全模型](operator-safety.md) / [Operator Safety Model](../en/operator-safety.md)
 - [Runbook 编写指南](runbook-authoring.md) / [Runbook Authoring](../en/runbook-authoring.md)
-- [开发指南](../en/development.md)
+- [开发指南](development.md)
 - [发布指南](release.md) / [Release Guide](../en/release.md)
 - [v3 到 v4.0.0 迁移指南（中文）](migration-v3-to-v4.md)
 - [威胁模型（中文）](threat-model.md)

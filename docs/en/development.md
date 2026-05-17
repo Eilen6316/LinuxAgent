@@ -100,6 +100,25 @@ inspection belong under `src/linuxagent/graph/`. Service and tool modules must
 also stay LangGraph-free. `make security` and CI run
 `scripts/check_arch_boundaries.py` to guard these boundaries.
 
+### Architecture Stability Budget
+
+`make security` and CI also run `scripts/check_architecture_budget.py`. The
+budget turns the stabilization track into a regression gate:
+
+- `src/linuxagent/app/agent.py` remains capped at 300 physical lines.
+- Graph modules default to 430 physical lines. Existing larger modules have
+  narrow per-file caps so they cannot grow without an explicit follow-up split.
+- Safety-sensitive plan modules default to 260 physical lines, with a narrow
+  cap for the existing public plan model facade.
+- All Python functions remain capped at 50 physical lines.
+- Any new `AgentState` field must be listed in `graph/state_contracts.py` with
+  an owner section.
+- Any new graph node factory must be added to the budget coverage manifest with
+  a real unit test and a harness or boundary scenario.
+
+Tool sandbox metadata and subprocess ownership are enforced by
+`scripts/check_sandbox_rules.py`, which is part of the same security gate.
+
 ## Security Red Lines
 
 These are enforced both locally and in CI:

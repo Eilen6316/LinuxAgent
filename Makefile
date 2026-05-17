@@ -63,6 +63,8 @@ security:
 	@$(PYTHON) scripts/check_code_rules.py
 	@echo "--> architecture boundaries"
 	@$(PYTHON) scripts/check_arch_boundaries.py
+	@echo "--> architecture stability budget"
+	@$(PYTHON) scripts/check_architecture_budget.py
 	@echo "--> R-SEC-01 shell=True"
 	@! grep -rn "shell=True" src/linuxagent/
 	@echo "--> R-SEC-03 AutoAddPolicy"
