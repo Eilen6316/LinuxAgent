@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from ..i18n import Translator, default_translator
 from .controller import CHAT_ABOUT_THIS_ROW, TYPE_SOMETHING_ROW, WizardController
 
 
@@ -52,23 +53,23 @@ class WizardRenderModel:
     can_submit: bool
 
 
-FOOTER_TEXT = "Enter to select · Tab/Arrow keys to navigate · Esc to cancel"
-
-
-def build_render_model(controller: WizardController) -> WizardRenderModel:
+def build_render_model(
+    controller: WizardController, translator: Translator | None = None
+) -> WizardRenderModel:
+    translator = translator or default_translator()
     return WizardRenderModel(
         user_intent=controller.plan.user_intent,
-        tabs=_tabs(controller),
-        current_title=_current_title(controller),
-        option_rows=_option_rows(controller),
-        footer_text=FOOTER_TEXT,
+        tabs=_tabs(controller, translator),
+        current_title=_current_title(controller, translator),
+        option_rows=_option_rows(controller, translator),
+        footer_text=translator.t("ui.wizard.footer"),
         editing_text=controller.editing_text,
         text_buffer=controller.text_buffer,
         can_submit=controller.can_submit,
     )
 
 
-def _tabs(controller: WizardController) -> tuple[WizardTabItem, ...]:
+def _tabs(controller: WizardController, translator: Translator) -> tuple[WizardTabItem, ...]:
     tabs: list[WizardTabItem] = []
     for index, step in enumerate(controller.plan.steps):
         confirmed = controller.is_step_confirmed(step.id)
@@ -83,7 +84,7 @@ def _tabs(controller: WizardController) -> tuple[WizardTabItem, ...]:
         tabs.append(WizardTabItem(step.title, state, current, True))
     tabs.append(
         WizardTabItem(
-            "Submit",
+            translator.t("ui.wizard.submit"),
             "submit",
             controller.is_submit_tab,
             controller.can_submit,
@@ -92,14 +93,16 @@ def _tabs(controller: WizardController) -> tuple[WizardTabItem, ...]:
     return tuple(tabs)
 
 
-def _current_title(controller: WizardController) -> str:
+def _current_title(controller: WizardController, translator: Translator) -> str:
     if controller.is_submit_tab:
-        return "Submit"
+        return translator.t("ui.wizard.submit")
     title = controller.current_step.title
     return f"[{title}]" if not controller.is_step_confirmed(controller.current_step.id) else title
 
 
-def _option_rows(controller: WizardController) -> tuple[WizardOptionRow, ...]:
+def _option_rows(
+    controller: WizardController, translator: Translator
+) -> tuple[WizardOptionRow, ...]:
     if controller.is_submit_tab:
         return ()
     step = controller.current_step
@@ -119,8 +122,8 @@ def _option_rows(controller: WizardController) -> tuple[WizardOptionRow, ...]:
     rows.append(
         WizardOptionRow(
             id=TYPE_SOMETHING_ROW,
-            label="Type something",
-            description="输入自定义答案",
+            label=translator.t("ui.wizard.type_something"),
+            description=translator.t("ui.wizard.type_something_description"),
             focused=len(step.options) == controller.option_focus_index,
             selected=controller.text_for_current_step() is not None,
             kind="type_something",
@@ -130,8 +133,8 @@ def _option_rows(controller: WizardController) -> tuple[WizardOptionRow, ...]:
     rows.append(
         WizardOptionRow(
             id=CHAT_ABOUT_THIS_ROW,
-            label="Chat about this",
-            description="转入普通对话补全",
+            label=translator.t("ui.wizard.chat_about_this"),
+            description=translator.t("ui.wizard.chat_about_this_description"),
             focused=len(step.options) + 1 == controller.option_focus_index,
             selected=False,
             kind="chat_about_this",

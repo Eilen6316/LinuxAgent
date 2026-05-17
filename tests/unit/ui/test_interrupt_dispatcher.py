@@ -25,7 +25,7 @@ async def test_wizard_aware_ui_delegates_non_wizard_interrupts() -> None:
 
 
 async def test_wizard_aware_ui_handles_wizard_interrupt(monkeypatch) -> None:
-    async def fake_handler(payload: dict[str, object]) -> Any:
+    async def fake_handler(payload: dict[str, object], **_: Any) -> Any:
         assert payload["type"] == "wizard"
         return {"status": "cancel", "answers": [], "partial": True}
 

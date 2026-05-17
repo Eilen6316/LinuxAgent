@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from linuxagent.config.models import LanguageCode
+from linuxagent.i18n import Translator
 from linuxagent.ui.resume_selector import ResumeSelector
 
 
@@ -11,7 +13,11 @@ def test_resume_selector_moves_with_visible_window() -> None:
     sessions = [
         SimpleNamespace(thread_id=f"thread-{index}", label=f"session {index}") for index in range(5)
     ]
-    selector = ResumeSelector(sessions, max_visible=3)
+    selector = ResumeSelector(
+        sessions,
+        max_visible=3,
+        translator=Translator(LanguageCode.EN_US),
+    )
 
     selector.move(4)
 
@@ -45,7 +51,11 @@ def test_resume_selector_uses_label_not_dataclass_repr() -> None:
 
 
 def test_resume_selector_handles_empty_sessions() -> None:
-    selector = ResumeSelector([], max_visible=3)
+    selector = ResumeSelector(
+        [],
+        max_visible=3,
+        translator=Translator(LanguageCode.EN_US),
+    )
 
     selector.move(1)
     selector.page(1)
@@ -55,6 +65,14 @@ def test_resume_selector_handles_empty_sessions() -> None:
     assert selector.selected_thread_id() is None
     rendered = "".join(fragment[1] for fragment in selector._fragments())
     assert "Resume session" in rendered
+
+
+def test_resume_selector_default_title_is_chinese() -> None:
+    selector = ResumeSelector([], max_visible=3)
+
+    rendered = "".join(fragment[1] for fragment in selector._fragments())
+
+    assert "恢复会话" in rendered
 
 
 def test_resume_selector_pages_and_home_end() -> None:

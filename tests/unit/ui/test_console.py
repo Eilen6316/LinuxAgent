@@ -10,9 +10,17 @@ from typing import Any
 from prompt_toolkit.document import Document
 from rich.console import Console
 
+from linuxagent.config.models import LanguageCode
+from linuxagent.i18n import Translator
 from linuxagent.interfaces import ExecutionResult
 from linuxagent.ui import ConsoleUI
 from linuxagent.ui.console import SlashCommandCompleter
+
+EN_TRANSLATOR = Translator(LanguageCode.EN_US)
+
+
+def _english_console_ui(console: Console | None = None) -> ConsoleUI:
+    return ConsoleUI(console=console, translator=EN_TRANSLATOR)
 
 
 async def test_console_ui_non_tty_auto_denies(monkeypatch) -> None:
@@ -62,7 +70,7 @@ async def test_console_ui_input_stream_uses_prompt_session(monkeypatch, tmp_path
 
 def test_console_ui_prints_linuxagent_wordmark() -> None:
     console = Console(record=True, width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     ui._print_hero()
 
@@ -75,7 +83,7 @@ def test_console_ui_prints_linuxagent_wordmark() -> None:
 
 def test_console_ui_uses_compact_wordmark_on_narrow_terminals() -> None:
     console = Console(record=True, width=40)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     ui._print_hero()
 
@@ -130,7 +138,7 @@ def test_slash_command_completer_ignores_plain_text() -> None:
 
 def test_render_confirm_shows_basic_command_fields() -> None:
     console = Console(record=True, width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     ui._render_confirm(
         {
@@ -168,7 +176,7 @@ def test_render_confirm_shows_basic_command_fields() -> None:
 
 def test_render_confirm_shows_policy_details_and_whitelist_block() -> None:
     console = Console(record=True, width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     ui._render_confirm(
         {
@@ -195,7 +203,7 @@ def test_render_confirm_shows_policy_details_and_whitelist_block() -> None:
 
 def test_render_confirm_shows_inline_payload_with_line_numbers() -> None:
     console = Console(record=True, width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     ui._render_confirm(
         {
@@ -214,7 +222,7 @@ def test_render_confirm_shows_inline_payload_with_line_numbers() -> None:
 
 def test_render_confirm_marks_truncated_command_and_inline_payload() -> None:
     console = Console(record=True, width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
     payload = "print(" + repr("x" * 2000) + ")"
 
     ui._render_confirm(
@@ -235,7 +243,7 @@ def test_render_confirm_marks_truncated_command_and_inline_payload() -> None:
 
 def test_render_file_patch_confirm_shows_planned_diff() -> None:
     console = Console(record=True, color_system="truecolor", width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     ui._render_file_patch_confirm(
         {
@@ -268,6 +276,23 @@ def test_render_file_patch_confirm_shows_planned_diff() -> None:
     assert "1 +new" in rendered
 
 
+def test_render_file_patch_confirm_default_locale_is_chinese() -> None:
+    console = Console(record=True, color_system="truecolor", width=120)
+    ui = ConsoleUI(console=console)
+
+    ui._render_file_patch_confirm(
+        {
+            "goal": "Edit demo",
+            "files_changed": ["demo.sh"],
+            "unified_diff": "--- demo.sh\n+++ demo.sh\n@@ -1,1 +1,1 @@\n-old\n+new\n",
+        }
+    )
+
+    rendered = console.export_text()
+    assert "计划 diff" in rendered
+    assert "修改 demo.sh (+1 -1)" in rendered
+
+
 def test_file_patch_approval_asks_each_file(monkeypatch) -> None:
     decisions = iter([True, False, True])
     asked: list[str] = []
@@ -278,7 +303,7 @@ def test_file_patch_approval_asks_each_file(monkeypatch) -> None:
         return next(decisions)
 
     monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", fake_confirm)
-    ui = ConsoleUI()
+    ui = _english_console_ui()
 
     response = ui._approval_response(
         {
@@ -323,7 +348,7 @@ def test_file_patch_approval_pages_expanded_large_diff(monkeypatch) -> None:
 
     monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", fake_confirm)
     console = Console(record=True, width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
     body = "\n".join(f"+line {index}" for index in range(250))
 
     response = ui._approval_response(
@@ -349,7 +374,7 @@ def test_file_patch_approval_does_not_reexpand_full_diff(monkeypatch) -> None:
         return True
 
     monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", fake_confirm)
-    ui = ConsoleUI()
+    ui = _english_console_ui()
 
     response = ui._approval_response(
         {
@@ -367,14 +392,14 @@ def test_command_approval_can_allow_all_in_conversation(monkeypatch) -> None:
     seen_options: list[tuple[str, str]] = []
 
     class FakeSelector:
-        def __init__(self, options: tuple[Any, ...]) -> None:
+        def __init__(self, options: tuple[Any, ...], **_: Any) -> None:
             seen_options.extend((option.decision, option.label) for option in options)
 
         def choose(self) -> str:
             return "yes_all"
 
     monkeypatch.setattr("linuxagent.ui.console.ApprovalSelector", FakeSelector)
-    ui = ConsoleUI()
+    ui = _english_console_ui()
 
     response = ui._approval_response(
         {
@@ -394,9 +419,9 @@ def test_command_approval_can_allow_all_in_conversation(monkeypatch) -> None:
         },
     }
     assert seen_options == [
-        ("yes", "接受 / Yes"),
-        ("yes_all", "接受，本对话/恢复中不再询问 / Yes, don't ask again"),
-        ("no", "不接受 / No"),
+        ("yes", "Yes"),
+        ("yes_all", "Yes, don't ask again in this conversation/resume"),
+        ("no", "No"),
     ]
 
 
@@ -406,14 +431,14 @@ def test_command_approval_does_not_offer_allow_all_for_destructive_command(
     seen_decisions: list[str] = []
 
     class FakeSelector:
-        def __init__(self, options: tuple[Any, ...]) -> None:
+        def __init__(self, options: tuple[Any, ...], **_: Any) -> None:
             seen_decisions.extend(option.decision for option in options)
 
         def choose(self) -> str:
             return "yes"
 
     monkeypatch.setattr("linuxagent.ui.console.ApprovalSelector", FakeSelector)
-    ui = ConsoleUI()
+    ui = _english_console_ui()
 
     response = ui._approval_response(
         {
@@ -434,14 +459,14 @@ def test_command_approval_does_not_offer_allow_all_when_policy_forbids_whitelist
     seen_decisions: list[str] = []
 
     class FakeSelector:
-        def __init__(self, options: tuple[Any, ...]) -> None:
+        def __init__(self, options: tuple[Any, ...], **_: Any) -> None:
             seen_decisions.extend(option.decision for option in options)
 
         def choose(self) -> str:
             return "yes"
 
     monkeypatch.setattr("linuxagent.ui.console.ApprovalSelector", FakeSelector)
-    ui = ConsoleUI()
+    ui = _english_console_ui()
 
     response = ui._approval_response(
         {
@@ -458,7 +483,7 @@ def test_command_approval_does_not_offer_allow_all_when_policy_forbids_whitelist
 
 def test_file_patch_approval_applies_all_when_all_files_confirmed(monkeypatch) -> None:
     monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", lambda message, *, default: True)
-    ui = ConsoleUI()
+    ui = _english_console_ui()
 
     response = ui._approval_response(
         {"type": "confirm_file_patch", "files_changed": ["one.py", "two.py"]}
@@ -469,7 +494,7 @@ def test_file_patch_approval_applies_all_when_all_files_confirmed(monkeypatch) -
 
 def test_file_patch_approval_refuses_when_no_files_confirmed(monkeypatch) -> None:
     monkeypatch.setattr("linuxagent.ui.console.Confirm.ask", lambda message, *, default: False)
-    ui = ConsoleUI()
+    ui = _english_console_ui()
 
     response = ui._approval_response(
         {"type": "confirm_file_patch", "files_changed": ["one.py", "two.py"]}
@@ -480,7 +505,7 @@ def test_file_patch_approval_refuses_when_no_files_confirmed(monkeypatch) -> Non
 
 def test_render_confirm_shows_only_remaining_runbook_steps() -> None:
     console = Console(record=True, width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     ui._render_confirm(
         {
@@ -505,7 +530,7 @@ def test_render_confirm_shows_only_remaining_runbook_steps() -> None:
 
 def test_render_confirm_shows_batch_hosts() -> None:
     console = Console(record=True, width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     ui._render_confirm(
         {
@@ -533,7 +558,7 @@ def test_render_confirm_shows_batch_hosts() -> None:
 
 def test_render_confirm_shows_destructive_warning() -> None:
     console = Console(record=True, width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     ui._render_confirm({"command": "rm -rf /tmp/x", "is_destructive": True})
 
@@ -575,8 +600,8 @@ async def test_console_print_activity_uses_transient_working_status(monkeypatch)
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "Working: 规划命令" in rendered
-    assert "esc to interrupt" in rendered
+    assert "处理中: 规划命令" in rendered
+    assert "esc 中断" in rendered
     assert "╭" not in rendered
     assert "│" not in rendered
     assert "╰" not in rendered
@@ -600,8 +625,8 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "Working (" in rendered
-    assert "esc to interrupt" in rendered
+    assert "处理中（" in rendered
+    assert "esc 中断" in rendered
     assert "整理文件 workspace/disk_info.sh" in rendered
     assert "read_file · 95 lines" in rendered
 
@@ -613,7 +638,7 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
 async def test_console_print_activity_keeps_non_working_messages_plain(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     console = Console(record=True, width=120, force_terminal=True)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     await ui.print_activity("LinuxAgent 命令结束：exit 0")
 
@@ -623,7 +648,7 @@ async def test_console_print_activity_keeps_non_working_messages_plain(monkeypat
 
 async def test_console_print_execution_result_can_omit_streamed_output() -> None:
     console = Console(record=True, width=120)
-    ui = ConsoleUI(console=console)
+    ui = _english_console_ui(console)
 
     await ui.print_execution_result(
         ExecutionResult("/bin/echo marker", 0, "stdout-body\n", "", 0.1),

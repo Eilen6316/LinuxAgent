@@ -7,10 +7,14 @@ from typing import Any
 
 from prompt_toolkit.keys import Keys
 
+from linuxagent.config.models import LanguageCode
+from linuxagent.i18n import Translator
 from linuxagent.ui.wizard import WizardCheckpoint, render_fragments, wizard_key_bindings
 from linuxagent.wizard.controller import WizardController
 from linuxagent.wizard.models import WizardOption, WizardPlan, WizardStableState, WizardStep
 from linuxagent.wizard.render_model import build_render_model
+
+EN_TRANSLATOR = Translator(LanguageCode.EN_US)
 
 
 class _Event:
@@ -91,7 +95,8 @@ def _handlers(bindings: Any) -> dict[str, Callable[[object], None]]:
 def test_render_fragments_include_required_sections() -> None:
     controller = WizardController(_plan())
     rendered = "".join(
-        str(fragment[1]) for fragment in render_fragments(build_render_model(controller))
+        str(fragment[1])
+        for fragment in render_fragments(build_render_model(controller, EN_TRANSLATOR))
     )
 
     assert "部署服务" in rendered
@@ -99,6 +104,17 @@ def test_render_fragments_include_required_sections() -> None:
     assert "Type something" in rendered
     assert "Chat about this" in rendered
     assert "Enter to select" in rendered
+
+
+def test_render_fragments_default_locale_is_chinese() -> None:
+    controller = WizardController(_plan())
+    rendered = "".join(
+        str(fragment[1]) for fragment in render_fragments(build_render_model(controller))
+    )
+
+    assert "自定义输入" in rendered
+    assert "继续对话" in rendered
+    assert "Enter 选择" in rendered
 
 
 def test_single_render_does_not_show_checkbox() -> None:

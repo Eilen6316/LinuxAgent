@@ -455,7 +455,9 @@ class Container:
                     theme=self._config.ui.theme,
                     prompt_symbol=self._config.ui.prompt_symbol,
                     history_path=self._config.ui.history_path.with_name("prompt_history"),
-                )
+                    translator=self.translator(),
+                ),
+                translator=self.translator(),
             ),
         )
 

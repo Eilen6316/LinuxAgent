@@ -6,11 +6,15 @@ import sys
 
 from pydantic import ValidationError
 
+from ..i18n import Translator, default_translator
 from ..wizard.models import WizardPlan, WizardResult, WizardStableState
 from .wizard import WizardCheckpoint, run_wizard
 
 
-async def handle_wizard_interrupt(payload: dict[str, object]) -> dict[str, object]:
+async def handle_wizard_interrupt(
+    payload: dict[str, object], *, translator: Translator | None = None
+) -> dict[str, object]:
+    translator = translator or default_translator()
     if payload.get("type") != "wizard":
         raise ValueError("wizard interrupt payload type required")
     plan = _parse_plan(payload.get("plan"))
@@ -30,6 +34,7 @@ async def handle_wizard_interrupt(payload: dict[str, object]) -> dict[str, objec
         stable_state=stable_state,
         on_stable_state=capture_stable_state,
         checkpoint_on_stable_state=False,
+        translator=translator,
     )
     if isinstance(result, WizardCheckpoint):
         raise RuntimeError("wizard checkpoint exit is disabled for CLI interrupts")

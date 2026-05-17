@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from linuxagent.config.models import LanguageCode
+from linuxagent.i18n import Translator
 from linuxagent.ui.approval_selector import ApprovalOption, ApprovalSelector
 
 
@@ -35,13 +37,25 @@ def test_approval_selector_moves_and_clamps() -> None:
 
 
 def test_approval_selector_fragments_show_labels() -> None:
-    selector = ApprovalSelector(_options(), default_index=0)
+    selector = ApprovalSelector(
+        _options(),
+        default_index=0,
+        translator=Translator(LanguageCode.EN_US),
+    )
 
     rendered = "".join(str(fragment[1]) for fragment in selector._fragments())
 
     assert "Allow this operation?" in rendered
     assert "1. 接受 / Yes" in rendered
     assert "3. 不接受 / No" in rendered
+
+
+def test_approval_selector_fragments_use_default_chinese_title() -> None:
+    selector = ApprovalSelector(_options(), default_index=0)
+
+    rendered = "".join(str(fragment[1]) for fragment in selector._fragments())
+
+    assert "允许这次操作吗？" in rendered
 
 
 def test_approval_selector_requires_options() -> None:

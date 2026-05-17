@@ -15,6 +15,8 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from prompt_toolkit.styles import Style
 
+from ..i18n import Translator, default_translator
+
 
 @dataclass(frozen=True)
 class ApprovalOption:
@@ -28,10 +30,12 @@ class ApprovalOption:
 class ApprovalSelector:
     options: tuple[ApprovalOption, ...]
     default_index: int | None = None
+    translator: Translator | None = None
 
     def __post_init__(self) -> None:
         if not self.options:
             raise ValueError("approval selector requires at least one option")
+        self._translator = self.translator or default_translator()
         fallback_index = len(self.options) - 1
         index = fallback_index if self.default_index is None else self.default_index
         self._selected_index = min(max(index, 0), len(self.options) - 1)
@@ -103,8 +107,8 @@ class ApprovalSelector:
 
     def _fragments(self) -> StyleAndTextTuples:
         result: StyleAndTextTuples = [
-            ("class:title", "Allow this operation?\n"),
-            ("class:help", "Use Up/Down or number keys. Enter selects. Esc refuses.\n"),
+            ("class:title", f"{self._translator.t('ui.approval.title')}\n"),
+            ("class:help", f"{self._translator.t('ui.approval.help')}\n"),
             ("", "\n"),
         ]
         for index, option in enumerate(self.options):

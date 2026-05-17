@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from rich.console import Console
 
+from linuxagent.config.models import LanguageCode
+from linuxagent.i18n import Translator
 from linuxagent.ui.diff_renderer import (
     DiffRenderer,
     diff_display_summary,
@@ -11,6 +13,8 @@ from linuxagent.ui.diff_renderer import (
     diff_summary,
     parse_unified_diff_files,
 )
+
+EN_TRANSLATOR = Translator(LanguageCode.EN_US)
 
 
 def test_parse_unified_diff_files_splits_multiple_files() -> None:
@@ -50,7 +54,8 @@ def test_diff_summary_counts_files_additions_and_deletions() -> None:
                 "@@ -0,0 +1 @@",
                 "+created",
             ]
-        )
+        ),
+        translator=EN_TRANSLATOR,
     )
 
     assert summary == "2 files, +2 -1"
@@ -58,7 +63,7 @@ def test_diff_summary_counts_files_additions_and_deletions() -> None:
 
 def test_diff_renderer_outputs_file_scoped_panels() -> None:
     console = Console(record=True, width=120)
-    renderer = DiffRenderer()
+    renderer = DiffRenderer(translator=EN_TRANSLATOR)
 
     console.print(
         renderer.render(
@@ -87,7 +92,7 @@ def test_diff_renderer_outputs_file_scoped_panels() -> None:
 
 def test_diff_renderer_can_truncate_large_file_diff() -> None:
     console = Console(record=True, width=120)
-    renderer = DiffRenderer(max_lines_per_file=3)
+    renderer = DiffRenderer(max_lines_per_file=3, translator=EN_TRANSLATOR)
 
     console.print(renderer.render("--- demo.py\n+++ demo.py\n@@ -1,2 +1,2 @@\n-old\n+new\n"))
     rendered = console.export_text()
@@ -98,7 +103,7 @@ def test_diff_renderer_can_truncate_large_file_diff() -> None:
 
 def test_diff_renderer_labels_file_panels_with_indexes() -> None:
     console = Console(record=True, width=120)
-    renderer = DiffRenderer()
+    renderer = DiffRenderer(translator=EN_TRANSLATOR)
 
     console.print(
         renderer.render(
@@ -127,7 +132,7 @@ def test_diff_renderer_labels_file_panels_with_indexes() -> None:
 def test_diff_renderer_truncates_large_diff_by_default() -> None:
     console = Console(record=True, width=120)
     body = "\n".join(f"+line {index}" for index in range(250))
-    renderer = DiffRenderer()
+    renderer = DiffRenderer(translator=EN_TRANSLATOR)
 
     console.print(renderer.render(f"--- /dev/null\n+++ demo.py\n@@ -0,0 +250 @@\n{body}\n"))
 
@@ -137,7 +142,7 @@ def test_diff_renderer_truncates_large_diff_by_default() -> None:
 def test_diff_renderer_can_render_later_pages() -> None:
     console = Console(record=True, width=120)
     body = "\n".join(f"+line {index}" for index in range(5))
-    renderer = DiffRenderer(max_lines_per_file=4)
+    renderer = DiffRenderer(max_lines_per_file=4, translator=EN_TRANSLATOR)
     file = parse_unified_diff_files(f"--- /dev/null\n+++ demo.py\n@@ -0,0 +5 @@\n{body}\n")[0]
 
     console.print(renderer.render_file_page(file, 2))
@@ -153,9 +158,19 @@ def test_diff_display_summary_reports_hidden_lines() -> None:
     summary = diff_display_summary(
         f"--- /dev/null\n+++ demo.py\n@@ -0,0 +5 @@\n{body}\n",
         max_lines_per_file=3,
+        translator=EN_TRANSLATOR,
     )
 
-    assert summary == "1 file diff paged, 5 lines hidden"
+    assert summary == "Paged file diffs: 1; 5 lines hidden"
+
+
+def test_diff_renderer_default_locale_is_chinese() -> None:
+    console = Console(record=True, width=120)
+    renderer = DiffRenderer()
+
+    console.print(renderer.render("--- /dev/null\n+++ demo.py\n@@ -0,0 +1 @@\n+created\n"))
+
+    assert "新增 demo.py (+1 -0)" in console.export_text()
 
 
 def test_diff_line_style_marks_changed_lines_only() -> None:

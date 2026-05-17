@@ -5,13 +5,15 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from ..i18n import Translator, default_translator
 from ..interfaces import ExecutionResult, UserInterface
 from .wizard_interrupt import handle_wizard_interrupt
 
 
 class WizardAwareUserInterface(UserInterface):
-    def __init__(self, wrapped: UserInterface) -> None:
+    def __init__(self, wrapped: UserInterface, *, translator: Translator | None = None) -> None:
         self._wrapped = wrapped
+        self._translator = translator or default_translator()
 
     async def input_stream(self) -> AsyncGenerator[str, None]:
         async for item in self._wrapped.input_stream():
@@ -20,7 +22,7 @@ class WizardAwareUserInterface(UserInterface):
     async def handle_interrupt(self, payload: dict[str, Any]) -> dict[str, Any]:
         if payload.get("type") != "wizard":
             return await self._wrapped.handle_interrupt(payload)
-        return await handle_wizard_interrupt(payload)
+        return await handle_wizard_interrupt(payload, translator=self._translator)
 
     async def print(self, text: str) -> None:
         await self._wrapped.print(text)

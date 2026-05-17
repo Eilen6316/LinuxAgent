@@ -15,6 +15,8 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from prompt_toolkit.styles import Style
 
+from ..i18n import Translator, default_translator
+
 MAX_VISIBLE_RESUME_ITEMS = 12
 
 
@@ -24,8 +26,10 @@ class ResumeSelector:
 
     sessions: list[Any]
     max_visible: int = MAX_VISIBLE_RESUME_ITEMS
+    translator: Translator | None = None
 
     def __post_init__(self) -> None:
+        self._translator = self.translator or default_translator()
         self._selected_index = 0
         self._top_index = 0
 
@@ -115,8 +119,8 @@ class ResumeSelector:
 
     def _fragments(self) -> StyleAndTextTuples:
         result: StyleAndTextTuples = [
-            ("class:title", "Resume session\n"),
-            ("class:help", "Use Up/Down or mouse. Enter resumes. Esc cancels.\n"),
+            ("class:title", f"{self._translator.t('ui.resume_selector.title')}\n"),
+            ("class:help", f"{self._translator.t('ui.resume_selector.help')}\n"),
             ("", "\n"),
         ]
         for index, session in self._visible_sessions():
@@ -124,7 +128,9 @@ class ResumeSelector:
             prefix = "❯ " if selected else "  "
             style = "class:selected" if selected else "class:item"
             result.append((style, prefix, self._mouse_handler(index)))
-            result.append((style, _session_label(session), self._mouse_handler(index)))
+            result.append(
+                (style, _session_label(session, self._translator), self._mouse_handler(index))
+            )
             result.append(("", "\n"))
         result.extend(self._footer())
         return result
@@ -136,7 +142,15 @@ class ResumeSelector:
         end = min(self._top_index + self._visible_count(), len(self.sessions))
         return [
             ("", "\n"),
-            ("class:help", f"Showing {start}-{end} of {len(self.sessions)} sessions"),
+            (
+                "class:help",
+                self._translator.t(
+                    "ui.resume_selector.showing",
+                    start=start,
+                    end=end,
+                    total=len(self.sessions),
+                ),
+            ),
         ]
 
     def _visible_sessions(self) -> list[tuple[int, Any]]:
@@ -193,9 +207,10 @@ def _style() -> Style:
     )
 
 
-def _session_label(session: Any) -> str:
+def _session_label(session: Any, translator: Translator | None = None) -> str:
+    translator = translator or default_translator()
     label = getattr(session, "label", None)
     if isinstance(label, str) and label:
         return label
-    title = str(getattr(session, "title", "Untitled session"))
-    return title if title else "Untitled session"
+    title = str(getattr(session, "title", translator.t("ui.resume_selector.untitled")))
+    return title if title else translator.t("ui.resume_selector.untitled")

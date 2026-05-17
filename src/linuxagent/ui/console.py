@@ -19,11 +19,13 @@ from rich.prompt import Confirm
 from rich.text import Text
 
 from ..execution_display import execution_display_text
+from ..i18n import Translator, default_translator
 from ..interfaces import ExecutionResult, UserInterface
 from .approval_selector import ApprovalOption, ApprovalSelector
 from .confirmation_renderer import ConfirmationRenderer
 from .diff_renderer import (
     DiffRenderer,
+    diff_file_title,
     diff_line_style,
     parse_unified_diff_files,
     render_unified_diff,
@@ -44,11 +46,13 @@ class ConsoleUI(UserInterface):
         prompt_symbol: str = "❯",
         history_path: Path | None = None,
         session_factory: Any | None = None,
+        translator: Translator | None = None,
     ) -> None:
         self._console = console or Console()
         self._theme = theme
         self._prompt_symbol = prompt_symbol
         self._history_path = history_path or (Path.home() / ".linuxagent" / "prompt_history")
+        self._translator = translator or default_translator()
         self._activity_visible = True
         self._working_status: WorkingStatus | None = None
         self._prompt_session = PromptSessionManager(
@@ -56,8 +60,13 @@ class ConsoleUI(UserInterface):
             prompt_symbol=prompt_symbol,
             history_path=self._history_path,
             session_factory=session_factory,
+            translator=self._translator,
         )
-        self._confirmation_renderer = ConfirmationRenderer(self._console, theme=theme)
+        self._confirmation_renderer = ConfirmationRenderer(
+            self._console,
+            theme=theme,
+            translator=self._translator,
+        )
 
     async def input_stream(self) -> AsyncGenerator[str, None]:
         if not sys.stdin.isatty():
@@ -104,13 +113,14 @@ class ConsoleUI(UserInterface):
         self.clear_activity()
         display = execution_display_text(result, include_output=include_output)
         style = "green" if result.exit_code == 0 else "red"
-        title = f"Command result · exit {result.exit_code}"
+        title = self._translator.t("ui.console.command_result_title", exit_code=result.exit_code)
         self._console.print(Panel(Text(display.text), title=title, border_style=style))
 
     async def print_activity(self, text: str) -> None:
         if not self._activity_visible:
             return
-        if text.startswith("LinuxAgent 正在") and sys.stdin.isatty() and self._console.is_terminal:
+        working_prefix = self._translator.t("ui.working.activity_prefix")
+        if text.startswith(working_prefix) and sys.stdin.isatty() and self._console.is_terminal:
             self.start_working(text)
             return
         self.clear_activity()
@@ -122,7 +132,11 @@ class ConsoleUI(UserInterface):
         if not sys.stdin.isatty() or not self._console.is_terminal:
             return
         if self._working_status is None:
-            self._working_status = WorkingStatus(self._console, theme=self._theme)
+            self._working_status = WorkingStatus(
+                self._console,
+                theme=self._theme,
+                translator=self._translator,
+            )
         self._working_status.update(text)
 
     def clear_activity(self) -> None:
@@ -142,7 +156,7 @@ class ConsoleUI(UserInterface):
         self.clear_activity()
         if not sys.stdin.isatty():
             return None
-        return await ResumeSelector(sessions).choose()
+        return await ResumeSelector(sessions, translator=self._translator).choose()
 
     async def wait_for_cancel(self) -> str:
         if not sys.stdin.isatty():
@@ -195,12 +209,14 @@ class ConsoleUI(UserInterface):
     def _approval_response(self, payload: dict[str, Any]) -> dict[str, Any]:
         files = tuple(str(item) for item in payload.get("files_changed", ()) if str(item))
         if payload.get("type") == "confirm_file_patch":
-            _review_file_patch_diff(payload, self._console)
+            _review_file_patch_diff(payload, self._console, self._translator)
         if payload.get("type") == "confirm_file_patch" and len(files) > 1:
-            return _file_patch_approval_response(files)
+            return _file_patch_approval_response(files, self._translator)
         if payload.get("type") == "confirm_command":
-            return _command_approval_response(payload)
-        approved = Confirm.ask("[bold]Allow this operation?[/]", default=False)
+            return _command_approval_response(payload, self._translator)
+        approved = Confirm.ask(
+            f"[bold]{self._translator.t('ui.confirm.allow_operation')}[/]", default=False
+        )
         return {"decision": "yes" if approved else "no"}
 
 
@@ -217,8 +233,18 @@ HERO_WORD = (
 )
 
 
-def _file_patch_approval_response(files: tuple[str, ...]) -> dict[str, Any]:
-    selected = tuple(file for file in files if Confirm.ask(f"[bold]Apply {file}?[/]", default=True))
+def _file_patch_approval_response(
+    files: tuple[str, ...], translator: Translator | None = None
+) -> dict[str, Any]:
+    translator = translator or default_translator()
+    selected = tuple(
+        file
+        for file in files
+        if Confirm.ask(
+            f"[bold]{translator.t('ui.confirm.apply_file', file=file)}[/]",
+            default=True,
+        )
+    )
     if not selected:
         return {"decision": "no"}
     if selected == files:
@@ -226,8 +252,13 @@ def _file_patch_approval_response(files: tuple[str, ...]) -> dict[str, Any]:
     return {"decision": "yes", "selected_files": list(selected)}
 
 
-def _command_approval_response(payload: dict[str, Any]) -> dict[str, Any]:
-    decision = ApprovalSelector(_approval_options(payload)).choose()
+def _command_approval_response(
+    payload: dict[str, Any], translator: Translator | None = None
+) -> dict[str, Any]:
+    translator = translator or default_translator()
+    decision = ApprovalSelector(
+        _approval_options(payload, translator), translator=translator
+    ).choose()
     if decision == "yes_all":
         return {
             "decision": "yes_all",
@@ -238,13 +269,16 @@ def _command_approval_response(payload: dict[str, Any]) -> dict[str, Any]:
     return {"decision": "yes" if decision == "yes" else "no"}
 
 
-def _approval_options(payload: dict[str, Any]) -> tuple[ApprovalOption, ...]:
+def _approval_options(
+    payload: dict[str, Any], translator: Translator | None = None
+) -> tuple[ApprovalOption, ...]:
+    translator = translator or default_translator()
     options = [
         ApprovalOption(
             "y",
             "yes",
-            "接受 / Yes",
-            "只允许这一次操作；下次类似操作还会继续询问。",
+            translator.t("ui.approval.yes_label"),
+            translator.t("ui.approval.yes_description"),
         )
     ]
     if _can_allow_conversation(payload):
@@ -252,16 +286,16 @@ def _approval_options(payload: dict[str, Any]) -> tuple[ApprovalOption, ...]:
             ApprovalOption(
                 "a",
                 "yes_all",
-                "接受，本对话/恢复中不再询问 / Yes, don't ask again",
-                "允许当前计划中的匹配命令，仅在当前对话和 /resume 这个对话时生效。",
+                translator.t("ui.approval.yes_all_label"),
+                translator.t("ui.approval.yes_all_description"),
             )
         )
     options.append(
         ApprovalOption(
             "n",
             "no",
-            "不接受 / No",
-            "拒绝这次操作；LinuxAgent 不会执行它。",
+            translator.t("ui.approval.no_label"),
+            translator.t("ui.approval.no_description"),
         )
     )
     return tuple(options)
@@ -286,32 +320,41 @@ def _permission_candidates(payload: dict[str, Any]) -> list[dict[str, str]]:
     ]
 
 
-def _review_file_patch_diff(payload: dict[str, Any], console: Console) -> None:
+def _review_file_patch_diff(
+    payload: dict[str, Any], console: Console, translator: Translator | None = None
+) -> None:
+    translator = translator or default_translator()
     files = parse_unified_diff_files(str(payload.get("unified_diff") or ""))
     if not files:
         return
-    renderer = DiffRenderer()
+    renderer = DiffRenderer(translator=translator)
     for file in files:
         if renderer.page_count(file) <= 1:
             continue
         if not Confirm.ask(
-            f"[bold]Show hidden diff pages for {file.display_path}?[/]",
+            f"[bold]{translator.t('ui.confirm.show_hidden_diff_pages', file=file.display_path)}[/]",
             default=False,
         ):
             continue
-        _page_file_diff(console, renderer, file, start_page=2)
+        _page_file_diff(console, renderer, file, start_page=2, translator=translator)
 
 
 def _page_file_diff(
-    console: Console, renderer: DiffRenderer, file: Any, *, start_page: int = 1
+    console: Console,
+    renderer: DiffRenderer,
+    file: Any,
+    *,
+    start_page: int = 1,
+    translator: Translator | None = None,
 ) -> None:
+    translator = translator or default_translator()
     page_count = renderer.page_count(file)
     page = max(1, min(start_page, page_count))
     while page <= page_count:
         console.print(
             Panel(
                 renderer.render_file_page(file, page),
-                title=f"[bold]{file.title}[/]",
+                title=f"[bold]{diff_file_title(file, translator)}[/]",
                 border_style="bright_magenta",
                 padding=(1, 2),
             )
@@ -319,7 +362,9 @@ def _page_file_diff(
         if page >= page_count:
             return
         if not Confirm.ask(
-            f"[bold]Show next hidden diff page for {file.display_path}? ({page + 1}/{page_count})[/]",
+            (
+                f"[bold]{translator.t('ui.confirm.show_next_hidden_diff_page', file=file.display_path, page=page + 1, page_count=page_count)}[/]"
+            ),
             default=True,
         ):
             return

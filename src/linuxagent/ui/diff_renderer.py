@@ -9,6 +9,8 @@ from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.text import Text
 
+from ..i18n import Translator, default_translator
+
 DEFAULT_MAX_LINES_PER_FILE = 200
 _HUNK_RE = re.compile(r"^@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@")
 
@@ -75,8 +77,14 @@ class DiffStats:
 
 
 class DiffRenderer:
-    def __init__(self, *, max_lines_per_file: int | None = DEFAULT_MAX_LINES_PER_FILE) -> None:
+    def __init__(
+        self,
+        *,
+        max_lines_per_file: int | None = DEFAULT_MAX_LINES_PER_FILE,
+        translator: Translator | None = None,
+    ) -> None:
         self._max_lines_per_file = max_lines_per_file
+        self._translator = translator or default_translator()
 
     def render(self, diff_text: str) -> RenderableType:
         files = parse_unified_diff_files(diff_text)
@@ -86,7 +94,7 @@ class DiffRenderer:
         panels = [
             Panel(
                 self._render_file(file),
-                title=f"[bold]{index}/{total_files} {file.title}[/]",
+                title=f"[bold]{index}/{total_files} {diff_file_title(file, self._translator)}[/]",
                 subtitle=self._file_subtitle(file),
                 border_style="bright_magenta",
                 padding=(1, 2),
@@ -102,7 +110,7 @@ class DiffRenderer:
 
     def render_file_page(self, file: DiffFile, page: int) -> Text:
         if self._max_lines_per_file is None:
-            return render_compact_file_diff(file)
+            return render_compact_file_diff(file, translator=self._translator)
         page_count = self.page_count(file)
         page_number = max(1, min(page, page_count))
         start = (page_number - 1) * self._max_lines_per_file
@@ -113,11 +121,16 @@ class DiffRenderer:
             file.lines[start:end],
             old_line=old_line,
             new_line=new_line,
+            translator=self._translator,
         )
         if page_count > 1:
             rendered.append(
-                f"... page {page_number}/{page_count}; "
-                f"{max(len(file.lines) - end, 0)} more diff lines hidden\n",
+                self._translator.t(
+                    "ui.diff.page_more_hidden",
+                    page=page_number,
+                    page_count=page_count,
+                    lines=max(len(file.lines) - end, 0),
+                ),
                 style="dim",
             )
         return rendered
@@ -129,31 +142,41 @@ class DiffRenderer:
         if self._max_lines_per_file is None or len(file.lines) <= self._max_lines_per_file:
             return ""
         pages = _page_count(len(file.lines), self._max_lines_per_file)
-        return f"[dim]page 1/{pages}; showing first {self._max_lines_per_file} lines[/]"
+        text = self._translator.t(
+            "ui.diff.subtitle_first_page",
+            pages=pages,
+            lines=self._max_lines_per_file,
+        )
+        return f"[dim]{text}[/]"
 
 
-def diff_summary(diff_text: str) -> str:
+def diff_summary(diff_text: str, *, translator: Translator | None = None) -> str:
+    translator = translator or default_translator()
     files = parse_unified_diff_files(diff_text)
     if files:
-        return DiffStats.from_files(files).summary
+        return diff_stats_summary(DiffStats.from_files(files), translator=translator)
     stats = DiffStats.from_lines(tuple(diff_text.splitlines()))
-    return stats.summary
+    return diff_stats_summary(stats, translator=translator)
 
 
 def diff_display_summary(
-    diff_text: str, *, max_lines_per_file: int | None = DEFAULT_MAX_LINES_PER_FILE
+    diff_text: str,
+    *,
+    max_lines_per_file: int | None = DEFAULT_MAX_LINES_PER_FILE,
+    translator: Translator | None = None,
 ) -> str:
+    translator = translator or default_translator()
     files = parse_unified_diff_files(diff_text)
     if not files:
         line_count = len(diff_text.splitlines())
         if max_lines_per_file is None or line_count <= max_lines_per_file:
-            return "full diff shown"
-        return _hidden_summary(line_count, max_lines_per_file)
+            return translator.t("ui.diff.full_shown")
+        return _hidden_summary(line_count, max_lines_per_file, translator)
     hidden_files = tuple(file for file in files if _is_truncated(file, max_lines_per_file))
     if not hidden_files:
-        return "full diff shown"
+        return translator.t("ui.diff.full_shown")
     hidden_lines = sum(len(file.lines) - int(max_lines_per_file or 0) for file in hidden_files)
-    return f"{len(hidden_files)} file diff paged, {hidden_lines} lines hidden"
+    return translator.t("ui.diff.paged_files", files=len(hidden_files), lines=hidden_lines)
 
 
 def parse_unified_diff_files(diff_text: str) -> tuple[DiffFile, ...]:
@@ -193,9 +216,11 @@ def render_compact_file_diff(
     *,
     old_line: int = 0,
     new_line: int = 0,
+    translator: Translator | None = None,
 ) -> Text:
+    translator = translator or default_translator()
     rendered = Text()
-    rendered.append(f"{file.title}\n", style="bold white")
+    rendered.append(f"{diff_file_title(file, translator)}\n", style="bold white")
     for line in lines or file.lines:
         hunk = _HUNK_RE.match(line)
         if hunk is not None:
@@ -279,6 +304,34 @@ def _page_count(total_lines: int, page_size: int) -> int:
     return max(1, (total_lines + page_size - 1) // page_size)
 
 
-def _hidden_summary(line_count: int, max_lines_per_file: int) -> str:
+def diff_file_title(file: DiffFile, translator: Translator | None = None) -> str:
+    translator = translator or default_translator()
+    stats = file.stats
+    return (
+        f"{_diff_action(file, translator)} {file.display_path} "
+        f"(+{stats.additions} -{stats.deletions})"
+    )
+
+
+def diff_stats_summary(stats: DiffStats, *, translator: Translator | None = None) -> str:
+    translator = translator or default_translator()
+    key = "ui.diff.summary.one" if stats.files == 1 else "ui.diff.summary.many"
+    return translator.t(
+        key,
+        files=stats.files,
+        additions=stats.additions,
+        deletions=stats.deletions,
+    )
+
+
+def _diff_action(file: DiffFile, translator: Translator) -> str:
+    if file.old_path == "/dev/null":
+        return translator.t("ui.diff.action.created")
+    if file.new_path == "/dev/null":
+        return translator.t("ui.diff.action.deleted")
+    return translator.t("ui.diff.action.edited")
+
+
+def _hidden_summary(line_count: int, max_lines_per_file: int, translator: Translator) -> str:
     hidden = line_count - max_lines_per_file
-    return f"diff paged, {hidden} lines hidden"
+    return translator.t("ui.diff.paged_generic", lines=hidden)

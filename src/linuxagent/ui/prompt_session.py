@@ -12,7 +12,8 @@ from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
 
-from ..product_context import SLASH_COMMANDS
+from ..i18n import Translator, default_translator
+from ..product_context import slash_commands
 
 _DIRECT_COMMAND_PROMPT_STYLE = "ansibrightmagenta"
 
@@ -25,10 +26,12 @@ class PromptSessionManager:
         prompt_symbol: str,
         history_path: Path,
         session_factory: Any | None = None,
+        translator: Translator | None = None,
     ) -> None:
         self._theme = theme
         self._prompt_symbol = prompt_symbol
         self._history_path = history_path
+        self._translator = translator or default_translator()
         self._session_factory = session_factory or self._default_session_factory
 
     def create_session(self) -> Any:
@@ -61,7 +64,7 @@ class PromptSessionManager:
         os.chmod(self._history_path, 0o600)
         return PromptSession(
             history=FileHistory(str(self._history_path)),
-            completer=cast(Completer, SlashCommandCompleter()),
+            completer=cast(Completer, SlashCommandCompleter(self._translator)),
             complete_while_typing=True,
             reserve_space_for_menu=8,
         )
@@ -70,6 +73,9 @@ class PromptSessionManager:
 class SlashCommandCompleter:
     """Prompt-toolkit completer for slash commands."""
 
+    def __init__(self, translator: Translator | None = None) -> None:
+        self._translator = translator or default_translator()
+
     def get_completions(
         self, document: Document, complete_event: CompleteEvent
     ) -> Iterable[Completion]:
@@ -77,7 +83,7 @@ class SlashCommandCompleter:
         text = document.text_before_cursor
         if not text.startswith("/") or " " in text:
             return
-        for item in SLASH_COMMANDS:
+        for item in slash_commands(self._translator):
             command = item.command
             description = item.description
             if command.startswith(text):

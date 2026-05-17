@@ -14,6 +14,7 @@ from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
+from ..i18n import Translator, default_translator
 from ..wizard import WizardController, WizardPlan, WizardResult, WizardStableState
 from ..wizard.render_model import WizardOptionRow, WizardRenderModel, build_render_model
 
@@ -45,7 +46,9 @@ class WizardTUI:
         stable_state: WizardStableState | None = None,
         on_stable_state: StableStateCallback | None = None,
         checkpoint_on_stable_state: bool = False,
+        translator: Translator | None = None,
     ) -> None:
+        self._translator = translator or default_translator()
         self.controller = WizardController.from_stable_state(plan, stable_state)
         self._control = FormattedTextControl(self._fragments, focusable=True)
         self._application: Application[WizardExit] = Application(
@@ -70,7 +73,7 @@ class WizardTUI:
         get_app().exit(result=result)
 
     def _fragments(self) -> StyleAndTextTuples:
-        return render_fragments(build_render_model(self.controller))
+        return render_fragments(build_render_model(self.controller, self._translator))
 
 
 def render_fragments(model: WizardRenderModel) -> StyleAndTextTuples:
@@ -190,6 +193,7 @@ async def run_wizard(
     stable_state: WizardStableState | None = None,
     on_stable_state: StableStateCallback | None = None,
     checkpoint_on_stable_state: bool = False,
+    translator: Translator | None = None,
 ) -> WizardExit:
     """Run the full-screen wizard TUI."""
     return await WizardTUI(
@@ -197,6 +201,7 @@ async def run_wizard(
         stable_state=stable_state,
         on_stable_state=on_stable_state,
         checkpoint_on_stable_state=checkpoint_on_stable_state,
+        translator=translator,
     ).run_async()
 
 
