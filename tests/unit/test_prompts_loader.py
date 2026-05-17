@@ -70,6 +70,9 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "`self_manual`" in body
     assert "`WIZARD_NEEDED`" in body
     assert "automatic discovery" in body
+    assert "personalized design, architecture, selection" in body
+    assert "several independent constraints" in body
+    assert "generic checklist" in body
 
 
 def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() -> None:
@@ -155,6 +158,8 @@ def test_build_wizard_planner_prompt_has_user_input_variable() -> None:
     body = str(tmpl.messages[0].prompt.template)
     assert "WizardPlan schema" in body
     assert "Type something" in body
+    assert "应用设计" in body
+    assert "架构选择" in body
 
 
 def test_build_wizard_response_prompt_has_response_context_variable() -> None:

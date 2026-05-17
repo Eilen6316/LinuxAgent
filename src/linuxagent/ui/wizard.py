@@ -18,8 +18,11 @@ from ..wizard import WizardController, WizardPlan, WizardResult, WizardStableSta
 from ..wizard.render_model import WizardOptionRow, WizardRenderModel, build_render_model
 
 _USER_INTENT_LIMIT = 120
+_TAB_LABEL_LIMIT = 24
+_TITLE_LIMIT = 64
 _ROW_LABEL_LIMIT = 48
 _DESCRIPTION_LIMIT = 72
+_TEXT_BUFFER_LIMIT = 96
 
 
 StableStateCallback = Callable[[WizardStableState], None]
@@ -74,11 +77,15 @@ def render_fragments(model: WizardRenderModel) -> StyleAndTextTuples:
     fragments: StyleAndTextTuples = []
     fragments.extend([("class:dim", _truncate(model.user_intent, _USER_INTENT_LIMIT)), ("", "\n")])
     fragments.extend(_tab_fragments(model))
-    fragments.extend([("", "\n\n"), ("class:title", model.current_title), ("", "\n")])
+    fragments.extend(
+        [("", "\n\n"), ("class:title", _truncate(model.current_title, _TITLE_LIMIT)), ("", "\n")]
+    )
     for index, row in enumerate(model.option_rows, start=1):
         fragments.extend(_row_fragments(index, row))
     if model.editing_text:
-        fragments.extend([("class:input", f"\n> {model.text_buffer}")])
+        fragments.extend(
+            [("class:input", f"\n> {_truncate(model.text_buffer, _TEXT_BUFFER_LIMIT)}")]
+        )
     fragments.extend([("", "\n"), ("class:dim", model.footer_text)])
     return fragments
 
@@ -205,7 +212,7 @@ def _tab_fragments(model: WizardRenderModel) -> StyleAndTextTuples:
         style = "class:tab.current" if tab.current else "class:tab"
         if not tab.enabled:
             style = "class:dim"
-        fragments.extend([(style, tab.display), ("", "  ")])
+        fragments.extend([(style, _truncate(tab.display, _TAB_LABEL_LIMIT)), ("", "  ")])
     fragments.append(("class:dim", "→"))
     return fragments
 

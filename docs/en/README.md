@@ -753,7 +753,7 @@ jq 'select(.event=="confirm_decision" and .decision!="yes")' ~/.linuxagent/audit
 A: R-SEC-04 requires user configs to be `0o600` and owned by the invoking user. Run `chmod 600 ~/.config/linuxagent/config.yaml`.
 
 **Q: `linuxagent chat` raises `api.api_key is required`?**
-A: Set a real value for `api.api_key` in `~/.config/linuxagent/config.yaml`, or in a workspace-local `./config.yaml` if you intentionally override the global config.
+A: Set a real value for `api.api_key` in the active config. After bootstrap this is usually the file named by `LINUXAGENT_CONFIG`; use `--config ./config.yaml` or change/unset `LINUXAGENT_CONFIG` if a workspace should use its own config.
 
 **Q: Why was my command blocked?**
 A: Look for `matched_rule` in stderr:

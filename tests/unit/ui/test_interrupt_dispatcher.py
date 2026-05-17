@@ -11,6 +11,7 @@ from linuxagent.ui.interrupt_dispatcher import WizardAwareUserInterface
 from linuxagent.ui.wizard import WizardCheckpoint
 from linuxagent.ui.wizard_interrupt import handle_wizard_interrupt
 from linuxagent.wizard import WizardResult
+from linuxagent.wizard.models import WizardStableState
 
 
 async def test_wizard_aware_ui_delegates_non_wizard_interrupts() -> None:
@@ -112,14 +113,21 @@ async def test_handle_wizard_interrupt_passes_stable_state_to_tui(monkeypatch) -
         "answers": [{"step_id": "target", "selected_ids": ["dev"], "text": None}],
         "current_step_id": "target",
     }
+    assert captured["checkpoint_on_stable_state"] is False
 
 
-async def test_handle_wizard_interrupt_returns_checkpoint_payload(monkeypatch) -> None:
+async def test_handle_wizard_interrupt_returns_final_result_not_checkpoint(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    captured: dict[str, object] = {}
 
-    async def fake_run_wizard(plan: object, **kwargs: Any) -> WizardCheckpoint:
+    async def fake_run_wizard(plan: object, **kwargs: Any) -> WizardResult:
         del plan
-        return WizardCheckpoint(kwargs["stable_state"])
+        captured.update(kwargs)
+        return WizardResult(
+            status="chat_requested",
+            partial=True,
+            answers=tuple(kwargs["stable_state"].answers),
+        )
 
     import linuxagent.ui.wizard_interrupt as wizard_interrupt
 
@@ -137,13 +145,24 @@ async def test_handle_wizard_interrupt_returns_checkpoint_payload(monkeypatch) -
 
     result = await handle_wizard_interrupt(payload)
 
-    assert result == {
-        "status": "checkpoint",
-        "stable_state": {
-            "answers": [{"step_id": "target", "selected_ids": ["dev"], "text": None}],
-            "current_step_id": "target",
-        },
-    }
+    assert result["status"] == "chat_requested"
+    assert result["stable_state"]["current_step_id"] == "target"
+    assert captured["checkpoint_on_stable_state"] is False
+
+
+async def test_handle_wizard_interrupt_rejects_checkpoint_exit(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    async def fake_run_wizard(plan: object, **kwargs: Any) -> WizardCheckpoint:
+        del plan, kwargs
+        return WizardCheckpoint(WizardStableState())
+
+    import linuxagent.ui.wizard_interrupt as wizard_interrupt
+
+    monkeypatch.setattr(wizard_interrupt, "run_wizard", fake_run_wizard)
+
+    with pytest.raises(RuntimeError, match="checkpoint exit is disabled"):
+        await handle_wizard_interrupt({"type": "wizard", "plan": _wizard_plan_payload()})
 
 
 async def test_handle_wizard_interrupt_rejects_non_wizard_payload() -> None:

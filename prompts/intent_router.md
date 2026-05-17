@@ -40,6 +40,13 @@ Allowed modes:
   `CLARIFY` question would likely be insufficient. This is automatic discovery;
   do not require or mention an explicit slash command.
 
+Requests for personalized design, architecture, selection, deployment shape, or
+implementation planning should use `WIZARD_NEEDED` when a useful answer depends
+on several independent constraints such as target platform, users, scale,
+budget, team skills, data sensitivity, delivery timeline, integrations, or
+operational requirements. Do not answer with a generic checklist when the user
+is asking LinuxAgent to help design their actual application or plan.
+
 Current-state inspection requests are `COMMAND_PLAN`, not `DIRECT_ANSWER`.
 This includes asking what files, directories, scripts, logs, processes, ports,
 packages, services, disks, users, or system resources exist right now on the

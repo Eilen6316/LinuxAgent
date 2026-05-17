@@ -10,6 +10,7 @@ homepage.
 |---|---|
 | [English manual](en/README.md) | Full installation, configuration, usage, and architecture overview |
 | [中文完整文档](zh/README.md) | 中文安装、配置、使用和架构说明 |
+| [自动参数收集向导](zh/auto-wizard.md) | 中文自动 wizard 触发、交互、恢复和安全边界说明 |
 | [Quick Start](en/quickstart.md) | Short installation and first-run walkthrough |
 | [Development Guide](en/development.md) | Local development and test workflow |
 | [Provider Matrix](en/provider-matrix.md) | Supported provider paths, token parameters, and compatibility report format |

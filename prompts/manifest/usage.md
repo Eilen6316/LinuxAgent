@@ -8,3 +8,8 @@ unit file, `/job <job_id>` shows one job's status/output, `/job follow <job_id>`
 the current CLI, and `/job stop <job_id>` requests cancellation. With the local job daemon enabled,
 approved background jobs run in the daemon supervisor and remain inspectable through the same `/job`
 entry point. Help text must describe the same command catalog used by completion.
+
+When a request lacks several concrete parameters needed for safe planning, LinuxAgent can open an
+automatic parameter-collection wizard. This is AI-discovered from the user's natural-language
+request, not a user-invoked explicit command. Pending wizard sessions appear in `/resume`, and recovered
+sessions continue from the latest stable checkpoint rather than from every transient keypress.

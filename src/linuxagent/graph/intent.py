@@ -147,6 +147,14 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     current_trace_id = trace_id(state)
     messages = list(state.get("messages", []))
     user_text = _last_message_text(messages)
+    if state.get("wizard_completed"):
+        return await _command_planning_update(
+            context,
+            messages,
+            user_text,
+            current_trace_id,
+            observed_tool_outputs,
+        )
     await notify_event(context.runtime_observer, {"type": "activity", "phase": "classify"})
     intent = await _route_intent(
         context,
@@ -169,14 +177,28 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
             answer = await _complete_direct_answer(context, messages, user_text, current_trace_id)
             return _direct_response_update(current_trace_id, answer)
         return _direct_response_update(current_trace_id, intent.answer)
-    if state.get("wizard_completed"):
-        intent = IntentDecision(IntentMode.COMMAND_PLAN, "", "wizard completed", AnswerContext.NONE)
     if intent.mode is IntentMode.WIZARD_NEEDED:
         return _wizard_needed_update(current_trace_id, user_text)
     gate = await _plan_gate(context, messages, user_text, current_trace_id)
     if gate is not None:
         return _direct_response_update(current_trace_id, gate.answer)
     await notify_event(context.runtime_observer, {"type": "activity", "phase": "plan"})
+    return await _command_planning_update(
+        context,
+        messages,
+        user_text,
+        current_trace_id,
+        observed_tool_outputs,
+    )
+
+
+async def _command_planning_update(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    observed_tool_outputs: list[str],
+) -> AgentState:
     outcome = await _build_command_plan(
         context, messages, user_text, current_trace_id, observed_tool_outputs
     )
@@ -826,6 +848,9 @@ def _direct_response_update(current_trace_id: str, response: str) -> AgentState:
         "command_source": CommandSource.USER,
         "selected_hosts": (),
         "direct_response": True,
+        "wizard_result": None,
+        "wizard_failed_reason": None,
+        "wizard_attempted": False,
     }
 
 

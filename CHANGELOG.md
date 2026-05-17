@@ -39,6 +39,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Added automatic parameter-collection wizard support for ambiguous
+  multi-parameter operations, with `/resume` visibility, stable partial
+  recovery checkpoints, and user documentation.
 - Source checkout bootstrap now seeds `~/.config/linuxagent/config.yaml` and
   installs a user-level `~/.local/bin/linuxagent` launcher, so users can start
   LinuxAgent from any directory without activating the checkout virtualenv.

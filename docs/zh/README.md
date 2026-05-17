@@ -694,7 +694,7 @@ jq 'select(.event=="confirm_decision" and .decision!="yes")' ~/.linuxagent/audit
 A：R-SEC-04 强制用户配置必须是 `0o600` + 当前用户所有。运行 `chmod 600 ~/.config/linuxagent/config.yaml`。
 
 **Q：`linuxagent chat` 报 `api.api_key is required`？**
-A：在 `~/.config/linuxagent/config.yaml` 的 `api.api_key` 填入真实 key；如果你故意使用工作区覆盖配置，也可以写在当前目录的 `./config.yaml`。
+A：在当前生效配置的 `api.api_key` 填入真实 key。bootstrap 后通常是 `LINUXAGENT_CONFIG` 指向的文件；如果工作区要用自己的配置，请使用 `--config ./config.yaml`，或修改/取消 `LINUXAGENT_CONFIG`。
 
 **Q：为什么我的命令被 BLOCK？**
 A：看 stderr 里的 `matched_rule`：

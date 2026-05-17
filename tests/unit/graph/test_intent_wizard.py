@@ -37,6 +37,21 @@ def test_parse_intent_decision_accepts_wizard_needed() -> None:
     assert decision.reason == "needs structured input"
 
 
+def test_parse_intent_decision_accepts_design_selection_wizard() -> None:
+    decision = _parse_intent_decision(
+        json.dumps(
+            {
+                "mode": "WIZARD_NEEDED",
+                "answer": "",
+                "reason": "application design needs multiple constraints",
+            }
+        )
+    )
+
+    assert decision.mode is IntentMode.WIZARD_NEEDED
+    assert "multiple constraints" in decision.reason
+
+
 async def test_wizard_hard_gates_prioritize_submitted_over_attempted_and_non_tty() -> None:
     decision = await _apply_wizard_hard_gates(
         _context(),

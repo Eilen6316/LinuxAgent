@@ -11,6 +11,7 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 from langgraph.types import Command
 
+from linuxagent.app.turn_state import new_turn_state
 from linuxagent.audit import AuditLog
 from linuxagent.cluster.remote_command import RemoteCommandError, validate_remote_command
 from linuxagent.config.models import (
@@ -526,7 +527,6 @@ async def test_graph_wizard_submit_resume_records_result_without_command(tmp_pat
         [
             _router_response("WIZARD_NEEDED"),
             _wizard_plan_json(),
-            _router_response("COMMAND_PLAN"),
             command_plan_json("python3 -c 'print(1)'"),
         ],
     )
@@ -569,6 +569,24 @@ async def test_graph_wizard_submit_resume_records_result_without_command(tmp_pat
         "\n".join(str(message.content) for message in call) for call in provider.complete_messages
     ]
     assert any("wizard_context" in prompt for prompt in prompts)
+
+
+async def test_graph_wizard_completed_bypasses_router_direct_answer(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [command_plan_json("/bin/echo hi")],
+    )
+    config = {"configurable": {"thread_id": "wizard-completed-route"}}
+    state = initial_state("wizard context", source=CommandSource.USER, ui_interactive=True)
+    state["wizard_completed"] = True
+    state["wizard_context"] = "wizard context"
+
+    await graph.ainvoke(state, config=config)
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["pending_command"] == "/bin/echo hi"
+    assert snapshot.values["direct_response"] is False
+    assert not any(_is_intent_router_call(messages) for messages in provider.complete_messages)
 
 
 async def test_graph_wizard_payload_includes_stable_state_on_resume(tmp_path) -> None:
@@ -747,6 +765,45 @@ async def test_graph_wizard_planner_parse_failed_uses_model_response(tmp_path) -
     wizard_record = next(record for record in audit_records if record["event"] == "wizard")
     assert wizard_record["status"] == "planner_failed"
     assert wizard_record["sub_status"] == "parse_failed"
+
+
+async def test_graph_wizard_loop_guard_prevents_second_interrupt_after_failure(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _router_response("WIZARD_NEEDED"),
+            "not json",
+            "wizard parse reply",
+            _router_response("WIZARD_NEEDED"),
+            "wizard loop guard reply",
+        ],
+    )
+    config = {"configurable": {"thread_id": "wizard-loop-guard"}}
+
+    await graph.ainvoke(
+        initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+    state = await new_turn_state(
+        graph,
+        config,
+        "继续补充这个部署需求",
+        history=list(snapshot.values["messages"]),
+        command_permissions=(),
+        prompt_cache_thread_id=None,
+        ui_interactive=True,
+    )
+
+    result = await graph.ainvoke(state, config=config)
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values.get("wizard_failed_reason") is None
+    assert snapshot.values.get("wizard_attempted") is False
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+    assert str(result["messages"][-1].content) == "wizard loop guard reply"
+    assert sum(_is_wizard_planner_call(messages) for messages in provider.complete_messages) == 1
 
 
 async def test_graph_wizard_planner_provider_failed_uses_model_response(tmp_path) -> None:

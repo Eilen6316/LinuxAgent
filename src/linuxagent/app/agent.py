@@ -10,10 +10,9 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
 from ..audit import AuditLog
-from ..graph import initial_state
 from ..graph.agent_graph import AgentGraph
 from ..intelligence import ContextManager
-from ..interfaces import CommandSource, UserInterface
+from ..interfaces import UserInterface
 from ..services import (
     BackgroundJobController,
     ChatService,
@@ -35,6 +34,7 @@ from .resume import (
     session_title,
 )
 from .slash_router import handle_slash
+from .turn_state import new_turn_state
 
 
 @dataclass
@@ -97,12 +97,13 @@ class LinuxAgent:
         start_working(self.ui)
         config = graph_config(thread_id)
         self.context_manager.replace(await self._history(config))
-        state: Any = initial_state(
+        state: Any = await new_turn_state(
+            self.graph,
+            config,
             user_input,
-            source=CommandSource.USER,
             history=self.context_manager.snapshot(),
             command_permissions=await self._command_permissions(config),
-            thread_id=thread_id if self.prompt_cache_enabled else None,
+            prompt_cache_thread_id=thread_id if self.prompt_cache_enabled else None,
             ui_interactive=self.ui.is_interactive(),
         )
         while True:
