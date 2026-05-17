@@ -22,7 +22,7 @@ from .audit import AuditLog
 from .audit_sink import HttpAuditSink
 from .cluster import SSHManager
 from .executors import LinuxCommandExecutor
-from .graph import GraphDependencies, build_agent_graph
+from .graph import GraphDependencies, GraphRuntime, build_agent_graph
 from .graph.agent_graph import AgentGraph
 from .graph.checkpoint import PersistentMemorySaver
 from .i18n import Translator
@@ -97,7 +97,7 @@ class Container:
 
     def build_agent(self) -> LinuxAgent:
         return LinuxAgent(
-            graph=self.graph(),
+            graph_runtime=self.graph_runtime(),
             ui=self.ui(),
             chat_service=self.chat_service(),
             command_service=self.command_service(),
@@ -256,6 +256,9 @@ class Container:
                 )
             ),
         )
+
+    def graph_runtime(self) -> GraphRuntime:
+        return self._cached("graph_runtime", lambda: GraphRuntime(self.graph()))
 
     def checkpointer(self) -> PersistentMemorySaver:
         return self._cached(

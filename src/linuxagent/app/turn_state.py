@@ -5,22 +5,20 @@ from __future__ import annotations
 from typing import Any
 
 from langchain_core.messages import BaseMessage
-from langchain_core.runnables import RunnableConfig
 
 from ..graph import initial_state
 from ..graph.state import AgentState
 from ..interfaces import CommandSource
 
 
-async def new_turn_state(
-    graph: Any,
-    config: RunnableConfig,
+def new_turn_state(
     user_input: str,
     *,
     history: list[BaseMessage],
     command_permissions: tuple[str, ...],
     prompt_cache_thread_id: str | None,
     ui_interactive: bool,
+    previous_values: dict[str, Any] | None = None,
 ) -> AgentState:
     state = initial_state(
         user_input,
@@ -30,10 +28,8 @@ async def new_turn_state(
         thread_id=prompt_cache_thread_id,
         ui_interactive=ui_interactive,
     )
-    snapshot = await graph.aget_state(config)
-    values = getattr(snapshot, "values", {})
-    if isinstance(values, dict):
-        _carry_wizard_guard(state, values)
+    if previous_values is not None:
+        _carry_wizard_guard(state, previous_values)
     return state
 
 

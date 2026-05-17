@@ -6,18 +6,15 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import HumanMessage
-from langchain_core.runnables import RunnableConfig
-from langgraph.types import Command
 
 from ..audit import AuditLog
-from ..graph.agent_graph import AgentGraph
+from ..graph.runtime import GraphRunResult, GraphRuntime
 from ..i18n import Translator, default_translator
 from ..interfaces import UserInterface
 from ..telemetry import TelemetryRecorder
 from ..usage_insights import ContextManager
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
-from .graph_config import graph_config
 from .output import print_assistant_response, start_working
 from .resume import (
     ResumeSessionItem,
@@ -35,7 +32,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class LinuxAgent:
-    graph: AgentGraph
+    graph_runtime: GraphRuntime
     ui: UserInterface
     chat_service: service_types.ChatService
     command_service: service_types.CommandService
@@ -93,40 +90,44 @@ class LinuxAgent:
 
     async def run_turn(self, user_input: str, *, thread_id: str) -> dict[str, Any]:
         start_working(self.ui)
-        config = graph_config(thread_id)
-        self.context_manager.replace(await self._history(config))
-        state: Any = await new_turn_state(
-            self.graph,
-            config,
+        self.context_manager.replace(await self._history(thread_id))
+        state = new_turn_state(
             user_input,
             history=self.context_manager.snapshot(),
-            command_permissions=await self._command_permissions(config),
+            command_permissions=await self.graph_runtime.command_permissions(thread_id=thread_id),
             prompt_cache_thread_id=thread_id if self.prompt_cache_enabled else None,
             ui_interactive=self.ui.is_interactive(),
+            previous_values=await self.graph_runtime.values(thread_id=thread_id),
         )
-        while True:
-            result = await self._ainvoke_with_cancel(state, config)
-            if result is None:
-                return {}
-            interrupts = await self._interrupts(result, config)
-            if not interrupts:
-                if isinstance(result, dict) and result.get("messages"):
-                    self.context_manager.replace(await self._history(config))
-                    if not self.context_manager.snapshot():
-                        self.context_manager.add([HumanMessage(content=user_input)])
-                    self._persist_active_history(thread_id)
-                    await print_execution_results(self.ui, result)
-                    await print_assistant_response(self.ui, str(result["messages"][-1].content))
-                return result if isinstance(result, dict) else {}
-            payload = interrupts[0].value
-            await self._persist_pending_history(config, thread_id)
-            response = await self.ui.handle_interrupt(payload)
-            state = Command(resume=response)
+        result = await self._run_with_cancel(state, thread_id)
+        while result is not None and result.interrupts:
+            await self._persist_pending_history(thread_id)
+            response = await self.ui.handle_interrupt(result.interrupts[0].payload)
+            result = await self._resume_with_cancel(response, thread_id)
+        if result is None:
+            return {}
+        if result.state.get("messages"):
+            self.context_manager.replace(await self._history(thread_id))
+            if not self.context_manager.snapshot():
+                self.context_manager.add([HumanMessage(content=user_input)])
+            self._persist_active_history(thread_id)
+            await print_execution_results(self.ui, result.state)
+            await print_assistant_response(self.ui, str(result.state["messages"][-1].content))
+        return result.state
 
-    async def _ainvoke_with_cancel(
-        self, state: Any, config: RunnableConfig
-    ) -> dict[str, Any] | None:
-        invoke_task = asyncio.create_task(self.graph.ainvoke(state, config=config))
+    async def _run_with_cancel(self, state: Any, thread_id: str) -> GraphRunResult | None:
+        invoke_task = asyncio.create_task(self.graph_runtime.run(state, thread_id=thread_id))
+        return await self._await_graph_task(invoke_task)
+
+    async def _resume_with_cancel(
+        self, response: dict[str, Any], thread_id: str
+    ) -> GraphRunResult | None:
+        invoke_task = asyncio.create_task(self.graph_runtime.resume(response, thread_id=thread_id))
+        return await self._await_graph_task(invoke_task)
+
+    async def _await_graph_task(
+        self, invoke_task: asyncio.Task[GraphRunResult]
+    ) -> GraphRunResult | None:
         cancel_task = asyncio.create_task(self._wait_for_cancel())
         done, _pending = await asyncio.wait(
             {invoke_task, cancel_task}, return_when=asyncio.FIRST_COMPLETED
@@ -135,8 +136,7 @@ class LinuxAgent:
             cancel_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cancel_task
-            result = await invoke_task
-            return result if isinstance(result, dict) else {}
+            return await invoke_task
         invoke_task.cancel()
         await self.ui.print(self.translator.t("app.cancelled"))
         return None
@@ -148,22 +148,10 @@ class LinuxAgent:
             return await future
         return str(await wait_for_cancel())
 
-    async def _interrupts(self, result: Any, config: RunnableConfig) -> list[Any]:
-        if isinstance(result, dict) and result.get("__interrupt__"):
-            return list(result["__interrupt__"])
-        snapshot = await self.graph.aget_state(config)
-        interrupts: list[Any] = []
-        for task in snapshot.tasks:
-            interrupts.extend(task.interrupts)
-        return interrupts
-
-    async def _history(self, config: RunnableConfig) -> list[Any]:
-        snapshot = await self.graph.aget_state(config)
-        values = getattr(snapshot, "values", {})
-        if isinstance(values, dict) and values.get("messages"):
-            return list(values["messages"])
-        configurable = config.get("configurable", {})
-        thread_id = str(configurable.get("thread_id", ""))
+    async def _history(self, thread_id: str) -> list[Any]:
+        history = await self.graph_runtime.history(thread_id=thread_id)
+        if history:
+            return history
         if thread_id in self._history_threads:
             return self.context_manager.snapshot()
         stored = self.chat_service.snapshot(thread_id)
@@ -171,18 +159,6 @@ class LinuxAgent:
             self._history_threads.add(thread_id)
             return stored
         return []
-
-    async def _command_permissions(self, config: RunnableConfig) -> tuple[str, ...]:
-        snapshot = await self.graph.aget_state(config)
-        values = getattr(snapshot, "values", {})
-        if not isinstance(values, dict):
-            return ()
-        permissions = values.get("command_permissions")
-        if isinstance(permissions, tuple):
-            return permissions
-        if isinstance(permissions, list) and all(isinstance(item, str) for item in permissions):
-            return tuple(permissions)
-        return ()
 
     async def _handle_slash(self, line: str, thread_id: str) -> str | None:
         return await handle_slash(self, line, thread_id)
@@ -247,11 +223,10 @@ class LinuxAgent:
         return items
 
     async def _resume_status(self, thread_id: str) -> str:
-        config = graph_config(thread_id)
-        interrupts = await self._interrupts({}, config)
+        interrupts = await self.graph_runtime.pending_interrupts(thread_id=thread_id)
         if not interrupts:
             return ""
-        payload = interrupts[0].value
+        payload = interrupts[0].payload
         if isinstance(payload, dict) and payload.get("type") == "wizard":
             return self.translator.t("resume.status.pending_wizard")
         if isinstance(payload, dict) and payload.get("type") == "confirm_file_patch":
@@ -259,38 +234,34 @@ class LinuxAgent:
         return self.translator.t("resume.status.pending_confirm")
 
     async def _resume_pending_work(self, thread_id: str) -> None:
-        config = graph_config(thread_id)
-        state: Any = {}
         while True:
-            interrupts = await self._interrupts(state, config)
+            interrupts = await self.graph_runtime.pending_interrupts(thread_id=thread_id)
             if not interrupts:
                 return
-            await self._persist_pending_history(config, thread_id)
-            response = await self.ui.handle_interrupt(interrupts[0].value)
-            result = await self._ainvoke_with_cancel(Command(resume=response), config)
+            await self._persist_pending_history(thread_id)
+            response = await self.ui.handle_interrupt(interrupts[0].payload)
+            result = await self._resume_with_cancel(response, thread_id)
             if result is None:
                 return
-            if not await self._complete_if_no_interrupts(result, config, thread_id):
-                state = result
+            if await self._complete_if_no_interrupts(result, thread_id):
+                return
 
-    async def _complete_if_no_interrupts(
-        self, result: dict[str, Any], config: RunnableConfig, thread_id: str
-    ) -> bool:
-        if await self._interrupts(result, config):
+    async def _complete_if_no_interrupts(self, result: Any, thread_id: str) -> bool:
+        if result.interrupts:
             return False
-        if result.get("messages"):
-            self.context_manager.replace(await self._history(config))
+        if result.state.get("messages"):
+            self.context_manager.replace(await self._history(thread_id))
             self._persist_active_history(thread_id)
-            await print_execution_results(self.ui, result)
-            await print_assistant_response(self.ui, str(result["messages"][-1].content))
+            await print_execution_results(self.ui, result.state)
+            await print_assistant_response(self.ui, str(result.state["messages"][-1].content))
         return True
 
     def _persist_active_history(self, thread_id: str) -> None:
         active = self.context_manager.snapshot()
         self.chat_service.replace_session(thread_id, active, title=session_title(active))
 
-    async def _persist_pending_history(self, config: RunnableConfig, thread_id: str) -> None:
-        history = await self._history(config)
+    async def _persist_pending_history(self, thread_id: str) -> None:
+        history = await self._history(thread_id)
         if not history:
             return
         self.context_manager.replace(history)

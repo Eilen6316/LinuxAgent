@@ -12,6 +12,7 @@ from langgraph.types import Command, Interrupt
 
 from linuxagent.app import LinuxAgent
 from linuxagent.audit import AuditLog
+from linuxagent.graph.runtime import GraphRuntime
 from linuxagent.interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
 from linuxagent.services import (
     BackgroundJobRuntimeStatus,
@@ -263,7 +264,7 @@ def _agent(
     prompt_cache_enabled: bool = False,
 ):
     return LinuxAgent(
-        graph=graph or _FakeGraph([]),  # type: ignore[arg-type]
+        graph_runtime=GraphRuntime(graph or _FakeGraph([])),  # type: ignore[arg-type]
         ui=ui or _FakeUI(),
         chat_service=chat_service or ChatService(tmp_path / "history.json", max_messages=10),
         command_service=command_service or _command_service(),
@@ -294,7 +295,7 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
     )
     ui = _FakeUI()
     agent = LinuxAgent(
-        graph=graph,  # type: ignore[arg-type]
+        graph_runtime=GraphRuntime(graph),  # type: ignore[arg-type]
         ui=ui,
         chat_service=chat_service,
         command_service=_command_service(),
@@ -358,7 +359,7 @@ async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
     )
     ui = _FakeUI(interrupt_response={"decision": "yes", "latency_ms": 5})
     agent = LinuxAgent(
-        graph=graph,  # type: ignore[arg-type]
+        graph_runtime=GraphRuntime(graph),  # type: ignore[arg-type]
         ui=ui,
         chat_service=chat_service,
         command_service=_command_service(),
@@ -408,7 +409,7 @@ async def test_run_starts_and_stops_services(tmp_path) -> None:
     ui = _FakeUI(inputs=["status"])
     graph = _FakeGraph([{"messages": [HumanMessage(content="status"), AIMessage(content="ok")]}])
     agent = LinuxAgent(
-        graph=graph,  # type: ignore[arg-type]
+        graph_runtime=GraphRuntime(graph),  # type: ignore[arg-type]
         ui=ui,
         chat_service=ChatService(history_path, max_messages=10),
         command_service=_command_service(),
@@ -432,7 +433,7 @@ async def test_run_slash_resume_lists_without_graph_call(tmp_path) -> None:
     monitoring = _FakeMonitoringService()
     graph = _FakeGraph([])
     agent = LinuxAgent(
-        graph=graph,  # type: ignore[arg-type]
+        graph_runtime=GraphRuntime(graph),  # type: ignore[arg-type]
         ui=_FakeUI(inputs=["/resume", "/exit"]),
         chat_service=chat_service,
         command_service=_command_service(),
@@ -622,7 +623,7 @@ async def test_resume_switches_to_saved_session_context(tmp_path) -> None:
         ]
     )
     agent = LinuxAgent(
-        graph=graph,  # type: ignore[arg-type]
+        graph_runtime=GraphRuntime(graph),  # type: ignore[arg-type]
         ui=_FakeUI(inputs=["/resume", "1", "continue"]),
         chat_service=chat_service,
         command_service=_command_service(),
@@ -755,7 +756,7 @@ async def test_new_slash_command_resets_active_context(tmp_path) -> None:
     chat_service.add([HumanMessage(content="old question"), AIMessage(content="old answer")])
     graph = _FakeGraph([{"messages": [HumanMessage(content="fresh"), AIMessage(content="done")]}])
     agent = LinuxAgent(
-        graph=graph,  # type: ignore[arg-type]
+        graph_runtime=GraphRuntime(graph),  # type: ignore[arg-type]
         ui=_FakeUI(inputs=["/resume", "1", "/new", "fresh"]),
         chat_service=chat_service,
         command_service=_command_service(),
@@ -916,7 +917,7 @@ async def test_run_turn_prefers_checkpoint_history(tmp_path) -> None:
         snapshot_values={"messages": checkpoint_messages},
     )
     agent = LinuxAgent(
-        graph=graph,  # type: ignore[arg-type]
+        graph_runtime=GraphRuntime(graph),  # type: ignore[arg-type]
         ui=_FakeUI(),
         chat_service=chat_service,
         command_service=_command_service(),
@@ -948,7 +949,7 @@ async def test_run_turn_persists_compressed_checkpoint_history(tmp_path) -> None
     )
     chat_service = ChatService(history_path, max_messages=10)
     agent = LinuxAgent(
-        graph=graph,  # type: ignore[arg-type]
+        graph_runtime=GraphRuntime(graph),  # type: ignore[arg-type]
         ui=_FakeUI(),
         chat_service=chat_service,
         command_service=_command_service(),

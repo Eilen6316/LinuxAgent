@@ -666,10 +666,11 @@ def test_container_builds_cached_runtime(
     assert container.provider() is fake_provider
     assert container.graph() is fake_graph
     assert container.graph() is fake_graph
+    assert container.graph_runtime() is container.graph_runtime()
     assert container.system_tools()
     assert container.intelligence_tools()
     assert container.tools()
-    assert container.build_agent().graph is fake_graph
+    assert container.build_agent().graph_runtime is container.graph_runtime()
     assert container.build_agent().context_manager is container.context_manager()
     assert captured["tool_observer"] is not None
     assert captured["translator"] is container.translator()

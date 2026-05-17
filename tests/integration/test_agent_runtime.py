@@ -22,6 +22,7 @@ from linuxagent.config.models import (
 )
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph
+from linuxagent.graph.runtime import GraphRuntime
 from linuxagent.interfaces import ExecutionResult
 from linuxagent.plans import command_plan_json
 from linuxagent.runbooks import Runbook, RunbookEngine, RunbookStep
@@ -350,7 +351,7 @@ def _agent(
         )
     )
     return LinuxAgent(
-        graph=graph,
+        graph_runtime=GraphRuntime(graph),
         ui=ui,  # type: ignore[arg-type]
         chat_service=ChatService(tmp_path / "history.json", max_messages=20),
         command_service=command_service,

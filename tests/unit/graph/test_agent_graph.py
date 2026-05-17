@@ -869,14 +869,13 @@ async def test_graph_wizard_loop_guard_prevents_second_interrupt_after_failure(t
         config=config,
     )
     snapshot = await graph.aget_state(config)
-    state = await new_turn_state(
-        graph,
-        config,
+    state = new_turn_state(
         "继续补充这个部署需求",
         history=list(snapshot.values["messages"]),
         command_permissions=(),
         prompt_cache_thread_id=None,
         ui_interactive=True,
+        previous_values=dict(snapshot.values),
     )
 
     result = await graph.ainvoke(state, config=config)
