@@ -134,3 +134,14 @@ def build_wizard_planner_prompt() -> ChatPromptTemplate:
             ("human", "{user_input}"),
         ]
     )
+
+
+def build_wizard_response_prompt() -> ChatPromptTemplate:
+    """Build a prompt for user-visible wizard status responses."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", load_prompt("wizard_response.md")),
+            MessagesPlaceholder("chat_history", optional=True),
+            ("human", "{response_context}"),
+        ]
+    )

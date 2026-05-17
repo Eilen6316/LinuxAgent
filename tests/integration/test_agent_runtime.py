@@ -69,6 +69,9 @@ class _UI:
         self.interrupts.append(payload)
         return self.response
 
+    def is_interactive(self) -> bool:
+        return False
+
     async def print(self, text: str) -> None:
         self.printed.append(text)
 

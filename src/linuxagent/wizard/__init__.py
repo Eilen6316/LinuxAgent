@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .context import render_wizard_context
 from .controller import WizardController
 from .models import WizardAnswer, WizardOption, WizardPlan, WizardResult, WizardStep
 from .planner import WizardPlanner, WizardPlannerOutcome
@@ -20,4 +21,5 @@ __all__ = [
     "WizardStep",
     "WizardTabItem",
     "build_render_model",
+    "render_wizard_context",
 ]

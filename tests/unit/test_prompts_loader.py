@@ -14,6 +14,7 @@ from linuxagent.prompts_loader import (
     build_planner_prompt,
     build_repair_prompt,
     build_wizard_planner_prompt,
+    build_wizard_response_prompt,
     find_prompts_dir,
     load_system_prompt,
 )
@@ -30,6 +31,7 @@ def test_find_prompts_dir_resolves_for_editable_install() -> None:
     assert (path / "repair.md").is_file()
     assert (path / "file_patch_repair.md").is_file()
     assert (path / "wizard_planner.md").is_file()
+    assert (path / "wizard_response.md").is_file()
     assert (path / "manifest" / "tools.md").is_file()
 
 
@@ -66,6 +68,8 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "so the planner can inspect reality" in body
     assert '"answer_context": "none"' in body
     assert "`self_manual`" in body
+    assert "`WIZARD_NEEDED`" in body
+    assert "automatic discovery" in body
 
 
 def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() -> None:
@@ -151,3 +155,12 @@ def test_build_wizard_planner_prompt_has_user_input_variable() -> None:
     body = str(tmpl.messages[0].prompt.template)
     assert "WizardPlan schema" in body
     assert "Type something" in body
+
+
+def test_build_wizard_response_prompt_has_response_context_variable() -> None:
+    tmpl = build_wizard_response_prompt()
+    assert isinstance(tmpl, ChatPromptTemplate)
+    assert "response_context" in tmpl.input_variables
+    body = str(tmpl.messages[0].prompt.template)
+    assert "wizard 状态" in body
+    assert "不暴露 provider error" in body

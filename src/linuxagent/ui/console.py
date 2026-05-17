@@ -82,6 +82,9 @@ class ConsoleUI(UserInterface):
         response["latency_ms"] = int((time.monotonic() - started) * 1000)
         return response
 
+    def is_interactive(self) -> bool:
+        return sys.stdin.isatty() and self._console.is_terminal
+
     async def print(self, text: str) -> None:
         self.clear_activity()
         self._console.print(Panel(Text(text), border_style=self._panel_style()))

@@ -29,6 +29,8 @@ from linuxagent.product_context import product_capability_context, slash_help
 from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner, SandboxProfile
 from linuxagent.services import MonitoringAlert
 from linuxagent.tools import ToolCatalogReport, ToolSandboxSpec, attach_tool_sandbox
+from linuxagent.ui import WizardAwareUserInterface
+from linuxagent.ui.prompt_session import SlashCommandCompleter
 
 
 def test_verbose_to_level_mapping() -> None:
@@ -799,6 +801,24 @@ def test_product_capability_context_describes_resume_and_model_source() -> None:
     assert "read_file, search_files" in context
     assert "/resume - 列出本机保存的会话" in slash_help()
     assert "/job - 列出/诊断/daemon/查看/跟随/停止后台任务" in slash_help()
+    assert "/wizard" not in slash_help()
+
+
+def test_slash_completer_does_not_expose_wizard_command() -> None:
+    commands = [
+        item.text for item in SlashCommandCompleter().get_completions(_Document("/"), object())
+    ]
+    assert "/wizard" not in commands
+
+
+def test_container_wraps_console_ui_with_wizard_dispatcher() -> None:
+    cfg = AppConfig.model_validate({"telemetry": {"enabled": False, "exporter": "none"}})
+    assert isinstance(Container(cfg).ui(), WizardAwareUserInterface)
+
+
+class _Document:
+    def __init__(self, text: str) -> None:
+        self.text_before_cursor = text
 
 
 def test_runtime_event_message_formats_command_batch() -> None:

@@ -22,6 +22,12 @@ async def test_console_ui_non_tty_auto_denies(monkeypatch) -> None:
     assert result == {"decision": "non_tty_auto_deny", "latency_ms": 0}
 
 
+def test_console_ui_reports_interactive_only_with_tty_terminal(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    assert ConsoleUI(console=Console(force_terminal=True)).is_interactive() is True
+    assert ConsoleUI(console=Console(record=True)).is_interactive() is False
+
+
 class _FakeSession:
     def __init__(self, responses: list[str]) -> None:
         self._responses = list(responses)

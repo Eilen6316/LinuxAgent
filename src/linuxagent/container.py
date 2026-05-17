@@ -34,7 +34,7 @@ from .intelligence import (
     PatternAnalyzer,
     RecommendationEngine,
 )
-from .interfaces import ExecutionResult, LLMProvider
+from .interfaces import ExecutionResult, LLMProvider, UserInterface
 from .operating_manifest import operating_manifest_context
 from .policy import PolicyEngine, runtime_policy_config
 from .product_context import product_capability_context
@@ -72,7 +72,7 @@ from .tools import (
     compact_tool_catalog_summary,
     inspect_tool_catalog,
 )
-from .ui import ConsoleUI
+from .ui import ConsoleUI, WizardAwareUserInterface
 
 if TYPE_CHECKING:
     from .config.models import AppConfig
@@ -432,17 +432,21 @@ class Container:
                 if isinstance(result, ExecutionResult):
                     streamed = command_event_key(event) in self._streamed_outputs
                     self._streamed_outputs.discard(command_event_key(event))
-                    await self.ui().print_execution_result(result, include_output=not streamed)
+                    printer = getattr(self.ui(), "print_execution_result", None)
+                    if callable(printer):
+                        await printer(result, include_output=not streamed)
 
         return observe
 
-    def ui(self) -> ConsoleUI:
+    def ui(self) -> UserInterface:
         return self._cached(
             "ui",
-            lambda: ConsoleUI(
-                theme=self._config.ui.theme,
-                prompt_symbol=self._config.ui.prompt_symbol,
-                history_path=self._config.ui.history_path.with_name("prompt_history"),
+            lambda: WizardAwareUserInterface(
+                ConsoleUI(
+                    theme=self._config.ui.theme,
+                    prompt_symbol=self._config.ui.prompt_symbol,
+                    history_path=self._config.ui.history_path.with_name("prompt_history"),
+                )
             ),
         )
 

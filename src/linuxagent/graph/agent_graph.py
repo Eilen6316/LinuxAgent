@@ -33,6 +33,7 @@ from .routing import (
     route_by_safety,
 )
 from .state import AgentState
+from .wizard_nodes import make_wizard_node
 
 AgentGraph: TypeAlias = Any
 
@@ -79,6 +80,10 @@ def _add_planning_nodes(graph: Any, deps: GraphDependencies) -> None:
                 deps.runtime_observer,
             )
         ),
+    )
+    graph.add_node(
+        "wizard",
+        _langgraph_node(make_wizard_node(deps.provider, deps.audit, telemetry=deps.telemetry)),
     )
     graph.add_node(
         "confirm",
@@ -160,15 +165,7 @@ def _add_response_nodes(graph: Any) -> None:
 
 def _add_graph_edges(graph: Any, deps: GraphDependencies) -> None:
     graph.add_edge(START, "parse_intent")
-    graph.add_conditional_edges(
-        "parse_intent",
-        route_after_parse,
-        {
-            "PATCH_CONFIRM": "file_patch_confirm",
-            "RESPOND": "respond",
-            "SAFETY": "safety_check",
-        },
-    )
+    _add_parse_edges(graph)
     graph.add_conditional_edges(
         "safety_check",
         route_by_safety,
@@ -199,6 +196,16 @@ def _add_graph_edges(graph: Any, deps: GraphDependencies) -> None:
     graph.add_edge("respond", END)
     graph.add_edge("respond_block", END)
     graph.add_edge("respond_refused", END)
+
+
+def _add_parse_edges(graph: Any) -> None:
+    edges = {
+        "PATCH_CONFIRM": "file_patch_confirm",
+        "RESPOND": "respond",
+        "SAFETY": "safety_check",
+        "WIZARD": "wizard",
+    }
+    graph.add_conditional_edges("parse_intent", route_after_parse, edges)
 
 
 def _langgraph_node(action: Any) -> Any:

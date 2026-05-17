@@ -135,6 +135,9 @@ class _FakeUI:
         self.interrupts.append(payload)
         return self._interrupt_response
 
+    def is_interactive(self) -> bool:
+        return False
+
     async def print(self, text: str) -> None:
         self.printed.append(text)
 
@@ -308,6 +311,7 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
     assert ui.markdown_printed == ["done"]
     first_call = graph.calls[0]
     assert first_call["command_source"] is CommandSource.USER
+    assert first_call["ui_interactive"] is False
     assert [message.content for message in first_call["messages"]] == ["now"]
     assert [message.content for message in chat_service.snapshot()] == [
         "prev user",

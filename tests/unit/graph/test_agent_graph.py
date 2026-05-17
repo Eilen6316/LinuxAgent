@@ -134,6 +134,14 @@ class _PlannerGateFailingProvider(_FakeProvider):
         return await super().complete(messages, **kwargs)
 
 
+class _WizardPlannerFailingProvider(_FakeProvider):
+    async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
+        if _is_wizard_planner_call(messages):
+            self.complete_messages.append(messages)
+            raise ProviderError("wizard planner unavailable")
+        return await super().complete(messages, **kwargs)
+
+
 class _RepairToolTimeoutProvider(_FakeProvider):
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
         if _is_file_patch_repair_call(messages):
@@ -302,6 +310,7 @@ def _is_intent_router_response(text: str) -> bool:
         "DIRECT_ANSWER",
         "COMMAND_PLAN",
         "CLARIFY",
+        "WIZARD_NEEDED",
     }
 
 
@@ -309,6 +318,14 @@ def _is_planner_gate_call(messages: list[BaseMessage]) -> bool:
     return bool(messages) and str(messages[0].content).casefold().startswith(
         "you are linuxagent's pre-tool planning gate."
     )
+
+
+def _is_wizard_planner_call(messages: list[BaseMessage]) -> bool:
+    return bool(messages) and "WizardPlan schema" in str(messages[0].content)
+
+
+def _is_wizard_response_call(messages: list[BaseMessage]) -> bool:
+    return bool(messages) and "wizard 状态" in str(messages[0].content)
 
 
 def _is_planner_gate_response(text: object) -> bool:
@@ -407,6 +424,48 @@ def _continue_planning_plan_json(reason: str = "operational planning needed") ->
     )
 
 
+def _wizard_plan_json() -> str:
+    return json.dumps(
+        {
+            "user_intent": "deploy database stack",
+            "steps": [
+                {
+                    "id": "database",
+                    "title": "选择数据库",
+                    "kind": "single",
+                    "options": [
+                        {"id": "postgres", "label": "PostgreSQL", "description": "关系型数据库"},
+                        {"id": "mysql", "label": "MySQL", "description": "常见关系型数据库"},
+                        {"id": "redis", "label": "Redis", "description": "缓存数据库"},
+                    ],
+                },
+                {
+                    "id": "target",
+                    "title": "部署目标",
+                    "kind": "single",
+                    "options": [
+                        {"id": "dev", "label": "Dev", "description": "开发环境"},
+                        {"id": "stage", "label": "Stage", "description": "预发环境"},
+                        {"id": "prod", "label": "Prod", "description": "生产环境"},
+                    ],
+                },
+            ],
+        },
+        ensure_ascii=False,
+    )
+
+
+def _wizard_submit_result() -> dict[str, Any]:
+    return {
+        "status": "submit",
+        "partial": False,
+        "answers": [
+            {"step_id": "database", "selected_ids": ["postgres"]},
+            {"step_id": "target", "selected_ids": ["prod"]},
+        ],
+    }
+
+
 async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     graph, _provider = _graph(tmp_path, [command_plan_json("/bin/echo hi"), "analysis ok"])
     config = {"configurable": {"thread_id": "t1"}}
@@ -433,6 +492,230 @@ async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     assert None not in trace_ids
     begin_record = next(record for record in audit_records if record["event"] == "confirm_begin")
     assert begin_record["sandbox_preview"]["runner"] == "noop"
+
+
+async def test_graph_wizard_needed_emits_stable_wizard_payload_schema(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [_router_response("WIZARD_NEEDED"), _wizard_plan_json()],
+    )
+    config = {"configurable": {"thread_id": "wizard-payload"}}
+
+    await graph.ainvoke(
+        initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+    json.dumps(payload, ensure_ascii=False)
+    assert payload["type"] == "wizard"
+    assert payload["trace_id"]
+    assert payload["user_intent"] == "帮我部署一套数据库"
+    assert payload["plan"]["user_intent"] == "deploy database stack"
+    assert payload["context"] == {
+        "source": "auto",
+        "original_user_input": "帮我部署一套数据库",
+        "attempt": 1,
+    }
+
+
+async def test_graph_wizard_submit_resume_records_result_without_command(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _router_response("WIZARD_NEEDED"),
+            _wizard_plan_json(),
+            _router_response("COMMAND_PLAN"),
+            command_plan_json("python3 -c 'print(1)'"),
+        ],
+    )
+    config = {"configurable": {"thread_id": "wizard-submit"}}
+
+    await graph.ainvoke(
+        initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+    await graph.ainvoke(Command(resume=_wizard_submit_result()), config=config)
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["wizard_completed"] is True
+    assert snapshot.values.get("wizard_result") is None
+    assert snapshot.values["pending_command"] == "python3 -c 'print(1)'"
+    assert snapshot.values["direct_response"] is False
+    assert snapshot.tasks[0].interrupts[0].value["type"] == "confirm_command"
+    assert "LOLBIN_PYTHON3_EXEC" in snapshot.tasks[0].interrupts[0].value["matched_rules"]
+    assert any("wizard_context" in str(message.content) for message in snapshot.values["messages"])
+    audit_records = [
+        json.loads(line)
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    wizard_record = next(record for record in audit_records if record["event"] == "wizard")
+    assert wizard_record["status"] == "submit"
+    assert wizard_record["step_count"] == 2
+    assert "PostgreSQL" in wizard_record["answers_summary"]
+    prompts = [
+        "\n".join(str(message.content) for message in call) for call in provider.complete_messages
+    ]
+    assert any("wizard_context" in prompt for prompt in prompts)
+
+
+async def test_graph_wizard_chat_requested_resume_records_result(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [_router_response("WIZARD_NEEDED"), _wizard_plan_json(), "wizard chat reply"],
+    )
+    config = {"configurable": {"thread_id": "wizard-chat"}}
+
+    await graph.ainvoke(
+        initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+    await graph.ainvoke(
+        Command(
+            resume={
+                "status": "chat_requested",
+                "partial": True,
+                "answers": [{"step_id": "database", "selected_ids": ["postgres"]}],
+            }
+        ),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["wizard_result"]["status"] == "chat_requested"
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+    audit_records = [
+        json.loads(line)
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    wizard_record = next(record for record in audit_records if record["event"] == "wizard")
+    assert wizard_record["status"] == "chat_requested"
+
+
+async def test_graph_wizard_cancel_resume_does_not_plan_command(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [_router_response("WIZARD_NEEDED"), _wizard_plan_json(), "wizard cancel reply"],
+    )
+    config = {"configurable": {"thread_id": "wizard-cancel"}}
+
+    await graph.ainvoke(
+        initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+    result = await graph.ainvoke(
+        Command(resume={"status": "cancel", "partial": True, "answers": []}),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["wizard_result"]["status"] == "cancel"
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+    assert str(result["messages"][-1].content) == "wizard cancel reply"
+    audit_records = [
+        json.loads(line)
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        record["event"] == "wizard" and record["status"] == "cancel" for record in audit_records
+    )
+
+
+async def test_graph_wizard_non_tty_refused_resume_does_not_plan_command(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [_router_response("WIZARD_NEEDED"), _wizard_plan_json(), "wizard refused reply"],
+    )
+    config = {"configurable": {"thread_id": "wizard-non-tty-refused"}}
+
+    await graph.ainvoke(
+        initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+    await graph.ainvoke(
+        Command(resume={"status": "non_tty_refused", "partial": True, "answers": []}),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["wizard_result"]["status"] == "non_tty_refused"
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+    audit_records = [
+        json.loads(line)
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        record["event"] == "wizard" and record["status"] == "non_tty_refused"
+        for record in audit_records
+    )
+
+
+async def test_graph_wizard_planner_parse_failed_uses_model_response(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [_router_response("WIZARD_NEEDED"), "not json", "wizard parse reply"],
+    )
+    config = {"configurable": {"thread_id": "wizard-parse-failed"}}
+
+    result = await graph.ainvoke(
+        initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values["wizard_failed_reason"] == "parse_failed"
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+    assert str(result["messages"][-1].content) == "wizard parse reply"
+    assert any(_is_wizard_response_call(messages) for messages in provider.complete_messages)
+    audit_records = [
+        json.loads(line)
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    wizard_record = next(record for record in audit_records if record["event"] == "wizard")
+    assert wizard_record["status"] == "planner_failed"
+    assert wizard_record["sub_status"] == "parse_failed"
+
+
+async def test_graph_wizard_planner_provider_failed_uses_model_response(tmp_path) -> None:
+    provider = _WizardPlannerFailingProvider(
+        [_router_response("WIZARD_NEEDED"), "wizard provider reply"]
+    )
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+        )
+    )
+    config = {"configurable": {"thread_id": "wizard-provider-failed"}}
+
+    result = await graph.ainvoke(
+        initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["wizard_failed_reason"] == "provider_failed"
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+    assert str(result["messages"][-1].content) == "wizard provider reply"
+    audit_records = [
+        json.loads(line)
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    wizard_record = next(record for record in audit_records if record["event"] == "wizard")
+    assert wizard_record["status"] == "planner_failed"
+    assert wizard_record["sub_status"] == "provider_failed"
 
 
 async def test_graph_starts_background_command_after_confirmation(tmp_path) -> None:

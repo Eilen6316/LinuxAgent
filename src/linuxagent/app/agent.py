@@ -103,6 +103,7 @@ class LinuxAgent:
             history=self.context_manager.snapshot(),
             command_permissions=await self._command_permissions(config),
             thread_id=thread_id if self.prompt_cache_enabled else None,
+            ui_interactive=self.ui.is_interactive(),
         )
         while True:
             result = await self._ainvoke_with_cancel(state, config)

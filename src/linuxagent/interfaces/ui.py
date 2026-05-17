@@ -36,6 +36,10 @@ class UserInterface(ABC):
     async def print(self, text: str) -> None:
         """Display ``text`` to the user."""
 
+    def is_interactive(self) -> bool:
+        """Return true when this UI can collect interactive HITL input."""
+        return False
+
     async def print_markdown(self, text: str) -> None:
         """Display Markdown-formatted assistant text when the UI supports it."""
         await self.print(text)

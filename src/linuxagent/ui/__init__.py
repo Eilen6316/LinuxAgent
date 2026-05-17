@@ -3,5 +3,6 @@
 from __future__ import annotations
 
 from .console import ConsoleUI
+from .interrupt_dispatcher import WizardAwareUserInterface
 
-__all__ = ["ConsoleUI"]
+__all__ = ["ConsoleUI", "WizardAwareUserInterface"]

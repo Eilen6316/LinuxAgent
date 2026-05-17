@@ -43,6 +43,10 @@ async def route_after_parse(state: AgentState) -> str:
         return "RESPOND"
     if state.get("file_patch_plan") is not None:
         return "PATCH_CONFIRM"
+    if state.get("wizard_completed"):
+        return "SAFETY"
+    if state.get("wizard_context") and state.get("wizard_result") is None:
+        return "WIZARD"
     return "SAFETY"
 
 

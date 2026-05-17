@@ -9,7 +9,7 @@ update).
 from __future__ import annotations
 
 import hashlib
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypeAlias, TypedDict
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph.message import add_messages
@@ -17,6 +17,8 @@ from langgraph.graph.message import add_messages
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel
 from ..plans import CommandPlan, FilePatchPlan
 from ..runbooks import Runbook
+
+WizardFailedReason: TypeAlias = Literal["parse_failed", "provider_failed", "non_tty", "loop_guard"]
 
 
 class AgentState(TypedDict, total=False):
@@ -45,6 +47,15 @@ class AgentState(TypedDict, total=False):
     command_source: CommandSource | None
     selected_hosts: tuple[str, ...]
     direct_response: bool
+
+    # Populated by automatic wizard routing; consumed by later wizard graph nodes.
+    wizard_plan: dict[str, object] | None
+    wizard_result: dict[str, object] | None
+    wizard_context: str | None
+    wizard_completed: bool
+    wizard_attempted: bool
+    wizard_failed_reason: WizardFailedReason | None
+    ui_interactive: bool
 
     # Populated by safety_check; consumed by HITL router + confirm_node.
     safety_level: SafetyLevel | None
@@ -80,6 +91,7 @@ def initial_state(
     history: list[BaseMessage] | None = None,
     command_permissions: tuple[str, ...] = (),
     thread_id: str | None = None,
+    ui_interactive: bool = False,
 ) -> AgentState:
     """Convenience: seed an empty :class:`AgentState` for a single turn."""
     prior_messages = [] if history is None else list(history)
@@ -88,6 +100,7 @@ def initial_state(
         trace_id=None,
         prompt_cache_key=_prompt_cache_key(thread_id),
         **_initial_planning_state(source),
+        **_initial_wizard_state(ui_interactive),
         **_initial_safety_state(command_permissions),
         **_initial_execution_state(),
     )
@@ -113,6 +126,18 @@ def _initial_planning_state(source: CommandSource) -> AgentState:
         "command_source": source,
         "selected_hosts": (),
         "direct_response": False,
+    }
+
+
+def _initial_wizard_state(ui_interactive: bool) -> AgentState:
+    return {
+        "wizard_plan": None,
+        "wizard_result": None,
+        "wizard_context": None,
+        "wizard_completed": False,
+        "wizard_attempted": False,
+        "wizard_failed_reason": None,
+        "ui_interactive": ui_interactive,
     }
 
 

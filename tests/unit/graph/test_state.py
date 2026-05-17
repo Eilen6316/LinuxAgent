@@ -20,6 +20,13 @@ def test_initial_state_seeds_human_message() -> None:
     assert state["selected_hosts"] == ()
     assert state["direct_response"] is False
     assert state["plan_result_start_index"] == 0
+    assert state["wizard_plan"] is None
+    assert state["wizard_result"] is None
+    assert state["wizard_context"] is None
+    assert state["wizard_completed"] is False
+    assert state["wizard_attempted"] is False
+    assert state["wizard_failed_reason"] is None
+    assert state["ui_interactive"] is False
 
 
 def test_initial_state_respects_source() -> None:
@@ -38,6 +45,11 @@ def test_initial_state_can_include_prompt_cache_key() -> None:
     state = initial_state("hi", thread_id="thread-1")
     assert state["prompt_cache_key"] == prompt_cache_key_for_thread("thread-1")
     assert state["prompt_cache_key"] != "thread-1"
+
+
+def test_initial_state_accepts_ui_interactive_capability() -> None:
+    state = initial_state("hi", ui_interactive=True)
+    assert state["ui_interactive"] is True
 
 
 def test_add_messages_reducer_appends() -> None:
