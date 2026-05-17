@@ -1,6 +1,8 @@
 # LinuxAgent v4 default configuration — packaged defaults.
 # DO NOT put real secrets here. User overrides live in ./config.yaml (gitignored, chmod 600).
 
+language: zh-CN
+
 api:
   provider: deepseek          # openai | openai_compatible | local | ollama | vllm | lmstudio | deepseek | glm | qwen | kimi | minimax | gemini | hunyuan | anthropic | anthropic_compatible | xiaomi_mimo
   base_url: https://api.deepseek.com/v1

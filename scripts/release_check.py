@@ -193,6 +193,8 @@ def _required_wheel_members(root: Path) -> set[str]:
     return {
         "linuxagent/_data/default.yaml",
         "linuxagent/_data/policy.default.yaml",
+        "linuxagent/i18n/locales/zh-CN.yaml",
+        "linuxagent/i18n/locales/en-US.yaml",
         *{
             f"linuxagent/_data/prompts/{path.name}"
             for path in sorted((root / "prompts").glob("*.md"))
@@ -211,6 +213,8 @@ def _required_sdist_members(root: Path, version: str) -> set[str]:
         f"{prefix}/README.md",
         f"{prefix}/CHANGELOG.md",
         f"{prefix}/src/linuxagent/__init__.py",
+        f"{prefix}/src/linuxagent/i18n/locales/zh-CN.yaml",
+        f"{prefix}/src/linuxagent/i18n/locales/en-US.yaml",
         f"{prefix}/configs/default.yaml",
         f"{prefix}/configs/policy.default.yaml",
         *{f"{prefix}/prompts/{path.name}" for path in sorted((root / "prompts").glob("*.md"))},

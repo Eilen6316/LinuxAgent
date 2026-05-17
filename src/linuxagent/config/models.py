@@ -77,6 +77,11 @@ class LLMProviderName(StrEnum):
     XIAOMI_MIMO = "xiaomi_mimo"
 
 
+class LanguageCode(StrEnum):
+    ZH_CN = "zh-CN"
+    EN_US = "en-US"
+
+
 LOCAL_LLM_PROVIDERS: frozenset[LLMProviderName] = frozenset(
     {
         LLMProviderName.LOCAL,
@@ -527,6 +532,7 @@ class IntelligenceConfig(BaseModel):
 class AppConfig(BaseModel):
     model_config = _FROZEN
 
+    language: LanguageCode = LanguageCode.ZH_CN
     api: APIConfig = Field(default_factory=APIConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     policy: PolicyRuntimeConfig = Field(default_factory=PolicyRuntimeConfig)

@@ -17,6 +17,10 @@
 # Bootstrap exports LINUXAGENT_CONFIG=$HOME/.config/linuxagent/config.yaml so
 # the same user config is used when linuxagent starts from any working directory.
 
+# Runtime UI language for LinuxAgent-owned fixed text.
+# Supported: zh-CN | en-US
+language: zh-CN
+
 api:
   # Provider: openai | openai_compatible | local | ollama | vllm | lmstudio | deepseek | glm | qwen | kimi | minimax | gemini | hunyuan | anthropic | anthropic_compatible | xiaomi_mimo
   # Use *_compatible providers for API relays or third-party compatible endpoints.

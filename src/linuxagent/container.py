@@ -25,6 +25,7 @@ from .executors import LinuxCommandExecutor
 from .graph import GraphDependencies, build_agent_graph
 from .graph.agent_graph import AgentGraph
 from .graph.checkpoint import PersistentMemorySaver
+from .i18n import Translator
 from .interfaces import ExecutionResult, LLMProvider, UserInterface
 from .operating_manifest import operating_manifest_context
 from .policy import PolicyEngine, runtime_policy_config
@@ -283,6 +284,12 @@ class Container:
                 exporter=self._config.telemetry.exporter,
                 otlp_endpoint=self._config.telemetry.otlp_endpoint,
             ),
+        )
+
+    def translator(self) -> Translator:
+        return self._cached(
+            "translator",
+            lambda: Translator(self._config.language),
         )
 
     def provider(self) -> LLMProvider:

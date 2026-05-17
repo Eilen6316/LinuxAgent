@@ -1,0 +1,10 @@
+meta:
+  language_name: "English"
+common:
+  ok: "OK"
+  error: "Error"
+  enabled: "enabled"
+  disabled: "disabled"
+  none: "none"
+format:
+  item_count: "{count} items"

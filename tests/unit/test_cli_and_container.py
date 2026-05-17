@@ -22,7 +22,7 @@ from linuxagent.app.runtime_messages import (
 )
 from linuxagent.audit import AuditLog
 from linuxagent.config.loader import ConfigError
-from linuxagent.config.models import AppConfig
+from linuxagent.config.models import AppConfig, LanguageCode
 from linuxagent.container import Container
 from linuxagent.policy.config_rules import PolicyConfigError
 from linuxagent.product_context import product_capability_context, slash_help
@@ -455,6 +455,16 @@ def test_container_returns_config_instance() -> None:
     cfg = AppConfig.model_validate({})
     container = Container(cfg)
     assert container.config is cfg
+
+
+def test_container_exposes_configured_translator() -> None:
+    cfg = AppConfig.model_validate({"language": "en-US"})
+    container = Container(cfg)
+
+    translator = container.translator()
+
+    assert translator.language is LanguageCode.EN_US
+    assert translator is container.translator()
 
 
 def test_container_builds_job_daemon_unit() -> None:

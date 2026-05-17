@@ -63,6 +63,8 @@ required = [
     root / "_data" / "prompts" / "system.md",
     root / "_data" / "prompts" / "analysis.md",
     root / "_data" / "prompts" / "direct_answer.md",
+    root / "i18n" / "locales" / "zh-CN.yaml",
+    root / "i18n" / "locales" / "en-US.yaml",
 ]
 missing = [str(path) for path in required if not path.is_file()]
 runbooks_dir = root / "_data" / "runbooks"
@@ -72,6 +74,8 @@ if missing:
 if len(runbooks) != 11:
     raise SystemExit(f"expected 11 packaged runbooks, found {len(runbooks)}: {runbooks}")
 config = yaml.safe_load((root / "_data" / "default.yaml").read_text(encoding="utf-8"))
+if config.get("language") != "zh-CN":
+    raise SystemExit(f"packaged default language is wrong: {config.get('language')}")
 for section in ("sandbox", "file_patch", "cluster", "policy", "mcp", "skills"):
     if section not in config:
         raise SystemExit(f"missing packaged default config section: {section}")

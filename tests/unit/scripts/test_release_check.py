@@ -12,6 +12,7 @@ from scripts.release_check import check_artifacts, check_versions
 
 def _write_minimal_project(root: Path, version: str = "4.1.0") -> None:
     (root / "src" / "linuxagent").mkdir(parents=True)
+    (root / "src" / "linuxagent" / "i18n" / "locales").mkdir(parents=True)
     (root / "docs" / "releases").mkdir(parents=True)
     (root / "docs" / "zh" / "releases").mkdir(parents=True)
     (root / "prompts").mkdir()
@@ -29,6 +30,14 @@ def _write_minimal_project(root: Path, version: str = "4.1.0") -> None:
     )
     (root / "src" / "linuxagent" / "__init__.py").write_text(
         f'__version__ = "{version}"\n',
+        encoding="utf-8",
+    )
+    (root / "src" / "linuxagent" / "i18n" / "locales" / "zh-CN.yaml").write_text(
+        "common:\n  ok: 正常\n",
+        encoding="utf-8",
+    )
+    (root / "src" / "linuxagent" / "i18n" / "locales" / "en-US.yaml").write_text(
+        "common:\n  ok: OK\n",
         encoding="utf-8",
     )
     (root / "CHANGELOG.md").write_text(
@@ -137,6 +146,8 @@ def _write_wheel(
         "linuxagent/_data/policy.default.yaml": "version: 1\n",
         "linuxagent/_data/prompts/system.md": "system\n",
         "linuxagent/_data/runbooks/disk.yaml": "id: disk\n",
+        "linuxagent/i18n/locales/zh-CN.yaml": "common:\n  ok: 正常\n",
+        "linuxagent/i18n/locales/en-US.yaml": "common:\n  ok: OK\n",
         f"linuxagent-{version}.dist-info/METADATA": (
             f"Metadata-Version: 2.4\nName: linuxagent\nVersion: {version}\n"
         ),
@@ -162,6 +173,8 @@ def _write_sdist(
         f"{prefix}/README.md": "# LinuxAgent\n",
         f"{prefix}/CHANGELOG.md": "# Changelog\n",
         f"{prefix}/src/linuxagent/__init__.py": f'__version__ = "{version}"\n',
+        f"{prefix}/src/linuxagent/i18n/locales/zh-CN.yaml": "common:\n  ok: 正常\n",
+        f"{prefix}/src/linuxagent/i18n/locales/en-US.yaml": "common:\n  ok: OK\n",
         f"{prefix}/configs/default.yaml": "api: {}\n",
         f"{prefix}/configs/policy.default.yaml": "version: 1\n",
         f"{prefix}/prompts/system.md": "system\n",

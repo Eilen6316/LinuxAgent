@@ -14,11 +14,18 @@ from linuxagent.config.loader import (
     ConfigPermissionError,
     load_config,
 )
-from linuxagent.config.models import AppConfig, AuditConfig, ClusterConfig, LLMProviderName
+from linuxagent.config.models import (
+    AppConfig,
+    AuditConfig,
+    ClusterConfig,
+    LanguageCode,
+    LLMProviderName,
+)
 from linuxagent.sandbox import SandboxProfile, SandboxRunnerKind
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_REQUIRED_PATHS = (
+    ("language",),
     ("api", "provider"),
     ("api", "base_url"),
     ("api", "model"),
@@ -133,6 +140,7 @@ def test_config_yaml_samples_document_supported_providers(name: str) -> None:
 
 def test_defaults_populate_every_section() -> None:
     cfg = AppConfig.model_validate({})
+    assert cfg.language is LanguageCode.ZH_CN
     assert cfg.api.provider == LLMProviderName.DEEPSEEK
     assert cfg.api.prompt_cache is True
     assert cfg.security.session_whitelist_enabled is True
@@ -179,6 +187,19 @@ def test_require_key_returns_value_when_set() -> None:
 def test_invalid_provider_rejected() -> None:
     with pytest.raises(ValidationError, match="provider"):
         AppConfig.model_validate({"api": {"provider": "grok-nope"}})
+
+
+@pytest.mark.parametrize("language", [LanguageCode.ZH_CN, LanguageCode.EN_US])
+def test_supported_language_values(language: LanguageCode) -> None:
+    cfg = AppConfig.model_validate({"language": language.value})
+
+    assert cfg.language is language
+
+
+@pytest.mark.parametrize("language", ["zh", "cn", "auto"])
+def test_invalid_language_rejected(language: str) -> None:
+    with pytest.raises(ValidationError, match="language"):
+        AppConfig.model_validate({"language": language})
 
 
 def test_openai_compatible_provider_and_token_parameter() -> None:
