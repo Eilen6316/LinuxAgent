@@ -79,9 +79,35 @@ def test_tool_catalog_check_formats_permissions() -> None:
 
     assert "status: 正常" in output
     assert "runner: noop" in output
+    assert "运行标签: no_isolation" in output
     assert "仅诊断" in output
     assert "name=read_window status=正常 profile=read_only" in output
     assert "permissions=read_files" in output
+
+
+def test_tool_catalog_check_formats_process_limits_runtime_label() -> None:
+    @tool
+    def read_window() -> str:
+        """Return a bounded file window."""
+        return "ok"
+
+    report = inspect_tool_catalog(
+        [
+            attach_tool_sandbox(
+                read_window,
+                ToolSandboxSpec(profile=SandboxProfile.READ_ONLY, read_files=True),
+            )
+        ]
+    )
+
+    output = format_tool_catalog_check(
+        report,
+        runner=SandboxRunnerKind.LOCAL,
+        sandbox_enabled=True,
+    )
+
+    assert "运行标签: process_limits_only" in output
+    assert "仅进程限制" in output
 
 
 async def test_tool_event_keeps_full_limited_output_for_ui_evidence() -> None:

@@ -38,7 +38,7 @@ but to make model-driven operations explicit, reviewable, and auditable.
 | Audit log tampering hides an approval | Hash-chained JSONL records, `linuxagent audit verify`, and optional remote append-only sink forwarding |
 | Non-interactive automation silently approves work | No-TTY confirmation requests auto-deny |
 | Overly broad dependencies increase supply-chain risk | Major-version bounds plus release constraints file and build verification |
-| Operators assume sandbox isolation is active | No-op and passthrough runners mark `enforced=false`; SSH protection is a least-privilege boundary, not local sandbox inheritance |
+| Operators assume sandbox isolation is active | Runtime records expose `runtime_label` (`no_isolation`, `process_limits_only`, `filesystem_isolation`, or `privileged_passthrough`) plus `enforced`; SSH protection is a least-privilege boundary, not local sandbox inheritance |
 
 ## Out of Scope
 

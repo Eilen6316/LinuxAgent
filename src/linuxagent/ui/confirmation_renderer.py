@@ -423,6 +423,19 @@ def _sandbox_summary(sandbox: dict[str, Any], translator: Translator) -> str:
         runner=sandbox.get("runner") or translator.t("ui.confirm.message.unknown"),
         enabled=_yes_no(sandbox.get("enabled"), translator),
         enforced=_yes_no(sandbox.get("enforced"), translator),
+        runtime_label=sandbox.get("runtime_label") or translator.t("ui.confirm.message.unknown"),
+        runtime_note=_sandbox_runtime_note(sandbox, translator),
+    )
+
+
+def _sandbox_runtime_note(sandbox: dict[str, Any], translator: Translator) -> str:
+    label = sandbox.get("runtime_label")
+    key = f"ui.confirm.message.sandbox_runtime.{label}"
+    translated = translator.t(key)
+    return (
+        translated
+        if translated != key
+        else str(label or translator.t("ui.confirm.message.unknown"))
     )
 
 

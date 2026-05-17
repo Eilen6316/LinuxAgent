@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from langchain_core.tools import BaseTool
 
 from ..i18n import Translator, default_translator
-from ..sandbox import SandboxRunnerKind
+from ..sandbox import SandboxRunnerKind, SandboxRuntimeLabel
 from .sandbox import SANDBOX_METADATA_KEY, ToolHITLMode, tool_sandbox_record
 
 
@@ -74,7 +74,10 @@ def format_tool_catalog_check(
         f"  status: {_status(report.ok, tr)}",
         f"  runner: {runner.value}",
         f"  {tr.t('tool_catalog.field.sandbox_enabled')}: {_bool(sandbox_enabled, tr)}",
-        f"  {tr.t('tool_catalog.field.isolation_note')}: {_isolation_note(runner, sandbox_enabled, tr)}",
+        f"  {tr.t('tool_catalog.field.runtime_label')}: "
+        f"{_catalog_runtime_label(runner, sandbox_enabled).value}",
+        f"  {tr.t('tool_catalog.field.isolation_note')}: "
+        f"{_runtime_label_note(_catalog_runtime_label(runner, sandbox_enabled), tr)}",
     ]
     lines.extend(_format_tool_item(item, tr) for item in report.items)
     return "\n".join(lines)
@@ -196,18 +199,18 @@ def _tool_name(tool: BaseTool) -> str:
     return str(getattr(tool, "name", "") or "<unnamed>")
 
 
-def _isolation_note(
-    runner: SandboxRunnerKind,
-    sandbox_enabled: bool,
-    translator: Translator,
-) -> str:
-    if not sandbox_enabled:
-        return translator.t("tool_catalog.isolation.sandbox_disabled")
-    if runner is SandboxRunnerKind.NOOP:
-        return translator.t("tool_catalog.isolation.noop")
+def _catalog_runtime_label(runner: SandboxRunnerKind, sandbox_enabled: bool) -> SandboxRuntimeLabel:
+    if not sandbox_enabled or runner is SandboxRunnerKind.NOOP:
+        return SandboxRuntimeLabel.NO_ISOLATION
     if runner is SandboxRunnerKind.LOCAL:
-        return translator.t("tool_catalog.isolation.local")
-    return translator.t("tool_catalog.isolation.bubblewrap")
+        return SandboxRuntimeLabel.PROCESS_LIMITS_ONLY
+    return SandboxRuntimeLabel.FILESYSTEM_ISOLATION
+
+
+def _runtime_label_note(label: SandboxRuntimeLabel, translator: Translator) -> str:
+    key = f"tool_catalog.isolation.{label.value}"
+    translated = translator.t(key)
+    return translated if translated != key else label.value
 
 
 def _status(ok: bool, translator: Translator) -> str:

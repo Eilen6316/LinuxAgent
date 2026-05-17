@@ -13,6 +13,7 @@ from .models import (
     SandboxRunner,
     SandboxRunnerKind,
     SandboxRunResult,
+    SandboxRuntimeLabel,
     SandboxUnavailableError,
 )
 from .noop import NoopSandboxRunner
@@ -27,6 +28,7 @@ __all__ = [
     "SandboxProfile",
     "SandboxRequest",
     "SandboxResult",
+    "SandboxRuntimeLabel",
     "SandboxRunResult",
     "SandboxRunner",
     "SandboxRunnerKind",

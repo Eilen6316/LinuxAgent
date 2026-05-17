@@ -35,6 +35,13 @@ class SandboxNetworkPolicy(StrEnum):
     ALLOWLIST = "allowlist"
 
 
+class SandboxRuntimeLabel(StrEnum):
+    NO_ISOLATION = "no_isolation"
+    PROCESS_LIMITS_ONLY = "process_limits_only"
+    FILESYSTEM_ISOLATION = "filesystem_isolation"
+    PRIVILEGED_PASSTHROUGH = "privileged_passthrough"
+
+
 class SandboxUnavailableError(RuntimeError):
     """Raised when an isolation profile cannot be enforced."""
 
@@ -67,6 +74,7 @@ class SandboxResult:
     network: SandboxNetworkPolicy
     resource_limits: ResourceLimits
     fallback_reason: str | None = None
+    runtime_label: SandboxRuntimeLabel = SandboxRuntimeLabel.NO_ISOLATION
 
     def to_record(self) -> dict[str, object]:
         return {
@@ -78,6 +86,7 @@ class SandboxResult:
             "network": self.network.value,
             "resource_limits": self.resource_limits,
             "fallback_reason": self.fallback_reason,
+            "runtime_label": self.runtime_label.value,
         }
 
 

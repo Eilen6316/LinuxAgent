@@ -236,12 +236,13 @@ policy:
 tool_catalog:
   field:
     sandbox_enabled: "sandbox_enabled"
+    runtime_label: "运行标签"
     isolation_note: "隔离说明"
   isolation:
-    sandbox_disabled: "仅诊断；sandbox 已禁用"
-    noop: "仅诊断；noop runner 不执行隔离"
-    local: "仅进程限制；不隔离文件系统或网络"
-    bubblewrap: "bubblewrap 可在可用时执行受支持的 profile"
+    no_isolation: "仅诊断；命令运行时没有 sandbox 隔离"
+    process_limits_only: "仅进程限制；不隔离文件系统或网络"
+    filesystem_isolation: "请求的 profile 可执行时启用文件系统隔离"
+    privileged_passthrough: "特权直通；无 sandbox 隔离"
 ui:
   console:
     command_result_title: "命令结果 · exit {exit_code}"
@@ -308,7 +309,12 @@ ui:
       repaired_diff: "LinuxAgent 已重新读取目标文件并修复该 diff（第 {attempt} 次）"
       no_reason: "无原因"
       inline_payload_label: "内联内容（{command}{suffix}）"
-      sandbox_summary: "profile={profile} runner={runner} enabled={enabled} enforced={enforced}"
+      sandbox_summary: "profile={profile} runner={runner} runtime={runtime_label}（{runtime_note}）enabled={enabled} enforced={enforced}"
+      sandbox_runtime:
+        no_isolation: "无 sandbox 隔离"
+        process_limits_only: "仅进程限制"
+        filesystem_isolation: "文件系统隔离"
+        privileged_passthrough: "特权直通"
       network_allow: "{policy} allow={allowlist}"
       remote_profile: "{host}: profile={profile} user={username} cwd={cwd} env={environment} {sudo}"
       sudo: "sudo"

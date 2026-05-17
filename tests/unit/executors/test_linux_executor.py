@@ -21,7 +21,12 @@ from linuxagent.executors import (
 from linuxagent.interfaces import CommandSource, SafetyLevel
 from linuxagent.policy import PolicyEngine
 from linuxagent.policy.models import PolicyConfig, PolicyMatch, PolicyRule
-from linuxagent.sandbox import LocalProcessSandboxRunner, SandboxProfile, SandboxRunnerKind
+from linuxagent.sandbox import (
+    LocalProcessSandboxRunner,
+    SandboxProfile,
+    SandboxRunnerKind,
+    SandboxRuntimeLabel,
+)
 from linuxagent.sandbox.models import SandboxUnavailableError
 
 
@@ -158,6 +163,7 @@ async def test_execute_happy_path() -> None:
     assert result.sandbox is not None
     assert result.sandbox.runner is SandboxRunnerKind.NOOP
     assert result.sandbox.enforced is False
+    assert result.sandbox.runtime_label is SandboxRuntimeLabel.NO_ISOLATION
 
 
 async def test_execute_nonzero_exit_code() -> None:
@@ -177,7 +183,21 @@ async def test_execute_records_configured_sandbox_metadata() -> None:
     assert result.sandbox is not None
     assert result.sandbox.requested_profile is SandboxProfile.READ_ONLY
     assert result.sandbox.enabled is False
+    assert result.sandbox.runtime_label is SandboxRuntimeLabel.NO_ISOLATION
     assert result.sandbox.fallback_reason == "sandbox disabled"
+
+
+def test_sandbox_preview_exposes_runtime_label() -> None:
+    ex = LinuxCommandExecutor(
+        SecurityConfig(command_timeout=5.0),
+        sandbox_config=SandboxConfig(default_profile=SandboxProfile.READ_ONLY),
+    )
+
+    preview = ex.sandbox_preview("/bin/echo hello")
+
+    assert preview["runtime_label"] == "no_isolation"
+    assert preview["enforced"] is False
+    assert preview["fallback_reason"] == "sandbox disabled"
 
 
 async def test_execute_fails_closed_when_runner_cannot_enforce_safe_profile() -> None:

@@ -9,6 +9,7 @@ from .models import (
     SandboxResult,
     SandboxRunnerKind,
     SandboxRunResult,
+    SandboxRuntimeLabel,
 )
 
 
@@ -36,6 +37,7 @@ class NoopSandboxRunner:
             network=request.network,
             resource_limits=request.resource_limits,
             fallback_reason=reason,
+            runtime_label=SandboxRuntimeLabel.NO_ISOLATION,
         )
 
     async def run(

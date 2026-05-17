@@ -20,6 +20,7 @@ from .models import (
     SandboxResult,
     SandboxRunnerKind,
     SandboxRunResult,
+    SandboxRuntimeLabel,
     SandboxUnavailableError,
 )
 
@@ -59,6 +60,7 @@ class LocalProcessSandboxRunner:
             network=request.network,
             resource_limits=request.resource_limits,
             fallback_reason=_fallback_reason(self._enabled, request),
+            runtime_label=_runtime_label(self._enabled, request),
         )
 
     async def run(
@@ -119,6 +121,14 @@ def _fallback_reason(enabled: bool, request: SandboxRequest) -> str | None:
     if request.profile in _PASSTHROUGH_PROFILES:
         return "local runner provides process limits only; no filesystem isolation"
     return None
+
+
+def _runtime_label(enabled: bool, request: SandboxRequest) -> SandboxRuntimeLabel:
+    if not enabled:
+        return SandboxRuntimeLabel.NO_ISOLATION
+    if request.profile is SandboxProfile.PRIVILEGED_PASSTHROUGH:
+        return SandboxRuntimeLabel.PRIVILEGED_PASSTHROUGH
+    return SandboxRuntimeLabel.PROCESS_LIMITS_ONLY
 
 
 def _clean_env() -> dict[str, str]:

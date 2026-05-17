@@ -156,6 +156,7 @@ def test_render_confirm_shows_basic_command_fields() -> None:
                 "runner": "noop",
                 "enabled": False,
                 "enforced": False,
+                "runtime_label": "no_isolation",
                 "network": "inherit",
                 "cwd": str(Path.cwd()),
                 "allowed_roots": [str(Path.cwd())],
@@ -171,6 +172,8 @@ def test_render_confirm_shows_basic_command_fields() -> None:
     assert "read-only" in rendered
     assert "profile=system_inspect" in rendered
     assert "runner=noop" in rendered
+    assert "runtime=no_isolation" in rendered
+    assert "no sandbox isolation" in rendered
     assert "sandbox disabled" in rendered
 
 

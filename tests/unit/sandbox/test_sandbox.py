@@ -18,6 +18,7 @@ from linuxagent.sandbox import (
     SandboxProfile,
     SandboxRequest,
     SandboxRunnerKind,
+    SandboxRuntimeLabel,
     SandboxUnavailableError,
     profile_for_safety,
 )
@@ -40,8 +41,10 @@ def test_noop_runner_records_metadata_without_enforcement() -> None:
     assert result.runner is SandboxRunnerKind.NOOP
     assert result.enabled is False
     assert result.enforced is False
+    assert result.runtime_label is SandboxRuntimeLabel.NO_ISOLATION
     assert result.fallback_reason == "sandbox disabled"
     assert result.to_record()["requested_profile"] == "system_inspect"
+    assert result.to_record()["runtime_label"] == "no_isolation"
 
 
 async def test_noop_runner_executes_without_claiming_enforcement() -> None:
@@ -91,6 +94,7 @@ async def test_local_runner_allows_explicit_passthrough_profile(tmp_path: Path) 
     assert result.sandbox.runner is SandboxRunnerKind.LOCAL
     assert result.sandbox.enabled is True
     assert result.sandbox.enforced is False
+    assert result.sandbox.runtime_label is SandboxRuntimeLabel.PRIVILEGED_PASSTHROUGH
 
 
 async def test_local_runner_rejects_unsupported_network_policy(tmp_path: Path) -> None:
@@ -294,6 +298,7 @@ async def test_bubblewrap_allows_explicit_passthrough_without_probe(tmp_path: Pa
     assert result.exit_code == 0
     assert result.sandbox.runner is SandboxRunnerKind.BUBBLEWRAP
     assert result.sandbox.enforced is False
+    assert result.sandbox.runtime_label is SandboxRuntimeLabel.PRIVILEGED_PASSTHROUGH
     assert result.sandbox.fallback_reason == "profile permits privileged passthrough"
 
 
@@ -330,6 +335,7 @@ async def test_bubblewrap_run_path_keeps_local_process_controls(
 
     assert result.sandbox.runner is SandboxRunnerKind.BUBBLEWRAP
     assert result.sandbox.enforced is True
+    assert result.sandbox.runtime_label is SandboxRuntimeLabel.FILESYSTEM_ISOLATION
     assert "missing" in result.stdout
     assert "visible" not in result.stdout
     assert len(result.stdout.encode("utf-8")) <= 1024

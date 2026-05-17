@@ -382,8 +382,8 @@ linuxagent check
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | 命中后以高风险 diff 确认展示 |
 | `file_patch` | `allow_permission_changes` | `true` | 是否允许 patch 计划声明权限位变更 |
 | `file_patch` | `max_repair_attempts` | `2` | 自动修复 FilePatchPlan 的轮数；`0` 表示关闭自动 patch repair |
-| `sandbox` | `enabled` | `false` | sandbox 边界开关；设为 `true` 后，所选 runner 不能执行请求的安全 profile 时会 fail-closed |
-| `sandbox` | `runner` | `noop` | `noop`、`local` 或可选 `bubblewrap`；`noop` 只记录 metadata |
+| `sandbox` | `enabled` | `false` | sandbox 边界开关；默认兼容模式只记录 `runtime_label=no_isolation`；设为 `true` 后，所选 runner 不能执行请求的安全 profile 时会 fail-closed |
+| `sandbox` | `runner` | `noop` | `noop`、`local` 或可选 `bubblewrap`；`noop` 只记录 metadata，`local` 仅提供进程限制，`bubblewrap` 可在可执行 profile 下提供文件系统隔离 |
 | `sandbox` | `default_profile` | `system_inspect` | 没有更强 policy capability 时记录的默认 profile |
 | `sandbox` | `network` | `inherit` | `inherit`、`disabled`、`loopback_only` 或 `allowlist`；安全 profile 下不支持则 fail-closed |
 | `sandbox.tools` | `max_rounds` | `3` | 每次 planner 请求允许的最大 tool-calling 轮数 |
@@ -535,7 +535,7 @@ linuxagent ❯ 看一下当前目录的文件
 │ Rule     LLM_FIRST_RUN              │
 │ Source   llm                        │
 │ Sandbox  profile=system_inspect     │
-│          runner=noop enforced=no    │
+│          runner=noop runtime=no_isolation enforced=no │
 │ Network  inherit                    │
 ╰──────────────────────────────────────╯
 Allow this operation?

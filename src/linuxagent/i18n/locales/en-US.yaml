@@ -236,12 +236,13 @@ policy:
 tool_catalog:
   field:
     sandbox_enabled: "sandbox_enabled"
+    runtime_label: "runtime_label"
     isolation_note: "isolation_note"
   isolation:
-    sandbox_disabled: "diagnostic only; sandbox is disabled"
-    noop: "diagnostic only; noop runner does not enforce isolation"
-    local: "process limits only; no filesystem or network isolation"
-    bubblewrap: "bubblewrap may enforce supported profiles when available"
+    no_isolation: "diagnostic only; commands run without sandbox isolation"
+    process_limits_only: "process limits only; no filesystem or network isolation"
+    filesystem_isolation: "filesystem isolation when the requested profile is enforceable"
+    privileged_passthrough: "privileged passthrough; no sandbox isolation"
 ui:
   console:
     command_result_title: "Command result · exit {exit_code}"
@@ -308,7 +309,12 @@ ui:
       repaired_diff: "LinuxAgent reread the target file and repaired this diff (attempt {attempt})"
       no_reason: "no reason"
       inline_payload_label: "Inline payload ({command}{suffix})"
-      sandbox_summary: "profile={profile} runner={runner} enabled={enabled} enforced={enforced}"
+      sandbox_summary: "profile={profile} runner={runner} runtime={runtime_label} ({runtime_note}) enabled={enabled} enforced={enforced}"
+      sandbox_runtime:
+        no_isolation: "no sandbox isolation"
+        process_limits_only: "process limits only"
+        filesystem_isolation: "filesystem isolation"
+        privileged_passthrough: "privileged passthrough"
       network_allow: "{policy} allow={allowlist}"
       remote_profile: "{host}: profile={profile} user={username} cwd={cwd} env={environment} {sudo}"
       sudo: "sudo"

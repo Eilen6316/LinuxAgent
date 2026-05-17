@@ -391,8 +391,8 @@ linuxagent check
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | Matching paths are shown as elevated-risk patch confirmations |
 | `file_patch` | `allow_permission_changes` | `true` | Allows patch plans to declare chmod-style permission changes |
 | `file_patch` | `max_repair_attempts` | `2` | Automatic FilePatchPlan repair rounds; `0` disables patch repair |
-| `sandbox` | `enabled` | `false` | Sandbox boundary flag; `true` fails closed when the selected runner cannot enforce the requested safe profile |
-| `sandbox` | `runner` | `noop` | `noop`, `local`, or optional `bubblewrap`; `noop` records metadata only |
+| `sandbox` | `enabled` | `false` | Sandbox boundary flag; default compatibility mode records `runtime_label=no_isolation`; `true` fails closed when the selected runner cannot enforce the requested safe profile |
+| `sandbox` | `runner` | `noop` | `noop`, `local`, or optional `bubblewrap`; `noop` records metadata only, `local` is process-limits-only, and `bubblewrap` can provide filesystem isolation for enforceable profiles |
 | `sandbox` | `default_profile` | `system_inspect` | Default profile recorded for commands without stronger policy capabilities |
 | `sandbox` | `network` | `inherit` | `inherit`, `disabled`, `loopback_only`, or `allowlist`; unsupported policies fail closed for safe profiles |
 | `sandbox.tools` | `max_rounds` | `3` | Maximum tool-calling rounds per planner request |
@@ -580,7 +580,7 @@ linuxagent ❯ list files in the current directory
 │ Rule     LLM_FIRST_RUN              │
 │ Source   llm                        │
 │ Sandbox  profile=system_inspect     │
-│          runner=noop enforced=no    │
+│          runner=noop runtime=no_isolation enforced=no │
 │ Network  inherit                    │
 ╰──────────────────────────────────────╯
 Allow this operation?

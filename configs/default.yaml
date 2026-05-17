@@ -41,6 +41,9 @@ file_patch:
   max_repair_attempts: 2
 
 sandbox:
+  # Default compatibility mode: records sandbox metadata but does not isolate
+  # commands. Runtime records expose runtime_label=no_isolation unless an
+  # enabled runner can actually enforce a stronger boundary.
   enabled: false
   runner: noop                 # noop | local | bubblewrap
   default_profile: system_inspect

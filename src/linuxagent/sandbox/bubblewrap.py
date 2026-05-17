@@ -14,6 +14,7 @@ from .models import (
     SandboxResult,
     SandboxRunnerKind,
     SandboxRunResult,
+    SandboxRuntimeLabel,
     SandboxUnavailableError,
 )
 
@@ -116,6 +117,7 @@ class BubblewrapSandboxRunner:
             network=request.network,
             resource_limits=request.resource_limits,
             fallback_reason="sandbox disabled",
+            runtime_label=SandboxRuntimeLabel.NO_ISOLATION,
         )
 
     def _passthrough_result(self, request: SandboxRequest, reason: str) -> SandboxResult:
@@ -128,6 +130,7 @@ class BubblewrapSandboxRunner:
             network=request.network,
             resource_limits=request.resource_limits,
             fallback_reason=reason,
+            runtime_label=SandboxRuntimeLabel.PRIVILEGED_PASSTHROUGH,
         )
 
     def _enforced_result(self, request: SandboxRequest) -> SandboxResult:
@@ -139,6 +142,7 @@ class BubblewrapSandboxRunner:
             root=str(request.cwd),
             network=request.network,
             resource_limits=request.resource_limits,
+            runtime_label=SandboxRuntimeLabel.FILESYSTEM_ISOLATION,
         )
 
 

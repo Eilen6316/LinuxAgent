@@ -35,6 +35,7 @@ from ..sandbox.models import (
     SandboxRequest,
     SandboxRunner,
     SandboxRunResult,
+    SandboxRuntimeLabel,
     SandboxUnavailableError,
 )
 from ..sandbox.noop import NoopSandboxRunner
@@ -374,6 +375,7 @@ def _sandbox_unavailable_record(
             "network": config.network.value,
             "resource_limits": config.limits.to_record(),
             "fallback_reason": reason,
+            "runtime_label": SandboxRuntimeLabel.NO_ISOLATION.value,
             "available": False,
             "cwd": str(Path.cwd()),
             "allowed_roots": [str(root) for root in config.allowed_roots],
@@ -388,6 +390,7 @@ def _sandbox_unavailable_record(
         "network": request.network.value,
         "resource_limits": request.resource_limits,
         "fallback_reason": reason,
+        "runtime_label": SandboxRuntimeLabel.NO_ISOLATION.value,
     }
     return _sandbox_preview_record(request, sandbox, available=False)
 
