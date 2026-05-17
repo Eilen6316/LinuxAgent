@@ -12,7 +12,13 @@ from langchain_core.callbacks.manager import (
     CallbackManagerForLLMRun,
 )
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+)
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.tools import tool
 
@@ -71,6 +77,31 @@ async def test_complete_multimodal_content_joined() -> None:
     assert out == "hello world"
 
 
+async def test_complete_repairs_dangling_tool_call_history() -> None:
+    prior = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "read_file",
+                "args": {"path": "README.md"},
+                "id": "dangling-1",
+                "type": "tool_call",
+            }
+        ],
+    )
+    model = _ToolCallingModel([AIMessage(content="recovered")])
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    out = await provider.complete([HumanMessage(content="read"), prior])
+
+    assert out == "recovered"
+    repaired = model.messages[0]
+    assert isinstance(repaired[-1], ToolMessage)
+    assert repaired[-1].tool_call_id == "dangling-1"
+    assert repaired[-1].status == "error"
+    assert "dangling_tool_call" in str(repaired[-1].content)
+
+
 async def test_complete_records_usage_metadata() -> None:
     usage = {
         "input_tokens": 10,
@@ -106,6 +137,7 @@ class _ToolCallingModel:
     def __init__(self, responses: list[AIMessage]) -> None:
         self._responses = list(responses)
         self.bound_tools = []
+        self.messages: list[list[BaseMessage]] = []
         self.invoke_kwargs: list[dict[str, Any]] = []
 
     def bind_tools(self, tools):
@@ -113,7 +145,7 @@ class _ToolCallingModel:
         return self
 
     async def ainvoke(self, messages: list[BaseMessage], **kwargs: Any) -> AIMessage:
-        del messages
+        self.messages.append(list(messages))
         self.invoke_kwargs.append(dict(kwargs))
         return self._responses.pop(0)
 
@@ -216,6 +248,38 @@ async def test_complete_with_tools_resolves_tool_calls() -> None:
     )
     assert out == "systemctl status nginx"
     assert [tool.name for tool in model.bound_tools] == ["lookup_status"]
+
+
+async def test_complete_with_tools_repairs_dangling_history_before_binding() -> None:
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    prior = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "lookup_status",
+                "args": {"service": "nginx"},
+                "id": "dangling-tool",
+                "type": "tool_call",
+            }
+        ],
+    )
+    model = _ToolCallingModel([AIMessage(content="done")])
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    out = await provider.complete_with_tools(
+        [HumanMessage(content="check"), prior],
+        [_sandboxed(lookup_status)],
+    )
+
+    assert out == "done"
+    repaired = model.messages[0]
+    assert isinstance(repaired[-1], ToolMessage)
+    assert repaired[-1].tool_call_id == "dangling-tool"
+    assert repaired[-1].status == "error"
 
 
 async def test_complete_with_tools_accumulates_usage_metadata() -> None:
@@ -344,6 +408,12 @@ async def test_complete_with_tools_emits_tool_observer_events() -> None:
     assert [event["phase"] for event in events] == ["start", "end"]
     assert events[0]["tool_name"] == "lookup_status"
     assert events[0]["args"] == {"service": "nginx"}
+    assert events[0]["sandbox"]["profile"] == "read_only"
+    assert events[0]["sandbox"]["permissions"]["read_files"] is False
+    assert events[0]["sandbox"]["timeout_seconds"] is None
+    assert events[1]["sandbox"]["profile"] == "read_only"
+    assert events[1]["output_chars"] == len(events[1]["output_text"])
+    assert events[1]["truncated"] is False
     assert "nginx is active" in events[1]["output_preview"]
 
 
@@ -376,6 +446,48 @@ async def test_complete_with_tools_truncates_tool_output() -> None:
     assert events[1]["status"] == "truncated"
     assert events[1]["truncated"] is True
     assert events[1]["output_chars"] <= 20
+
+
+async def test_complete_with_tools_applies_total_output_budget_across_calls() -> None:
+    events: list[dict[str, Any]] = []
+
+    @tool
+    async def first_chunk() -> str:
+        """Return first bounded output."""
+        return "12345678"
+
+    @tool
+    async def second_chunk() -> str:
+        """Return second output that exceeds the remaining total budget."""
+        return "abcdefgh"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "first_chunk", "args": {}, "id": "1", "type": "tool_call"},
+                    {"name": "second_chunk", "args": {}, "id": "2", "type": "tool_call"},
+                ],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="read")],
+        [_sandboxed(first_chunk), _sandboxed(second_chunk)],
+        tool_observer=events.append,
+        tool_runtime_limits=ToolRuntimeLimits(max_output_chars=20, max_total_output_chars=12),
+    )
+
+    end_events = [event for event in events if event["phase"] == "end"]
+    assert end_events[0]["status"] == "allowed"
+    assert end_events[0]["output_chars"] == 8
+    assert end_events[1]["status"] == "truncated"
+    assert end_events[1]["output_chars"] == 4
+    assert end_events[1]["output_text"].endswith("[tru")
 
 
 async def test_complete_with_tools_redacts_tool_output() -> None:

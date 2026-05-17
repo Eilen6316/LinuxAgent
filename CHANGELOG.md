@@ -36,12 +36,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   longer routed through inherited-stdio interactive execution. Their streamed
   output is captured in `ExecutionResult.stdout`/`stderr` and is available to
   the command-result panel and analysis prompt.
+- Tool-call history with an unpaired assistant tool call is now repaired by
+  inserting a structured redacted tool error before the next provider request,
+  avoiding provider crashes without executing any tool.
 
 ### Changed
 
 - Added automatic parameter-collection wizard support for ambiguous
   multi-parameter operations, with `/resume` visibility, stable partial
   recovery checkpoints, and user documentation.
+- LLM-visible tool calls now share one runtime budget: per-tool timeout,
+  per-tool output limit, cumulative per-request output limit, and maximum
+  tool-calling rounds. Runtime events include redacted args/output preview,
+  sandbox metadata, status, output size, and truncation details.
 - Source checkout bootstrap now seeds `~/.config/linuxagent/config.yaml` and
   installs a user-level `~/.local/bin/linuxagent` launcher, so users can start
   LinuxAgent from any directory without activating the checkout virtualenv.

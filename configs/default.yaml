@@ -9,7 +9,7 @@ api:
   timeout: 30.0
   stream_timeout: 60.0
   max_retries: 3
-  temperature: 0.3
+  temperature: 0.5
   max_tokens: 2048
   token_parameter: max_completion_tokens  # max_completion_tokens | max_tokens
   prompt_cache: true        # send stable per-thread prompt_cache_key; auto-fallback if unsupported

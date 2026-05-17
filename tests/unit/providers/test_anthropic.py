@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from linuxagent.config.models import APIConfig, LLMProviderName
 from linuxagent.providers.anthropic import AnthropicProvider
@@ -81,3 +81,29 @@ def test_anthropic_prepare_request_marks_existing_text_block() -> None:
     assert isinstance(content, list)
     assert "cache_control" not in content[0]
     assert content[1]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_anthropic_prepare_request_repairs_dangling_tool_call() -> None:
+    provider = _provider()
+    prior = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "read_file",
+                "args": {"path": "README.md"},
+                "id": "dangling-anthropic",
+                "type": "tool_call",
+            }
+        ],
+    )
+
+    messages, kwargs = provider._prepare_request(  # noqa: SLF001
+        [HumanMessage(content="read"), prior],
+        {"prompt_cache_key": "linuxagent:key"},
+    )
+
+    assert "prompt_cache_key" not in kwargs
+    assert isinstance(messages[-1], ToolMessage)
+    assert messages[-1].tool_call_id == "dangling-anthropic"
+    assert messages[-1].status == "error"
+    assert "dangling_tool_call" in str(messages[-1].content)

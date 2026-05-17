@@ -597,6 +597,7 @@ def test_no_user_config_falls_back_to_pydantic_defaults(
     monkeypatch.setattr("linuxagent.config.loader._XDG_PATH", tmp_path / "missing.yaml")
     cfg = load_config(env={})
     assert cfg.api.provider == LLMProviderName.DEEPSEEK
+    assert cfg.api.temperature == 0.5
     assert cfg.cluster.batch_confirm_threshold == 2
 
 

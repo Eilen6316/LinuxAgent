@@ -167,7 +167,7 @@ class BaseLLMProvider(LLMProvider):
         messages: list[BaseMessage],
         kwargs: dict[str, Any],
     ) -> tuple[list[BaseMessage], dict[str, Any]]:
-        return messages, self._request_kwargs(kwargs)
+        return repair_dangling_tool_calls(messages), self._request_kwargs(kwargs)
 
     # -- stream -----------------------------------------------------------
 
@@ -366,6 +366,58 @@ def _coerce_ai_message(message: BaseMessage) -> AIMessage:
     return AIMessage(
         content=_content_to_str(message.content),
         tool_calls=getattr(message, "tool_calls", []),
+    )
+
+
+def repair_dangling_tool_calls(messages: list[BaseMessage]) -> list[BaseMessage]:
+    repaired: list[BaseMessage] = []
+    pending: dict[str, str] = {}
+    changed = False
+    for message in messages:
+        if isinstance(message, ToolMessage):
+            pending.pop(message.tool_call_id, None)
+            repaired.append(message)
+            continue
+        if pending:
+            repaired.extend(_synthetic_tool_errors(pending))
+            pending.clear()
+            changed = True
+        repaired.append(message)
+        if isinstance(message, AIMessage):
+            for call in message.tool_calls:
+                call_id = call.get("id")
+                if isinstance(call_id, str) and call_id:
+                    pending[call_id] = str(call.get("name") or "unknown")
+    if pending:
+        repaired.extend(_synthetic_tool_errors(pending))
+        changed = True
+    return repaired if changed else messages
+
+
+def _synthetic_tool_errors(pending: dict[str, str]) -> list[ToolMessage]:
+    return [
+        ToolMessage(
+            content=_dangling_tool_call_error(tool_name),
+            name=tool_name,
+            tool_call_id=tool_call_id,
+            status="error",
+        )
+        for tool_call_id, tool_name in pending.items()
+    ]
+
+
+def _dangling_tool_call_error(tool_name: str) -> str:
+    payload = redact_record(
+        {
+            "status": "error",
+            "tool": tool_name,
+            "error_type": "dangling_tool_call",
+            "message": "previous assistant tool call had no paired tool result",
+        }
+    )
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
     )
 
 

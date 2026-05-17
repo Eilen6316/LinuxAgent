@@ -13,7 +13,7 @@ from typing import Any
 from langchain_core.messages import BaseMessage, SystemMessage
 
 from ..config.models import APIConfig, LLMProviderName
-from .base import BaseLLMProvider
+from .base import BaseLLMProvider, repair_dangling_tool_calls
 from .errors import (
     ProviderAuthError,
     ProviderConnectionError,
@@ -65,6 +65,7 @@ class AnthropicProvider(BaseLLMProvider):
         messages: list[BaseMessage],
         kwargs: dict[str, Any],
     ) -> tuple[list[BaseMessage], dict[str, Any]]:
+        messages = repair_dangling_tool_calls(messages)
         request_kwargs = dict(kwargs)
         prompt_cache_key = request_kwargs.pop("prompt_cache_key", None)
         if (

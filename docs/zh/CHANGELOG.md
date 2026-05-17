@@ -22,6 +22,8 @@ LinuxAgent 的重要变更记录在这里。
 - `python3 -c`、`bash -c` 等 inline interpreter 命令不再走继承 stdio 的
   interactive 执行路径。流式输出会写入 `ExecutionResult.stdout`/`stderr`，
   并进入命令结果面板和分析 prompt。
+- 历史消息里如果存在未配对的 assistant tool call，下一次 provider 请求前会插入结构化、
+  已脱敏的 tool error，避免 provider 因消息格式不完整崩溃，同时不会执行任何工具。
 
 ### Changed
 
@@ -29,6 +31,9 @@ LinuxAgent 的重要变更记录在这里。
   `~/.config/linuxagent/config.yaml`，并安装用户级
   `~/.local/bin/linuxagent` 启动器；用户无需激活项目 venv，也能在任意目录启动
   LinuxAgent。
+- LLM 可见工具现在共用统一 runtime budget：单工具超时、单工具输出上限、单次请求
+  累计输出预算和最大 tool-calling 轮数。Runtime event 会记录已脱敏的 args/output
+  preview、sandbox metadata、状态、输出长度和截断信息。
 - 可选的 embedding-backed intelligence tools 不再按 provider 默认暴露；需要推荐、
   知识库和语义相似命令工具时，显式设置 `intelligence.tools_enabled: true`。
 - 新增统一 tool catalog，供运行时 tool binding、`/tools` 上下文、product context
