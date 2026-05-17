@@ -365,6 +365,7 @@ linuxagent check
 
 | 段 | 字段 | 默认值 | 说明 |
 |---|---|---|---|
+| 根级 | `language` | `zh-CN` | LinuxAgent 自有固定终端文案的运行时语言；支持 `zh-CN` 和 `en-US` |
 | `api` | `provider` | `deepseek` | 可选 `openai` / `openai_compatible` / `local` / `ollama` / `vllm` / `lmstudio` / `deepseek` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo` |
 | `api` | `base_url` | `https://api.deepseek.com/v1` | OpenAI 兼容端点 |
 | `api` | `model` | `deepseek-chat` | 模型名 |
@@ -410,6 +411,31 @@ linuxagent check
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | 语义检索模型；**禁止本地 PyTorch 模型** |
 
 完整样例见 [`configs/example.yaml`](../../configs/example.yaml)。
+
+### 运行时语言
+
+在 `config.yaml` 顶层设置 `language`：
+
+```yaml
+language: en-US  # zh-CN | en-US
+```
+
+默认值是 `zh-CN`。该设置影响 LinuxAgent 自有的固定运行时文案：slash help
+和补全描述、CLI/TUI 标签、确认/阻断消息、wizard 控件、诊断信息、policy 展示原因，
+以及内置 runbook、policy、Skill 的用户可见展示元数据。
+
+它不影响 prompt 模板、LLM 路由/规划行为、模型最终回答语言、外部命令输出、
+用户文件内容、审计 JSON 字段名、MCP 协议字段、tool name、policy rule id
+或其他机器可读值。`linuxagent --help` 属于配置加载前的 argparse 静态帮助；
+运行时 slash help（`/help`）和终端 UI 固定文案会跟随 `language`。
+
+locale catalog 不是业务模板，也不承载 prompt 指令。AI 生成内容仍由模型根据用户请求
+生成。外部 Skill、runbook、policy 的单语言内容保持原文，除非该数据自己提供了本地化
+展示元数据。
+
+当前硬编码字符串门禁会阻止 `src/linuxagent/` 中未登记的中文运行时字符串字面量；
+英文 phrase 扫描仍是 report-only，便于维护者审查 UI/help/log 候选，同时避免把协议
+字符串、异常消息或模型可见文本误判为必须翻译。
 
 ---
 

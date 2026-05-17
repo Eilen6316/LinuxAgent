@@ -33,6 +33,10 @@ api:
   token_parameter: max_tokens
 ```
 
+Provider 原始异常会保留为机器诊断。运行时 `language` 只本地化 LinuxAgent 自有的
+展示包装、摘要和 UI 标签，不翻译 provider 原始错误文本、模型输出、prompt 模板或
+tool/MCP 协议字段。
+
 ## 反馈兼容性时请提供
 
 - provider 名称和 endpoint 类型

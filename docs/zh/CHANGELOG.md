@@ -29,6 +29,13 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Changed
 
+- 新增运行时 i18n 顶层配置 `language`（`zh-CN` / `en-US`），用于 LinuxAgent 自有
+  的固定 CLI/TUI 文案、slash help、确认/阻断消息、诊断信息和内置展示元数据。prompt
+  模板、模型可见指导、LLM 最终回答、审计 JSON 字段、MCP 协议字段、tool name 和
+  policy id 都保持稳定，不做本地化。
+- build/security 门禁现在会校验 locale catalog parity、打包后的 locale 可加载性，
+  以及未登记的中文运行时字符串字面量。英文 phrase 扫描仍是 report-only，避免把协议
+  字符串和模型可见文本误判为必须翻译。
 - 轻量 learner / 推荐辅助模块内部从 `linuxagent.intelligence` 改名为
   `linuxagent.usage_insights`；旧 import path 继续作为兼容重导出，`intelligence`
   配置键不变。

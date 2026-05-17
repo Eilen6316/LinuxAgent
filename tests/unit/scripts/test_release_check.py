@@ -7,6 +7,8 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
+import pytest
+
 from scripts.release_check import check_artifacts, check_versions
 
 
@@ -58,7 +60,10 @@ def _write_minimal_project(root: Path, version: str = "4.1.0") -> None:
     )
     (root / "prompts" / "system.md").write_text("system\n", encoding="utf-8")
     (root / "runbooks" / "disk.yaml").write_text("id: disk\n", encoding="utf-8")
-    (root / "configs" / "default.yaml").write_text("api: {}\n", encoding="utf-8")
+    (root / "configs" / "default.yaml").write_text(
+        "language: zh-CN\napi: {}\n",
+        encoding="utf-8",
+    )
     (root / "configs" / "policy.default.yaml").write_text("version: 1\n", encoding="utf-8")
 
 
@@ -106,6 +111,39 @@ def test_check_artifacts_accepts_current_wheel_and_sdist(tmp_path: Path) -> None
     assert check_artifacts(tmp_path) == []
 
 
+def test_check_artifacts_rejects_default_language_drift(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+    _write_wheel(tmp_path, extra_members={"linuxagent/_data/default.yaml": "language: en-US\n"})
+    _write_sdist(
+        tmp_path,
+        extra_members={"linuxagent-4.1.0/configs/default.yaml": "language: en-US\n"},
+    )
+
+    errors = check_artifacts(tmp_path)
+
+    assert any("default config language 'en-US' != 'zh-CN'" in error for error in errors)
+
+
+def test_check_artifacts_rejects_locale_parity_drift(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+    _write_wheel(
+        tmp_path,
+        extra_members={"linuxagent/i18n/locales/en-US.yaml": "common:\n  ok: OK\n  extra: extra\n"},
+    )
+    _write_sdist(
+        tmp_path,
+        extra_members={
+            "linuxagent-4.1.0/src/linuxagent/i18n/locales/en-US.yaml": (
+                "common:\n  ok: OK\n  extra: extra\n"
+            )
+        },
+    )
+
+    errors = check_artifacts(tmp_path)
+
+    assert any("en-US.yaml extra keys: common.extra" in error for error in errors)
+
+
 def test_check_artifacts_rejects_forbidden_members(tmp_path: Path) -> None:
     _write_minimal_project(tmp_path)
     _write_wheel(tmp_path, extra_members={".work/Plan.md": "bad"})
@@ -117,6 +155,23 @@ def test_check_artifacts_rejects_forbidden_members(tmp_path: Path) -> None:
     assert any(
         "forbidden local config file linuxagent-4.1.0/config.yaml" in error for error in errors
     )
+
+
+def test_check_artifacts_rejects_duplicate_archive_members(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        _write_wheel(
+            tmp_path,
+            duplicate_member=("linuxagent/i18n/locales/en-US.yaml", "common:\n"),
+        )
+    _write_sdist(tmp_path, duplicate_member=("linuxagent-4.1.0/README.md", "# Duplicate\n"))
+
+    errors = check_artifacts(tmp_path)
+
+    assert any(
+        "duplicate archive member linuxagent/i18n/locales/en-US.yaml" in error for error in errors
+    )
+    assert any("duplicate archive member linuxagent-4.1.0/README.md" in error for error in errors)
 
 
 def test_check_artifacts_rejects_version_drift(tmp_path: Path) -> None:
@@ -137,12 +192,13 @@ def _write_wheel(
     *,
     version: str = "4.1.0",
     extra_members: dict[str, str] | None = None,
+    duplicate_member: tuple[str, str] | None = None,
 ) -> None:
     dist = root / "dist"
     dist.mkdir(exist_ok=True)
     path = dist / f"linuxagent-{version}-py3-none-any.whl"
     members = {
-        "linuxagent/_data/default.yaml": "api: {}\n",
+        "linuxagent/_data/default.yaml": "language: zh-CN\napi: {}\n",
         "linuxagent/_data/policy.default.yaml": "version: 1\n",
         "linuxagent/_data/prompts/system.md": "system\n",
         "linuxagent/_data/runbooks/disk.yaml": "id: disk\n",
@@ -156,6 +212,8 @@ def _write_wheel(
     with zipfile.ZipFile(path, "w") as wheel:
         for name, content in members.items():
             wheel.writestr(name, content)
+        if duplicate_member is not None:
+            wheel.writestr(duplicate_member[0], duplicate_member[1])
 
 
 def _write_sdist(
@@ -163,6 +221,7 @@ def _write_sdist(
     *,
     version: str = "4.1.0",
     extra_members: dict[str, str] | None = None,
+    duplicate_member: tuple[str, str] | None = None,
 ) -> None:
     dist = root / "dist"
     dist.mkdir(exist_ok=True)
@@ -175,7 +234,7 @@ def _write_sdist(
         f"{prefix}/src/linuxagent/__init__.py": f'__version__ = "{version}"\n',
         f"{prefix}/src/linuxagent/i18n/locales/zh-CN.yaml": "common:\n  ok: 正常\n",
         f"{prefix}/src/linuxagent/i18n/locales/en-US.yaml": "common:\n  ok: OK\n",
-        f"{prefix}/configs/default.yaml": "api: {}\n",
+        f"{prefix}/configs/default.yaml": "language: zh-CN\napi: {}\n",
         f"{prefix}/configs/policy.default.yaml": "version: 1\n",
         f"{prefix}/prompts/system.md": "system\n",
         f"{prefix}/runbooks/disk.yaml": "id: disk\n",
@@ -184,7 +243,13 @@ def _write_sdist(
     members.update(extra_members or {})
     with tarfile.open(path, "w:gz") as sdist:
         for name, content in members.items():
-            data = content.encode("utf-8")
-            info = tarfile.TarInfo(name)
-            info.size = len(data)
-            sdist.addfile(info, fileobj=BytesIO(data))
+            _add_tar_text(sdist, name, content)
+        if duplicate_member is not None:
+            _add_tar_text(sdist, duplicate_member[0], duplicate_member[1])
+
+
+def _add_tar_text(sdist: tarfile.TarFile, name: str, content: str) -> None:
+    data = content.encode("utf-8")
+    info = tarfile.TarInfo(name)
+    info.size = len(data)
+    sdist.addfile(info, fileobj=BytesIO(data))

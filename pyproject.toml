@@ -76,7 +76,6 @@ packages = ["src/linuxagent"]
 "configs/policy.default.yaml" = "linuxagent/_data/policy.default.yaml"
 "prompts" = "linuxagent/_data/prompts"
 "runbooks" = "linuxagent/_data/runbooks"
-"src/linuxagent/i18n/locales" = "linuxagent/i18n/locales"
 
 [tool.hatch.build.targets.sdist]
 include = [

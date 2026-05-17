@@ -51,6 +51,15 @@ before building.
 dependencies. It uses PyPI by default; set `LINUXAGENT_PIP_INDEX_URL` to test
 against a private mirror.
 
+Runtime i18n is intentionally limited to LinuxAgent-owned fixed user-facing
+text. Do not localize prompt templates, planner guidance, tool descriptions
+that enter model context, MCP protocol metadata, audit JSON keys, policy ids,
+or other machine-readable fields. `src/linuxagent/i18n/locales/*.yaml` is for
+CLI/TUI labels, slash help, confirmation/block messages, diagnostics, and
+display-only metadata. New user-visible fixed strings should use a locale key;
+new model-visible instructions belong in `prompts/`, runbooks, policy YAML, or
+the relevant structured data source.
+
 ## Security Red Lines
 
 These are enforced both locally and in CI:
@@ -63,7 +72,11 @@ These are enforced both locally and in CI:
 - no unwrapped LangChain tools exposed to the LLM
 
 `make security` runs `scripts/check_code_rules.py`,
-`scripts/check_sandbox_rules.py`, grep red-lines, and Bandit.
+`scripts/check_sandbox_rules.py`, `scripts/i18n_audit.py`, grep red-lines, and
+Bandit. The i18n audit fails on unregistered Chinese runtime string literals in
+production source. English phrase detection remains report-only because many
+English literals are protocol strings, exception messages, model-facing
+instructions, or test fixtures.
 
 ## Sandbox Release Checklist
 
@@ -78,7 +91,8 @@ Before a release or security-sensitive merge, review:
 - fallback behavior: disabled/no-op paths report `enforced=false`; unavailable
   safe profiles fail closed.
 - packaging: `make verify-build` confirms config, policy, prompts, runbooks,
-  and sandbox config sections are present in the wheel.
+  locale catalogs, and sandbox config sections are present in the wheel; the
+  isolated wheel install also checks `zh-CN` / `en-US` locale key parity.
 
 ## SSH Remote Execution
 

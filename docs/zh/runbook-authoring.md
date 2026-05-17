@@ -3,6 +3,10 @@
 Runbook 是给 planner 的结构化运维经验，不是关键词路由，也不会绕过
 policy / HITL / audit。内置 runbook 位于 `runbooks/`。
 
+`title_i18n` 和步骤里的 `purpose_i18n` 只用于 LinuxAgent UI 展示。它们不改变
+planner guidance、policy 判断、审计 schema 或命令执行。没有本地化元数据时，
+LinuxAgent 会原样展示源 `title` / `purpose`；外部 runbook 可以保持单语言。
+
 ## 适合新增 Runbook 的场景
 
 - 磁盘、内存、CPU、负载等只读诊断
@@ -21,10 +25,14 @@ policy / HITL / audit。内置 runbook 位于 `runbooks/`。
 ```yaml
 id: service-status
 title: Service status inspection
+title_i18n:
+  zh-CN: 服务状态检查
 description: Inspect a systemd service without mutating it.
 steps:
   - command: systemctl status nginx --no-pager
     purpose: Show service state and recent status output.
+    purpose_i18n:
+      zh-CN: 显示服务状态和最近状态输出。
     read_only: true
   - command: journalctl -u nginx --no-pager -n 100
     purpose: Show recent service logs.

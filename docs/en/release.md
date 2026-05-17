@@ -45,8 +45,10 @@ The artifact verification step builds wheel and sdist, checks wheel/sdist
 metadata, rejects `.work/`, local `config.yaml`, cache, and bytecode files, then
 installs the built wheel in a temporary virtualenv. It checks
 `linuxagent --version`, `linuxagent --help`, `linuxagent check`, and packaged
-config, policy, prompt, and runbook data. It uses PyPI by default; set
-`LINUXAGENT_PIP_INDEX_URL` to test against a private mirror.
+config, policy, prompt, runbook, and locale data. The isolated wheel install
+also validates that packaged `zh-CN` / `en-US` locale catalogs load and have
+key parity. It uses PyPI by default; set `LINUXAGENT_PIP_INDEX_URL` to test
+against a private mirror.
 
 For slow mainland China networks, run the same gate through a domestic mirror:
 

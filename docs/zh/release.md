@@ -41,8 +41,9 @@ python scripts/release_check.py --versions --tag v4.1.0
 产物验证步骤会构建 wheel 和 sdist，检查 wheel/sdist metadata，拒绝 `.work/`、
 本地 `config.yaml`、缓存文件和 bytecode 进入产物，然后在临时虚拟环境安装 built
 wheel。它会检查 `linuxagent --version`、`linuxagent --help`、`linuxagent check`，
-并确认打包后的 config、policy、prompt、runbook 数据存在。默认使用 PyPI；如需私有
-镜像，可设置 `LINUXAGENT_PIP_INDEX_URL`。
+并确认打包后的 config、policy、prompt、runbook 和 locale 数据存在。隔离 wheel
+安装态还会校验 `zh-CN` / `en-US` locale catalog 可以加载且 key parity 一致。
+默认使用 PyPI；如需私有镜像，可设置 `LINUXAGENT_PIP_INDEX_URL`。
 
 国内网络较慢时，可用国内镜像运行同一套验证：
 

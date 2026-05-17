@@ -59,6 +59,11 @@ api:
 If requests fail with an unknown parameter error, change
 `api.token_parameter` between `max_tokens` and `max_completion_tokens`.
 
+Provider exceptions are kept as machine diagnostics. Runtime `language`
+localizes LinuxAgent-owned wrappers, summaries, and UI labels, but it does not
+translate raw provider error text, model output, prompt templates, or tool/MCP
+protocol fields.
+
 ## Compatibility Reports
 
 When reporting a provider as working or broken, include:

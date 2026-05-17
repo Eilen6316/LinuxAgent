@@ -45,6 +45,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Added runtime i18n configuration via top-level `language` (`zh-CN` or
+  `en-US`) for LinuxAgent-owned fixed CLI/TUI text, slash help, confirmations,
+  block messages, diagnostics, and display-only built-in metadata. Prompt
+  templates, model-visible guidance, LLM final answers, audit JSON fields, MCP
+  protocol fields, tool names, and policy ids remain stable machine/model
+  surfaces.
+- Build and security gates now verify locale catalog parity, packaged locale
+  availability, and unregistered Chinese runtime string literals. English
+  phrase scanning is available as a report-only inventory to avoid false
+  positives on protocol strings and model-facing text.
 - The lightweight learner / recommendation helpers moved internally from
   `linuxagent.intelligence` to `linuxagent.usage_insights`; the old import path
   remains as a compatibility re-export and the `intelligence` config key is

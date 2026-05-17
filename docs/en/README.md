@@ -374,6 +374,7 @@ linuxagent check
 
 | Section | Field | Default | Description |
 |---|---|---|---|
+| root | `language` | `zh-CN` | Runtime UI language for LinuxAgent-owned fixed terminal text; supported values are `zh-CN` and `en-US` |
 | `api` | `provider` | `deepseek` | `openai` / `openai_compatible` / `local` / `ollama` / `vllm` / `lmstudio` / `deepseek` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo` |
 | `api` | `base_url` | `https://api.deepseek.com/v1` | OpenAI-compatible endpoint |
 | `api` | `model` | `deepseek-chat` | Model name |
@@ -420,6 +421,36 @@ linuxagent check
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | Semantic search model; **local PyTorch models are disallowed** |
 
 Full example: [`configs/example.yaml`](../../configs/example.yaml).
+
+### Runtime language
+
+Set the top-level `language` field in `config.yaml`:
+
+```yaml
+language: en-US  # zh-CN | en-US
+```
+
+The default is `zh-CN`. The setting affects LinuxAgent-owned fixed runtime
+text: slash help and completion descriptions, CLI/TUI labels, confirmation and
+block messages, wizard controls, diagnostics, policy display reasons, and
+localized display metadata for built-in runbooks, policies, and Skills.
+
+It does not change prompt templates, LLM routing/planning behavior, the final
+answer language chosen by the model, external command output, user file
+contents, audit JSON field names, MCP protocol fields, tool names, policy rule
+ids, or other machine-readable values. `linuxagent --help` is static argparse
+help shown before config loading; runtime slash help (`/help`) and terminal UI
+fixed text follow `language`.
+
+Locale catalogs are not business templates and do not contain prompt
+instructions. AI-generated content still comes from the model and the user's
+request. External Skill, runbook, and policy text remains in its source
+language unless that data explicitly provides localized display metadata.
+
+The hardcoded-string gate currently blocks unregistered Chinese runtime string
+literals in `src/linuxagent/`. English phrase scanning is report-only so
+maintainers can review likely UI/help/log candidates without turning protocol
+strings, exception messages, or model-facing text into false positives.
 
 ---
 

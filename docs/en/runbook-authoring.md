@@ -7,6 +7,12 @@ through `CommandPlan` validation, policy, HITL, execution, audit, and analysis.
 
 Built-in runbooks live in `runbooks/`.
 
+Runbook `title_i18n` and step `purpose_i18n` fields are display-only metadata
+for LinuxAgent UI surfaces. They do not change planner guidance, policy
+decisions, audit schema, or command execution. If localized metadata is absent,
+LinuxAgent shows the source `title` / `purpose` text unchanged. External
+runbooks may remain single-language.
+
 ## When To Add A Runbook
 
 Add a runbook when a diagnostic workflow is common, repeatable, and useful as
@@ -30,10 +36,14 @@ A typical read-only runbook includes:
 ```yaml
 id: service-status
 title: Service status inspection
+title_i18n:
+  zh-CN: 服务状态检查
 description: Inspect a systemd service without mutating it.
 steps:
   - command: systemctl status nginx --no-pager
     purpose: Show service state and recent status output.
+    purpose_i18n:
+      zh-CN: 显示服务状态和最近状态输出。
     read_only: true
   - command: journalctl -u nginx --no-pager -n 100
     purpose: Show recent service logs.

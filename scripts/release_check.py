@@ -10,13 +10,18 @@ import sys
 import tarfile
 import tomllib
 import zipfile
+from collections.abc import Mapping
 from email.parser import Parser
 from pathlib import Path
+
+import yaml
 
 PROJECT_NAME = "linuxagent"
 WHEEL_RE = re.compile(r"^linuxagent-(?P<version>[^-]+)-.+\.whl$")
 SDIST_RE = re.compile(r"^linuxagent-(?P<version>[^/]+)\.tar\.gz$")
 CHANGELOG_HEADING = "## [{version}] - "
+DEFAULT_LANGUAGE = "zh-CN"
+LOCALE_FILENAMES = ("zh-CN.yaml", "en-US.yaml")
 FORBIDDEN_ARCHIVE_PARTS = {
     ".git",
     ".mypy_cache",
@@ -157,7 +162,9 @@ def _artifact_version(path: Path, pattern: re.Pattern[str]) -> str | None:
 def _check_wheel(path: Path, root: Path, version: str) -> list[str]:
     errors: list[str] = []
     with zipfile.ZipFile(path) as wheel:
-        names = set(wheel.namelist())
+        name_list = wheel.namelist()
+        names = set(name_list)
+        errors.extend(_duplicate_member_errors(path, name_list))
         errors.extend(_archive_member_errors(path, names))
         errors.extend(_missing_members(path, names, _required_wheel_members(root)))
         metadata_names = sorted(name for name in names if name.endswith(".dist-info/METADATA"))
@@ -168,16 +175,31 @@ def _check_wheel(path: Path, root: Path, version: str) -> list[str]:
         else:
             metadata = wheel.read(metadata_names[0]).decode("utf-8")
             errors.extend(_metadata_errors(path, metadata, version))
+        errors.extend(
+            _default_language_errors(path, _zip_text(wheel, "linuxagent/_data/default.yaml"))
+        )
+        errors.extend(
+            _locale_parity_errors(
+                path,
+                {
+                    filename: _zip_text(wheel, f"linuxagent/i18n/locales/{filename}")
+                    for filename in LOCALE_FILENAMES
+                },
+            )
+        )
     return errors
 
 
 def _check_sdist(path: Path, root: Path, version: str) -> list[str]:
     errors: list[str] = []
+    prefix = f"linuxagent-{version}"
     with tarfile.open(path, "r:gz") as sdist:
-        names = {member.name for member in sdist.getmembers()}
+        name_list = [member.name for member in sdist.getmembers()]
+        names = set(name_list)
+        errors.extend(_duplicate_member_errors(path, name_list))
         errors.extend(_archive_member_errors(path, names))
         errors.extend(_missing_members(path, names, _required_sdist_members(root, version)))
-        pkg_info = _single_member_name(names, f"linuxagent-{version}/PKG-INFO")
+        pkg_info = _single_member_name(names, f"{prefix}/PKG-INFO")
         if pkg_info is None:
             errors.append(f"{path.name}: missing PKG-INFO")
         else:
@@ -186,6 +208,18 @@ def _check_sdist(path: Path, root: Path, version: str) -> list[str]:
                 errors.append(f"{path.name}: cannot read PKG-INFO")
             else:
                 errors.extend(_metadata_errors(path, extracted.read().decode("utf-8"), version))
+        errors.extend(
+            _default_language_errors(path, _tar_text(sdist, f"{prefix}/configs/default.yaml"))
+        )
+        errors.extend(
+            _locale_parity_errors(
+                path,
+                {
+                    filename: _tar_text(sdist, f"{prefix}/src/linuxagent/i18n/locales/{filename}")
+                    for filename in LOCALE_FILENAMES
+                },
+            )
+        )
     return errors
 
 
@@ -235,6 +269,16 @@ def _archive_member_errors(path: Path, names: set[str]) -> list[str]:
     return errors
 
 
+def _duplicate_member_errors(path: Path, names: list[str]) -> list[str]:
+    seen: set[str] = set()
+    duplicate_names: list[str] = []
+    for name in names:
+        if name in seen and name not in duplicate_names:
+            duplicate_names.append(name)
+        seen.add(name)
+    return [f"{path.name}: duplicate archive member {name}" for name in duplicate_names]
+
+
 def _missing_members(path: Path, names: set[str], required: set[str]) -> list[str]:
     return [f"{path.name}: missing required member {name}" for name in sorted(required - names)]
 
@@ -253,6 +297,84 @@ def _metadata_errors(path: Path, metadata: str, version: str) -> list[str]:
     if artifact_version != version:
         errors.append(f"{path.name}: metadata Version {artifact_version!r} != {version!r}")
     return errors
+
+
+def _default_language_errors(path: Path, config_text: str | None) -> list[str]:
+    if config_text is None:
+        return [f"{path.name}: missing packaged default config"]
+    raw, error = _yaml_mapping(config_text, source=f"{path.name}: default config")
+    if error is not None:
+        return [error]
+    language = raw.get("language")
+    if language != DEFAULT_LANGUAGE:
+        return [f"{path.name}: default config language {language!r} != {DEFAULT_LANGUAGE!r}"]
+    return []
+
+
+def _locale_parity_errors(path: Path, locale_texts: dict[str, str | None]) -> list[str]:
+    catalogs: dict[str, set[str]] = {}
+    errors: list[str] = []
+    for filename, text in locale_texts.items():
+        if text is None:
+            errors.append(f"{path.name}: missing locale file {filename}")
+            continue
+        raw, error = _yaml_mapping(text, source=f"{path.name}: {filename}")
+        if error is not None:
+            errors.append(error)
+            continue
+        catalogs[filename] = _flatten_locale_keys(raw)
+    if errors:
+        return errors
+    baseline = catalogs.get(LOCALE_FILENAMES[0], set())
+    for filename in LOCALE_FILENAMES[1:]:
+        keys = catalogs.get(filename)
+        if keys is None:
+            errors.append(f"{path.name}: missing locale file {filename}")
+            continue
+        missing = sorted(baseline - keys)
+        extra = sorted(keys - baseline)
+        if missing:
+            errors.append(f"{path.name}: {filename} missing keys: {', '.join(missing)}")
+        if extra:
+            errors.append(f"{path.name}: {filename} extra keys: {', '.join(extra)}")
+    return errors
+
+
+def _yaml_mapping(text: str, *, source: str) -> tuple[Mapping[str, object], str | None]:
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        return {}, f"{source}: invalid YAML: {exc}"
+    if not isinstance(raw, Mapping):
+        return {}, f"{source}: YAML value must be a mapping"
+    return raw, None
+
+
+def _flatten_locale_keys(raw: Mapping[str, object], *, prefix: str = "") -> set[str]:
+    keys: set[str] = set()
+    for key, value in raw.items():
+        full_key = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, Mapping):
+            keys.update(_flatten_locale_keys(value, prefix=full_key))
+            continue
+        keys.add(full_key)
+    return keys
+
+
+def _zip_text(wheel: zipfile.ZipFile, name: str) -> str | None:
+    if name not in wheel.namelist():
+        return None
+    return wheel.read(name).decode("utf-8")
+
+
+def _tar_text(sdist: tarfile.TarFile, name: str) -> str | None:
+    try:
+        extracted = sdist.extractfile(name)
+    except KeyError:
+        return None
+    if extracted is None:
+        return None
+    return extracted.read().decode("utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:

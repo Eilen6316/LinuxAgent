@@ -55,6 +55,8 @@ import yaml
 
 import linuxagent.mcp_tools
 import linuxagent.skills
+from linuxagent.config.models import LanguageCode
+from linuxagent.i18n import load_locale, validate_locale_parity
 
 root = resources.files("linuxagent")
 required = [
@@ -99,4 +101,9 @@ if mcp.get("resources") != [
 skills = config["skills"]
 if skills.get("enabled") is not False or skills.get("manifests") != []:
     raise SystemExit(f"packaged skills defaults are wrong: {skills}")
+validate_locale_parity()
+zh = load_locale(LanguageCode.ZH_CN)
+en = load_locale(LanguageCode.EN_US)
+if zh.get("common.ok") != "正常" or en.get("common.ok") != "OK":
+    raise SystemExit("packaged locale catalogs did not load correctly")
 PY
