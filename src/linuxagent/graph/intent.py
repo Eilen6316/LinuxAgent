@@ -49,7 +49,14 @@ from .common import trace_id
 from .events import RuntimeEventObserver, notify_event
 from .llm_calls import LLMCallOptions, complete_llm, complete_llm_with_tools
 from .runbook_planning import build_runbook_guidance
-from .state import AgentState
+from .state import (
+    AgentState,
+    reset_planning_for_command_plan,
+    reset_planning_for_file_patch,
+    reset_planning_for_parse_error,
+    reset_planning_for_response,
+    reset_planning_for_wizard,
+)
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 ToolEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
@@ -953,21 +960,7 @@ def _direct_response_update(current_trace_id: str, response: str) -> AgentState:
     return {
         "trace_id": current_trace_id,
         "messages": [AIMessage(content=response)],
-        "pending_command": None,
-        "command_plan": None,
-        "file_patch_plan": None,
-        "file_patch_request_intent": "unknown",
-        "file_patch_repair_attempts": 0,
-        "command_repair_attempts": 0,
-        "file_patch_selected_files": (),
-        "selected_runbook": None,
-        "runbook_step_index": 0,
-        "runbook_results": (),
-        "plan_result_start_index": 0,
-        "plan_error": None,
-        "command_source": CommandSource.USER,
-        "selected_hosts": (),
-        "direct_response": True,
+        **reset_planning_for_response(source=CommandSource.USER),
         "wizard_result": None,
         "wizard_failed_reason": None,
         "wizard_attempted": False,
@@ -977,21 +970,7 @@ def _direct_response_update(current_trace_id: str, response: str) -> AgentState:
 def _wizard_needed_update(current_trace_id: str, user_text: str) -> AgentState:
     return {
         "trace_id": current_trace_id,
-        "pending_command": None,
-        "command_plan": None,
-        "file_patch_plan": None,
-        "file_patch_request_intent": "unknown",
-        "file_patch_repair_attempts": 0,
-        "command_repair_attempts": 0,
-        "file_patch_selected_files": (),
-        "selected_runbook": None,
-        "runbook_step_index": 0,
-        "runbook_results": (),
-        "plan_result_start_index": 0,
-        "plan_error": None,
-        "command_source": CommandSource.LLM,
-        "selected_hosts": (),
-        "direct_response": False,
+        **reset_planning_for_wizard(source=CommandSource.LLM),
         "wizard_context": user_text,
     }
 
@@ -999,21 +978,7 @@ def _wizard_needed_update(current_trace_id: str, user_text: str) -> AgentState:
 def _parse_error_update(current_trace_id: str, message: str) -> AgentState:
     return {
         "trace_id": current_trace_id,
-        "pending_command": None,
-        "command_plan": None,
-        "file_patch_plan": None,
-        "file_patch_request_intent": "unknown",
-        "file_patch_repair_attempts": 0,
-        "command_repair_attempts": 0,
-        "file_patch_selected_files": (),
-        "selected_runbook": None,
-        "runbook_step_index": 0,
-        "runbook_results": (),
-        "plan_result_start_index": 0,
-        "plan_error": message,
-        "command_source": CommandSource.LLM,
-        "selected_hosts": (),
-        "direct_response": False,
+        **reset_planning_for_parse_error(message, source=CommandSource.LLM),
     }
 
 
@@ -1025,21 +990,10 @@ def _plan_update(
 ) -> AgentState:
     return {
         "trace_id": current_trace_id,
-        "pending_command": plan.primary.command,
-        "command_plan": plan,
-        "file_patch_plan": None,
-        "file_patch_request_intent": "unknown",
-        "file_patch_repair_attempts": 0,
-        "command_repair_attempts": 0,
-        "file_patch_selected_files": (),
-        "selected_runbook": None,
-        "runbook_step_index": 0,
-        "runbook_results": (),
-        "plan_result_start_index": 0,
-        "plan_error": None,
-        "command_source": CommandSource.LLM,
-        "selected_hosts": _selected_hosts_for_plan(plan, cluster_service),
-        "direct_response": False,
+        **reset_planning_for_command_plan(
+            plan,
+            selected_hosts=_selected_hosts_for_plan(plan, cluster_service),
+        ),
     }
 
 
@@ -1047,21 +1001,7 @@ def _file_patch_update(current_trace_id: str, user_text: str, plan: FilePatchPla
     del user_text
     return {
         "trace_id": current_trace_id,
-        "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
-        "command_plan": None,
-        "file_patch_plan": plan,
-        "file_patch_verification_pending": False,
-        "file_patch_request_intent": plan.request_intent,
-        "file_patch_repair_attempts": 0,
-        "file_patch_selected_files": (),
-        "selected_runbook": None,
-        "runbook_step_index": 0,
-        "runbook_results": (),
-        "plan_result_start_index": 0,
-        "plan_error": None,
-        "command_source": CommandSource.LLM,
-        "selected_hosts": (),
-        "direct_response": False,
+        **reset_planning_for_file_patch(plan),
     }
 
 

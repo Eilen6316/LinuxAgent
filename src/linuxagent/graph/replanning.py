@@ -17,7 +17,7 @@ from ..telemetry import TelemetryRecorder
 from .common import trace_id
 from .events import RuntimeEventObserver, notify_event
 from .llm_calls import complete_llm
-from .state import AgentState
+from .state import AgentState, reset_execution_for_pending_work, reset_safety_for_replan
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS = 2
@@ -66,25 +66,11 @@ def make_repair_plan_node(
             "command_source": CommandSource.LLM,
             "selected_hosts": (),
             "direct_response": False,
-            **_reset_safety_state(),
-            "batch_hosts": (),
-            "user_confirmed": False,
-            "audit_id": None,
+            **reset_safety_for_replan(),
+            **reset_execution_for_pending_work(),
         }
 
     return repair_plan_node
-
-
-def _reset_safety_state() -> AgentState:
-    return {
-        "safety_level": None,
-        "matched_rule": None,
-        "matched_rules": (),
-        "safety_reason": None,
-        "safety_risk_score": 0,
-        "safety_capabilities": (),
-        "safety_can_whitelist": True,
-    }
 
 
 async def _complete_valid_repair_plan(

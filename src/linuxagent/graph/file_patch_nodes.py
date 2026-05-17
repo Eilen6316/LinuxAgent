@@ -44,7 +44,14 @@ from .execution import synthetic_result
 from .intent import ToolEventObserver, tool_event_observer
 from .llm_calls import LLMCallOptions, complete_llm, complete_llm_with_tools
 from .payloads import decision, latency_ms
-from .state import AgentState
+from .state import (
+    AgentState,
+    reset_execution_for_pending_work,
+    reset_planning_for_command_plan,
+    reset_planning_for_file_patch,
+    reset_planning_for_response,
+    reset_safety_for_replan,
+)
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 MAX_PATCH_CONTEXT_LINES = 120
@@ -696,17 +703,12 @@ def _is_repairable_patch_error(reasons: str) -> bool:
 def _repair_update(state: AgentState, current_trace_id: str, plan: FilePatchPlan) -> AgentState:
     return {
         "trace_id": current_trace_id,
-        "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
-        "file_patch_plan": plan,
-        "file_patch_request_intent": state.get("file_patch_request_intent", "unknown"),
-        "file_patch_repair_attempts": state.get("file_patch_repair_attempts", 0) + 1,
-        "file_patch_max_repair_attempts": _max_repair_attempts(state),
-        "file_patch_selected_files": (),
-        "plan_error": None,
-        "command_source": CommandSource.LLM,
-        "direct_response": False,
-        "user_confirmed": False,
-        "audit_id": None,
+        **reset_planning_for_file_patch(
+            plan,
+            repair_attempts=state.get("file_patch_repair_attempts", 0) + 1,
+            max_repair_attempts=_max_repair_attempts(state),
+        ),
+        **reset_execution_for_pending_work(),
     }
 
 
@@ -714,20 +716,10 @@ def _repair_no_change_update(current_trace_id: str, plan: NoChangePlan) -> Agent
     return {
         "trace_id": current_trace_id,
         "messages": [AIMessage(content=plan.answer)],
-        "pending_command": None,
-        "command_plan": None,
-        "file_patch_plan": None,
-        "file_patch_request_intent": "unknown",
-        "file_patch_repair_attempts": 0,
+        **reset_planning_for_response(source=CommandSource.LLM),
         "file_patch_max_repair_attempts": DEFAULT_FILE_PATCH_REPAIR_ATTEMPTS,
-        "file_patch_selected_files": (),
-        "plan_error": None,
         "safety_reason": None,
-        "command_source": CommandSource.LLM,
-        "direct_response": True,
-        "user_confirmed": False,
-        "audit_id": None,
-        "execution_result": None,
+        **reset_execution_for_pending_work(),
     }
 
 
@@ -736,31 +728,13 @@ def _repair_command_update(
 ) -> AgentState:
     return {
         "trace_id": current_trace_id,
-        "pending_command": plan.primary.command,
-        "command_plan": plan,
-        "file_patch_plan": None,
-        "file_patch_request_intent": "unknown",
-        "file_patch_repair_attempts": 0,
+        **reset_planning_for_command_plan(
+            plan,
+            plan_result_start_index=len(state.get("runbook_results", ())),
+        ),
         "file_patch_max_repair_attempts": _max_repair_attempts(state),
-        "command_repair_attempts": 0,
-        "file_patch_selected_files": (),
-        "selected_runbook": None,
-        "runbook_step_index": 0,
-        "plan_result_start_index": len(state.get("runbook_results", ())),
-        "plan_error": None,
-        "command_source": CommandSource.LLM,
-        "selected_hosts": (),
-        "direct_response": False,
-        "safety_level": None,
-        "matched_rule": None,
-        "matched_rules": (),
-        "safety_reason": None,
-        "safety_risk_score": 0,
-        "safety_capabilities": (),
-        "safety_can_whitelist": True,
-        "batch_hosts": (),
-        "user_confirmed": False,
-        "audit_id": None,
+        **reset_safety_for_replan(),
+        **reset_execution_for_pending_work(),
     }
 
 

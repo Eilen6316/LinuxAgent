@@ -17,12 +17,20 @@ from langgraph.graph.message import add_messages
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel
 from ..plans import CommandPlan, FilePatchPlan
 from ..runbooks import Runbook
+from .state_contracts import ALL_CONTRACT_FIELDS
 
 WizardFailedReason: TypeAlias = Literal["parse_failed", "provider_failed", "non_tty", "loop_guard"]
+DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS = 2
+DEFAULT_FILE_PATCH_REPAIR_ATTEMPTS = 2
 
 
 class AgentState(TypedDict, total=False):
-    """State shared between parse_intent / safety_check / execute / analyze / respond."""
+    """Flat checkpointed graph state.
+
+    Field ownership is documented in ``graph.state_contracts``. Keep field names
+    stable for checkpoint compatibility; use reset helpers below when clearing
+    stale state between planning modes.
+    """
 
     messages: Annotated[list[BaseMessage], add_messages]
 
@@ -107,7 +115,112 @@ def initial_state(
     )
 
 
+def agent_state_fields() -> frozenset[str]:
+    return frozenset(AgentState.__annotations__)
+
+
+def undocumented_state_fields() -> frozenset[str]:
+    return agent_state_fields() - ALL_CONTRACT_FIELDS
+
+
+def unknown_contract_fields() -> frozenset[str]:
+    return ALL_CONTRACT_FIELDS - agent_state_fields()
+
+
+def reset_planning_for_response(*, source: CommandSource) -> AgentState:
+    state = _base_planning_reset(source)
+    state["direct_response"] = True
+    return state
+
+
+def reset_planning_for_wizard(*, source: CommandSource) -> AgentState:
+    return _base_planning_reset(source)
+
+
+def reset_planning_for_parse_error(message: str, *, source: CommandSource) -> AgentState:
+    state = _base_planning_reset(source)
+    state["plan_error"] = message
+    return state
+
+
+def reset_planning_for_command_plan(
+    plan: CommandPlan,
+    *,
+    selected_hosts: tuple[str, ...] = (),
+    source: CommandSource = CommandSource.LLM,
+    plan_result_start_index: int = 0,
+    command_repair_attempts: int = 0,
+) -> AgentState:
+    state = _base_planning_reset(source)
+    state.update(
+        {
+            "pending_command": plan.primary.command,
+            "command_plan": plan,
+            "selected_hosts": selected_hosts,
+            "plan_result_start_index": plan_result_start_index,
+            "command_repair_attempts": command_repair_attempts,
+        }
+    )
+    return state
+
+
+def reset_planning_for_file_patch(
+    plan: FilePatchPlan,
+    *,
+    repair_attempts: int = 0,
+    max_repair_attempts: int | None = None,
+) -> AgentState:
+    state = _base_planning_reset(CommandSource.LLM)
+    state.update(
+        {
+            "pending_command": f"apply file patch: {', '.join(plan.files_changed)}",
+            "file_patch_plan": plan,
+            "file_patch_verification_pending": False,
+            "file_patch_request_intent": plan.request_intent,
+            "file_patch_repair_attempts": repair_attempts,
+            "file_patch_selected_files": (),
+        }
+    )
+    if max_repair_attempts is not None:
+        state["file_patch_max_repair_attempts"] = max_repair_attempts
+    return state
+
+
+def reset_safety_for_replan() -> AgentState:
+    return {
+        "safety_level": None,
+        "matched_rule": None,
+        "matched_rules": (),
+        "safety_reason": None,
+        "safety_risk_score": 0,
+        "safety_capabilities": (),
+        "safety_can_whitelist": True,
+        "sandbox_preview": None,
+        "batch_hosts": (),
+        "remote_profiles": (),
+        "remote_preflight_commands": (),
+    }
+
+
+def reset_execution_for_pending_work() -> AgentState:
+    return {
+        "user_confirmed": False,
+        "execution_result": None,
+        "execution_results_visible": False,
+        "background_job_id": None,
+        "skip_command_repair": False,
+        "audit_id": None,
+    }
+
+
 def _initial_planning_state(source: CommandSource) -> AgentState:
+    state = _base_planning_reset(source)
+    state["file_patch_max_repair_attempts"] = DEFAULT_FILE_PATCH_REPAIR_ATTEMPTS
+    state["command_max_repair_attempts"] = DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS
+    return state
+
+
+def _base_planning_reset(source: CommandSource) -> AgentState:
     return {
         "pending_command": None,
         "command_plan": None,
@@ -115,9 +228,7 @@ def _initial_planning_state(source: CommandSource) -> AgentState:
         "file_patch_verification_pending": False,
         "file_patch_request_intent": "unknown",
         "file_patch_repair_attempts": 0,
-        "file_patch_max_repair_attempts": 2,
         "command_repair_attempts": 0,
-        "command_max_repair_attempts": 2,
         "file_patch_selected_files": (),
         "selected_runbook": None,
         "runbook_step_index": 0,
@@ -145,30 +256,13 @@ def _initial_wizard_state(ui_interactive: bool) -> AgentState:
 
 def _initial_safety_state(command_permissions: tuple[str, ...]) -> AgentState:
     return {
-        "safety_level": None,
-        "matched_rule": None,
-        "matched_rules": (),
-        "safety_reason": None,
-        "safety_risk_score": 0,
-        "safety_capabilities": (),
-        "safety_can_whitelist": True,
+        **reset_safety_for_replan(),
         "command_permissions": command_permissions,
-        "sandbox_preview": None,
-        "batch_hosts": (),
-        "remote_profiles": (),
-        "remote_preflight_commands": (),
     }
 
 
 def _initial_execution_state() -> AgentState:
-    return {
-        "user_confirmed": False,
-        "execution_result": None,
-        "execution_results_visible": False,
-        "background_job_id": None,
-        "skip_command_repair": False,
-        "audit_id": None,
-    }
+    return reset_execution_for_pending_work()
 
 
 def prompt_cache_key_for_thread(thread_id: str) -> str:
