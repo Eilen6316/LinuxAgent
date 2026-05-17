@@ -464,7 +464,7 @@ async def test_trace_slash_command_toggles_activity_output(tmp_path) -> None:
     await agent.run(thread_id="cli")
 
     assert ui.activity_visible is False
-    assert ui.printed == ["Trace/activity output is now hidden."]
+    assert ui.printed == ["Trace/activity 输出现在已隐藏。"]
 
 
 async def test_tools_slash_command_shows_prompt_cache_usage(tmp_path) -> None:

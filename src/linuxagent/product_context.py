@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from .i18n import Translator, default_translator
 from .prompts_loader import load_prompt
 
 
@@ -14,26 +15,32 @@ class SlashCommand:
     description: str
 
 
-SLASH_COMMANDS: tuple[SlashCommand, ...] = (
-    SlashCommand("/help", "显示可用 slash 命令"),
-    SlashCommand("/resume", "列出本机保存的会话，并选择一个恢复"),
-    SlashCommand("/new", "开启一个空上下文新对话"),
-    SlashCommand("/clear", "等同于 /new"),
-    SlashCommand("/tools", "查看启用的本地功能和 LLM 可用工具"),
-    SlashCommand("/trace", "显示或隐藏活动状态；用法：/trace on 或 /trace off"),
-    SlashCommand(
-        "/job",
-        "列出/诊断/daemon/查看/跟随/停止后台任务；用法：/job [status|daemon|<job_id>|follow <job_id>|stop <job_id>]",
-    ),
-    SlashCommand("/exit", "退出 LinuxAgent"),
-    SlashCommand("/quit", "等同于 /exit"),
-    SlashCommand("!<command>", "直接执行操作者输入的命令，并把输出加入当前上下文"),
+_SLASH_COMMAND_KEYS: tuple[tuple[str, str], ...] = (
+    ("/help", "slash.commands.help"),
+    ("/resume", "slash.commands.resume"),
+    ("/new", "slash.commands.new"),
+    ("/clear", "slash.commands.clear"),
+    ("/tools", "slash.commands.tools"),
+    ("/trace", "slash.commands.trace"),
+    ("/job", "slash.commands.job"),
+    ("/exit", "slash.commands.exit"),
+    ("/quit", "slash.commands.quit"),
+    ("!<command>", "slash.commands.bang"),
 )
 
 
-def slash_help() -> str:
-    lines = ["可用命令："]
-    lines.extend(f"{item.command} - {item.description}" for item in SLASH_COMMANDS)
+def slash_commands(translator: Translator | None = None) -> tuple[SlashCommand, ...]:
+    tr = translator or default_translator()
+    return tuple(SlashCommand(command, tr.t(key)) for command, key in _SLASH_COMMAND_KEYS)
+
+
+SLASH_COMMANDS: tuple[SlashCommand, ...] = slash_commands()
+
+
+def slash_help(translator: Translator | None = None) -> str:
+    tr = translator or default_translator()
+    lines = [tr.t("slash.help.title")]
+    lines.extend(f"{item.command} - {item.description}" for item in slash_commands(tr))
     return "\n".join(lines)
 
 
@@ -49,7 +56,9 @@ def product_capability_context(
     if provider and model:
         runtime = f"当前配置 provider={provider}, model={model}"
     tools = ", ".join(name for name in tool_names if name) or "未启用额外 LLM 工具"
-    commands = "; ".join(f"{item.command}: {item.description}" for item in SLASH_COMMANDS)
+    commands = "; ".join(
+        f"{item.command}: {item.description}" for item in slash_commands(default_translator())
+    )
     return load_prompt("product_context.md").format(
         runtime=runtime,
         slash_commands=commands,

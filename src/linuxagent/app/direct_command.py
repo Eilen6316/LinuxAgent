@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from ..audit import AuditLog
 from ..command_review import CommandReview, command_review
 from ..execution_display import execution_display_text
+from ..i18n import Translator, default_translator
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult, UserInterface
 from ..services import CommandService
 from ..telemetry import TelemetryRecorder, new_trace_id
@@ -27,14 +28,16 @@ class DirectCommandRunner:
     history_threads: set[str]
     persist_history: Callable[[str], None]
     telemetry: TelemetryRecorder | None = None
+    translator: Translator = field(default_factory=default_translator)
 
     async def run(self, command: str, thread_id: str) -> None:
         if not command:
-            await self.ui.print("用法：!<command>，例如 !git status")
+            await self.ui.print(self.translator.t("direct.usage"))
             return
         safety = self.command_service.classify(command, source=CommandSource.USER)
         if safety.level is SafetyLevel.BLOCK:
-            await self.ui.print(f"已阻止执行：{safety.reason or safety.matched_rule or 'policy'}")
+            reason = safety.reason or safety.matched_rule or "policy"
+            await self.ui.print(self.translator.t("direct.blocked", reason=reason))
             self._append_context(thread_id, command, None, safety)
             return
         audit_id = await self._confirm_if_required(command, safety)
@@ -106,7 +109,7 @@ class DirectCommandRunner:
             can_whitelist=safety.can_whitelist,
         )
         response = await self.ui.handle_interrupt(
-            _direct_confirm_payload(self.command_service, command, safety, review)
+            _direct_confirm_payload(self.command_service, command, safety, review, self.translator)
         )
         decision = str(response.get("decision") or "no")
         await self.audit.record_decision(
@@ -115,7 +118,7 @@ class DirectCommandRunner:
             latency_ms=_latency_ms(response),
         )
         if decision != "yes":
-            await self.ui.print(f"已拒绝执行：{command}")
+            await self.ui.print(self.translator.t("direct.refused", command=command))
             return False
         return audit_id
 
@@ -211,11 +214,13 @@ def _direct_confirm_payload(
     command: str,
     safety: SafetyResult,
     review: CommandReview,
+    translator: Translator | None = None,
 ) -> dict[str, Any]:
+    tr = translator or default_translator()
     return {
         "command": command,
-        "goal": "Direct shell command mode",
-        "purpose": "Run command from ! prefix without an AI-generated reply",
+        "goal": tr.t("direct.confirm_goal"),
+        "purpose": tr.t("direct.confirm_purpose"),
         "safety_level": safety.level.value,
         "matched_rule": safety.matched_rule,
         "command_display": review.command_display,

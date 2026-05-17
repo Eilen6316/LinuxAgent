@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..i18n import Translator, default_translator
+
 _TOOL_EVIDENCE_ITEMS = 3
 _READ_FILE_HEAD_EVIDENCE_ITEMS = 2
 _READ_FILE_TAIL_EVIDENCE_ITEMS = 3
@@ -12,31 +14,35 @@ _TOOL_EVIDENCE_CHARS = 180
 _TOOL_ERROR_CHARS = 220
 
 
-def tool_event_message(event: dict[str, Any]) -> str | None:
+def tool_event_message(event: dict[str, Any], translator: Translator | None = None) -> str | None:
+    tr = translator or default_translator()
     phase = str(event.get("phase") or "")
     tool_name = str(event.get("tool_name") or "")
     raw_args = event.get("args")
     args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
     if phase == "start":
-        return _tool_start_message(tool_name, args)
+        return _tool_start_message(tool_name, args, tr)
     if phase == "error":
-        return _tool_error_message(tool_name, args, event)
+        return _tool_error_message(tool_name, args, event, tr)
     if phase == "end":
-        return _tool_end_message(tool_name, args, event)
+        return _tool_end_message(tool_name, args, event, tr)
     return None
 
 
-def tool_activity_message(event: dict[str, Any]) -> str | None:
+def tool_activity_message(
+    event: dict[str, Any], translator: Translator | None = None
+) -> str | None:
+    tr = translator or default_translator()
     phase = str(event.get("phase") or "")
     tool_name = str(event.get("tool_name") or "")
     raw_args = event.get("args")
     args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
     if phase == "start":
-        return _tool_start_message(tool_name, args)
+        return _tool_start_message(tool_name, args, tr)
     if phase == "error":
-        return _tool_activity_error(tool_name, args, event)
+        return _tool_activity_error(tool_name, args, event, tr)
     if phase == "end":
-        return _tool_activity_end(tool_name, args, event)
+        return _tool_activity_end(tool_name, args, event, tr)
     return None
 
 
@@ -44,81 +50,90 @@ def command_event_key(event: dict[str, Any]) -> tuple[str, str]:
     return (str(event.get("trace_id") or ""), str(event.get("command") or ""))
 
 
-def runtime_event_message(event: dict[str, Any]) -> str | None:
+def runtime_event_message(
+    event: dict[str, Any], translator: Translator | None = None
+) -> str | None:
+    tr = translator or default_translator()
     event_type = str(event.get("type") or "")
     phase = str(event.get("phase") or "")
     if event_type == "command":
-        return _command_event_message(phase, event)
+        return _command_event_message(phase, event, tr)
     if event_type == "command_batch":
-        return _command_batch_event_message(phase, event)
+        return _command_batch_event_message(phase, event, tr)
     if event_type == "background_job":
-        return _background_job_event_message(phase, event)
+        return _background_job_event_message(phase, event, tr)
     if event_type == "activity":
-        return _activity_event_message(phase)
+        return _activity_event_message(phase, tr)
     return None
 
 
-def _command_event_message(phase: str, event: dict[str, Any]) -> str | None:
+def _command_event_message(phase: str, event: dict[str, Any], translator: Translator) -> str | None:
     command = str(event.get("command") or "")
     if phase == "start":
-        return f"LinuxAgent 正在执行命令：{command}"
+        return translator.t("runtime.command_start", command=command)
     if phase == "finish":
-        return f"LinuxAgent 命令结束：exit {event.get('exit_code')}"
+        return translator.t("runtime.command_finish", exit_code=event.get("exit_code"))
     return None
 
 
-def _command_batch_event_message(phase: str, event: dict[str, Any]) -> str | None:
+def _command_batch_event_message(
+    phase: str, event: dict[str, Any], translator: Translator
+) -> str | None:
     count = int(event.get("count") or 0)
     if phase == "start":
-        return f"LinuxAgent 正在并发执行 {count} 条只读命令"
+        return translator.t("runtime.batch_start", count=count)
     if phase == "finish":
-        return f"LinuxAgent 并发只读命令已完成：{count} 条"
+        return translator.t("runtime.batch_finish", count=count)
     return None
 
 
-def _background_job_event_message(phase: str, event: dict[str, Any]) -> str | None:
+def _background_job_event_message(
+    phase: str, event: dict[str, Any], translator: Translator
+) -> str | None:
     job_id = str(event.get("job_id") or "")
     status = str(event.get("status") or "")
     if phase == "start":
-        return f"LinuxAgent 后台任务已启动：{job_id}"
+        return translator.t("runtime.background_start", job_id=job_id)
     if phase == "finish":
-        return f"LinuxAgent 后台任务结束：{job_id}（{status}）"
+        return translator.t("runtime.background_finish", job_id=job_id, status=status)
     return None
 
 
-def _activity_event_message(phase: str) -> str | None:
+def _activity_event_message(phase: str, translator: Translator) -> str | None:
     labels = {
-        "classify": "LinuxAgent 正在分类意图",
-        "plan": "LinuxAgent 正在规划命令",
-        "policy": "LinuxAgent 正在评估安全策略",
-        "waiting_confirm": "LinuxAgent 正在等待确认",
-        "repair_plan": "LinuxAgent 正在生成修复方案",
-        "analyze": "LinuxAgent 正在分析执行结果",
+        "classify": translator.t("runtime.activity.classify"),
+        "plan": translator.t("runtime.activity.plan"),
+        "policy": translator.t("runtime.activity.policy"),
+        "waiting_confirm": translator.t("runtime.activity.waiting_confirm"),
+        "repair_plan": translator.t("runtime.activity.repair_plan"),
+        "analyze": translator.t("runtime.activity.analyze"),
     }
     return labels.get(phase)
 
 
-def _tool_start_message(tool_name: str, args: dict[str, Any]) -> str:
+def _tool_start_message(tool_name: str, args: dict[str, Any], translator: Translator) -> str:
     if tool_name == "read_file":
-        return f"LinuxAgent 正在读取文件 {args.get('path') or ''}".strip()
+        return translator.t("runtime.tool.start_read_file", path=args.get("path") or "").strip()
     if tool_name == "list_dir":
-        return f"LinuxAgent 正在列目录 {args.get('path') or '.'}"
+        return translator.t("runtime.tool.start_list_dir", path=args.get("path") or ".")
     if tool_name == "search_files":
         root = args.get("root") or "."
         pattern = args.get("pattern") or ""
-        return f"LinuxAgent 正在搜索 {root}: {pattern}"
+        return translator.t("runtime.tool.start_search_files", root=root, pattern=pattern)
     if tool_name == "repair_file_patch":
         files = args.get("files") if isinstance(args.get("files"), list) else []
         suffix = f" {', '.join(str(item) for item in files)}" if files else ""
-        return f"LinuxAgent 正在重新读取文件并修复 diff{suffix}"
-    return f"LinuxAgent 正在调用工具 {tool_name}"
+        return translator.t("runtime.tool.start_repair_file_patch", suffix=suffix)
+    return translator.t("runtime.tool.start_default", tool_name=tool_name)
 
 
-def _tool_error_message(tool_name: str, args: dict[str, Any], event: dict[str, Any]) -> str:
+def _tool_error_message(
+    tool_name: str, args: dict[str, Any], event: dict[str, Any], translator: Translator
+) -> str:
     target = _tool_target(tool_name, args)
-    reason = _human_tool_error(event.get("output_preview") or event.get("output_text"))
+    reason = _human_tool_error(event.get("output_preview") or event.get("output_text"), translator)
     location = f" {target}" if target else ""
-    return f"LinuxAgent 工具未完成：{tool_name}{location} - {reason}"
+    return translator.t("runtime.tool.error", tool_name=tool_name, location=location, reason=reason)
 
 
 def _tool_target(tool_name: str, args: dict[str, Any]) -> str:
@@ -132,10 +147,11 @@ def _tool_target(tool_name: str, args: dict[str, Any]) -> str:
     return ""
 
 
-def _human_tool_error(raw: Any) -> str:
+def _human_tool_error(raw: Any, translator: Translator | None = None) -> str:
+    tr = translator or default_translator()
     text = str(raw or "").strip()
     if not text:
-        return "unknown error"
+        return tr.t("runtime.tool.unknown_error")
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
@@ -164,42 +180,60 @@ def _trim_tool_error(text: str) -> str:
     return normalized[: _TOOL_ERROR_CHARS - 1].rstrip() + "…"
 
 
-def _tool_end_message(tool_name: str, args: dict[str, Any], event: dict[str, Any]) -> str | None:
+def _tool_end_message(
+    tool_name: str, args: dict[str, Any], event: dict[str, Any], translator: Translator
+) -> str | None:
     status = str(event.get("status") or "")
     if status not in {"allowed", "truncated"}:
         return None
     output = str(event.get("output_text") or event.get("output_preview") or "")
-    suffix = "（输出已截断）" if status == "truncated" or event.get("truncated") else ""
+    suffix = (
+        translator.t("runtime.tool.truncated_suffix")
+        if status == "truncated" or event.get("truncated")
+        else ""
+    )
     if tool_name == "read_file":
-        evidence = _read_file_evidence_summary(output)
-        heading = f"LinuxAgent 已读取文件 {args.get('path') or ''}{suffix}".strip()
-        return _tool_evidence_message(heading, evidence)
+        evidence = _read_file_evidence_summary(output, translator)
+        heading = translator.t("runtime.tool.read_done", path=args.get("path") or "", suffix=suffix)
+        return _tool_evidence_message(heading.strip(), evidence, translator)
     if tool_name == "list_dir":
-        evidence = _tool_evidence_summary(output)
+        evidence = _tool_evidence_summary(output, translator)
         return _tool_evidence_message(
-            f"LinuxAgent 已列目录 {args.get('path') or '.'}{suffix}", evidence
+            translator.t("runtime.tool.list_done", path=args.get("path") or ".", suffix=suffix),
+            evidence,
+            translator,
         )
     if tool_name == "search_files":
-        evidence = _tool_evidence_summary(output)
+        evidence = _tool_evidence_summary(output, translator)
         root = args.get("root") or "."
         pattern = args.get("pattern") or ""
-        return _tool_evidence_message(f"LinuxAgent 已搜索 {root}: {pattern}{suffix}", evidence)
+        return _tool_evidence_message(
+            translator.t("runtime.tool.search_done", root=root, pattern=pattern, suffix=suffix),
+            evidence,
+            translator,
+        )
     return None
 
 
-def _tool_evidence_message(heading: str, evidence: tuple[str, ...]) -> str:
+def _tool_evidence_message(heading: str, evidence: tuple[str, ...], translator: Translator) -> str:
     bullets = "\n".join(f"  - {item}" for item in evidence)
-    return f"{heading}\n  证据预览:\n{bullets}"
+    return f"{heading}\n  {translator.t('runtime.tool.evidence_preview')}\n{bullets}"
 
 
-def _tool_activity_error(tool_name: str, args: dict[str, Any], event: dict[str, Any]) -> str:
+def _tool_activity_error(
+    tool_name: str, args: dict[str, Any], event: dict[str, Any], translator: Translator
+) -> str:
     status = str(event.get("status") or "error")
     target = _tool_target(tool_name, args)
     label = f"{tool_name} {target}".strip()
-    return _tool_activity_summary("LinuxAgent 正在记录工具状态", f"{label} · {status}")
+    return _tool_activity_summary(
+        translator.t("runtime.tool.activity_status"), f"{label} · {status}"
+    )
 
 
-def _tool_activity_end(tool_name: str, args: dict[str, Any], event: dict[str, Any]) -> str | None:
+def _tool_activity_end(
+    tool_name: str, args: dict[str, Any], event: dict[str, Any], translator: Translator
+) -> str | None:
     status = str(event.get("status") or "")
     if status not in {"allowed", "truncated"}:
         return None
@@ -208,23 +242,25 @@ def _tool_activity_end(tool_name: str, args: dict[str, Any], event: dict[str, An
     if tool_name == "read_file":
         target = str(args.get("path") or "").strip()
         return _tool_activity_summary(
-            f"LinuxAgent 正在整理文件 {target}".strip(),
+            translator.t("runtime.tool.activity_read_file", path=target).strip(),
             f"read_file · {_count_label(_line_count(output), 'line', 'lines')}{suffix}",
         )
     if tool_name == "list_dir":
         target = str(args.get("path") or ".").strip()
         return _tool_activity_summary(
-            f"LinuxAgent 正在整理目录 {target}",
+            translator.t("runtime.tool.activity_list_dir", path=target),
             f"list_dir · {_count_label(_tool_item_count(output), 'item', 'items')}{suffix}",
         )
     if tool_name == "search_files":
         root = args.get("root") or "."
         pattern = args.get("pattern") or ""
         return _tool_activity_summary(
-            f"LinuxAgent 正在整理搜索结果 {root}: {pattern}",
+            translator.t("runtime.tool.activity_search_files", root=root, pattern=pattern),
             f"search_files · {_count_label(_tool_item_count(output), 'match', 'matches')}{suffix}",
         )
-    return _tool_activity_summary("LinuxAgent 正在更新工具结果", f"{tool_name} · done{suffix}")
+    return _tool_activity_summary(
+        translator.t("runtime.tool.activity_update"), f"{tool_name} · done{suffix}"
+    )
 
 
 def _tool_activity_summary(heading: str, detail: str) -> str:
@@ -249,19 +285,19 @@ def _count_label(count: int, singular: str, plural: str) -> str:
     return f"{count} {word}"
 
 
-def _tool_evidence_summary(preview: str) -> tuple[str, ...]:
+def _tool_evidence_summary(preview: str, translator: Translator) -> tuple[str, ...]:
     items = _json_preview_items(preview)
     if not items:
         items = [line.strip() for line in preview.splitlines() if line.strip()]
     if not items:
-        return ("无输出",)
+        return (translator.t("runtime.tool.no_output"),)
     return tuple(_trim_tool_evidence(item) for item in items[:_TOOL_EVIDENCE_ITEMS])
 
 
-def _read_file_evidence_summary(output: str) -> tuple[str, ...]:
+def _read_file_evidence_summary(output: str, translator: Translator) -> tuple[str, ...]:
     lines = [line.strip() for line in output.splitlines() if line.strip()]
     if not lines:
-        return ("无输出",)
+        return (translator.t("runtime.tool.no_output"),)
     if len(lines) <= _READ_FILE_HEAD_EVIDENCE_ITEMS + _READ_FILE_TAIL_EVIDENCE_ITEMS:
         return tuple(_trim_tool_evidence(line) for line in lines)
     selected = [

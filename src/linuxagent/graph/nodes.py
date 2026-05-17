@@ -14,6 +14,7 @@ from langgraph.types import Command, interrupt
 
 from ..audit import AuditLog
 from ..config.models import CommandPlanConfig, FilePatchConfig
+from ..i18n import Translator, default_translator
 from ..interfaces import CommandSource, ExecutionResult, LLMProvider, SafetyLevel, SafetyResult
 from ..plans import PlannedCommand
 from ..prompts_loader import build_analysis_prompt
@@ -92,6 +93,7 @@ class GraphDependencies:
     tool_runtime_limits: ToolRuntimeLimits = field(default_factory=ToolRuntimeLimits)
     product_context: str = ""
     operating_manifest: str = ""
+    translator: Translator = field(default_factory=default_translator)
 
 
 def make_confirm_node(
@@ -666,15 +668,17 @@ def make_analyze_result_node(
     telemetry: TelemetryRecorder | None = None,
     runtime_observer: RuntimeEventObserver | None = None,
     prompt_cache_key: str | None = None,
+    translator: Translator | None = None,
 ) -> Node:
     prompt = build_analysis_prompt()
+    tr = translator or default_translator()
 
     async def analyze_result_node(state: AgentState) -> AgentState:
         current_trace_id = trace_id(state)
         result = state.get("execution_result")
         if result is None:
-            return {"messages": [AIMessage(content="没有执行结果可分析。")]}
-        deterministic = _deterministic_analysis_response(state, result, current_trace_id)
+            return {"messages": [AIMessage(content=tr.t("graph.no_execution_result"))]}
+        deterministic = _deterministic_analysis_response(state, result, current_trace_id, tr)
         if deterministic is not None:
             return deterministic
         result_context = analysis_context(state, result)
@@ -703,13 +707,13 @@ def make_analyze_result_node(
 
 
 def _deterministic_analysis_response(
-    state: AgentState, result: ExecutionResult, current_trace_id: str
+    state: AgentState, result: ExecutionResult, current_trace_id: str, translator: Translator
 ) -> AgentState | None:
     if state.get("skip_command_repair") and result.exit_code != 0:
         reason = result.stderr.strip() or result.stdout.strip() or "command failed"
         return {
             "trace_id": current_trace_id,
-            "messages": [AIMessage(content=f"已阻止执行：{reason}")],
+            "messages": [AIMessage(content=translator.t("graph.blocked", reason=reason))],
         }
     background_job_id = state.get("background_job_id")
     if not background_job_id:
@@ -717,12 +721,6 @@ def _deterministic_analysis_response(
     return {
         "trace_id": current_trace_id,
         "messages": [
-            AIMessage(
-                content=(
-                    f"后台任务已启动：{background_job_id}\n"
-                    f"使用 `/job {background_job_id}` 查看进度和输出，"
-                    f"使用 `/job stop {background_job_id}` 停止。"
-                )
-            )
+            AIMessage(content=translator.t("graph.background_started", job_id=background_job_id))
         ],
     }

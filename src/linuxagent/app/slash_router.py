@@ -17,9 +17,10 @@ async def handle_slash(agent: LinuxAgent, line: str, thread_id: str) -> str | No
     if not line.startswith("/"):
         return None
     command, _, rest = line.partition(" ")
+    translator = agent.translator
     match command:
         case "/help":
-            await agent.ui.print(slash_help())
+            await agent.ui.print(slash_help(translator))
             return thread_id
         case "/tools":
             usage = agent.telemetry.llm_usage_summary() if agent.telemetry is not None else None
@@ -28,11 +29,12 @@ async def handle_slash(agent: LinuxAgent, line: str, thread_id: str) -> str | No
                     agent.tool_names,
                     usage=usage,
                     prompt_cache_enabled=agent.prompt_cache_enabled,
+                    translator=translator,
                 )
             )
             return thread_id
         case "/trace":
-            await handle_trace_command(agent.ui, rest)
+            await handle_trace_command(agent.ui, rest, translator=translator)
             return thread_id
         case "/job":
             await handle_jobs_command(
@@ -40,6 +42,7 @@ async def handle_slash(agent: LinuxAgent, line: str, thread_id: str) -> str | No
                 agent.background_jobs,
                 rest.strip(),
                 daemon_unit=agent.job_daemon_unit,
+                translator=translator,
             )
             return thread_id
         case "/resume":
@@ -47,10 +50,10 @@ async def handle_slash(agent: LinuxAgent, line: str, thread_id: str) -> str | No
         case "/new" | "/clear":
             agent.context_manager.replace([])
             new_thread_id = f"cli-{uuid4().hex}"
-            await agent.ui.print("已开启新对话。当前上下文为空；需要旧会话时使用 /resume。")
+            await agent.ui.print(translator.t("slash.router.new_started"))
             return new_thread_id
         case "/exit" | "/quit":
             return "exit"
         case _:
-            await agent.ui.print("未知命令。输入 /help 查看可用命令。")
+            await agent.ui.print(translator.t("slash.router.unknown"))
             return thread_id

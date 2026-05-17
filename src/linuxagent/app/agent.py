@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -11,15 +11,8 @@ from langgraph.types import Command
 
 from ..audit import AuditLog
 from ..graph.agent_graph import AgentGraph
+from ..i18n import Translator, default_translator
 from ..interfaces import UserInterface
-from ..services import (
-    BackgroundJobController,
-    ChatService,
-    ClusterService,
-    CommandService,
-    JobDaemonUnit,
-    MonitoringService,
-)
 from ..telemetry import TelemetryRecorder
 from ..usage_insights import ContextManager
 from .direct_command import DirectCommandRunner
@@ -36,22 +29,26 @@ from .resume import (
 from .slash_router import handle_slash
 from .turn_state import new_turn_state
 
+if TYPE_CHECKING:
+    from .. import services as service_types
+
 
 @dataclass
 class LinuxAgent:
     graph: AgentGraph
     ui: UserInterface
-    chat_service: ChatService
-    command_service: CommandService
+    chat_service: service_types.ChatService
+    command_service: service_types.CommandService
     audit: AuditLog
     context_manager: ContextManager
-    monitoring_service: MonitoringService
-    cluster_service: ClusterService | None = None
-    background_jobs: BackgroundJobController | None = None
-    job_daemon_unit: JobDaemonUnit | None = None
+    monitoring_service: service_types.MonitoringService
+    cluster_service: service_types.ClusterService | None = None
+    background_jobs: service_types.BackgroundJobController | None = None
+    job_daemon_unit: service_types.JobDaemonUnit | None = None
     telemetry: TelemetryRecorder | None = None
     tool_names: tuple[str, ...] = ()
     prompt_cache_enabled: bool = False
+    translator: Translator = field(default_factory=default_translator)
 
     def __post_init__(self) -> None:
         self._history_threads: set[str] = set()
@@ -64,6 +61,7 @@ class LinuxAgent:
             history_threads=self._history_threads,
             persist_history=self._persist_active_history,
             telemetry=self.telemetry,
+            translator=self.translator,
         )
 
     async def run(self, *, thread_id: str = "default") -> None:
@@ -140,7 +138,7 @@ class LinuxAgent:
             result = await invoke_task
             return result if isinstance(result, dict) else {}
         invoke_task.cancel()
-        await self.ui.print("已终止当前 AI 工作。")
+        await self.ui.print(self.translator.t("app.cancelled"))
         return None
 
     async def _wait_for_cancel(self) -> str:
@@ -177,12 +175,13 @@ class LinuxAgent:
     async def _command_permissions(self, config: RunnableConfig) -> tuple[str, ...]:
         snapshot = await self.graph.aget_state(config)
         values = getattr(snapshot, "values", {})
-        if isinstance(values, dict):
-            permissions = values.get("command_permissions")
-            if isinstance(permissions, tuple):
-                return permissions
-            if isinstance(permissions, list) and all(isinstance(item, str) for item in permissions):
-                return tuple(permissions)
+        if not isinstance(values, dict):
+            return ()
+        permissions = values.get("command_permissions")
+        if isinstance(permissions, tuple):
+            return permissions
+        if isinstance(permissions, list) and all(isinstance(item, str) for item in permissions):
+            return tuple(permissions)
         return ()
 
     async def _handle_slash(self, line: str, thread_id: str) -> str | None:
@@ -191,11 +190,11 @@ class LinuxAgent:
     async def _handle_resume_command(self, arg: str, thread_id: str) -> str | None:
         del thread_id
         if arg:
-            await self.ui.print("用法：/resume。随后输入编号恢复会话。")
+            await self.ui.print(self.translator.t("resume.usage"))
             return None
         sessions = self.chat_service.list_sessions()
         if not sessions:
-            await self.ui.print(resume_list([]))
+            await self.ui.print(resume_list([], translator=self.translator))
             return None
         items = await self._resume_items(sessions)
         if self.ui.supports_resume_selector():
@@ -203,7 +202,7 @@ class LinuxAgent:
             if selected_thread_id is not None:
                 return await self._resume_and_continue(selected_thread_id)
             return None
-        await self.ui.print(resume_list(items))
+        await self.ui.print(resume_list(items, translator=self.translator))
         self._pending_resume_thread_id = ""
         return None
 
@@ -220,7 +219,7 @@ class LinuxAgent:
         index = int(line)
         self._pending_resume_thread_id = None
         if not 1 <= index <= len(sessions):
-            await self.ui.print("会话编号不存在。输入 /resume 重新查看。")
+            await self.ui.print(self.translator.t("resume.index_missing"))
             return None
         selected = sessions[index - 1]
         return await self._resume_and_continue(selected.thread_id)
@@ -228,11 +227,11 @@ class LinuxAgent:
     async def _resume_session(self, thread_id: str) -> str | None:
         selected = self.chat_service.get_session(thread_id)
         if selected is None:
-            await self.ui.print("会话不存在。输入 /resume 重新查看。")
+            await self.ui.print(self.translator.t("resume.session_missing"))
             return None
         self.context_manager.replace(list(selected.messages))
         self._history_threads.add(selected.thread_id)
-        await self.ui.print(render_resumed_session(selected))
+        await self.ui.print(render_resumed_session(selected, translator=self.translator))
         return selected.thread_id
 
     async def _resume_and_continue(self, thread_id: str) -> str | None:
@@ -254,10 +253,10 @@ class LinuxAgent:
             return ""
         payload = interrupts[0].value
         if isinstance(payload, dict) and payload.get("type") == "wizard":
-            return "pending wizard"
+            return self.translator.t("resume.status.pending_wizard")
         if isinstance(payload, dict) and payload.get("type") == "confirm_file_patch":
-            return "pending patch"
-        return "pending confirm"
+            return self.translator.t("resume.status.pending_patch")
+        return self.translator.t("resume.status.pending_confirm")
 
     async def _resume_pending_work(self, thread_id: str) -> None:
         config = graph_config(thread_id)

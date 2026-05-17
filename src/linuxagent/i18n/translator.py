@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from functools import lru_cache
 
 from ..config.models import LanguageCode
 from .catalog import CatalogError, _placeholder_names, load_locale
@@ -42,3 +43,9 @@ class Translator:
                 parts.append(f"extra params: {', '.join(extra)}")
             raise CatalogError(f"{key}: {'; '.join(parts)}")
         return template.format(**params)
+
+
+@lru_cache(maxsize=1)
+def default_translator() -> Translator:
+    """Return the default zh-CN translator for legacy call sites."""
+    return Translator(LanguageCode.ZH_CN)

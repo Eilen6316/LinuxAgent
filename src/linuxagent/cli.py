@@ -15,6 +15,7 @@ from .audit_inspect import AuditInspectError, AuditInspection, inspect_audit_log
 from .config.loader import ConfigError, load_config
 from .config.models import AppConfig, McpConfig
 from .container import Container
+from .i18n import Translator, default_translator
 from .logger import configure_dependency_logging, configure_logging
 from .mcp_server import McpServer, serve_stdio
 from .providers.errors import ProviderError
@@ -133,11 +134,16 @@ def _cmd_check(args: argparse.Namespace) -> int:
         skill_summary = _skill_summary(container)
         tool_catalog = container.tool_catalog()
     except (ConfigError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(default_translator().t("cli.error", message=exc), file=sys.stderr)
         return 1
     alerts = evaluate_alerts(collect_system_snapshot(), cfg.monitoring)
-    alert_summary = "none" if not alerts else ", ".join(_format_alert(alert) for alert in alerts)
-    print(_format_check_summary(cfg, skill_summary, alert_summary))
+    translator = container.translator()
+    alert_summary = (
+        translator.t("common.none")
+        if not alerts
+        else ", ".join(_format_alert(alert) for alert in alerts)
+    )
+    print(_format_check_summary(cfg, skill_summary, alert_summary, translator=translator))
     print(
         format_tool_catalog_check(
             tool_catalog,
@@ -153,7 +159,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
         cfg = load_config(cli_path=args.config)
         cfg.api.require_key()
     except (ConfigError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(default_translator().t("cli.error", message=exc), file=sys.stderr)
         return 1
 
     level: int | str = _verbose_to_level(args.verbose) if args.verbose > 0 else cfg.logging.level
@@ -166,7 +172,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     try:
         asyncio.run(container.build_agent().run(thread_id=f"cli-{uuid4().hex}"))
     except ProviderError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(container.translator().t("cli.error", message=exc), file=sys.stderr)
         return 1
     finally:
         chat_service.save()
@@ -175,24 +181,35 @@ def _cmd_chat(args: argparse.Namespace) -> int:
 
 def _cmd_audit(args: argparse.Namespace) -> int:
     if args.audit_command is None:
-        print("error: missing audit subcommand", file=sys.stderr)
+        print(default_translator().t("cli.audit.missing_subcommand"), file=sys.stderr)
         return 2
     try:
-        path = args.path if args.path is not None else load_config(cli_path=args.config).audit.path
+        path, translator = _audit_path_and_translator(args)
     except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(default_translator().t("cli.error", message=exc), file=sys.stderr)
         return 1
     if args.audit_command in {"summary", "inspect"}:
-        return _cmd_audit_summary(args, path)
+        return _cmd_audit_summary(args, path, translator)
     result = verify_audit_log(path)
     if result.valid:
-        print(f"OK: audit log verified ({result.checked_records} records)")
+        print(translator.t("cli.audit.verify_ok", records=result.checked_records))
         return 0
     print(
-        f"error: audit log tamper detected at line {result.tampered_line}: {result.reason}",
+        translator.t("cli.audit.tamper", line=result.tampered_line, reason=result.reason),
         file=sys.stderr,
     )
     return 1
+
+
+def _audit_path_and_translator(args: argparse.Namespace) -> tuple[Path, Translator]:
+    try:
+        cfg = load_config(cli_path=args.config)
+    except ConfigError:
+        if args.path is None:
+            raise
+        return args.path, default_translator()
+    path = args.path if args.path is not None else cfg.audit.path
+    return path, Translator(cfg.language)
 
 
 def _add_audit_inspect_options(parser: argparse.ArgumentParser) -> None:
@@ -211,7 +228,7 @@ def _add_audit_inspect_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _cmd_audit_summary(args: argparse.Namespace, path: Path) -> int:
+def _cmd_audit_summary(args: argparse.Namespace, path: Path, translator: Translator) -> int:
     include_commands = bool(getattr(args, "show_commands", False))
     try:
         inspection = inspect_audit_log(
@@ -220,9 +237,13 @@ def _cmd_audit_summary(args: argparse.Namespace, path: Path) -> int:
             limit=args.limit,
         )
     except AuditInspectError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(translator.t("cli.error", message=exc), file=sys.stderr)
         return 1
-    print(_format_audit_inspection(inspection, include_commands=include_commands))
+    print(
+        _format_audit_inspection(
+            inspection, include_commands=include_commands, translator=translator
+        )
+    )
     return 0 if inspection.verification.valid else 1
 
 
@@ -230,23 +251,25 @@ def _format_audit_inspection(
     inspection: AuditInspection,
     *,
     include_commands: bool,
+    translator: Translator | None = None,
 ) -> str:
+    tr = translator or default_translator()
     lines = [
-        f"Audit log: {inspection.path}",
-        _format_hash_status(inspection),
-        f"records: {inspection.total_records}",
-        f"time_range: {_format_time_range(inspection)}",
-        f"command_decisions: {inspection.command_decision_count}",
-        f"decisions: {_format_counts(inspection.decision_counts)}",
-        f"safety: {_format_counts(inspection.safety_counts)}",
-        (
-            "command_events: "
-            f"{inspection.command_event_count} "
-            f"(sensitive={inspection.sensitive_command_event_count})"
+        tr.t("cli.audit.title", path=inspection.path),
+        _format_hash_status(inspection, translator=tr),
+        tr.t("cli.audit.records", count=inspection.total_records),
+        tr.t("cli.audit.time_range", range=_format_time_range(inspection, translator=tr)),
+        tr.t("cli.audit.command_decisions", count=inspection.command_decision_count),
+        tr.t("cli.audit.decisions", counts=_format_counts(inspection.decision_counts)),
+        tr.t("cli.audit.safety", counts=_format_counts(inspection.safety_counts)),
+        tr.t(
+            "cli.audit.command_events",
+            count=inspection.command_event_count,
+            sensitive=inspection.sensitive_command_event_count,
         ),
     ]
     if inspection.details:
-        lines.append("recent_commands:")
+        lines.append(tr.t("cli.audit.recent_commands"))
         lines.extend(_format_audit_details(inspection, include_commands=include_commands))
     return "\n".join(lines)
 
@@ -278,18 +301,23 @@ def _format_audit_details(
     return lines
 
 
-def _format_hash_status(inspection: AuditInspection) -> str:
+def _format_hash_status(
+    inspection: AuditInspection, *, translator: Translator | None = None
+) -> str:
+    tr = translator or default_translator()
     if inspection.verification.valid:
-        return f"hash_chain: valid ({inspection.verification.checked_records} records)"
-    return (
-        "hash_chain: invalid "
-        f"(line={inspection.verification.tampered_line}, reason={inspection.verification.reason})"
+        return tr.t("cli.audit.hash_valid", records=inspection.verification.checked_records)
+    return tr.t(
+        "cli.audit.hash_invalid",
+        line=inspection.verification.tampered_line,
+        reason=inspection.verification.reason,
     )
 
 
-def _format_time_range(inspection: AuditInspection) -> str:
+def _format_time_range(inspection: AuditInspection, *, translator: Translator | None = None) -> str:
+    tr = translator or default_translator()
     if inspection.time_start is None and inspection.time_end is None:
-        return "empty"
+        return tr.t("cli.audit.time_empty")
     return f"{inspection.time_start or '?'}..{inspection.time_end or '?'}"
 
 
@@ -301,10 +329,10 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
     try:
         cfg = load_config(cli_path=args.config)
     except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(default_translator().t("cli.error", message=exc), file=sys.stderr)
         return 1
     if not cfg.mcp.enabled:
-        print("error: mcp.enabled is false", file=sys.stderr)
+        print(Translator(cfg.language).t("cli.mcp.disabled"), file=sys.stderr)
         return 1
     container = Container(cfg, config_path=args.config)
     server = McpServer(
@@ -322,7 +350,7 @@ def _cmd_job_daemon(args: argparse.Namespace) -> int:
     try:
         cfg = load_config(cli_path=args.config)
     except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(default_translator().t("cli.error", message=exc), file=sys.stderr)
         return 1
     level: int | str = _verbose_to_level(args.verbose) if args.verbose > 0 else cfg.logging.level
     configure_logging(level=level, fmt=cfg.logging.format)
@@ -333,7 +361,7 @@ def _cmd_job_daemon(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         return 0
     except RuntimeError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(container.translator().t("cli.error", message=exc), file=sys.stderr)
         return 1
     return 0
 
@@ -351,36 +379,49 @@ def _format_alert(alert: MonitoringAlert) -> str:
     return f"{alert.severity}:{alert.metric}={alert.value:.1f}>={alert.threshold:.1f}"
 
 
-def _format_check_summary(cfg: AppConfig, skill_summary: str, alert_summary: str) -> str:
-    return (
-        f"OK: provider={cfg.api.provider}, "
-        f"model={cfg.api.model}, "
-        f"batch_confirm_threshold={cfg.cluster.batch_confirm_threshold}, "
-        f"audit_log={cfg.audit.path}, "
-        f"mcp={_mcp_summary(cfg.mcp)}, "
-        f"skills={skill_summary}, "
-        f"monitoring_alerts={alert_summary}"
+def _format_check_summary(
+    cfg: AppConfig,
+    skill_summary: str,
+    alert_summary: str,
+    *,
+    translator: Translator | None = None,
+) -> str:
+    tr = translator or default_translator()
+    return tr.t(
+        "cli.check.summary",
+        provider=cfg.api.provider,
+        model=cfg.api.model,
+        batch_confirm_threshold=cfg.cluster.batch_confirm_threshold,
+        audit_log=cfg.audit.path,
+        mcp=_mcp_summary(cfg.mcp, translator=tr),
+        skills=skill_summary,
+        monitoring_alerts=alert_summary,
     )
 
 
-def _mcp_summary(config: McpConfig) -> str:
+def _mcp_summary(config: McpConfig, *, translator: Translator | None = None) -> str:
+    tr = translator or default_translator()
     if not config.enabled:
-        return "disabled"
+        return tr.t("common.disabled")
     if not config.tools:
-        return "none"
+        return tr.t("common.none")
     return ",".join(config.tools)
 
 
 def _skill_summary(container: Container) -> str:
     if not container.config.skills.enabled:
-        return "disabled"
+        return container.translator().t("cli.check.skills_disabled")
     manifests = container.skill_manifests()
     runbooks = skill_runbooks(manifests)
     RunbookEngine(
         runbooks,
         policy_engine=container.policy_engine(),
     )
-    return f"{len(manifests)} manifests/{len(runbooks)} runbooks"
+    return container.translator().t(
+        "cli.check.skills_summary",
+        manifest_count=len(manifests),
+        runbook_count=len(runbooks),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

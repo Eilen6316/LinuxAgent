@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+from linuxagent.config.models import LanguageCode
 from linuxagent.graph.routing import (
+    make_respond_block_node,
+    make_respond_node,
+    make_respond_refused_node,
     respond_block_node,
     respond_node,
     respond_refused_node,
     route_after_execute,
     route_by_safety,
 )
+from linuxagent.i18n import Translator
 from linuxagent.interfaces import ExecutionResult, SafetyLevel
 from linuxagent.plans import command_plan_json, parse_command_plan
 
@@ -75,3 +80,14 @@ async def test_response_nodes_render_operator_messages() -> None:
     assert refused["messages"][0].content == "已拒绝执行：rm -rf /tmp/demo"
     assert completed["messages"][0].content == "操作已完成。"
     assert unchanged == {}
+
+
+async def test_response_nodes_can_render_english_operator_messages() -> None:
+    translator = Translator(LanguageCode.EN_US)
+    blocked = await make_respond_block_node(translator)({"safety_reason": "danger"})
+    refused = await make_respond_refused_node(translator)({"pending_command": "rm -rf /tmp/demo"})
+    completed = await make_respond_node(translator)({})
+
+    assert blocked["messages"][0].content == "Execution blocked: danger"
+    assert refused["messages"][0].content == "Execution refused: rm -rf /tmp/demo"
+    assert completed["messages"][0].content == "Operation completed."

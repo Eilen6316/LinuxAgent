@@ -24,10 +24,10 @@ from .nodes import (
 )
 from .replanning import make_repair_plan_node
 from .routing import (
+    make_respond_block_node,
+    make_respond_node,
+    make_respond_refused_node,
     make_route_after_execute,
-    respond_block_node,
-    respond_node,
-    respond_refused_node,
     route_after_file_patch_apply,
     route_after_parse,
     route_by_safety,
@@ -49,7 +49,7 @@ def _add_graph_nodes(graph: Any, deps: GraphDependencies) -> None:
     _add_planning_nodes(graph, deps)
     _add_file_patch_nodes(graph, deps)
     _add_execution_nodes(graph, deps)
-    _add_response_nodes(graph)
+    _add_response_nodes(graph, deps)
 
 
 def _add_planning_nodes(graph: Any, deps: GraphDependencies) -> None:
@@ -152,15 +152,20 @@ def _add_execution_nodes(graph: Any, deps: GraphDependencies) -> None:
     graph.add_node(
         "analyze",
         _langgraph_node(
-            make_analyze_result_node(deps.provider, deps.telemetry, deps.runtime_observer)
+            make_analyze_result_node(
+                deps.provider,
+                deps.telemetry,
+                deps.runtime_observer,
+                translator=deps.translator,
+            )
         ),
     )
 
 
-def _add_response_nodes(graph: Any) -> None:
-    graph.add_node("respond", _langgraph_node(respond_node))
-    graph.add_node("respond_block", _langgraph_node(respond_block_node))
-    graph.add_node("respond_refused", _langgraph_node(respond_refused_node))
+def _add_response_nodes(graph: Any, deps: GraphDependencies) -> None:
+    graph.add_node("respond", _langgraph_node(make_respond_node(deps.translator)))
+    graph.add_node("respond_block", _langgraph_node(make_respond_block_node(deps.translator)))
+    graph.add_node("respond_refused", _langgraph_node(make_respond_refused_node(deps.translator)))
 
 
 def _add_graph_edges(graph: Any, deps: GraphDependencies) -> None:

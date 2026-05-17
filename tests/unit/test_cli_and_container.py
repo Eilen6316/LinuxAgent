@@ -24,6 +24,7 @@ from linuxagent.audit import AuditLog
 from linuxagent.config.loader import ConfigError
 from linuxagent.config.models import AppConfig, LanguageCode
 from linuxagent.container import Container
+from linuxagent.i18n import Translator
 from linuxagent.policy.config_rules import PolicyConfigError
 from linuxagent.product_context import product_capability_context, slash_help
 from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner, SandboxProfile
@@ -86,10 +87,10 @@ def test_check_command_success(
     captured = capsys.readouterr()
     assert code == 0
     assert called == [logging.INFO]
-    assert "OK: provider=deepseek" in captured.out
+    assert "正常：provider=deepseek" in captured.out
     assert "mcp=linuxagent.policy.classify,linuxagent.audit.verify" in captured.out
-    assert "skills=disabled" in captured.out
-    assert "monitoring_alerts=none" in captured.out
+    assert "skills=已禁用" in captured.out
+    assert "monitoring_alerts=无" in captured.out
     assert "tool_catalog:" in captured.out
     assert "name=execute_command status=ok profile=privileged_passthrough" in captured.out
     assert "network_access=true" in captured.out
@@ -123,6 +124,31 @@ def test_check_command_reports_monitoring_alerts(
 
     assert code == 0
     assert "monitoring_alerts=warning:cpu_percent=95.0>=90.0" in captured.out
+
+
+def test_check_command_uses_english_language_config(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "language": "en-US",
+            "monitoring": {"enabled": False},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+
+    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+    monkeypatch.setattr(cli, "collect_system_snapshot", lambda: {})
+
+    code = cli.main(["check"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "OK: provider=deepseek" in captured.out
+    assert "skills=disabled" in captured.out
+    assert "monitoring_alerts=none" in captured.out
 
 
 def test_check_command_fails_for_invalid_tool_catalog(
@@ -280,7 +306,7 @@ def test_check_command_failure(
     code = cli.main(["check"])
     captured = capsys.readouterr()
     assert code == 1
-    assert "error: boom" in captured.err
+    assert "错误：boom" in captured.err
 
 
 def test_audit_verify_command_success(
@@ -295,7 +321,7 @@ def test_audit_verify_command_success(
     captured = capsys.readouterr()
 
     assert code == 0
-    assert "OK: audit log verified (1 records)" in captured.out
+    assert "正常：audit log 已验证（1 条记录）" in captured.out
 
 
 def test_audit_verify_command_reports_tamper(
@@ -311,7 +337,7 @@ def test_audit_verify_command_reports_tamper(
     captured = capsys.readouterr()
 
     assert code == 1
-    assert "tamper detected at line 1" in captured.err
+    assert "第 1 行检测到篡改" in captured.err
 
 
 async def test_audit_summary_command_hides_command_text(
@@ -332,10 +358,10 @@ async def test_audit_summary_command_hides_command_text(
     captured = capsys.readouterr()
 
     assert code == 0
-    assert "hash_chain: valid (2 records)" in captured.out
-    assert "command_decisions: 1" in captured.out
-    assert "decisions: yes=0, no=1" in captured.out
-    assert "safety: SAFE=0, CONFIRM=1, BLOCK=0" in captured.out
+    assert "hash_chain：有效（2 条记录）" in captured.out
+    assert "command_decisions：1" in captured.out
+    assert "decisions：yes=0, no=1" in captured.out
+    assert "safety：SAFE=0, CONFIRM=1, BLOCK=0" in captured.out
     assert "command_sha256=" in captured.out
     assert "systemctl restart nginx" not in captured.out
 
@@ -368,7 +394,7 @@ def test_audit_summary_returns_failure_for_tampered_hash_chain(
     captured = capsys.readouterr()
 
     assert code == 1
-    assert "hash_chain: invalid (line=1, reason=hash mismatch)" in captured.out
+    assert "hash_chain：无效（line=1, reason=hash mismatch）" in captured.out
 
 
 def test_audit_summary_reports_permission_error(
@@ -432,7 +458,7 @@ def test_mcp_command_rejects_disabled_server(
     captured = capsys.readouterr()
 
     assert code == 1
-    assert "mcp.enabled is false" in captured.err
+    assert "mcp.enabled 为 false" in captured.err
 
 
 def test_main_unknown_command_routes_to_parser_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -620,6 +646,7 @@ def test_container_builds_cached_runtime(
     def fake_build_agent_graph(deps):
         captured["tool_observer"] = deps.tool_observer
         captured["product_context"] = deps.product_context
+        captured["translator"] = deps.translator
         return fake_graph
 
     monkeypatch.setattr(container_module, "build_agent_graph", fake_build_agent_graph)
@@ -645,6 +672,7 @@ def test_container_builds_cached_runtime(
     assert container.build_agent().graph is fake_graph
     assert container.build_agent().context_manager is container.context_manager()
     assert captured["tool_observer"] is not None
+    assert captured["translator"] is container.translator()
     assert "provider=deepseek" in str(captured["product_context"])
     assert "/resume 是 LinuxAgent 内置命令" in str(captured["product_context"])
 
@@ -814,6 +842,13 @@ def test_product_capability_context_describes_resume_and_model_source() -> None:
     assert "/wizard" not in slash_help()
 
 
+def test_slash_help_can_render_english() -> None:
+    rendered = slash_help(Translator(LanguageCode.EN_US))
+
+    assert "/resume - List saved local sessions" in rendered
+    assert "/wizard" not in rendered
+
+
 def test_slash_completer_does_not_expose_wizard_command() -> None:
     commands = [
         item.text for item in SlashCommandCompleter().get_completions(_Document("/"), object())
@@ -839,6 +874,22 @@ def test_runtime_event_message_formats_command_batch() -> None:
     assert (
         runtime_event_message({"type": "command_batch", "phase": "finish", "count": 3})
         == "LinuxAgent 并发只读命令已完成：3 条"
+    )
+
+
+def test_runtime_event_message_can_render_english() -> None:
+    translator = Translator(LanguageCode.EN_US)
+
+    assert (
+        runtime_event_message({"type": "command_batch", "phase": "start", "count": 3}, translator)
+        == "LinuxAgent is running 3 read-only commands concurrently"
+    )
+    assert (
+        tool_event_message(
+            {"phase": "start", "tool_name": "read_file", "args": {"path": "README.md"}},
+            translator,
+        )
+        == "LinuxAgent is reading file README.md"
     )
 
 
@@ -1042,7 +1093,7 @@ def test_chat_command_reports_config_error(
     code = cli.main(["chat"])
     captured = capsys.readouterr()
     assert code == 1
-    assert "error: boom" in captured.err
+    assert "错误：boom" in captured.err
 
 
 def test_job_daemon_command_runs_server(

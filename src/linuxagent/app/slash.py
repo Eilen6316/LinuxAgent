@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..i18n import Translator, default_translator
 from ..product_context import slash_help
 
 if TYPE_CHECKING:
@@ -17,23 +18,29 @@ def tools_help(
     *,
     usage: LLMUsageSummary | None = None,
     prompt_cache_enabled: bool = False,
+    translator: Translator | None = None,
 ) -> str:
-    names = ", ".join(tool_names) if tool_names else "当前没有启用 LangChain 工具"
+    tr = translator or default_translator()
+    names = ", ".join(tool_names) if tool_names else tr.t("slash.tools.no_tools")
     lines = [
-        "Slash 命令可直接调用本地功能；LLM 可用工具：",
+        tr.t("slash.tools.header"),
         names,
         "",
         "LLM token cache:",
-        _cache_status_line(usage, prompt_cache_enabled),
+        _cache_status_line(usage, prompt_cache_enabled, tr),
     ]
     return "\n".join(lines)
 
 
-def _cache_status_line(usage: LLMUsageSummary | None, prompt_cache_enabled: bool) -> str:
+def _cache_status_line(
+    usage: LLMUsageSummary | None,
+    prompt_cache_enabled: bool,
+    translator: Translator,
+) -> str:
     if not prompt_cache_enabled:
         return "prompt_cache=off"
     if usage is None or usage.calls == 0:
-        return "prompt_cache=on；本进程还没有收到 provider usage 数据"
+        return translator.t("slash.tools.cache_no_usage")
     support = _provider_support_text(usage.prompt_cache_supported)
     hit_rate = usage.cache_hit_rate * 100
     cached_ratio = usage.cached_input_ratio * 100

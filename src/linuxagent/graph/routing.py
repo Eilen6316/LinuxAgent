@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 
 from langchain_core.messages import AIMessage
 
+from ..i18n import Translator, default_translator
 from ..interfaces import SafetyLevel
 from .file_patch_nodes import should_repair_file_patch
 from .replanning import should_repair_plan
@@ -13,20 +14,53 @@ from .runbook_planning import has_next_plan_step
 from .state import AgentState
 
 
+def make_respond_block_node(
+    translator: Translator | None = None,
+) -> Callable[[AgentState], Awaitable[AgentState]]:
+    tr = translator or default_translator()
+
+    async def respond_block(state: AgentState) -> AgentState:
+        reason = state.get("safety_reason") or "command blocked by safety policy"
+        return {"messages": [AIMessage(content=tr.t("graph.blocked", reason=reason))]}
+
+    return respond_block
+
+
+def make_respond_refused_node(
+    translator: Translator | None = None,
+) -> Callable[[AgentState], Awaitable[AgentState]]:
+    tr = translator or default_translator()
+
+    async def respond_refused(state: AgentState) -> AgentState:
+        command = state.get("pending_command") or ""
+        return {"messages": [AIMessage(content=tr.t("graph.refused", command=command))]}
+
+    return respond_refused
+
+
+def make_respond_node(
+    translator: Translator | None = None,
+) -> Callable[[AgentState], Awaitable[AgentState]]:
+    tr = translator or default_translator()
+
+    async def respond(state: AgentState) -> AgentState:
+        if state.get("messages"):
+            return {}
+        return {"messages": [AIMessage(content=tr.t("graph.done"))]}
+
+    return respond
+
+
 async def respond_block_node(state: AgentState) -> AgentState:
-    reason = state.get("safety_reason") or "command blocked by safety policy"
-    return {"messages": [AIMessage(content=f"已阻止执行：{reason}")]}
+    return await make_respond_block_node()(state)
 
 
 async def respond_refused_node(state: AgentState) -> AgentState:
-    command = state.get("pending_command") or ""
-    return {"messages": [AIMessage(content=f"已拒绝执行：{command}")]}
+    return await make_respond_refused_node()(state)
 
 
 async def respond_node(state: AgentState) -> AgentState:
-    if state.get("messages"):
-        return {}
-    return {"messages": [AIMessage(content="操作已完成。")]}
+    return await make_respond_node()(state)
 
 
 async def route_by_safety(state: AgentState) -> str:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..i18n import Translator, default_translator
 from ..interfaces import UserInterface
 from ..services import (
     BackgroundJobController,
@@ -20,117 +21,134 @@ async def handle_jobs_command(
     arg: str,
     *,
     daemon_unit: JobDaemonUnit | None = None,
+    translator: Translator | None = None,
 ) -> None:
+    tr = translator or default_translator()
     if jobs is None:
-        await ui.print("当前运行时未启用后台任务服务。")
+        await ui.print(tr.t("jobs.disabled"))
         return
     parts = arg.split()
     if not parts:
-        await _print_jobs(ui, jobs)
+        await _print_jobs(ui, jobs, tr)
         return
     action = parts[0]
     if action == "status":
-        await _print_status(ui, jobs)
+        await _print_status(ui, jobs, tr)
         return
     if action == "daemon":
-        await _print_daemon_help(ui, daemon_unit, parts[1:])
+        await _print_daemon_help(ui, daemon_unit, parts[1:], tr)
         return
     if action == "stop":
-        await _stop_job(ui, jobs, parts[1:])
+        await _stop_job(ui, jobs, parts[1:], tr)
         return
     if action == "follow":
-        await _follow_job(ui, jobs, parts[1:])
+        await _follow_job(ui, jobs, parts[1:], tr)
         return
-    await _print_job(ui, jobs, action)
+    await _print_job(ui, jobs, action, tr)
 
 
-async def _print_jobs(ui: UserInterface, jobs: BackgroundJobController) -> None:
+async def _print_jobs(
+    ui: UserInterface, jobs: BackgroundJobController, translator: Translator
+) -> None:
     try:
-        await ui.print(render_jobs(jobs.list()))
+        await ui.print(render_jobs(jobs.list(), translator=translator))
     except JobDaemonError as exc:
-        await ui.print(_job_service_error(exc))
+        await ui.print(_job_service_error(exc, translator))
 
 
-async def _print_job(ui: UserInterface, jobs: BackgroundJobController, job_id: str) -> None:
+async def _print_job(
+    ui: UserInterface, jobs: BackgroundJobController, job_id: str, translator: Translator
+) -> None:
     try:
-        await ui.print(render_job(jobs.get(job_id)))
+        await ui.print(render_job(jobs.get(job_id), translator=translator))
     except JobDaemonError as exc:
-        await ui.print(_job_service_error(exc))
+        await ui.print(_job_service_error(exc, translator))
 
 
-async def _print_status(ui: UserInterface, jobs: BackgroundJobController) -> None:
+async def _print_status(
+    ui: UserInterface, jobs: BackgroundJobController, translator: Translator
+) -> None:
     try:
-        await ui.print(render_job_runtime_status(await jobs.status()))
+        await ui.print(render_job_runtime_status(await jobs.status(), translator=translator))
     except JobDaemonError as exc:
-        await ui.print(_job_service_error(exc))
+        await ui.print(_job_service_error(exc, translator))
 
 
 async def _print_daemon_help(
     ui: UserInterface,
     unit: JobDaemonUnit | None,
     args: list[str],
+    translator: Translator,
 ) -> None:
     if unit is None:
-        await ui.print("当前运行时没有 job daemon systemd unit 信息。")
+        await ui.print(translator.t("jobs.daemon_unit_missing"))
         return
     if args and args[0] == "install":
         unit.install()
-        await ui.print(render_job_daemon_installed(unit))
+        await ui.print(render_job_daemon_installed(unit, translator=translator))
         return
-    await ui.print(render_job_daemon_help(unit, show_unit="unit" in args))
+    await ui.print(render_job_daemon_help(unit, show_unit="unit" in args, translator=translator))
 
 
-async def _stop_job(ui: UserInterface, jobs: BackgroundJobController, args: list[str]) -> None:
+async def _stop_job(
+    ui: UserInterface, jobs: BackgroundJobController, args: list[str], translator: Translator
+) -> None:
     if not args:
-        await ui.print("用法：/job stop <job_id>")
+        await ui.print(translator.t("jobs.usage_stop"))
         return
     try:
-        await ui.print(render_stopped_job(await jobs.stop(args[0])))
+        await ui.print(render_stopped_job(await jobs.stop(args[0]), translator=translator))
     except JobDaemonError as exc:
-        await ui.print(_job_service_error(exc))
+        await ui.print(_job_service_error(exc, translator))
 
 
-async def _follow_job(ui: UserInterface, jobs: BackgroundJobController, args: list[str]) -> None:
+async def _follow_job(
+    ui: UserInterface, jobs: BackgroundJobController, args: list[str], translator: Translator
+) -> None:
     if not args:
-        await ui.print("用法：/job follow <job_id>")
+        await ui.print(translator.t("jobs.usage_follow"))
         return
     try:
         if jobs.get(args[0]) is None:
-            await ui.print("后台任务不存在。")
+            await ui.print(translator.t("jobs.not_found"))
             return
     except JobDaemonError as exc:
-        await ui.print(_job_service_error(exc))
+        await ui.print(_job_service_error(exc, translator))
         return
     found = False
     last_text = ""
     try:
         async for snapshot in jobs.watch(args[0]):
             found = True
-            text = render_job(snapshot)
+            text = render_job(snapshot, translator=translator)
             if text != last_text:
                 await ui.print(text)
                 last_text = text
     except JobDaemonError as exc:
-        await ui.print(_job_service_error(exc))
+        await ui.print(_job_service_error(exc, translator))
         return
     if not found:
-        await ui.print("后台任务不存在。")
+        await ui.print(translator.t("jobs.not_found"))
 
 
-def render_jobs(items: tuple[BackgroundJobSnapshot, ...]) -> str:
+def render_jobs(
+    items: tuple[BackgroundJobSnapshot, ...], *, translator: Translator | None = None
+) -> str:
+    tr = translator or default_translator()
     if not items:
-        return "当前没有后台任务。用法：/job status、/job daemon、/job <job_id>、/job follow <job_id>、/job stop <job_id>"
-    lines = ["后台任务：", "```text", "ID                         STATUS     AGE      GOAL"]
+        return tr.t("jobs.empty")
+    lines = [tr.t("jobs.title"), "```text", "ID                         STATUS     AGE      GOAL"]
     lines.extend(_job_line(item) for item in items)
     lines.append("```")
     return "\n".join(lines)
 
 
-def render_job(item: BackgroundJobSnapshot | None) -> str:
+def render_job(item: BackgroundJobSnapshot | None, *, translator: Translator | None = None) -> str:
+    tr = translator or default_translator()
     if item is None:
-        return "后台任务不存在。"
+        return tr.t("jobs.not_found")
     parts = [
-        f"后台任务 `{item.job_id}`",
+        tr.t("jobs.item_title", job_id=item.job_id),
         "",
         f"status: {item.status.value}",
         f"duration: {_format_duration(item.duration_seconds)}",
@@ -151,10 +169,17 @@ def render_job(item: BackgroundJobSnapshot | None) -> str:
     return "\n".join(parts)
 
 
-def render_job_runtime_status(status: BackgroundJobRuntimeStatus) -> str:
-    state = "available" if status.available else "unavailable"
+def render_job_runtime_status(
+    status: BackgroundJobRuntimeStatus, *, translator: Translator | None = None
+) -> str:
+    tr = translator or default_translator()
+    state = (
+        tr.t("jobs.runtime_state_available")
+        if status.available
+        else tr.t("jobs.runtime_state_unavailable")
+    )
     lines = [
-        "后台任务运行时：",
+        tr.t("jobs.runtime_title"),
         "```text",
         f"mode: {status.mode}",
         f"state: {state}",
@@ -170,9 +195,15 @@ def render_job_runtime_status(status: BackgroundJobRuntimeStatus) -> str:
     return "\n".join(lines)
 
 
-def render_job_daemon_help(unit: JobDaemonUnit, *, show_unit: bool = False) -> str:
+def render_job_daemon_help(
+    unit: JobDaemonUnit,
+    *,
+    show_unit: bool = False,
+    translator: Translator | None = None,
+) -> str:
+    tr = translator or default_translator()
     lines = [
-        "后台任务 daemon：",
+        tr.t("jobs.daemon_title"),
         "",
         "```text",
         f"unit: {unit.path}",
@@ -183,14 +214,17 @@ def render_job_daemon_help(unit: JobDaemonUnit, *, show_unit: bool = False) -> s
         "```",
     ]
     if show_unit and unit.content:
-        lines.extend(["", "unit file:", "```ini", unit.content.rstrip(), "```"])
+        lines.extend(["", tr.t("jobs.daemon_unit_file"), "```ini", unit.content.rstrip(), "```"])
     return "\n".join(lines)
 
 
-def render_job_daemon_installed(unit: JobDaemonUnit) -> str:
+def render_job_daemon_installed(
+    unit: JobDaemonUnit, *, translator: Translator | None = None
+) -> str:
+    tr = translator or default_translator()
     return "\n".join(
         [
-            f"已写入 job daemon systemd unit：{unit.path}",
+            tr.t("jobs.daemon_installed", path=unit.path),
             "",
             "```text",
             "systemctl --user daemon-reload",
@@ -201,10 +235,13 @@ def render_job_daemon_installed(unit: JobDaemonUnit) -> str:
     )
 
 
-def render_stopped_job(item: BackgroundJobSnapshot | None) -> str:
+def render_stopped_job(
+    item: BackgroundJobSnapshot | None, *, translator: Translator | None = None
+) -> str:
+    tr = translator or default_translator()
     if item is None:
-        return "后台任务不存在。"
-    return f"已请求停止后台任务：{item.job_id}（status={item.status.value}）"
+        return tr.t("jobs.not_found")
+    return tr.t("jobs.stop_requested", job_id=item.job_id, status=item.status.value)
 
 
 def _job_line(item: BackgroundJobSnapshot) -> str:
@@ -233,5 +270,5 @@ def _display_path(path: Path) -> str:
     return str(path)
 
 
-def _job_service_error(exc: JobDaemonError) -> str:
-    return f"后台任务服务不可用：{exc}。请先启动 `linuxagent job-daemon`。"
+def _job_service_error(exc: JobDaemonError, translator: Translator) -> str:
+    return translator.t("jobs.service_unavailable", error=exc)

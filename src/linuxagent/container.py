@@ -110,6 +110,7 @@ class Container:
             telemetry=self.telemetry(),
             tool_names=tuple(item.name for item in self.tool_catalog().items),
             prompt_cache_enabled=self._config.api.prompt_cache,
+            translator=self.translator(),
         )
 
     def audit_log(self) -> AuditLog:
@@ -251,6 +252,7 @@ class Container:
                     tool_runtime_limits=self.tool_runtime_limits(),
                     product_context=self.product_context(),
                     operating_manifest=self.operating_manifest(),
+                    translator=self.translator(),
                 )
             ),
         )
@@ -411,7 +413,7 @@ class Container:
 
     def _tool_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
-            message = tool_activity_message(event)
+            message = tool_activity_message(event, self.translator())
             if message:
                 await self.ui().print_activity(message)
 
@@ -420,7 +422,7 @@ class Container:
     def _runtime_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
             record_runtime_event(self.telemetry(), event)
-            message = runtime_event_message(event)
+            message = runtime_event_message(event, self.translator())
             if message:
                 if message != self._last_activity_message:
                     self._last_activity_message = message

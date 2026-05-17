@@ -7,6 +7,8 @@ from datetime import datetime
 from langchain_core.messages import AIMessage, HumanMessage
 
 from linuxagent.app.resume import resume_choice_label, resume_item, resume_list
+from linuxagent.config.models import LanguageCode
+from linuxagent.i18n import Translator
 from linuxagent.services import ChatSession
 
 
@@ -19,7 +21,7 @@ def test_resume_choice_label_is_compact_and_status_aware() -> None:
 
     assert label.startswith("[pending confirm] ")
     assert "修改 /tmp/disk_info.sh" in label
-    assert "2 messages" in label
+    assert "2 条消息" in label
     assert len(label) < 90
 
 
@@ -30,6 +32,15 @@ def test_resume_list_uses_compact_labels() -> None:
 
     assert "1." in rendered
     assert "查看磁盘信息" in rendered
+    assert "1 条消息" in rendered
+
+
+def test_resume_list_can_render_english_labels() -> None:
+    item = resume_item(_session(title="Inspect disk", message_count=1))
+
+    rendered = resume_list([item], translator=Translator(LanguageCode.EN_US))
+
+    assert "Resumable sessions:" in rendered
     assert "1 messages" in rendered
 
 
