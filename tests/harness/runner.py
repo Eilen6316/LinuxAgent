@@ -8,7 +8,9 @@ import inspect
 import json
 import os
 import tempfile
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +18,9 @@ import yaml
 from langchain_core.messages import BaseMessage
 from langgraph.types import Command
 
+from linuxagent.app.turn_state import new_turn_state
 from linuxagent.audit import AuditLog
+from linuxagent.cluster import SSHError, SSHRemoteCommandError
 from linuxagent.cluster.remote_command import RemoteCommandError, validate_remote_command
 from linuxagent.config.models import (
     ClusterConfig,
@@ -29,16 +33,19 @@ from linuxagent.config.models import (
 )
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
+from linuxagent.graph.state import AgentState
 from linuxagent.i18n import Translator
-from linuxagent.interfaces import LLM_CALL_METADATA_KEY, ExecutionResult
+from linuxagent.interfaces import LLM_CALL_METADATA_KEY, ExecutionResult, LLMProvider
+from linuxagent.providers.errors import ProviderError
 from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.sandbox import (
     BubblewrapSandboxRunner,
     LocalProcessSandboxRunner,
     NoopSandboxRunner,
+    SandboxRunner,
     SandboxRunnerKind,
 )
-from linuxagent.services import ClusterService, CommandService
+from linuxagent.services import BackgroundJobSnapshot, ClusterService, CommandService, JobStatus
 from linuxagent.tools import ToolRuntimeLimits, build_workspace_tools
 from linuxagent.tools.sandbox import invoke_tool_with_sandbox
 
@@ -46,40 +53,56 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
+class ScenarioTurn:
+    input: str | None
+    expected: dict[str, Any]
+    expected_interrupts: list[dict[str, Any]]
+    resume: Any | None
+    resume_sequence: list[Any]
+
+
+@dataclass(frozen=True)
 class Scenario:
     name: str
     inputs: list[dict[str, str]]
+    turns: list[ScenarioTurn]
     provider_responses: list[Any]
     expected: dict[str, Any]
     expected_interrupts: list[dict[str, Any]]
-    resume: dict[str, Any] | None
+    resume: Any | None
     setup: dict[str, Any]
 
 
-class _FakeProvider:
+class _FakeProvider(LLMProvider):
     def __init__(self, responses: list[Any]) -> None:
         self._responses = list(responses)
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
         del messages
+        if self._responses and _is_provider_error(self._responses[0], kwargs):
+            scripted = self._responses.pop(0)
+            raise ProviderError(str(scripted.get("message", "scripted provider failure")))
         if _is_llm_call(kwargs, node="parse_intent", mode="intent_router"):
             if self._responses and _is_intent_router_response(self._responses[0]):
-                return self._responses.pop(0)
+                return str(self._responses.pop(0))
             return _router_response("COMMAND_PLAN")
         if _is_llm_call(kwargs, node="parse_intent", mode="direct_answer_review"):
             if self._responses and _is_direct_answer_review_response(self._responses[0]):
-                return self._responses.pop(0)
+                return str(self._responses.pop(0))
             return _direct_answer_review_response()
-        return self._responses.pop(0) if self._responses else "analysis ok"
+        return str(self._responses.pop(0)) if self._responses else "analysis ok"
 
-    async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
+    async def complete_with_tools(
+        self, messages: list[BaseMessage], tools: list[Any], **kwargs: Any
+    ) -> str:
         if self._responses and isinstance(self._responses[0], dict):
             return await self._complete_scripted_tool_round(list(tools), **kwargs)
         return await self.complete(messages, **kwargs)
 
-    def stream(self, messages: list[BaseMessage], **kwargs: Any):
+    async def stream(self, messages: list[BaseMessage], **kwargs: Any) -> AsyncIterator[str]:
         del messages, kwargs
-        raise NotImplementedError
+        if False:
+            yield ""
 
     async def _complete_scripted_tool_round(self, tools: list[Any], **kwargs: Any) -> str:
         scripted = self._responses.pop(0)
@@ -100,6 +123,17 @@ class _FakeProvider:
             remaining -= result.output_chars
             await _notify_tool_observer(observer, result.event)
         return str(scripted.get("response", ""))
+
+
+def _is_provider_error(response: Any, kwargs: dict[str, Any]) -> bool:
+    if not isinstance(response, dict) or response.get("raises") != "ProviderError":
+        return False
+    node = response.get("node")
+    mode = response.get("mode")
+    return not (
+        isinstance(node, str)
+        and not _is_llm_call(kwargs, node=node, mode=mode if isinstance(mode, str) else None)
+    )
 
 
 def _router_response(mode: str, answer: str = "", reason: str = "test route") -> str:
@@ -152,19 +186,105 @@ def _is_direct_answer_review_response(text: object) -> bool:
 
 
 class _FakeSSH:
-    async def execute_many(self, hosts, command, **kwargs):
-        del kwargs
+    async def execute_many(
+        self,
+        hosts: Iterable[ClusterHost],
+        command: str,
+        *,
+        trace_id: str | None = None,
+    ) -> dict[str, ExecutionResult | SSHError]:
+        del trace_id
+        host_tuple = tuple(hosts)
         try:
             validate_remote_command(command)
         except RemoteCommandError as exc:
-            return {host.name: exc for host in hosts}
+            return {host.name: SSHRemoteCommandError(str(exc)) for host in host_tuple}
         return {
             host.name: ExecutionResult(command, 0, f"{host.name}:{command}", "", 0.01)
-            for host in hosts
+            for host in host_tuple
         }
 
     async def close(self) -> None:
         return None
+
+
+class _FakeBackgroundJobs:
+    def __init__(self) -> None:
+        self.started: list[dict[str, Any]] = []
+
+    async def start(
+        self,
+        command: str,
+        *,
+        goal: str,
+        timeout_seconds: float | None = None,
+        artifact_paths: tuple[str, ...] = (),
+    ) -> BackgroundJobSnapshot:
+        self.started.append(
+            {
+                "command": command,
+                "goal": goal,
+                "timeout_seconds": timeout_seconds,
+                "artifact_paths": artifact_paths,
+            }
+        )
+        now = datetime.now(UTC)
+        return _background_snapshot(
+            "job-harness",
+            command,
+            goal,
+            now=now,
+            timeout_seconds=timeout_seconds or 60.0,
+            artifact_paths=artifact_paths,
+        )
+
+    def list(self) -> tuple[BackgroundJobSnapshot, ...]:
+        return ()
+
+    def get(self, job_id: str) -> BackgroundJobSnapshot | None:
+        del job_id
+        return None
+
+    async def stop(self, job_id: str) -> BackgroundJobSnapshot | None:
+        del job_id
+        return None
+
+    async def watch(self, job_id: str) -> AsyncIterator[BackgroundJobSnapshot]:
+        del job_id
+        if False:
+            yield _background_snapshot("unused", "", "")
+
+    async def status(self) -> Any:
+        return None
+
+    async def stop_all(self) -> None:
+        return None
+
+
+def _background_snapshot(
+    job_id: str,
+    command: str,
+    goal: str,
+    *,
+    now: datetime | None = None,
+    timeout_seconds: float = 60.0,
+    artifact_paths: tuple[str, ...] = (),
+) -> BackgroundJobSnapshot:
+    timestamp = now or datetime.now(UTC)
+    return BackgroundJobSnapshot(
+        job_id=job_id,
+        command=command,
+        goal=goal,
+        status=JobStatus.RUNNING,
+        created_at=timestamp,
+        started_at=timestamp,
+        finished_at=None,
+        timeout_seconds=timeout_seconds,
+        stdout="",
+        stderr="",
+        exit_code=None,
+        artifact_paths=artifact_paths,
+    )
 
 
 class HarnessRunner:
@@ -194,6 +314,9 @@ class HarnessRunner:
             runbook_engine = None
             if scenario.setup.get("runbooks_enabled", False):
                 runbook_engine = RunbookEngine(load_runbooks(_REPO_ROOT / "runbooks"))
+            background_jobs = (
+                _FakeBackgroundJobs() if scenario.setup.get("background_jobs") else None
+            )
             executor = LinuxCommandExecutor(
                 security_config,
                 whitelist=whitelist,
@@ -216,34 +339,49 @@ class HarnessRunner:
                     else None,
                     tool_runtime_limits=tool_runtime_limits,
                     translator=translator,
+                    background_jobs=background_jobs,
                 )
             )
             thread_id = scenario.name.replace(" ", "-")
             config = {"configurable": {"thread_id": thread_id}}
-            human_input = _first_human_input(scenario.inputs)
-            state = initial_state(
-                human_input,
-                ui_interactive=bool(scenario.setup.get("ui_interactive", False)),
-            )
-            result = await graph.ainvoke(state, config=config)
-
-            if scenario.expected_interrupts:
+            history: list[BaseMessage] = []
+            command_permissions: tuple[str, ...] = ()
+            previous_values: dict[str, Any] | None = None
+            result: Any = {}
+            for index, turn in enumerate(scenario.turns, start=1):
+                if turn.input is not None:
+                    state = _turn_state(
+                        turn.input,
+                        history=history,
+                        command_permissions=command_permissions,
+                        previous_values=previous_values,
+                        thread_id=thread_id,
+                        ui_interactive=bool(scenario.setup.get("ui_interactive", False)),
+                    )
+                    result = await graph.ainvoke(state, config=config)
+                result = await _apply_expected_interrupts(
+                    graph,
+                    config,
+                    scenario.name,
+                    turn.expected_interrupts,
+                    turn.resume,
+                    current_result=result,
+                )
+                for resume_payload in turn.resume_sequence:
+                    result = await graph.ainvoke(Command(resume=resume_payload), config=config)
                 snapshot = await graph.aget_state(config)
-                interrupts = []
-                for task in snapshot.tasks:
-                    interrupts.extend(task.interrupts)
-                if not interrupts:
-                    raise AssertionError(f"{scenario.name}: expected interrupt but graph had none")
-                payload = interrupts[0].value
-                for key, value in scenario.expected_interrupts[0].items():
-                    if payload.get(key) != value:
-                        raise AssertionError(
-                            f"{scenario.name}: interrupt field {key!r} expected {value!r}, got {payload.get(key)!r}"
-                        )
-                if scenario.resume is not None:
-                    result = await graph.ainvoke(Command(resume=scenario.resume), config=config)
-
-            self._assert_expected(scenario, result, audit.path, tool_events)
+                previous_values = dict(snapshot.values)
+                history = list(snapshot.values.get("messages", []))
+                command_permissions = tuple(snapshot.values.get("command_permissions", ()))
+                self._assert_expected(
+                    scenario,
+                    result,
+                    audit.path,
+                    tool_events,
+                    background_jobs,
+                    turn.expected,
+                    label=f"turn {index}",
+                )
 
     async def run_all(self, scenario_dir: Path) -> None:
         for path in _scenario_paths(scenario_dir):
@@ -256,42 +394,106 @@ class HarnessRunner:
         result: Any,
         audit_path: Path,
         tool_events: list[dict[str, Any]],
+        background_jobs: _FakeBackgroundJobs | None,
+        expected: dict[str, Any] | None = None,
+        *,
+        label: str = "scenario",
     ) -> None:
-        expected = scenario.expected
+        expected = scenario.expected if expected is None else expected
         execution_result = result.get("execution_result") if isinstance(result, dict) else None
 
         if "command_executed" in expected:
             executed = execution_result is not None and execution_result.exit_code is not None
             if executed is not expected["command_executed"]:
-                raise AssertionError(f"{scenario.name}: command_executed mismatch")
+                raise AssertionError(f"{scenario.name} {label}: command_executed mismatch")
         if (
             "exit_code" in expected
             and execution_result is not None
             and execution_result.exit_code != expected["exit_code"]
         ):
             raise AssertionError(
-                f"{scenario.name}: exit_code expected {expected['exit_code']}, got {execution_result.exit_code}"
+                f"{scenario.name} {label}: exit_code expected {expected['exit_code']}, got {execution_result.exit_code}"
             )
         if "response_contains" in expected:
             messages = result.get("messages", []) if isinstance(result, dict) else []
             content = str(messages[-1].content) if messages else ""
             for snippet in expected["response_contains"]:
                 if snippet not in content:
-                    raise AssertionError(f"{scenario.name}: response missing {snippet!r}")
+                    raise AssertionError(f"{scenario.name} {label}: response missing {snippet!r}")
         if "audit_log_contains" in expected:
             audit_lines = [
                 json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()
             ]
             for expected_event in expected["audit_log_contains"]:
                 if not any(_contains_subset(line, expected_event) for line in audit_lines):
-                    raise AssertionError(f"{scenario.name}: audit log missing {expected_event!r}")
+                    raise AssertionError(
+                        f"{scenario.name} {label}: audit log missing {expected_event!r}"
+                    )
         if "tool_events" in expected:
             for expected_event in expected["tool_events"]:
                 if not any(_contains_subset(event, expected_event) for event in tool_events):
-                    raise AssertionError(f"{scenario.name}: tool event missing {expected_event!r}")
+                    raise AssertionError(
+                        f"{scenario.name} {label}: tool event missing {expected_event!r}"
+                    )
         if "files" in expected:
             for spec in expected["files"]:
                 _assert_expected_file(scenario.name, spec)
+        if "background_jobs" in expected:
+            started = [] if background_jobs is None else background_jobs.started
+            for expected_job in expected["background_jobs"]:
+                if not any(_contains_subset(job, expected_job) for job in started):
+                    raise AssertionError(
+                        f"{scenario.name} {label}: background job missing {expected_job!r}"
+                    )
+
+
+async def _apply_expected_interrupts(
+    graph: Any,
+    config: dict[str, Any],
+    scenario_name: str,
+    expected_interrupts: list[dict[str, Any]],
+    resume: Any | None,
+    *,
+    current_result: Any,
+) -> Any:
+    if not expected_interrupts:
+        return current_result
+    snapshot = await graph.aget_state(config)
+    interrupts = []
+    for task in snapshot.tasks:
+        interrupts.extend(task.interrupts)
+    if not interrupts:
+        raise AssertionError(f"{scenario_name}: expected interrupt but graph had none")
+    payload = interrupts[0].value
+    for key, value in expected_interrupts[0].items():
+        if payload.get(key) != value:
+            raise AssertionError(
+                f"{scenario_name}: interrupt field {key!r} expected {value!r}, got {payload.get(key)!r}"
+            )
+    if resume is None:
+        return current_result
+    return await graph.ainvoke(Command(resume=resume), config=config)
+
+
+def _turn_state(
+    user_input: str,
+    *,
+    history: list[BaseMessage],
+    command_permissions: tuple[str, ...],
+    previous_values: dict[str, Any] | None,
+    thread_id: str,
+    ui_interactive: bool,
+) -> AgentState:
+    if not history and previous_values is None:
+        return initial_state(user_input, ui_interactive=ui_interactive, thread_id=thread_id)
+    return new_turn_state(
+        user_input,
+        history=history,
+        command_permissions=command_permissions,
+        prompt_cache_thread_id=thread_id,
+        ui_interactive=ui_interactive,
+        previous_values=previous_values,
+    )
 
 
 def _first_human_input(inputs: list[dict[str, str]]) -> str:
@@ -315,7 +517,7 @@ def _cluster_service(host_specs: list[dict[str, Any]]) -> ClusterService | None:
             for host in host_specs
         )
     )
-    return ClusterService(config, _FakeSSH())  # type: ignore[arg-type]
+    return ClusterService(config, _FakeSSH())
 
 
 def _file_patch_config(raw: dict[str, Any]) -> FilePatchConfig:
@@ -357,7 +559,7 @@ def _tool_runtime_limits(config: SandboxConfig) -> ToolRuntimeLimits:
     )
 
 
-def _sandbox_runner(config: SandboxConfig):
+def _sandbox_runner(config: SandboxConfig) -> SandboxRunner:
     if config.runner is SandboxRunnerKind.LOCAL:
         return LocalProcessSandboxRunner(enabled=config.enabled)
     if config.runner is SandboxRunnerKind.BUBBLEWRAP:
@@ -439,13 +641,14 @@ def _contains_subset(actual: Any, expected: Any) -> bool:
             any(_contains_subset(item, expected_item) for item in actual)
             for expected_item in expected
         )
-    return actual == expected
+    return bool(actual == expected)
 
 
 def _resolve_scenario_placeholders(scenario: Scenario, tmp_path: Path) -> Scenario:
     return Scenario(
         name=scenario.name,
         inputs=_resolve_placeholders(scenario.inputs, tmp_path),
+        turns=_resolve_turn_placeholders(scenario.turns, tmp_path),
         provider_responses=_resolve_placeholders(scenario.provider_responses, tmp_path),
         expected=_resolve_placeholders(scenario.expected, tmp_path),
         expected_interrupts=_resolve_placeholders(scenario.expected_interrupts, tmp_path),
@@ -470,6 +673,7 @@ def _load_scenarios(path: Path) -> list[Scenario]:
         Scenario(
             name=doc["scenario"],
             inputs=doc.get("inputs", []),
+            turns=_scenario_turns(doc),
             provider_responses=list(doc.get("provider_responses", [])),
             expected=dict(_normalize_decisions(doc.get("expected", {}))),
             expected_interrupts=list(_normalize_decisions(doc.get("expected_interrupts", []))),
@@ -477,6 +681,44 @@ def _load_scenarios(path: Path) -> list[Scenario]:
             setup=dict(doc.get("setup", {})),
         )
         for doc in raw_docs
+    ]
+
+
+def _scenario_turns(doc: dict[str, Any]) -> list[ScenarioTurn]:
+    raw_turns = doc.get("turns")
+    if isinstance(raw_turns, list):
+        return [
+            ScenarioTurn(
+                input=turn.get("input"),
+                expected=dict(_normalize_decisions(turn.get("expected", {}))),
+                expected_interrupts=list(_normalize_decisions(turn.get("expected_interrupts", []))),
+                resume=_normalize_decisions(turn.get("resume")),
+                resume_sequence=list(_normalize_decisions(turn.get("resume_sequence", []))),
+            )
+            for turn in raw_turns
+            if isinstance(turn, dict)
+        ]
+    return [
+        ScenarioTurn(
+            input=_first_human_input(doc.get("inputs", [])),
+            expected=dict(_normalize_decisions(doc.get("expected", {}))),
+            expected_interrupts=list(_normalize_decisions(doc.get("expected_interrupts", []))),
+            resume=_normalize_decisions(doc.get("resume")),
+            resume_sequence=[],
+        )
+    ]
+
+
+def _resolve_turn_placeholders(turns: list[ScenarioTurn], tmp_path: Path) -> list[ScenarioTurn]:
+    return [
+        ScenarioTurn(
+            input=_resolve_placeholders(turn.input, tmp_path),
+            expected=_resolve_placeholders(turn.expected, tmp_path),
+            expected_interrupts=_resolve_placeholders(turn.expected_interrupts, tmp_path),
+            resume=_resolve_placeholders(turn.resume, tmp_path),
+            resume_sequence=_resolve_placeholders(turn.resume_sequence, tmp_path),
+        )
+        for turn in turns
     ]
 
 

@@ -1,0 +1,27 @@
+scenario: "background job command starts after confirmation"
+provider_responses:
+  - '{"goal":"monitor in background","commands":[{"command":"/bin/sleep 5","purpose":"start monitor","read_only":true,"target_hosts":[],"background":true,"timeout_seconds":10}],"risk_summary":"read-only background job","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+setup:
+  background_jobs: true
+inputs:
+  - role: human
+    content: "start a background monitor"
+expected_interrupts:
+  - type: confirm_command
+    matched_rule: LLM_FIRST_RUN
+resume:
+  decision: "yes"
+  latency_ms: 30
+expected:
+  command_executed: true
+  exit_code: 0
+  response_contains:
+    - "后台任务已启动：job-harness"
+  background_jobs:
+    - command: "/bin/sleep 5"
+      goal: "monitor in background"
+      timeout_seconds: 10.0
+  audit_log_contains:
+    - event: command_executed
+      command: "/bin/sleep 5"
+      exit_code: 0

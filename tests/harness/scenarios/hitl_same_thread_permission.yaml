@@ -1,0 +1,28 @@
+scenario: "same thread permission skips second identical command confirmation"
+provider_responses:
+  - '{"goal":"first echo","commands":[{"command":"/bin/echo repeat","purpose":"emit repeat","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - "first analysis"
+  - '{"goal":"second echo","commands":[{"command":"/bin/echo repeat","purpose":"emit repeat again","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - "second analysis"
+turns:
+  - input: "run repeat once"
+    expected_interrupts:
+      - type: confirm_command
+        matched_rule: LLM_FIRST_RUN
+    resume:
+      decision: "yes"
+      latency_ms: 50
+    expected:
+      command_executed: true
+      exit_code: 0
+      response_contains:
+        - "first analysis"
+      audit_log_contains:
+        - event: confirm_decision
+          decision: "yes"
+  - input: "run repeat again"
+    expected:
+      command_executed: true
+      exit_code: 0
+      response_contains:
+        - "second analysis"

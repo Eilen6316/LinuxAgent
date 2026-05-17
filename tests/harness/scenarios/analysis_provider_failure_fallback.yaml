@@ -1,0 +1,24 @@
+scenario: "analysis provider failure falls back to deterministic result context"
+provider_responses:
+  - '{"goal":"echo fallback","commands":[{"command":"/bin/echo fallback-visible","purpose":"emit fallback text","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - raises: ProviderError
+    node: analyze
+    mode: analysis
+    message: "analysis unavailable"
+inputs:
+  - role: human
+    content: "run fallback command"
+expected_interrupts:
+  - type: confirm_command
+    matched_rule: LLM_FIRST_RUN
+resume:
+  decision: "yes"
+  latency_ms: 40
+expected:
+  command_executed: true
+  exit_code: 0
+  response_contains:
+    - "Command:"
+    - "/bin/echo fallback-visible"
+    - "stdout:"
+    - "fallback-visible"
