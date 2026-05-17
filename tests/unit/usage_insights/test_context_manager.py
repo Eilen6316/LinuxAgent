@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from linuxagent.intelligence import ContextManager
+from linuxagent.usage_insights import ContextManager
 
 
 def test_context_manager_keeps_recent_messages_under_limit() -> None:

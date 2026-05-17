@@ -355,6 +355,7 @@ class ClusterConfig(BaseModel):
 
     batch_confirm_threshold: int = Field(default=2, ge=1)
     timeout: float = Field(default=60.0, gt=0, le=3600)
+    max_workers: int = Field(default=8, ge=1, le=128)
     known_hosts_path: UserPath = Field(default_factory=lambda: Path.home() / ".ssh" / "known_hosts")
     hosts: tuple[ClusterHost, ...] = ()
 

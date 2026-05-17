@@ -6,7 +6,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-86.73%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-80%25%2B-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
@@ -304,18 +304,18 @@ step still goes through normal policy, HITL, audit, and analysis flow.
 
 ## Quality Gate
 
-Current documented baseline from `make test` on 2026-05-11:
+Current quality gates:
 
 | Gate | Status |
 |---|---|
-| Unit tests | 677 passing |
+| Unit tests | `make test` |
 | Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
 | Sandbox boundary suite | covered by `make sandbox` |
 | Red-team policy suite | adversarial command corpus |
 | Policy benchmark | [P50/P95/P99 policy latency](benchmarks/policy-benchmark.md) |
 | Harness scenarios | scenario-driven HITL / runbook / cluster / sandbox coverage |
-| Integration smoke tests | 10 passing |
-| Coverage | 86.73% (`--cov-fail-under=80`) |
+| Integration smoke tests | `make integration` |
+| Coverage | `--cov-fail-under=80` |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
 

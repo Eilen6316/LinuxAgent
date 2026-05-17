@@ -13,7 +13,6 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, messages_to_dict
 
 from linuxagent.config.models import ClusterConfig, ClusterHost, MonitoringConfig
-from linuxagent.intelligence import CommandLearner
 from linuxagent.interfaces import ExecutionResult, SafetyLevel, SafetyResult
 from linuxagent.services import (
     BackgroundJobService,
@@ -33,6 +32,7 @@ from linuxagent.services.background_jobs import (
     snapshot_to_record,
 )
 from linuxagent.services.job_daemon import JobDaemonClient, JobDaemonServer, daemon_store_path
+from linuxagent.usage_insights import CommandLearner
 
 
 async def test_monitoring_service_start_stop() -> None:

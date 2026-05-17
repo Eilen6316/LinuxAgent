@@ -8,6 +8,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Audit hash-chain appends now hold a file lock across tail-hash lookup and
+  write, so concurrent LinuxAgent processes do not race each other on
+  `~/.linuxagent/audit.log`.
 - Audit append now reads the tail of the JSONL log to find the previous hash
   instead of scanning the whole file on every write.
 - Terminal assistant responses now render Markdown formatting in the Rich
@@ -42,6 +45,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The lightweight learner / recommendation helpers moved internally from
+  `linuxagent.intelligence` to `linuxagent.usage_insights`; the old import path
+  remains as a compatibility re-export and the `intelligence` config key is
+  unchanged.
+- SSH execution now uses a manager-owned worker pool controlled by
+  `cluster.max_workers` instead of creating a new one-worker pool for each
+  remote command.
 - Added automatic parameter-collection wizard support for ambiguous
   multi-parameter operations, with `/resume` visibility, stable partial
   recovery checkpoints, and user documentation.

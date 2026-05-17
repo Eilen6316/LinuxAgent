@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from typing import Any
 
 from linuxagent.audit import AuditLog, verify_audit_log
@@ -13,6 +16,20 @@ from linuxagent.sandbox import (
     SandboxResult,
     SandboxRunnerKind,
 )
+
+CONCURRENT_AUDIT_WRITERS = 4
+CONCURRENT_AUDIT_RECORDS_PER_WRITER = 12
+AUDIT_APPEND_SCRIPT = """
+import sys
+from pathlib import Path
+from linuxagent.audit import AuditLog
+
+audit = AuditLog(Path(sys.argv[1]))
+worker = int(sys.argv[2])
+count = int(sys.argv[3])
+for index in range(count):
+    audit.append({"event": "manual", "worker": worker, "index": index})
+"""
 
 
 class CapturingSink:
@@ -150,6 +167,40 @@ def test_audit_append_uses_last_valid_record_hash(tmp_path) -> None:
     assert verify_audit_log(path).valid is True
 
 
+def test_audit_append_is_process_safe(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    env = _coverage_free_env()
+    processes = [
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                AUDIT_APPEND_SCRIPT,
+                str(path),
+                str(worker),
+                str(CONCURRENT_AUDIT_RECORDS_PER_WRITER),
+            ],
+            env=env,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+        )
+        for worker in range(CONCURRENT_AUDIT_WRITERS)
+    ]
+
+    for process in processes:
+        stdout, stderr = process.communicate(timeout=10)
+        assert process.returncode == 0, (
+            f"stdout={stdout.decode(errors='replace')}\n"
+            f"stderr={stderr.decode(errors='replace')}"
+        )
+
+    result = verify_audit_log(path)
+    assert result.valid is True
+    assert result.checked_records == (
+        CONCURRENT_AUDIT_WRITERS * CONCURRENT_AUDIT_RECORDS_PER_WRITER
+    )
+
+
 def test_audit_append_ignores_trailing_invalid_lines_for_last_hash(tmp_path) -> None:
     path = tmp_path / "audit.log"
     audit = AuditLog(path)
@@ -166,6 +217,14 @@ def test_audit_append_ignores_trailing_invalid_lines_for_last_hash(tmp_path) -> 
     ]
 
     assert records[1]["prev_hash"] == first["hash"]
+
+
+def _coverage_free_env() -> dict[str, str]:
+    env = dict(os.environ)
+    for key in tuple(env):
+        if key.startswith("COV_CORE") or key.startswith("COVERAGE"):
+            del env[key]
+    return env
 
 
 def test_audit_sink_failure_is_recorded_without_blocking_local_append(tmp_path) -> None:

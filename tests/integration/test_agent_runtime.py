@@ -22,11 +22,11 @@ from linuxagent.config.models import (
 )
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph
-from linuxagent.intelligence import ContextManager
 from linuxagent.interfaces import ExecutionResult
 from linuxagent.plans import command_plan_json
 from linuxagent.runbooks import Runbook, RunbookEngine, RunbookStep
 from linuxagent.services import ChatService, ClusterService, CommandService
+from linuxagent.usage_insights import ContextManager
 
 
 class _Provider:

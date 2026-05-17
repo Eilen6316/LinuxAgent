@@ -147,6 +147,8 @@ cluster:
   # The default of 2 catches even a tiny dev+prod pair by design.
   batch_confirm_threshold: 2
   timeout: 60.0
+  # Blocking Paramiko operations run on this manager-owned worker pool.
+  max_workers: 8
   known_hosts_path: ~/.ssh/known_hosts
   hosts: []
   # Example:

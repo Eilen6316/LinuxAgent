@@ -1,16 +1,16 @@
-"""LangChain tools for Intelligence capabilities."""
+"""LangChain tools for lightweight usage-insight capabilities."""
 
 from __future__ import annotations
 
 from langchain_core.tools import BaseTool, tool
 
-from ..intelligence import (
+from ..sandbox import SandboxProfile
+from ..usage_insights import (
     KnowledgeBase,
     NLPEnhancer,
     PatternAnalyzer,
     RecommendationEngine,
 )
-from ..sandbox import SandboxProfile
 from .sandbox import ToolSandboxSpec, attach_tool_sandbox
 
 INTELLIGENCE_TOOL_TIMEOUT_SECONDS = 5.0

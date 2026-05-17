@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from linuxagent.intelligence import CommandLearner
 from linuxagent.interfaces import ExecutionResult
+from linuxagent.usage_insights import CommandLearner
 
 
 def _result(exit_code: int = 0, duration: float = 0.01) -> ExecutionResult:

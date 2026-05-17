@@ -8,6 +8,8 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Fixed
 
+- Audit hash-chain append 现在会在读取尾部 hash 到写入新记录的整个过程持有文件锁，
+  避免多个 LinuxAgent 进程同时写入 `~/.linuxagent/audit.log` 时破坏链条。
 - Audit append 现在从 JSONL 日志尾部读取上一条 hash，不再每次写入都全量扫描
   审计日志。
 - LLM 可见工具现在会在 catalog metadata 缺失或非法时 fail closed，返回结构化
@@ -27,6 +29,11 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Changed
 
+- 轻量 learner / 推荐辅助模块内部从 `linuxagent.intelligence` 改名为
+  `linuxagent.usage_insights`；旧 import path 继续作为兼容重导出，`intelligence`
+  配置键不变。
+- SSH 执行现在使用由 manager 持有的 worker pool，并通过 `cluster.max_workers`
+  控制并发数，不再每条远程命令创建一次单 worker pool。
 - 源码 checkout 的 bootstrap 现在会初始化
   `~/.config/linuxagent/config.yaml`，并安装用户级
   `~/.local/bin/linuxagent` 启动器；用户无需激活项目 venv，也能在任意目录启动

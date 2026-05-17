@@ -68,6 +68,27 @@ def test_anthropic_route_when_available() -> None:
     assert provider.chat_model.temperature == 0.0
 
 
+def test_anthropic_route_uses_langchain_wrapper_when_extra_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeChatAnthropic:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr("linuxagent.providers.factory._anthropic_available", lambda: True)
+    monkeypatch.setattr(anthropic_module, "ChatAnthropic", _FakeChatAnthropic)
+
+    provider = provider_factory(_cfg(LLMProviderName.ANTHROPIC))
+
+    assert isinstance(provider, AnthropicProvider)
+    assert captured["model_name"] == "test-model"
+    assert captured["max_tokens_to_sample"] == 1024
+    assert captured["temperature"] == 0.0
+    assert "anthropic_api_url" not in captured
+
+
 def test_anthropic_raises_when_extra_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     # Simulate missing extra regardless of actual environment.
     monkeypatch.setattr("linuxagent.providers.factory._anthropic_available", lambda: False)

@@ -1,18 +1,18 @@
-"""Intelligence tool registration tests."""
+"""Usage-insight tool registration tests."""
 
 from __future__ import annotations
 
 from langchain_core.embeddings import Embeddings
 
-from linuxagent.intelligence import (
+from linuxagent.interfaces import ExecutionResult
+from linuxagent.tools import build_intelligence_tools
+from linuxagent.usage_insights import (
     CommandLearner,
     KnowledgeBase,
     NLPEnhancer,
     PatternAnalyzer,
     RecommendationEngine,
 )
-from linuxagent.interfaces import ExecutionResult
-from linuxagent.tools import build_intelligence_tools
 
 
 class FakeEmbeddings(Embeddings):

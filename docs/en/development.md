@@ -16,7 +16,7 @@ Core layers:
 - `graph/`: LangGraph orchestration split into intent parsing, safety checks, routing, and node factories
 - `services/`: application services
 - `telemetry.py`: local JSONL spans and trace correlation
-- `intelligence/`: learner, semantic helpers, recommendations
+- `usage_insights/`: learner, semantic helpers, recommendations
 - `ui/`: terminal UI
 
 ## Test Matrix

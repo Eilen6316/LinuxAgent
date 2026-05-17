@@ -7,8 +7,8 @@ Key properties:
   before connection.
 - Connections are pooled per ``(hostname, port, username)`` so repeated
   commands to the same host reuse one TCP/SSH session.
-- Paramiko is blocking; public methods are async and dispatch work to explicit
-  short-lived thread pools so no default executor threads leak across runs.
+- Paramiko is blocking; public methods are async and dispatch work to a
+  manager-owned worker pool so no default executor threads leak across runs.
 - ``execute`` returns the same :class:`ExecutionResult` shape as
   :mod:`..executors.linux_executor`, so HITL / audit sites can treat local
   and remote executions uniformly.
@@ -20,6 +20,7 @@ import asyncio
 import logging
 import threading
 import time
+import weakref
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -79,12 +80,25 @@ class SSHManager:
         self._telemetry = telemetry
         self._pool: dict[tuple[str, int, str], paramiko.SSHClient] = {}
         self._lock = threading.Lock()
+        self._executor = ThreadPoolExecutor(
+            max_workers=config.max_workers,
+            thread_name_prefix="linuxagent-ssh",
+        )
+        self._executor_finalizer = weakref.finalize(
+            self,
+            _shutdown_executor,
+            self._executor,
+            False,
+        )
 
     # -- Lifecycle --------------------------------------------------------
 
     async def close(self) -> None:
-        """Close every pooled client."""
+        """Close every pooled client and stop the blocking SSH worker pool."""
         self._close_all()
+        if self._executor_finalizer.alive:
+            self._executor_finalizer.detach()
+            _shutdown_executor(self._executor, True)
 
     def _close_all(self) -> None:
         with self._lock:
@@ -115,8 +129,8 @@ class SSHManager:
                 trace_id=trace_id,
                 attributes={"host": host.name},
             ):
-                return await _run_blocking(self._execute_sync, host, remote_command.raw)
-        return await _run_blocking(self._execute_sync, host, remote_command.raw)
+                return await self._run_blocking(self._execute_sync, host, remote_command.raw)
+        return await self._run_blocking(self._execute_sync, host, remote_command.raw)
 
     async def execute_many(
         self,
@@ -228,13 +242,15 @@ class SSHManager:
         client.set_missing_host_key_policy(paramiko.RejectPolicy())
         return client
 
+    async def _run_blocking(self, func: Callable[..., T], *args: object) -> T:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, partial(func, *args))
+
 
 def _is_alive(client: paramiko.SSHClient) -> bool:
     transport = client.get_transport()
     return transport is not None and transport.is_active()
 
 
-async def _run_blocking(func: Callable[..., T], *args: object) -> T:
-    loop = asyncio.get_running_loop()
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="linuxagent-ssh") as executor:
-        return await loop.run_in_executor(executor, partial(func, *args))
+def _shutdown_executor(executor: ThreadPoolExecutor, wait: bool) -> None:
+    executor.shutdown(wait=wait, cancel_futures=True)

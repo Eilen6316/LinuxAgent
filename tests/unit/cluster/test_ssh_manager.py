@@ -279,6 +279,35 @@ async def test_close_empties_pool() -> None:
     assert mgr._pool == {}
 
 
+async def test_close_shuts_down_owned_executor(monkeypatch: pytest.MonkeyPatch) -> None:
+    mgr = SSHManager(ClusterConfig())
+    calls: list[tuple[bool, bool]] = []
+    monkeypatch.setattr(
+        mgr._executor,
+        "shutdown",
+        lambda *, wait, cancel_futures: calls.append((wait, cancel_futures)),
+    )
+
+    await mgr.close()
+
+    assert calls == [(True, True)]
+    assert not mgr._executor_finalizer.alive
+
+
+async def test_execute_uses_configured_worker_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mgr = SSHManager(ClusterConfig(max_workers=3))
+    client = _install_recording_client(monkeypatch, mgr)
+
+    result = await mgr.execute(_host(), "uptime")
+
+    assert result.stdout == "ok"
+    assert client.commands == ["uptime"]
+    assert mgr._executor._max_workers == 3  # noqa: SLF001
+    await mgr.close()
+
+
 def test_dead_pool_entry_is_closed_before_reconnect(monkeypatch: pytest.MonkeyPatch) -> None:
     mgr = SSHManager(ClusterConfig())
     client = paramiko.SSHClient()
@@ -302,17 +331,21 @@ async def test_execute_many_isolates_per_host_failures(
 ) -> None:
     mgr = SSHManager(ClusterConfig())
 
-    def _fail(self: SSHManager, host: ClusterHost, command: str) -> None:
+    async def _fail(host: ClusterHost, command: str, *, trace_id: str | None = None) -> None:
+        del command, trace_id
         raise SSHUnknownHostError(f"unknown host {host.hostname}")
 
-    monkeypatch.setattr(SSHManager, "_execute_sync", _fail)
+    monkeypatch.setattr(mgr, "execute", _fail)
     hosts = [
         ClusterHost(name="a", hostname="a.invalid", username="ops"),
         ClusterHost(name="b", hostname="b.invalid", username="ops"),
     ]
-    results = await mgr.execute_many(hosts, "uptime")
-    assert set(results.keys()) == {"a", "b"}
-    assert all(isinstance(r, SSHUnknownHostError) for r in results.values())
+    try:
+        results = await mgr.execute_many(hosts, "uptime")
+        assert set(results.keys()) == {"a", "b"}
+        assert all(isinstance(r, SSHUnknownHostError) for r in results.values())
+    finally:
+        await mgr.close()
 
 
 async def test_execute_many_rejects_remote_shell_syntax_before_connect(
@@ -329,7 +362,10 @@ async def test_execute_many_rejects_remote_shell_syntax_before_connect(
         ClusterHost(name="a", hostname="a.invalid", username="ops"),
         ClusterHost(name="b", hostname="b.invalid", username="ops"),
     ]
-    results = await mgr.execute_many(hosts, "echo ok; rm -rf /")
+    try:
+        results = await mgr.execute_many(hosts, "echo ok; rm -rf /")
+    finally:
+        await mgr.close()
 
     assert set(results.keys()) == {"a", "b"}
     assert all(isinstance(result, SSHRemoteCommandError) for result in results.values())

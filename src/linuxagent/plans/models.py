@@ -6,7 +6,7 @@ import json
 import re
 import shlex
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -32,6 +32,7 @@ _SHELL_CONTROL_TOKENS = frozenset(
     }
 )
 _SHELL_ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*")
+_PlanT = TypeVar("_PlanT", bound=BaseModel)
 
 
 class PlanParseErrorCode(StrEnum):
@@ -181,68 +182,61 @@ def parse_command_plan(text: str) -> CommandPlan:
 
 def parse_no_change_plan(text: str) -> NoChangePlan:
     """Parse strict JSON returned by the model into a no-op response plan."""
-    try:
-        payload = _extract_json_payload(text)
-    except CommandPlanParseError as exc:
-        raise NoChangePlanParseError("LLM response must be a JSON NoChangePlan object") from exc
-    try:
-        raw = json.loads(payload)
-    except json.JSONDecodeError as exc:
-        raise NoChangePlanParseError(f"LLM response is not valid JSON: {exc.msg}") from exc
-    if not isinstance(raw, dict):
-        raise NoChangePlanParseError("LLM response JSON must be an object")
-    if raw.get("plan_type") != "no_change":
-        raise NoChangePlanParseError("LLM response is not a NoChangePlan object")
-    try:
-        return NoChangePlan.model_validate(raw)
-    except ValidationError as exc:
-        raise NoChangePlanParseError(_format_validation_error(exc, "NoChangePlan")) from exc
+    return _parse_tagged_plan(
+        text,
+        plan_type="no_change",
+        model=NoChangePlan,
+        error_type=NoChangePlanParseError,
+        model_name="NoChangePlan",
+    )
 
 
 def parse_direct_answer_plan(text: str) -> DirectAnswerPlan:
     """Parse strict JSON returned by the model into a direct answer plan."""
-    try:
-        payload = _extract_json_payload(text)
-    except CommandPlanParseError as exc:
-        raise DirectAnswerPlanParseError(
-            "LLM response must be a JSON DirectAnswerPlan object"
-        ) from exc
-    try:
-        raw = json.loads(payload)
-    except json.JSONDecodeError as exc:
-        raise DirectAnswerPlanParseError(f"LLM response is not valid JSON: {exc.msg}") from exc
-    if not isinstance(raw, dict):
-        raise DirectAnswerPlanParseError("LLM response JSON must be an object")
-    if raw.get("plan_type") != "direct_answer":
-        raise DirectAnswerPlanParseError("LLM response is not a DirectAnswerPlan object")
-    try:
-        return DirectAnswerPlan.model_validate(raw)
-    except ValidationError as exc:
-        raise DirectAnswerPlanParseError(_format_validation_error(exc, "DirectAnswerPlan")) from exc
+    return _parse_tagged_plan(
+        text,
+        plan_type="direct_answer",
+        model=DirectAnswerPlan,
+        error_type=DirectAnswerPlanParseError,
+        model_name="DirectAnswerPlan",
+    )
 
 
 def parse_continue_planning_plan(text: str) -> ContinuePlanningPlan:
     """Parse strict JSON returned by the model into a continue-planning signal."""
+    return _parse_tagged_plan(
+        text,
+        plan_type="continue_planning",
+        model=ContinuePlanningPlan,
+        error_type=ContinuePlanningPlanParseError,
+        model_name="ContinuePlanningPlan",
+    )
+
+
+def _parse_tagged_plan(
+    text: str,
+    *,
+    plan_type: str,
+    model: type[_PlanT],
+    error_type: type[ValueError],
+    model_name: str,
+) -> _PlanT:
     try:
         payload = _extract_json_payload(text)
     except CommandPlanParseError as exc:
-        raise ContinuePlanningPlanParseError(
-            "LLM response must be a JSON ContinuePlanningPlan object"
-        ) from exc
+        raise error_type(f"LLM response must be a JSON {model_name} object") from exc
     try:
         raw = json.loads(payload)
     except json.JSONDecodeError as exc:
-        raise ContinuePlanningPlanParseError(f"LLM response is not valid JSON: {exc.msg}") from exc
+        raise error_type(f"LLM response is not valid JSON: {exc.msg}") from exc
     if not isinstance(raw, dict):
-        raise ContinuePlanningPlanParseError("LLM response JSON must be an object")
-    if raw.get("plan_type") != "continue_planning":
-        raise ContinuePlanningPlanParseError("LLM response is not a ContinuePlanningPlan object")
+        raise error_type("LLM response JSON must be an object")
+    if raw.get("plan_type") != plan_type:
+        raise error_type(f"LLM response is not a {model_name} object")
     try:
-        return ContinuePlanningPlan.model_validate(raw)
+        return model.model_validate(raw)
     except ValidationError as exc:
-        raise ContinuePlanningPlanParseError(
-            _format_validation_error(exc, "ContinuePlanningPlan")
-        ) from exc
+        raise error_type(_format_validation_error(exc, model_name)) from exc
 
 
 def _extract_json_payload(text: str) -> str:

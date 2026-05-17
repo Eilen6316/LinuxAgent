@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ..intelligence import CommandLearner
 from ..interfaces import (
     CommandExecutor,
     CommandSource,
@@ -14,6 +13,7 @@ from ..interfaces import (
     SafetyLevel,
     SafetyResult,
 )
+from ..usage_insights import CommandLearner
 
 
 @dataclass(frozen=True)

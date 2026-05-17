@@ -22,6 +22,11 @@ from .audit_sink import AuditSink, AuditSinkError
 from .sandbox.models import SandboxResult
 from .security import redact_record
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - POSIX runtime in supported Linux targets
+    fcntl = None  # type: ignore[assignment]
+
 GENESIS_HASH = "0" * 64
 _TAIL_READ_BLOCK_SIZE = 8192
 
@@ -129,15 +134,18 @@ class AuditLog:
     def _append(self, record: dict[str, Any], *, send_to_sink: bool) -> None:
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            if not self.path.exists():
-                fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-                os.close(fd)
+            fd = os.open(self.path, os.O_WRONLY | os.O_CREAT, 0o600)
+            os.close(fd)
             os.chmod(self.path, 0o600)
-            payload = redact_record({"ts": datetime.now(tz=UTC).isoformat(), **record})
-            payload["prev_hash"] = _last_hash(self.path)
-            payload["hash"] = _record_hash(payload)
-            with self.path.open("a", encoding="utf-8") as handle:
+            with self.path.open("a+", encoding="utf-8") as handle:
+                _lock_audit_file(handle)
+                payload = redact_record({"ts": datetime.now(tz=UTC).isoformat(), **record})
+                payload["prev_hash"] = _last_hash_from_handle(handle)
+                payload["hash"] = _record_hash(payload)
+                handle.seek(0, os.SEEK_END)
                 handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
         if send_to_sink:
             self._send_to_sink(payload)
 
@@ -196,7 +204,13 @@ def verify_audit_log(path: Path) -> AuditVerificationResult:
 def _last_hash(path: Path) -> str:
     if not path.exists():
         return GENESIS_HASH
-    for line in _non_empty_lines_reverse(path):
+    with path.open("r+", encoding="utf-8") as handle:
+        _lock_audit_file(handle)
+        return _last_hash_from_handle(handle)
+
+
+def _last_hash_from_handle(handle: Any) -> str:
+    for line in _non_empty_lines_reverse(handle):
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
@@ -206,25 +220,31 @@ def _last_hash(path: Path) -> str:
     return GENESIS_HASH
 
 
-def _non_empty_lines_reverse(path: Path) -> Iterable[str]:
-    with path.open("rb") as handle:
-        handle.seek(0, os.SEEK_END)
-        position = handle.tell()
-        pending = b""
-        while position > 0:
-            read_size = min(_TAIL_READ_BLOCK_SIZE, position)
-            position -= read_size
-            handle.seek(position)
-            data = handle.read(read_size) + pending
-            lines = data.split(b"\n")
-            pending = lines[0]
-            for line in reversed(lines[1:]):
-                cleaned = line.rstrip(b"\r")
-                if cleaned.strip():
-                    yield cleaned.decode("utf-8")
-        cleaned = pending.rstrip(b"\r")
-        if cleaned.strip():
-            yield cleaned.decode("utf-8")
+def _non_empty_lines_reverse(handle: Any) -> Iterable[str]:
+    handle.flush()
+    fd = handle.fileno()
+    position = os.lseek(fd, 0, os.SEEK_END)
+    pending = b""
+    while position > 0:
+        read_size = min(_TAIL_READ_BLOCK_SIZE, position)
+        position -= read_size
+        os.lseek(fd, position, os.SEEK_SET)
+        data = os.read(fd, read_size) + pending
+        lines = data.split(b"\n")
+        pending = lines[0]
+        for line in reversed(lines[1:]):
+            cleaned = line.rstrip(b"\r")
+            if cleaned.strip():
+                yield cleaned.decode("utf-8")
+    cleaned = pending.rstrip(b"\r")
+    if cleaned.strip():
+        yield cleaned.decode("utf-8")
+
+
+def _lock_audit_file(handle: Any) -> None:
+    if fcntl is None:
+        return
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
 
 
 def _record_hash(record: dict[str, Any]) -> str:

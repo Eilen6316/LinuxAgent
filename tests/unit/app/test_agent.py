@@ -12,7 +12,6 @@ from langgraph.types import Command, Interrupt
 
 from linuxagent.app import LinuxAgent
 from linuxagent.audit import AuditLog
-from linuxagent.intelligence import ContextManager
 from linuxagent.interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
 from linuxagent.services import (
     BackgroundJobRuntimeStatus,
@@ -23,6 +22,7 @@ from linuxagent.services import (
     build_job_daemon_unit,
 )
 from linuxagent.telemetry import TelemetryRecorder
+from linuxagent.usage_insights import ContextManager
 
 
 def test_agent_file_stays_under_300_lines() -> None:

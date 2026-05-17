@@ -7,7 +7,7 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-86.73%25-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="#development"><img src="https://img.shields.io/badge/coverage-80%25%2B-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -65,8 +65,8 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
-| Intelligence modules | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | Current documented baseline: 677 unit tests passing at 86.73% coverage, plus HITL YAML scenarios, 10 integration smoke tests, red-team cases, and optional Anthropic compatibility verification |
+| Usage insights | Usage stats, API-based semantic similarity, recommendations, knowledge base |
+| Testability | `make test` enforces 80%+ coverage, with HITL YAML scenarios, integration smoke tests, red-team cases, and optional Anthropic compatibility verification |
 
 ---
 
@@ -238,8 +238,8 @@ batch confirmation, and audit metadata.
 
 | Aspect | Previous | Current `v4` |
 |---|---|---|
-| Unit tests | 0 | **Current documented baseline: 677 passing; Anthropic compatibility can be verified when the extra is installed** |
-| Coverage | 0 | **86.73%** (`--cov-fail-under=80` gate; defer to current CI / local `make test` output) |
+| Unit tests | 0 | **`make test`; Anthropic compatibility can be verified when the extra is installed** |
+| Coverage | 0 | **80%+ required** (`--cov-fail-under=80`; defer to current CI / local `make test` output) |
 | Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
 | Red-line gates | none | CI checks command, SSH, HITL, code-structure, and sandbox bypass red lines |
 
@@ -401,6 +401,7 @@ linuxagent check
 | `sandbox.tools` | `max_file_bytes` | `1048576` | Maximum file size read by workspace/log search tools |
 | `sandbox.tools` | `max_matches` | `200` | Maximum search/list matches exposed to the model |
 | `cluster` | `batch_confirm_threshold` | `2` | Host count that triggers batch confirm |
+| `cluster` | `max_workers` | `8` | Worker count for blocking Paramiko SSH operations |
 | `cluster` | `known_hosts_path` | `~/.ssh/known_hosts` | Additional known-hosts file loaded before system host keys |
 | `cluster` | `hosts` | `[]` | Cluster host list |
 | `cluster.hosts[].remote_profile` | `remote_cwd` | `.` | Remote working directory policy for SSH execution |
@@ -618,6 +619,7 @@ Add hosts to `config.yaml`:
 ```yaml
 cluster:
   batch_confirm_threshold: 2
+  max_workers: 8
   known_hosts_path: ~/.ssh/known_hosts
   hosts:
     - name: web-1
@@ -799,7 +801,7 @@ A: Yes. Install the Anthropic extra and set `api.provider: anthropic_compatible`
 
 ```bash
 make install   # pip install -e ".[dev]"
-make test      # pytest + 80% fail-under; current documented baseline is listed above
+make test      # pytest + 80% fail-under
 make integration  # optional integration tests
 make optional-anthropic  # optional Anthropic extra compatibility
 make lint      # ruff check

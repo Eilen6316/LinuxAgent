@@ -25,15 +25,6 @@ from .executors import LinuxCommandExecutor
 from .graph import GraphDependencies, build_agent_graph
 from .graph.agent_graph import AgentGraph
 from .graph.checkpoint import PersistentMemorySaver
-from .intelligence import (
-    CommandLearner,
-    ContextManager,
-    EmbeddingCache,
-    KnowledgeBase,
-    NLPEnhancer,
-    PatternAnalyzer,
-    RecommendationEngine,
-)
 from .interfaces import ExecutionResult, LLMProvider, UserInterface
 from .operating_manifest import operating_manifest_context
 from .policy import PolicyEngine, runtime_policy_config
@@ -73,6 +64,15 @@ from .tools import (
     inspect_tool_catalog,
 )
 from .ui import ConsoleUI, WizardAwareUserInterface
+from .usage_insights import (
+    CommandLearner,
+    ContextManager,
+    EmbeddingCache,
+    KnowledgeBase,
+    NLPEnhancer,
+    PatternAnalyzer,
+    RecommendationEngine,
+)
 
 if TYPE_CHECKING:
     from .config.models import AppConfig

@@ -11,10 +11,10 @@ from langchain_core.messages import AIMessage, HumanMessage
 from ..audit import AuditLog
 from ..command_review import CommandReview, command_review
 from ..execution_display import execution_display_text
-from ..intelligence import ContextManager
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult, UserInterface
 from ..services import CommandService
 from ..telemetry import TelemetryRecorder, new_trace_id
+from ..usage_insights import ContextManager
 from .stream_guard import GuardedStreamChunk, StreamOutputGuard
 
 

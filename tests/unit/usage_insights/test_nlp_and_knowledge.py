@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from langchain_core.embeddings import Embeddings
 
-from linuxagent.intelligence import (
+from linuxagent.interfaces import ExecutionResult
+from linuxagent.usage_insights import (
     CommandLearner,
     EmbeddingCache,
     KnowledgeBase,
@@ -13,7 +14,6 @@ from linuxagent.intelligence import (
     PatternAnalyzer,
     RecommendationEngine,
 )
-from linuxagent.interfaces import ExecutionResult
 
 
 class FakeEmbeddings(Embeddings):

@@ -42,3 +42,30 @@ def test_resume_selector_uses_label_not_dataclass_repr() -> None:
 
     assert "22:48 修改 /tmp/disk_info.sh" in rendered
     assert "namespace(" not in rendered
+
+
+def test_resume_selector_handles_empty_sessions() -> None:
+    selector = ResumeSelector([], max_visible=3)
+
+    selector.move(1)
+    selector.page(1)
+    selector.first()
+    selector.last()
+
+    assert selector.selected_thread_id() is None
+    rendered = "".join(fragment[1] for fragment in selector._fragments())
+    assert "Resume session" in rendered
+
+
+def test_resume_selector_pages_and_home_end() -> None:
+    sessions = [
+        SimpleNamespace(thread_id=f"thread-{index}", label=f"session {index}") for index in range(8)
+    ]
+    selector = ResumeSelector(sessions, max_visible=3)
+
+    selector.page(1)
+    assert selector.selected_thread_id() == "thread-3"
+    selector.last()
+    assert selector.selected_thread_id() == "thread-7"
+    selector.first()
+    assert selector.selected_thread_id() == "thread-0"

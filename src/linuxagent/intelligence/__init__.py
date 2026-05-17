@@ -1,14 +1,21 @@
-"""Intelligence modules: learning, embeddings, recommendations, knowledge, patterns."""
+"""Compatibility exports for the renamed usage insights package."""
 
 from __future__ import annotations
 
-from .command_learner import CommandLearner, CommandStats
-from .context_manager import ContextManager
-from .embedding_cache import EmbeddingCache
-from .knowledge_base import KnowledgeBase, KnowledgeDocument, KnowledgeHit
-from .nlp_enhancer import NLPEnhancer
-from .pattern_analyzer import PatternAnalysis, PatternAnalyzer
-from .recommendation_engine import Recommendation, RecommendationEngine
+from ..usage_insights import (
+    CommandLearner,
+    CommandStats,
+    ContextManager,
+    EmbeddingCache,
+    KnowledgeBase,
+    KnowledgeDocument,
+    KnowledgeHit,
+    NLPEnhancer,
+    PatternAnalysis,
+    PatternAnalyzer,
+    Recommendation,
+    RecommendationEngine,
+)
 
 __all__ = [
     "CommandLearner",

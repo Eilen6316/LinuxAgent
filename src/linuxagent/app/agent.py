@@ -11,7 +11,6 @@ from langgraph.types import Command
 
 from ..audit import AuditLog
 from ..graph.agent_graph import AgentGraph
-from ..intelligence import ContextManager
 from ..interfaces import UserInterface
 from ..services import (
     BackgroundJobController,
@@ -22,6 +21,7 @@ from ..services import (
     MonitoringService,
 )
 from ..telemetry import TelemetryRecorder
+from ..usage_insights import ContextManager
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
 from .graph_config import graph_config

@@ -42,6 +42,7 @@ CONFIG_REQUIRED_PATHS = (
     ("sandbox", "tools", "max_file_bytes"),
     ("sandbox", "tools", "max_output_chars"),
     ("cluster", "batch_confirm_threshold"),
+    ("cluster", "max_workers"),
     ("cluster", "known_hosts_path"),
     ("cluster", "hosts"),
     ("audit", "path"),
@@ -141,6 +142,7 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.sandbox.runner is SandboxRunnerKind.NOOP
     assert cfg.sandbox.default_profile is SandboxProfile.SYSTEM_INSPECT
     assert cfg.cluster.batch_confirm_threshold == 2
+    assert cfg.cluster.max_workers == 8
     assert cfg.audit.path.name == "audit.log"
     assert cfg.mcp.enabled is True
     assert cfg.mcp.transport == "stdio"
@@ -272,6 +274,11 @@ def test_negative_timeout_rejected() -> None:
 def test_batch_threshold_must_be_positive() -> None:
     with pytest.raises(ValidationError, match="batch_confirm_threshold"):
         AppConfig.model_validate({"cluster": {"batch_confirm_threshold": 0}})
+
+
+def test_cluster_max_workers_must_be_positive() -> None:
+    with pytest.raises(ValidationError, match="max_workers"):
+        AppConfig.model_validate({"cluster": {"max_workers": 0}})
 
 
 def test_cluster_host_remote_profile_defaults_preserve_current_behavior() -> None:
