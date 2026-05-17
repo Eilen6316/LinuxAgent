@@ -1,0 +1,13 @@
+scenario: "automatic wizard for structured discovery"
+provider_responses:
+  - '{"mode":"WIZARD_NEEDED","answer":"","reason":"the useful next step is structured discovery","answer_context":"none"}'
+  - '{"user_intent":"collect missing constraints","steps":[{"id":"scope","title":"确认范围","kind":"single","options":[{"id":"one","label":"Option A","description":"第一种方向"},{"id":"two","label":"Option B","description":"第二种方向"},{"id":"three","label":"Option C","description":"第三种方向"}]},{"id":"priority","title":"确认优先级","kind":"single","options":[{"id":"fast","label":"Fast","description":"优先速度"},{"id":"balanced","label":"Balanced","description":"均衡取舍"},{"id":"careful","label":"Careful","description":"优先稳妥"}]}]}'
+inputs:
+  - role: human
+    content: "帮我做一个需要先确认多个条件的个性化方案"
+setup:
+  ui_interactive: true
+expected_interrupts:
+  - type: wizard
+expected:
+  command_executed: false

@@ -33,6 +33,7 @@ from ..plans import (
 )
 from ..prompts_loader import (
     build_direct_answer_prompt,
+    build_direct_answer_review_prompt,
     build_intent_router_prompt,
     build_planner_gate_prompt,
     build_planner_prompt,
@@ -68,6 +69,11 @@ class AnswerContext(StrEnum):
     SELF_MANUAL = "self_manual"
 
 
+class DirectAnswerReviewMode(StrEnum):
+    KEEP_DIRECT_ANSWER = "KEEP_DIRECT_ANSWER"
+    WIZARD_NEEDED = "WIZARD_NEEDED"
+
+
 @dataclass(frozen=True)
 class IntentDecision:
     mode: IntentMode
@@ -77,11 +83,18 @@ class IntentDecision:
 
 
 @dataclass(frozen=True)
+class DirectAnswerReviewDecision:
+    mode: DirectAnswerReviewMode
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class IntentNodeContext:
     provider: LLMProvider
     planner_prompt: Any
     planner_gate_prompt: Any
     direct_answer_prompt: Any
+    direct_answer_review_prompt: Any
     intent_router_prompt: Any
     wizard_response_prompt: Any
     runbook_guidance: str
@@ -121,6 +134,7 @@ def make_parse_intent_node(
         planner_prompt=build_planner_prompt(),
         planner_gate_prompt=build_planner_gate_prompt(),
         direct_answer_prompt=build_direct_answer_prompt(),
+        direct_answer_review_prompt=build_direct_answer_review_prompt(),
         intent_router_prompt=build_intent_router_prompt(),
         wizard_response_prompt=build_wizard_response_prompt(),
         runbook_guidance=build_runbook_guidance(runbook_engine),
@@ -173,23 +187,30 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     if intent.mode is IntentMode.CLARIFY:
         return _direct_response_update(current_trace_id, intent.answer)
     if intent.mode is IntentMode.DIRECT_ANSWER:
-        if intent.answer_context is AnswerContext.SELF_MANUAL:
-            answer = await _complete_direct_answer(context, messages, user_text, current_trace_id)
-            return _direct_response_update(current_trace_id, answer)
-        return _direct_response_update(current_trace_id, intent.answer)
+        return await _direct_answer_update(
+            context,
+            state,
+            messages,
+            user_text,
+            current_trace_id,
+            intent,
+        )
     if intent.mode is IntentMode.WIZARD_NEEDED:
         return _wizard_needed_update(current_trace_id, user_text)
+    return await _plan_after_intent(context, messages, user_text, current_trace_id)
+
+
+async def _plan_after_intent(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+) -> AgentState:
     gate = await _plan_gate(context, messages, user_text, current_trace_id)
     if gate is not None:
         return _direct_response_update(current_trace_id, gate.answer)
     await notify_event(context.runtime_observer, {"type": "activity", "phase": "plan"})
-    return await _command_planning_update(
-        context,
-        messages,
-        user_text,
-        current_trace_id,
-        observed_tool_outputs,
-    )
+    return await _command_planning_update(context, messages, user_text, current_trace_id, [])
 
 
 async def _command_planning_update(
@@ -205,6 +226,39 @@ async def _command_planning_update(
     return await _planned_outcome_update(
         context, messages, user_text, current_trace_id, outcome, observed_tool_outputs
     )
+
+
+async def _direct_answer_update(
+    context: IntentNodeContext,
+    state: AgentState,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    intent: IntentDecision,
+) -> AgentState:
+    if intent.answer_context is AnswerContext.SELF_MANUAL:
+        answer = await _complete_direct_answer(context, messages, user_text, current_trace_id)
+        return _direct_response_update(current_trace_id, answer)
+    reviewed = await _review_direct_answer(context, messages, user_text, intent, current_trace_id)
+    if reviewed.mode is not DirectAnswerReviewMode.WIZARD_NEEDED:
+        return _direct_response_update(current_trace_id, intent.answer)
+    reviewed_intent = await _apply_wizard_hard_gates(
+        context,
+        IntentDecision(
+            IntentMode.WIZARD_NEEDED,
+            "",
+            _direct_answer_review_reason(intent.reason, reviewed.reason),
+        ),
+        state,
+        messages,
+        user_text,
+        current_trace_id,
+    )
+    if reviewed_intent.mode is IntentMode.WIZARD_NEEDED:
+        return _wizard_needed_update(current_trace_id, user_text)
+    if reviewed_intent.mode is IntentMode.CLARIFY:
+        return _direct_response_update(current_trace_id, reviewed_intent.answer)
+    return _direct_response_update(current_trace_id, intent.answer)
 
 
 def _context_for_state(context: IntentNodeContext, state: AgentState) -> IntentNodeContext:
@@ -709,6 +763,64 @@ def _parse_answer_context(payload: dict[str, Any], mode: IntentMode) -> AnswerCo
         return AnswerContext(raw)
     except ValueError:
         return AnswerContext.NONE
+
+
+async def _review_direct_answer(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    intent: IntentDecision,
+    current_trace_id: str,
+) -> DirectAnswerReviewDecision:
+    prompt_messages = context.direct_answer_review_prompt.format_messages(
+        chat_history=messages[:-1],
+        review_context=json.dumps(
+            {
+                "user_input": user_text,
+                "proposed_answer": intent.answer,
+                "router_reason": intent.reason,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+    )
+    try:
+        raw = (
+            await complete_llm(
+                context.provider,
+                prompt_messages,
+                telemetry=context.telemetry,
+                trace_id=current_trace_id,
+                attributes={"node": "parse_intent", "mode": "direct_answer_review"},
+                prompt_cache_key=context.prompt_cache_key,
+            )
+        ).strip()
+    except ProviderError:
+        return DirectAnswerReviewDecision(DirectAnswerReviewMode.KEEP_DIRECT_ANSWER)
+    return _parse_direct_answer_review(raw)
+
+
+def _parse_direct_answer_review(raw: str) -> DirectAnswerReviewDecision:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return DirectAnswerReviewDecision(DirectAnswerReviewMode.KEEP_DIRECT_ANSWER)
+    if not isinstance(payload, dict):
+        return DirectAnswerReviewDecision(DirectAnswerReviewMode.KEEP_DIRECT_ANSWER)
+    try:
+        mode = DirectAnswerReviewMode(
+            str(payload.get("mode", DirectAnswerReviewMode.KEEP_DIRECT_ANSWER.value)).strip()
+        )
+    except ValueError:
+        mode = DirectAnswerReviewMode.KEEP_DIRECT_ANSWER
+    reason = str(payload.get("reason", "")).strip()
+    return DirectAnswerReviewDecision(mode, reason)
+
+
+def _direct_answer_review_reason(router_reason: str, review_reason: str) -> str:
+    if router_reason and review_reason:
+        return f"{router_reason}; direct answer review: {review_reason}"
+    return review_reason or router_reason or "direct answer review requested wizard"
 
 
 async def _apply_wizard_hard_gates(

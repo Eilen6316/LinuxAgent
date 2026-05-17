@@ -52,6 +52,10 @@ class _FakeProvider:
             if self._responses and _is_intent_router_response(self._responses[0]):
                 return self._responses.pop(0)
             return _router_response("COMMAND_PLAN")
+        if _is_direct_answer_review_call(messages):
+            if self._responses and _is_direct_answer_review_response(self._responses[0]):
+                return self._responses.pop(0)
+            return _direct_answer_review_response()
         if _is_planner_gate_call(messages):
             if self._responses and _is_planner_gate_response(self._responses[0]):
                 return self._responses.pop(0)
@@ -81,6 +85,11 @@ class _ScriptedToolProvider(_FakeProvider):
             if self._responses and _is_intent_router_response(self._responses[0]):
                 return str(self._responses.pop(0))
             return _router_response("COMMAND_PLAN")
+        if _is_direct_answer_review_call(messages):
+            self.complete_messages.append(messages)
+            if self._responses and _is_direct_answer_review_response(self._responses[0]):
+                return str(self._responses.pop(0))
+            return _direct_answer_review_response()
         if _is_planner_gate_call(messages):
             self.complete_messages.append(messages)
             if self._responses and _is_planner_gate_response(self._responses[0]):
@@ -294,6 +303,13 @@ def _router_response(
     )
 
 
+def _direct_answer_review_response(
+    mode: str = "KEEP_DIRECT_ANSWER",
+    reason: str = "test review",
+) -> str:
+    return json.dumps({"mode": mode, "reason": reason}, ensure_ascii=False)
+
+
 def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
     return bool(messages) and str(messages[0].content).casefold().startswith(
         "you are linuxagent's intent router."
@@ -327,6 +343,23 @@ def _is_wizard_planner_call(messages: list[BaseMessage]) -> bool:
 
 def _is_wizard_response_call(messages: list[BaseMessage]) -> bool:
     return bool(messages) and "wizard 状态" in str(messages[0].content)
+
+
+def _is_direct_answer_review_call(messages: list[BaseMessage]) -> bool:
+    return bool(messages) and "DIRECT_ANSWER reviewer" in str(messages[0].content)
+
+
+def _is_direct_answer_review_response(text: object) -> bool:
+    if not isinstance(text, str):
+        return False
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and payload.get("mode") in {
+        "KEEP_DIRECT_ANSWER",
+        "WIZARD_NEEDED",
+    }
 
 
 def _is_planner_gate_response(text: object) -> bool:
@@ -519,6 +552,55 @@ async def test_graph_wizard_needed_emits_stable_wizard_payload_schema(tmp_path) 
         "original_user_input": "帮我部署一套数据库",
         "attempt": 1,
     }
+
+
+async def test_graph_direct_answer_review_can_escalate_to_wizard(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _router_response("DIRECT_ANSWER", "请先补充多个独立条件。"),
+            _direct_answer_review_response(
+                "WIZARD_NEEDED",
+                "proposed answer mainly collects independent missing inputs",
+            ),
+            _wizard_plan_json(),
+        ],
+    )
+    config = {"configurable": {"thread_id": "direct-answer-review-wizard"}}
+
+    await graph.ainvoke(
+        initial_state("帮我做一个个性化方案", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+    assert payload["type"] == "wizard"
+    assert snapshot.values["wizard_context"] == "帮我做一个个性化方案"
+    assert any(_is_direct_answer_review_call(messages) for messages in provider.complete_messages)
+
+
+async def test_graph_direct_answer_review_respects_non_interactive_gate(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _router_response("DIRECT_ANSWER", "请先补充多个独立条件。"),
+            _direct_answer_review_response("WIZARD_NEEDED"),
+            "non interactive follow-up",
+        ],
+    )
+    config = {"configurable": {"thread_id": "direct-answer-review-non-tty"}}
+
+    result = await graph.ainvoke(
+        initial_state("帮我做一个个性化方案", source=CommandSource.USER, ui_interactive=False),
+        config=config,
+    )
+
+    assert "non interactive follow-up" in str(result["messages"][-1].content)
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values.get("wizard_context") is None
+    assert any(_is_wizard_response_call(messages) for messages in provider.complete_messages)
 
 
 async def test_graph_wizard_submit_resume_records_result_without_command(tmp_path) -> None:
@@ -2133,7 +2215,10 @@ async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> N
 async def test_graph_answers_capability_question_without_command(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "dynamic capability answer")],
+        [
+            _router_response("DIRECT_ANSWER", "dynamic capability answer"),
+            _direct_answer_review_response(),
+        ],
     )
     config = {"configurable": {"thread_id": "capabilities"}}
 
@@ -2142,7 +2227,7 @@ async def test_graph_answers_capability_question_without_command(tmp_path) -> No
     )
 
     assert "dynamic capability answer" in str(result["messages"][-1].content)
-    assert len(provider.complete_messages) == 1
+    assert len(provider.complete_messages) == 2
     assert provider.tool_calls == 0
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
@@ -2153,7 +2238,7 @@ async def test_graph_answers_capability_question_without_command(tmp_path) -> No
 async def test_graph_passes_thread_prompt_cache_key_to_provider(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "cached answer")],
+        [_router_response("DIRECT_ANSWER", "cached answer"), _direct_answer_review_response()],
         checkpointer=PersistentMemorySaver(tmp_path / "checkpoint.sqlite"),
     )
 
@@ -2311,7 +2396,10 @@ async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> N
     manifest = operating_manifest_context(section_names=("tools", "safety"))
     graph, provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "router supplied direct answer")],
+        [
+            _router_response("DIRECT_ANSWER", "router supplied direct answer"),
+            _direct_answer_review_response(),
+        ],
         operating_manifest=manifest,
     )
     config = {"configurable": {"thread_id": "daily-chat"}}
@@ -2321,7 +2409,7 @@ async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> N
     )
 
     assert "router supplied direct answer" in str(result["messages"][-1].content)
-    assert len(provider.complete_messages) == 1
+    assert len(provider.complete_messages) == 2
     prompt = "\n".join(str(message.content) for message in provider.complete_messages[0])
     assert "# tools" not in prompt
     assert "# safety" not in prompt
@@ -2334,7 +2422,10 @@ async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> N
 async def test_graph_answers_howto_without_command_panel(tmp_path) -> None:
     graph, _provider = _graph(
         tmp_path,
-        [_router_response("DIRECT_ANSWER", "router supplied how-to answer")],
+        [
+            _router_response("DIRECT_ANSWER", "router supplied how-to answer"),
+            _direct_answer_review_response(),
+        ],
     )
     config = {"configurable": {"thread_id": "howto-chat"}}
 

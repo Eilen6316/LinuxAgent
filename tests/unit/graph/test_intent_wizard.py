@@ -10,15 +10,18 @@ from langchain_core.messages import BaseMessage
 
 import linuxagent.graph.intent as intent_module
 from linuxagent.graph.intent import (
+    DirectAnswerReviewMode,
     IntentDecision,
     IntentMode,
     IntentNodeContext,
     _apply_wizard_hard_gates,
+    _parse_direct_answer_review,
     _parse_intent_decision,
 )
 from linuxagent.graph.state import AgentState
 from linuxagent.prompts_loader import (
     build_direct_answer_prompt,
+    build_direct_answer_review_prompt,
     build_intent_router_prompt,
     build_planner_gate_prompt,
     build_planner_prompt,
@@ -50,6 +53,26 @@ def test_parse_intent_decision_accepts_design_selection_wizard() -> None:
 
     assert decision.mode is IntentMode.WIZARD_NEEDED
     assert "multiple constraints" in decision.reason
+
+
+def test_parse_direct_answer_review_accepts_wizard_needed() -> None:
+    decision = _parse_direct_answer_review(
+        json.dumps(
+            {
+                "mode": "WIZARD_NEEDED",
+                "reason": "proposed answer mainly collects missing inputs",
+            }
+        )
+    )
+
+    assert decision.mode is DirectAnswerReviewMode.WIZARD_NEEDED
+    assert "missing inputs" in decision.reason
+
+
+def test_parse_direct_answer_review_defaults_to_keep_on_invalid_json() -> None:
+    decision = _parse_direct_answer_review("not json")
+
+    assert decision.mode is DirectAnswerReviewMode.KEEP_DIRECT_ANSWER
 
 
 async def test_wizard_hard_gates_prioritize_submitted_over_attempted_and_non_tty() -> None:
@@ -214,6 +237,7 @@ def _context(
         planner_prompt=build_planner_prompt(),
         planner_gate_prompt=build_planner_gate_prompt(),
         direct_answer_prompt=build_direct_answer_prompt(),
+        direct_answer_review_prompt=build_direct_answer_review_prompt(),
         intent_router_prompt=build_intent_router_prompt(),
         wizard_response_prompt=build_wizard_response_prompt(),
         runbook_guidance="",

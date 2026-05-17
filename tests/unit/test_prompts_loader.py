@@ -8,6 +8,7 @@ from linuxagent.prompts_loader import (
     build_analysis_prompt,
     build_chat_prompt,
     build_direct_answer_prompt,
+    build_direct_answer_review_prompt,
     build_file_patch_repair_prompt,
     build_intent_router_prompt,
     build_planner_gate_prompt,
@@ -25,6 +26,7 @@ def test_find_prompts_dir_resolves_for_editable_install() -> None:
     assert (path / "system.md").is_file()
     assert (path / "analysis.md").is_file()
     assert (path / "direct_answer.md").is_file()
+    assert (path / "direct_answer_review.md").is_file()
     assert (path / "intent_router.md").is_file()
     assert (path / "planner.md").is_file()
     assert (path / "planner_gate.md").is_file()
@@ -54,6 +56,16 @@ def test_build_direct_answer_prompt_has_user_input_variable() -> None:
     assert "product_context" in tmpl.input_variables
 
 
+def test_build_direct_answer_review_prompt_has_review_context_variable() -> None:
+    tmpl = build_direct_answer_review_prompt()
+    assert isinstance(tmpl, ChatPromptTemplate)
+    assert "review_context" in tmpl.input_variables
+    body = str(tmpl.messages[0].prompt.template)
+    assert "DIRECT_ANSWER reviewer" in body
+    assert "WIZARD_NEEDED" in body
+    assert "Do not use keyword matching" in body
+
+
 def test_build_intent_router_prompt_has_user_input_variable() -> None:
     tmpl = build_intent_router_prompt()
     assert isinstance(tmpl, ChatPromptTemplate)
@@ -70,9 +82,13 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "`self_manual`" in body
     assert "`WIZARD_NEEDED`" in body
     assert "automatic discovery" in body
-    assert "personalized design, architecture, selection" in body
-    assert "several independent constraints" in body
-    assert "generic checklist" in body
+    assert "If your `DIRECT_ANSWER` would mainly ask the user" in body
+    assert "leave `answer` empty" in body
+    assert "Do not use a predefined scenario list or keyword matching" in body
+    assert "Decision precedence" in body
+    assert "structured discovery across multiple independent" in body
+    assert "questionnaire" in body
+    assert "a checklist of missing" in body
 
 
 def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() -> None:
@@ -158,8 +174,8 @@ def test_build_wizard_planner_prompt_has_user_input_variable() -> None:
     body = str(tmpl.messages[0].prompt.template)
     assert "WizardPlan schema" in body
     assert "Type something" in body
-    assert "应用设计" in body
-    assert "架构选择" in body
+    assert "不要把独立问题拆成多次弹窗" in body
+    assert "不要套用固定业务模板或固定维度" in body
 
 
 def test_build_wizard_response_prompt_has_response_context_variable() -> None:

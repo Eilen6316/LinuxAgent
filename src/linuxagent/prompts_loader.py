@@ -108,6 +108,17 @@ def build_direct_answer_prompt() -> ChatPromptTemplate:
     )
 
 
+def build_direct_answer_review_prompt() -> ChatPromptTemplate:
+    """Build a prompt for reviewing direct-answer routing decisions."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", load_prompt("direct_answer_review.md")),
+            MessagesPlaceholder("chat_history", optional=True),
+            ("human", "{review_context}"),
+        ]
+    )
+
+
 def build_intent_router_prompt() -> ChatPromptTemplate:
     """Build a prompt for LLM-owned intent routing before command planning."""
     return ChatPromptTemplate.from_messages(

@@ -64,6 +64,10 @@ class _FakeProvider:
             if self._responses and _is_intent_router_response(self._responses[0]):
                 return self._responses.pop(0)
             return _router_response("COMMAND_PLAN")
+        if _is_direct_answer_review_call(messages):
+            if self._responses and _is_direct_answer_review_response(self._responses[0]):
+                return self._responses.pop(0)
+            return _direct_answer_review_response()
         return self._responses.pop(0) if self._responses else "analysis ok"
 
     async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
@@ -100,6 +104,13 @@ def _router_response(mode: str, answer: str = "", reason: str = "test route") ->
     return json.dumps({"mode": mode, "answer": answer, "reason": reason}, ensure_ascii=False)
 
 
+def _direct_answer_review_response(
+    mode: str = "KEEP_DIRECT_ANSWER",
+    reason: str = "test review",
+) -> str:
+    return json.dumps({"mode": mode, "reason": reason}, ensure_ascii=False)
+
+
 def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
     return bool(messages) and "intent router" in str(messages[0].content).casefold()
 
@@ -115,6 +126,24 @@ def _is_intent_router_response(text: str) -> bool:
         "DIRECT_ANSWER",
         "COMMAND_PLAN",
         "CLARIFY",
+        "WIZARD_NEEDED",
+    }
+
+
+def _is_direct_answer_review_call(messages: list[BaseMessage]) -> bool:
+    return bool(messages) and "direct_answer reviewer" in str(messages[0].content).casefold()
+
+
+def _is_direct_answer_review_response(text: object) -> bool:
+    if not isinstance(text, str):
+        return False
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and payload.get("mode") in {
+        "KEEP_DIRECT_ANSWER",
+        "WIZARD_NEEDED",
     }
 
 
@@ -186,7 +215,10 @@ class HarnessRunner:
             thread_id = scenario.name.replace(" ", "-")
             config = {"configurable": {"thread_id": thread_id}}
             human_input = _first_human_input(scenario.inputs)
-            state = initial_state(human_input)
+            state = initial_state(
+                human_input,
+                ui_interactive=bool(scenario.setup.get("ui_interactive", False)),
+            )
             result = await graph.ainvoke(state, config=config)
 
             if scenario.expected_interrupts:
