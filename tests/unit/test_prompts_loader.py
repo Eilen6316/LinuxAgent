@@ -41,6 +41,8 @@ def test_load_system_prompt_is_non_empty() -> None:
     body = load_system_prompt()
     assert "LinuxAgent" in body
     assert "Human-in-the-Loop" in body
+    assert "minimum-privilege" in body
+    assert "read-only probe" in body
 
 
 def test_build_chat_prompt_has_user_input_variable() -> None:
@@ -98,22 +100,25 @@ def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() ->
     assert "runbook_guidance" in tmpl.input_variables
     assert "product_context" in tmpl.input_variables
     body = str(tmpl.messages[0].prompt.template)
-    assert "read_file" in body
-    assert "search_files" in body
+    assert "available read-only workspace tools" in body
+    assert "Follow each tool's declared input semantics" in body
     assert "do not invent one" in body
     assert "NoChangePlan" in body
     assert "smallest diff" in body
     assert "runtime command output" in body
-    assert 'subprocess.run(["date"]' in body
+    assert "one executable plus" in body
+    assert "explicit arguments" in body
     assert "minimize round trips" in body
-    assert "python3 -c" in body
-    assert "cat /etc/os-release" in body
-    assert "uname -a" in body
+    assert "interpreter is truly needed" in body
+    assert "Do not force a fixed diagnostic command set" in body
     assert "long inline interpreter one-liners" in body
-    assert "Do not use" in body
-    assert "when a FilePatchPlan can represent the" in body
-    assert "same change" in body
-    assert "Short inline interpreter commands are acceptable only when they are" in body
+    assert "inline interpreters or shell" in body
+    assert "command strings" in body
+    assert "FilePatchPlan can" in body
+    assert "represent the same change" in body
+    assert "inline interpreter commands" in body
+    assert "necessary and" in body
+    assert "readable in the confirmation panel" in body
     assert "Before calling any tool" in body
     assert "direct_answer" in body
     assert "runtime inspection and must be planned" in body
@@ -155,10 +160,11 @@ def test_build_file_patch_repair_prompt_has_recovery_variables() -> None:
     assert "NoChangePlan" in str(tmpl.messages[1].prompt.template)
     assert "smallest corrected diff" in str(tmpl.messages[1].prompt.template)
     assert "return a JSON CommandPlan" in str(tmpl.messages[1].prompt.template)
-    assert "Keep that inline command as short" in str(tmpl.messages[1].prompt.template)
-    assert "can be represented as a corrected FilePatchPlan" in str(
-        tmpl.messages[1].prompt.template
-    )
+    repair_body = str(tmpl.messages[1].prompt.template)
+    assert "one executable plus" in repair_body
+    assert "explicit arguments" in repair_body
+    assert "inline interpreters or shell" in repair_body
+    assert "command strings" in repair_body
 
 
 def test_build_analysis_prompt_has_result_context_variable() -> None:

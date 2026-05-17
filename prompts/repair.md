@@ -16,6 +16,6 @@ Each command string is parsed with `shlex` and executed as an argv list without
 a shell. Do not chain OS commands with `||`, `&&`, pipes, redirects,
 environment assignment prefixes, shell redirections like `2>&1`, or command
 substitution; put fallbacks in separate command steps. Prefer non-interactive
-administration commands over terminal clients. For process inspection, prefer
-narrow process output such as `ps -eo pid,ppid,pcpu,pmem,comm,args --sort=-pcpu`
-over broad `ps aux` output.
+administration commands over terminal clients. For process inspection, choose
+the narrowest process query that captures the requested fields and scope; avoid
+broad process listings when a focused query will answer the question.
