@@ -93,6 +93,8 @@ jobs:
           python-version: '3.12'
       - name: R-QUAL-02/03 code structure
         run: python scripts/check_code_rules.py
+      - name: Architecture boundaries
+        run: python scripts/check_arch_boundaries.py
       - name: R-SEC-01 ban shell=True
         run: '! grep -rn "shell=True" src/linuxagent/'
       - name: R-SEC-03 ban AutoAddPolicy

@@ -94,6 +94,12 @@ Execution order for the first phase is:
 7. file patch graph and engine splits
 8. sandbox product-contract visibility
 
+The app layer must consume graph execution through `GraphRuntime`; raw LangGraph
+resume commands, interrupt extraction, checkpoint snapshots, and snapshot task
+inspection belong under `src/linuxagent/graph/`. Service and tool modules must
+also stay LangGraph-free. `make security` and CI run
+`scripts/check_arch_boundaries.py` to guard these boundaries.
+
 ## Security Red Lines
 
 These are enforced both locally and in CI:
@@ -102,15 +108,17 @@ These are enforced both locally and in CI:
 - no `AutoAddPolicy`
 - no bare `except:`
 - no `input()` calls inside `src/linuxagent/graph/`
+- no raw LangGraph runtime access from `src/linuxagent/app/`, `services/`, or
+  `tools/`
 - no direct subprocess creation outside `src/linuxagent/sandbox/`
 - no unwrapped LangChain tools exposed to the LLM
 
 `make security` runs `scripts/check_code_rules.py`,
-`scripts/check_sandbox_rules.py`, `scripts/i18n_audit.py`, grep red-lines, and
-Bandit. The i18n audit fails on unregistered Chinese runtime string literals in
-production source. English phrase detection remains report-only because many
-English literals are protocol strings, exception messages, model-facing
-instructions, or test fixtures.
+`scripts/check_arch_boundaries.py`, `scripts/check_sandbox_rules.py`,
+`scripts/i18n_audit.py`, grep red-lines, and Bandit. The i18n audit fails on
+unregistered Chinese runtime string literals in production source. English
+phrase detection remains report-only because many English literals are protocol
+strings, exception messages, model-facing instructions, or test fixtures.
 
 ## Sandbox Release Checklist
 
