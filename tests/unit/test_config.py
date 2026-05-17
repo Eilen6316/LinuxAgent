@@ -590,8 +590,11 @@ def test_nonexistent_env_path_errors(tmp_path: Path) -> None:
         load_config(env={"LINUXAGENT_CONFIG": str(missing)})
 
 
-def test_no_user_config_falls_back_to_pydantic_defaults() -> None:
+def test_no_user_config_falls_back_to_pydantic_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """With every source absent, model defaults still yield a valid AppConfig."""
+    monkeypatch.setattr("linuxagent.config.loader._XDG_PATH", tmp_path / "missing.yaml")
     cfg = load_config(env={})
     assert cfg.api.provider == LLMProviderName.DEEPSEEK
     assert cfg.cluster.batch_confirm_threshold == 2

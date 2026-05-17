@@ -72,10 +72,12 @@ cd LinuxAgent
 ```
 
 Then edit `~/.config/linuxagent/config.yaml` and set a provider. The bootstrap
-script creates a user-level `linuxagent` launcher in `~/.local/bin`; make sure
-that directory is on `PATH` if your shell does not already include it. The core
-paths are OpenAI, DeepSeek, local Ollama/OpenAI-compatible models, and
-Anthropic:
+script creates a user-level `linuxagent` launcher in `~/.local/bin` and writes
+`LINUXAGENT_CONFIG=$HOME/.config/linuxagent/config.yaml` to your shell profile;
+open a new shell or run `source ~/.bashrc` before starting from another
+directory. Make sure `~/.local/bin` is on `PATH` if your shell does not already
+include it. The core paths are OpenAI, DeepSeek, local
+Ollama/OpenAI-compatible models, and Anthropic:
 
 ```yaml
 api:

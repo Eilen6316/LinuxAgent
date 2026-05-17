@@ -14,7 +14,10 @@ cd LinuxAgent
 Edit the generated `~/.config/linuxagent/config.yaml` and set one provider.
 The bootstrap script keeps dependencies in the checkout `.venv` and installs a
 user-level `~/.local/bin/linuxagent` launcher, so the command can be started
-from any directory. If `linuxagent` is not found, add `~/.local/bin` to `PATH`.
+from any directory. It also writes
+`LINUXAGENT_CONFIG=$HOME/.config/linuxagent/config.yaml` to your shell profile;
+open a new shell or run `source ~/.bashrc` before starting from another
+directory. If `linuxagent` is not found, add `~/.local/bin` to `PATH`.
 
 Remote provider:
 
@@ -72,9 +75,11 @@ systemd user service guidance.
 ## Configuration Notes
 
 LinuxAgent reads configuration from `~/.config/linuxagent/config.yaml` by
-default. A `./config.yaml` in the current directory can still override it for a
-specific workspace. User config files must be owned by the current user and
-`chmod 600`; real secrets are not loaded from `.env`.
+default. Bootstrap also exports `LINUXAGENT_CONFIG` to that path so the same
+config is used from any working directory. Use `--config <path>` or override
+`LINUXAGENT_CONFIG` when a workspace needs a different config. User config files
+must be owned by the current user and `chmod 600`; real secrets are not loaded
+from `.env`.
 
 For API relays or other OpenAI-compatible endpoints:
 

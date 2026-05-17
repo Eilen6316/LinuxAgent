@@ -257,7 +257,7 @@ policy:
 ```bash
 git clone https://github.com/Eilen6316/LinuxAgent.git
 cd LinuxAgent
-./scripts/bootstrap.sh     # 建 .venv + 全局配置 + ~/.local/bin/linuxagent
+./scripts/bootstrap.sh     # 建 .venv + 全局配置 + LINUXAGENT_CONFIG + ~/.local/bin/linuxagent
 ```
 
 ### 手动
@@ -273,7 +273,9 @@ ln -sf "$PWD/.venv/bin/linuxagent" ~/.local/bin/linuxagent
 ```
 
 确保 `~/.local/bin` 在 `PATH` 中，之后无需激活项目 venv，也无需停留在仓库目录，
-任意目录都可以直接运行 `linuxagent`。
+任意目录都可以直接运行 `linuxagent`。bootstrap 会把
+`LINUXAGENT_CONFIG=$HOME/.config/linuxagent/config.yaml` 写入 shell profile；
+执行后打开新 shell，或运行 `source ~/.bashrc` 让当前 shell 立即生效。
 
 ### 可选扩展
 

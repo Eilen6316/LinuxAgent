@@ -262,7 +262,7 @@ policy:
 ```bash
 git clone https://github.com/Eilen6316/LinuxAgent.git
 cd LinuxAgent
-./scripts/bootstrap.sh     # creates .venv + global config + ~/.local/bin/linuxagent
+./scripts/bootstrap.sh     # creates .venv + global config + LINUXAGENT_CONFIG + ~/.local/bin/linuxagent
 ```
 
 ### Manual
@@ -278,7 +278,9 @@ ln -sf "$PWD/.venv/bin/linuxagent" ~/.local/bin/linuxagent
 ```
 
 Ensure `~/.local/bin` is on `PATH`, then `linuxagent` can start from any
-directory without activating the checkout virtual environment.
+directory without activating the checkout virtual environment. Open a new shell
+or run `source ~/.bashrc` after bootstrap so `LINUXAGENT_CONFIG` points to
+`~/.config/linuxagent/config.yaml`.
 
 ### Optional extras
 
