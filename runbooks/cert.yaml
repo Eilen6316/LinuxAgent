@@ -1,11 +1,17 @@
 id: cert.expiry
 title: Inspect certificate expiry
+title_i18n:
+  zh-CN: 检查证书过期时间
 steps:
   - command: openssl version
     purpose: Verify openssl is available
+    purpose_i18n:
+      zh-CN: 验证 openssl 可用
     read_only: true
   - command: date -u
     purpose: Show current UTC time for comparison
+    purpose_i18n:
+      zh-CN: 显示当前 UTC 时间用于比对
     read_only: true
 preflight_checks: [openssl version]
 verification_commands: [date -u]

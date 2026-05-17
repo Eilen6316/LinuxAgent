@@ -10,6 +10,8 @@ from rich.table import Table
 
 from ..command_review import command_review, numbered_lines
 from ..i18n import Translator, default_translator
+from ..i18n.display import localized_text
+from ..policy.display import policy_display_reason
 from .diff_renderer import (
     DEFAULT_MAX_LINES_PER_FILE,
     DiffRenderer,
@@ -44,7 +46,7 @@ class ConfirmationRenderer:
         if payload.get("runbook_id"):
             table.add_row(
                 self._label("runbook"),
-                f"{payload.get('runbook_id')} - {payload.get('runbook_title')}",
+                f"{payload.get('runbook_id')} - {_runbook_title(payload, self._translator)}",
             )
         self._add_optional_rows(table, payload, ("goal", "purpose"))
         table.add_row(self._label("safety"), str(payload.get("safety_level") or "?"))
@@ -190,8 +192,9 @@ class ConfirmationRenderer:
         if not runbook_steps:
             return
         rendered = [
-            f"{step.get('command')} - {step.get('purpose')}"
+            f"{step.get('command')} - {_runbook_step_purpose(step, self._translator)}"
             for step in runbook_steps[step_index + 1 :]
+            if isinstance(step, dict)
         ]
         if rendered:
             table.add_row(self._label("next_steps"), "\n".join(rendered))
@@ -236,13 +239,17 @@ class ConfirmationRenderer:
         if capabilities:
             table.add_row(self._label("capabilities"), "\n".join(capabilities))
         risk_details = payload.get("risk_details")
-        reason = (
-            risk_details.get("reason")
-            if isinstance(risk_details, dict) and isinstance(risk_details.get("reason"), str)
-            else None
-        )
+        reason = _policy_reason_from_details(risk_details)
         if reason:
-            table.add_row(self._label("policy_reason"), reason)
+            table.add_row(
+                self._label("policy_reason"),
+                policy_display_reason(
+                    reason,
+                    _string_list(payload.get("matched_rules")),
+                    self._translator,
+                )
+                or reason,
+            )
         if _high_review_required(payload):
             table.add_row(
                 self._label("review"),
@@ -316,6 +323,28 @@ def _matched_rules_summary(payload: dict[str, Any], translator: Translator) -> s
     if rules:
         return "\n".join(rules)
     return str(payload.get("matched_rule") or translator.t("ui.confirm.message.unknown"))
+
+
+def _policy_reason_from_details(risk_details: object) -> str | None:
+    if not isinstance(risk_details, dict):
+        return None
+    display_reason = risk_details.get("display_reason")
+    if isinstance(display_reason, str) and display_reason:
+        return display_reason
+    reason = risk_details.get("reason")
+    return reason if isinstance(reason, str) and reason else None
+
+
+def _runbook_title(payload: dict[str, Any], translator: Translator) -> str:
+    title = str(payload.get("runbook_title") or "")
+    values = payload.get("runbook_title_i18n")
+    return localized_text(title, values if isinstance(values, dict) else None, translator)
+
+
+def _runbook_step_purpose(step: dict[str, Any], translator: Translator) -> str:
+    purpose = str(step.get("purpose") or "")
+    values = step.get("purpose_i18n")
+    return localized_text(purpose, values if isinstance(values, dict) else None, translator)
 
 
 def _command_display(payload: dict[str, Any], command: str) -> str:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from ..command_review import command_review
@@ -162,9 +162,19 @@ def _runbook_payload(runbook: Runbook | None, step_index: int = 0) -> dict[str, 
     return {
         "runbook_id": runbook.id,
         "runbook_title": runbook.title,
+        "runbook_title_i18n": _localized_map(runbook.title_i18n),
         "runbook_step_index": step_index,
         "runbook_steps": [
-            {"command": step.command, "purpose": step.purpose, "read_only": step.read_only}
+            {
+                "command": step.command,
+                "purpose": step.purpose,
+                "purpose_i18n": _localized_map(step.purpose_i18n),
+                "read_only": step.read_only,
+            }
             for step in runbook.steps
         ],
     }
+
+
+def _localized_map(values: Mapping[Any, str]) -> dict[str, str]:
+    return {getattr(language, "value", str(language)): text for language, text in values.items()}

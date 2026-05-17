@@ -342,6 +342,7 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
         resources=cfg.mcp.resources,
         runbooks=container.runbook_engine().runbooks,
         skills=container.skill_manifests(),
+        translator=container.translator(),
     )
     return serve_stdio(server)
 

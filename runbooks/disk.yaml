@@ -1,11 +1,17 @@
 id: disk.full
 title: Investigate disk usage
+title_i18n:
+  zh-CN: 排查磁盘使用情况
 steps:
   - command: df -h
     purpose: Show filesystem usage
+    purpose_i18n:
+      zh-CN: 显示文件系统使用情况
     read_only: true
   - command: du -sh /var/log
     purpose: Estimate log directory usage
+    purpose_i18n:
+      zh-CN: 估算日志目录占用
     read_only: true
 preflight_checks: [df -h]
 verification_commands: [df -h]

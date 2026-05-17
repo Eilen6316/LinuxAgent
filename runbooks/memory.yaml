@@ -1,11 +1,17 @@
 id: memory.pressure
 title: Investigate memory pressure
+title_i18n:
+  zh-CN: 排查内存压力
 steps:
   - command: free -h
     purpose: Show memory usage
+    purpose_i18n:
+      zh-CN: 显示内存使用情况
     read_only: true
   - command: ps aux --sort=-%mem
     purpose: List memory-heavy processes
+    purpose_i18n:
+      zh-CN: 列出内存占用高的进程
     read_only: true
 preflight_checks: [free -h]
 verification_commands: [free -h]

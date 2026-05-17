@@ -1,11 +1,17 @@
 id: load.high
 title: Investigate high load
+title_i18n:
+  zh-CN: 排查高负载
 steps:
   - command: uptime
     purpose: Show load averages
+    purpose_i18n:
+      zh-CN: 显示负载均值
     read_only: true
   - command: ps aux --sort=-%cpu
     purpose: List CPU-heavy processes
+    purpose_i18n:
+      zh-CN: 列出 CPU 占用高的进程
     read_only: true
 preflight_checks: [uptime]
 verification_commands: [uptime]

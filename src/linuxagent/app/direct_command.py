@@ -13,6 +13,7 @@ from ..command_review import CommandReview, command_review
 from ..execution_display import execution_display_text
 from ..i18n import Translator, default_translator
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult, UserInterface
+from ..policy.display import policy_display_reason
 from ..services import CommandService
 from ..telemetry import TelemetryRecorder, new_trace_id
 from ..usage_insights import ContextManager
@@ -36,7 +37,11 @@ class DirectCommandRunner:
             return
         safety = self.command_service.classify(command, source=CommandSource.USER)
         if safety.level is SafetyLevel.BLOCK:
-            reason = safety.reason or safety.matched_rule or "policy"
+            reason = (
+                policy_display_reason(safety.reason, safety.matched_rules, self.translator)
+                or safety.matched_rule
+                or "policy"
+            )
             await self.ui.print(self.translator.t("direct.blocked", reason=reason))
             self._append_context(thread_id, command, None, safety)
             return
@@ -233,20 +238,24 @@ def _direct_confirm_payload(
         "command_source": safety.command_source.value,
         "risk_score": safety.risk_score,
         "capabilities": list(safety.capabilities),
-        "risk_details": _direct_risk_details(safety),
-        "risk_summary": safety.reason,
+        "risk_details": _direct_risk_details(safety, tr),
+        "risk_summary": policy_display_reason(safety.reason, safety.matched_rules, tr),
         "is_destructive": _is_destructive(command_service, command),
         "can_whitelist": safety.can_whitelist,
     }
 
 
-def _direct_risk_details(safety: SafetyResult) -> dict[str, Any]:
+def _direct_risk_details(
+    safety: SafetyResult,
+    translator: Translator | None = None,
+) -> dict[str, Any]:
     return {
         "matched_rules": list(safety.matched_rules),
         "capabilities": list(safety.capabilities),
         "risk_score": safety.risk_score,
         "can_whitelist": safety.can_whitelist,
         "reason": safety.reason,
+        "display_reason": policy_display_reason(safety.reason, safety.matched_rules, translator),
     }
 
 

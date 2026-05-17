@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from ..config.models import LanguageCode
 from ..runbooks import Runbook
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -26,6 +27,7 @@ class SkillManifest(BaseModel):
     name: str = Field(min_length=1)
     version: str = Field(min_length=1)
     description: str = Field(min_length=1)
+    description_i18n: dict[LanguageCode, str] = Field(default_factory=dict)
     planner_guidance: str = ""
     runbooks: tuple[Runbook, ...] = ()
     permissions: tuple[str, ...] = ()
@@ -42,6 +44,17 @@ class SkillManifest(BaseModel):
     @classmethod
     def _strip_optional_text(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("description_i18n")
+    @classmethod
+    def _strip_localized_description(
+        cls,
+        values: dict[LanguageCode, str],
+    ) -> dict[LanguageCode, str]:
+        cleaned = {language: value.strip() for language, value in values.items()}
+        if any(not value for value in cleaned.values()):
+            raise ValueError("localized skill description cannot be empty")
+        return cleaned
 
     @field_validator("permissions")
     @classmethod

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TextIO
 
 from . import __version__
 from .audit import verify_audit_log
+from .i18n import Translator, default_translator
 from .interfaces import CommandSource
 from .mcp_tools import (
     AUDIT_TOOL_NAME,
@@ -23,8 +24,10 @@ from .mcp_tools import (
 )
 from .policy import PolicyEngine
 from .runbooks import Runbook
+from .runbooks.display import runbook_display_title, runbook_step_display_purpose
 from .security import redact_record
 from .skills import SkillManifest
+from .skills.display import skill_display_description
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "linuxagent-mcp"
@@ -74,6 +77,14 @@ _RESOURCE_DEFINITIONS: dict[McpResourceUri, JsonObject] = {
         "mimeType": "application/json",
     },
 }
+_MCP_TOOL_KEYS: dict[McpToolName, str] = {
+    POLICY_TOOL_NAME: "policy",
+    AUDIT_TOOL_NAME: "audit",
+}
+_MCP_RESOURCE_KEYS: dict[McpResourceUri, str] = {
+    RUNBOOKS_SUMMARY_RESOURCE: "runbooks_summary",
+    SKILLS_SUMMARY_RESOURCE: "skills_summary",
+}
 
 JsonObject = dict[str, Any]
 
@@ -86,6 +97,7 @@ class McpServer:
     resources: tuple[McpResourceUri, ...] = MCP_READ_ONLY_RESOURCE_URIS
     runbooks: tuple[Runbook, ...] = ()
     skills: tuple[SkillManifest, ...] = ()
+    translator: Translator = field(default_factory=default_translator)
 
     def handle(self, request: JsonObject) -> JsonObject | None:
         method = request.get("method")
@@ -106,11 +118,14 @@ class McpServer:
         if method == "initialize":
             return _result(request_id, _initialize_result(params))
         if method == "tools/list":
-            return _result(request_id, {"tools": list(_tools(self.tools))})
+            return _result(request_id, {"tools": list(_tools(self.tools, self.translator))})
         if method == "tools/call":
             return self._call_tool(request_id, params)
         if method == "resources/list":
-            return _result(request_id, {"resources": list(_resources(self.resources))})
+            return _result(
+                request_id,
+                {"resources": list(_resources(self.resources, self.translator))},
+            )
         if method == "resources/read":
             return self._read_resource(request_id, params)
         if method == "shutdown":
@@ -139,9 +154,15 @@ class McpServer:
         if uri not in self.resources:
             return _error(request_id, -32602, f"unknown or disabled resource: {uri}")
         if uri == RUNBOOKS_SUMMARY_RESOURCE:
-            return _result(request_id, _resource_result(uri, _runbook_summary(self.runbooks)))
+            return _result(
+                request_id,
+                _resource_result(uri, _runbook_summary(self.runbooks, self.translator)),
+            )
         if uri == SKILLS_SUMMARY_RESOURCE:
-            return _result(request_id, _resource_result(uri, _skill_summary(self.skills)))
+            return _result(
+                request_id,
+                _resource_result(uri, _skill_summary(self.skills, self.translator)),
+            )
         return _error(request_id, -32602, f"unknown resource: {uri}")
 
     def _classify(self, arguments: JsonObject) -> JsonObject:
@@ -225,12 +246,28 @@ def _initialize_result(params: Any) -> JsonObject:
     }
 
 
-def _tools(names: tuple[McpToolName, ...]) -> tuple[JsonObject, ...]:
-    return tuple(_TOOL_DEFINITIONS[name] for name in names)
+def _tools(names: tuple[McpToolName, ...], translator: Translator) -> tuple[JsonObject, ...]:
+    return tuple(_localized_tool(name, translator) for name in names)
 
 
-def _resources(uris: tuple[McpResourceUri, ...]) -> tuple[JsonObject, ...]:
-    return tuple(_RESOURCE_DEFINITIONS[uri] for uri in uris)
+def _resources(uris: tuple[McpResourceUri, ...], translator: Translator) -> tuple[JsonObject, ...]:
+    return tuple(_localized_resource(uri, translator) for uri in uris)
+
+
+def _localized_tool(name: McpToolName, translator: Translator) -> JsonObject:
+    definition = dict(_TOOL_DEFINITIONS[name])
+    key = _MCP_TOOL_KEYS[name]
+    definition["title"] = translator.t(f"mcp.tools.{key}.title")
+    definition["description"] = translator.t(f"mcp.tools.{key}.description")
+    return definition
+
+
+def _localized_resource(uri: McpResourceUri, translator: Translator) -> JsonObject:
+    definition = dict(_RESOURCE_DEFINITIONS[uri])
+    key = _MCP_RESOURCE_KEYS[uri]
+    definition["name"] = translator.t(f"mcp.resources.{key}.name")
+    definition["description"] = translator.t(f"mcp.resources.{key}.description")
+    return definition
 
 
 def _resource_result(uri: str, payload: JsonObject) -> JsonObject:
@@ -246,17 +283,17 @@ def _resource_result(uri: str, payload: JsonObject) -> JsonObject:
     }
 
 
-def _runbook_summary(runbooks: tuple[Runbook, ...]) -> JsonObject:
+def _runbook_summary(runbooks: tuple[Runbook, ...], translator: Translator) -> JsonObject:
     return {
         "runbooks": [
             {
                 "id": runbook.id,
-                "title": runbook.title,
+                "title": runbook_display_title(runbook, translator),
                 "step_count": len(runbook.steps),
                 "safety_posture": _runbook_safety_posture(runbook),
                 "steps": [
                     {
-                        "purpose": step.purpose,
+                        "purpose": runbook_step_display_purpose(step, translator),
                         "read_only": step.read_only,
                     }
                     for step in runbook.steps
@@ -273,14 +310,14 @@ def _runbook_safety_posture(runbook: Runbook) -> str:
     return "policy_gated"
 
 
-def _skill_summary(skills: tuple[SkillManifest, ...]) -> JsonObject:
+def _skill_summary(skills: tuple[SkillManifest, ...], translator: Translator) -> JsonObject:
     return {
         "enabled": bool(skills),
         "skills": [
             {
                 "name": skill.name,
                 "version": skill.version,
-                "description": skill.description,
+                "description": skill_display_description(skill, translator),
                 "permissions": list(skill.permissions),
                 "has_planner_guidance": bool(skill.planner_guidance),
                 "runbooks": [runbook.id for runbook in skill.runbooks],

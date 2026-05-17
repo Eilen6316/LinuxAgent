@@ -1,11 +1,17 @@
 id: service.status
 title: Check SSH service health
+title_i18n:
+  zh-CN: 检查 SSH 服务健康状态
 steps:
   - command: systemctl status ssh --no-pager
     purpose: Show SSH service status without paging
+    purpose_i18n:
+      zh-CN: 不分页显示 SSH 服务状态
     read_only: true
   - command: journalctl -u ssh --no-pager -n 100
     purpose: Show recent SSH service logs
+    purpose_i18n:
+      zh-CN: 显示最近的 SSH 服务日志
     read_only: true
 preflight_checks: [systemctl status ssh --no-pager]
 verification_commands: [systemctl is-active ssh]
