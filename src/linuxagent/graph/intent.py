@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import inspect
-import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
-from enum import StrEnum
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage
@@ -46,7 +44,23 @@ from ..services import ClusterService
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
 from .common import trace_id
+from .direct_answer import (
+    DirectAnswerReviewDecision,
+    DirectAnswerReviewMode,
+    _complete_direct_answer,
+    _direct_answer_review_reason,
+    _fallback_direct_answer,
+    _parse_direct_answer_review,
+    _review_direct_answer,
+)
 from .events import RuntimeEventObserver, notify_event
+from .intent_router import (
+    AnswerContext,
+    IntentDecision,
+    IntentMode,
+    _parse_intent_decision,
+    _route_intent,
+)
 from .llm_calls import LLMCallOptions, complete_llm, complete_llm_with_tools
 from .runbook_planning import build_runbook_guidance
 from .state import (
@@ -57,43 +71,26 @@ from .state import (
     reset_planning_for_response,
     reset_planning_for_wizard,
 )
+from .wizard_gate import _apply_wizard_hard_gates
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 ToolEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
 MAX_PLAN_PARSE_RETRIES = 2
 NO_CHANGE_EVIDENCE_ITEMS = 3
 NO_CHANGE_EVIDENCE_CHARS = 180
-
-
-class IntentMode(StrEnum):
-    DIRECT_ANSWER = "DIRECT_ANSWER"
-    COMMAND_PLAN = "COMMAND_PLAN"
-    CLARIFY = "CLARIFY"
-    WIZARD_NEEDED = "WIZARD_NEEDED"
-
-
-class AnswerContext(StrEnum):
-    NONE = "none"
-    SELF_MANUAL = "self_manual"
-
-
-class DirectAnswerReviewMode(StrEnum):
-    KEEP_DIRECT_ANSWER = "KEEP_DIRECT_ANSWER"
-    WIZARD_NEEDED = "WIZARD_NEEDED"
-
-
-@dataclass(frozen=True)
-class IntentDecision:
-    mode: IntentMode
-    answer: str
-    reason: str
-    answer_context: AnswerContext = AnswerContext.NONE
-
-
-@dataclass(frozen=True)
-class DirectAnswerReviewDecision:
-    mode: DirectAnswerReviewMode
-    reason: str = ""
+__all__ = [
+    "AnswerContext",
+    "DirectAnswerReviewDecision",
+    "DirectAnswerReviewMode",
+    "IntentDecision",
+    "IntentMode",
+    "IntentNodeContext",
+    "_apply_wizard_hard_gates",
+    "_parse_direct_answer_review",
+    "_parse_intent_decision",
+    "make_parse_intent_node",
+    "tool_event_observer",
+]
 
 
 @dataclass(frozen=True)
@@ -298,29 +295,6 @@ async def _planned_outcome_update(
             context, messages, user_text, current_trace_id, outcome, observed_tool_outputs
         )
     return outcome
-
-
-async def _complete_direct_answer(
-    context: IntentNodeContext,
-    messages: list[BaseMessage],
-    user_text: str,
-    current_trace_id: str,
-) -> str:
-    prompt_messages = context.direct_answer_prompt.format_messages(
-        chat_history=messages[:-1],
-        product_context=context.direct_answer_context(),
-        user_input=user_text,
-    )
-    return (
-        await complete_llm(
-            context.provider,
-            prompt_messages,
-            telemetry=context.telemetry,
-            trace_id=current_trace_id,
-            attributes={"node": "parse_intent", "mode": "direct_answer"},
-            prompt_cache_key=context.prompt_cache_key,
-        )
-    ).strip()
 
 
 async def _no_change_update(
@@ -637,66 +611,6 @@ def _should_retry_parse_error(error: Exception | str) -> bool:
     return isinstance(error, CommandPlanParseError) and error.code is PlanParseErrorCode.ARGV_UNSAFE
 
 
-async def _route_intent(
-    context: IntentNodeContext,
-    messages: list[BaseMessage],
-    user_text: str,
-    current_trace_id: str,
-) -> IntentDecision:
-    router_messages = context.intent_router_prompt.format_messages(
-        chat_history=messages[:-1],
-        product_context=context.product_context,
-        user_input=user_text,
-    )
-    raw = (
-        await complete_llm(
-            context.provider,
-            router_messages,
-            telemetry=context.telemetry,
-            trace_id=current_trace_id,
-            attributes={"node": "parse_intent", "mode": "intent_router"},
-            prompt_cache_key=context.prompt_cache_key,
-        )
-    ).strip()
-    return _parse_intent_decision(raw)
-
-
-async def _fallback_direct_answer(
-    provider: LLMProvider,
-    direct_answer_prompt: Any,
-    messages: list[BaseMessage],
-    user_text: str,
-    current_trace_id: str,
-    planning_error: str,
-    telemetry: TelemetryRecorder | None,
-    product_context: str,
-    prompt_cache_key: str | None,
-) -> AgentState:
-    prompt_messages = direct_answer_prompt.format_messages(
-        chat_history=messages[:-1],
-        product_context=product_context,
-        user_input=(
-            f"{user_text}\n\n"
-            "The previous planner produced no executable command for this user message. "
-            f"Planning validation error: {planning_error}. "
-            "Answer conversationally in the user's language or ask one concise clarifying "
-            "question. Do not produce a command or JSON. Do not quote internal schema, "
-            "Pydantic, validation, or parser details back to the user."
-        ),
-    )
-    answer = (
-        await complete_llm(
-            provider,
-            prompt_messages,
-            telemetry=telemetry,
-            trace_id=current_trace_id,
-            attributes={"node": "parse_intent", "fallback": "direct_answer"},
-            prompt_cache_key=prompt_cache_key,
-        )
-    ).strip()
-    return _direct_response_update(current_trace_id, answer)
-
-
 async def _retry_plan_or_error(
     context: IntentNodeContext,
     messages: list[BaseMessage],
@@ -747,213 +661,6 @@ def _should_fallback_to_direct_answer(error: Exception | str) -> bool:
 
 def _argv_retry_exhausted_error(translator: Translator) -> str:
     return translator.t("graph.argv_retry_exhausted")
-
-
-def _parse_intent_decision(raw: str) -> IntentDecision:
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        return IntentDecision(IntentMode.COMMAND_PLAN, "", "invalid router JSON")
-    if not isinstance(payload, dict):
-        return IntentDecision(IntentMode.COMMAND_PLAN, "", "router JSON is not an object")
-    try:
-        mode = IntentMode(str(payload.get("mode", IntentMode.COMMAND_PLAN.value)).strip())
-    except ValueError:
-        mode = IntentMode.COMMAND_PLAN
-    answer = str(payload.get("answer", "")).strip()
-    reason = str(payload.get("reason", "")).strip()
-    answer_context = _parse_answer_context(payload, mode)
-    if mode is IntentMode.CLARIFY and not answer:
-        return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
-    if mode is IntentMode.DIRECT_ANSWER and answer_context is AnswerContext.NONE and not answer:
-        return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
-    return IntentDecision(mode, answer, reason, answer_context)
-
-
-def _parse_answer_context(payload: dict[str, Any], mode: IntentMode) -> AnswerContext:
-    if mode is not IntentMode.DIRECT_ANSWER:
-        return AnswerContext.NONE
-    raw = str(payload.get("answer_context", AnswerContext.NONE.value)).strip()
-    try:
-        return AnswerContext(raw)
-    except ValueError:
-        return AnswerContext.NONE
-
-
-async def _review_direct_answer(
-    context: IntentNodeContext,
-    messages: list[BaseMessage],
-    user_text: str,
-    intent: IntentDecision,
-    current_trace_id: str,
-) -> DirectAnswerReviewDecision:
-    prompt_messages = context.direct_answer_review_prompt.format_messages(
-        chat_history=messages[:-1],
-        review_context=json.dumps(
-            {
-                "user_input": user_text,
-                "proposed_answer": intent.answer,
-                "router_reason": intent.reason,
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        ),
-    )
-    try:
-        raw = (
-            await complete_llm(
-                context.provider,
-                prompt_messages,
-                telemetry=context.telemetry,
-                trace_id=current_trace_id,
-                attributes={"node": "parse_intent", "mode": "direct_answer_review"},
-                prompt_cache_key=context.prompt_cache_key,
-            )
-        ).strip()
-    except ProviderError:
-        return DirectAnswerReviewDecision(DirectAnswerReviewMode.KEEP_DIRECT_ANSWER)
-    return _parse_direct_answer_review(raw)
-
-
-def _parse_direct_answer_review(raw: str) -> DirectAnswerReviewDecision:
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        return DirectAnswerReviewDecision(DirectAnswerReviewMode.KEEP_DIRECT_ANSWER)
-    if not isinstance(payload, dict):
-        return DirectAnswerReviewDecision(DirectAnswerReviewMode.KEEP_DIRECT_ANSWER)
-    try:
-        mode = DirectAnswerReviewMode(
-            str(payload.get("mode", DirectAnswerReviewMode.KEEP_DIRECT_ANSWER.value)).strip()
-        )
-    except ValueError:
-        mode = DirectAnswerReviewMode.KEEP_DIRECT_ANSWER
-    reason = str(payload.get("reason", "")).strip()
-    return DirectAnswerReviewDecision(mode, reason)
-
-
-def _direct_answer_review_reason(router_reason: str, review_reason: str) -> str:
-    if router_reason and review_reason:
-        return f"{router_reason}; direct answer review: {review_reason}"
-    return review_reason or router_reason or "direct answer review requested wizard"
-
-
-async def _apply_wizard_hard_gates(
-    context: IntentNodeContext,
-    intent: IntentDecision,
-    state: AgentState,
-    messages: list[BaseMessage],
-    user_text: str,
-    current_trace_id: str,
-) -> IntentDecision:
-    if intent.mode is not IntentMode.WIZARD_NEEDED:
-        return intent
-    reason = _wizard_override_reason(state)
-    if reason is None:
-        return intent
-    _record_wizard_router_override(context.telemetry, current_trace_id, reason)
-    if reason in {"submitted", "completed"}:
-        return IntentDecision(
-            IntentMode.COMMAND_PLAN,
-            "",
-            _wizard_override_message(intent.reason, reason),
-            AnswerContext.NONE,
-        )
-    answer = await _wizard_gate_response(
-        context, state, messages, user_text, current_trace_id, reason
-    )
-    return IntentDecision(
-        IntentMode.CLARIFY,
-        answer,
-        _wizard_override_message(intent.reason, reason),
-        AnswerContext.NONE,
-    )
-
-
-def _wizard_override_reason(state: AgentState) -> str | None:
-    result = state.get("wizard_result")
-    if isinstance(result, dict) and result.get("status") == "submit":
-        return "submitted"
-    if state.get("wizard_completed") is True:
-        return "completed"
-    if isinstance(result, dict) and result.get("status") == "chat_requested":
-        return "chat_requested"
-    if not state.get("ui_interactive", False):
-        return "non_tty"
-    if state.get("wizard_attempted") is True:
-        return "loop_guard"
-    return None
-
-
-def _record_wizard_router_override(
-    telemetry: TelemetryRecorder | None, current_trace_id: str, reason: str
-) -> None:
-    if telemetry is None:
-        return
-    telemetry.event(
-        "wizard_router.override",
-        trace_id=current_trace_id,
-        attributes={
-            "wizard_router.overridden": True,
-            "wizard_router.override_reason": reason,
-        },
-    )
-
-
-def _wizard_override_message(original_reason: str, override_reason: str) -> str:
-    if not original_reason:
-        return f"wizard overridden: {override_reason}"
-    return f"{original_reason}; wizard overridden: {override_reason}"
-
-
-async def _wizard_gate_response(
-    context: IntentNodeContext,
-    state: AgentState,
-    messages: list[BaseMessage],
-    user_text: str,
-    current_trace_id: str,
-    reason: str,
-) -> str:
-    prompt_messages = context.wizard_response_prompt.format_messages(
-        chat_history=messages[:-1],
-        response_context=json.dumps(
-            {
-                "original_user_input": user_text,
-                "status": f"router_{reason}",
-                "partial": True,
-                "answered_steps": _wizard_answered_steps(state),
-                "unanswered_steps": [],
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        ),
-    )
-    try:
-        answer = await complete_llm(
-            context.provider,
-            prompt_messages,
-            telemetry=context.telemetry,
-            trace_id=current_trace_id,
-            attributes={"node": "parse_intent", "mode": "wizard_gate_response"},
-            prompt_cache_key=context.prompt_cache_key,
-        )
-    except ProviderError:
-        return ""
-    return answer.strip()
-
-
-def _wizard_answered_steps(state: AgentState) -> list[str]:
-    result = state.get("wizard_result")
-    if not isinstance(result, dict):
-        return []
-    answers = result.get("answers")
-    if not isinstance(answers, list):
-        return []
-    step_ids: list[str] = []
-    for answer in answers:
-        if isinstance(answer, dict) and isinstance(answer.get("step_id"), str):
-            step_ids.append(answer["step_id"])
-    return step_ids
 
 
 def _direct_response_update(current_trace_id: str, response: str) -> AgentState:
