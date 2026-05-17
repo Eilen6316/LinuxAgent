@@ -123,3 +123,14 @@ def build_intent_router_prompt() -> ChatPromptTemplate:
 def build_analysis_prompt() -> ChatPromptTemplate:
     """Build a prompt for terminal-friendly command-result analysis."""
     return ChatPromptTemplate.from_messages([("system", load_prompt("analysis.md"))])
+
+
+def build_wizard_planner_prompt() -> ChatPromptTemplate:
+    """Build a prompt for parameter-collection wizard planning."""
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", load_prompt("wizard_planner.md")),
+            MessagesPlaceholder("chat_history", optional=True),
+            ("human", "{user_input}"),
+        ]
+    )

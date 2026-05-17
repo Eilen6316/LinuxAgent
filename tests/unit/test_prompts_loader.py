@@ -13,6 +13,7 @@ from linuxagent.prompts_loader import (
     build_planner_gate_prompt,
     build_planner_prompt,
     build_repair_prompt,
+    build_wizard_planner_prompt,
     find_prompts_dir,
     load_system_prompt,
 )
@@ -28,6 +29,7 @@ def test_find_prompts_dir_resolves_for_editable_install() -> None:
     assert (path / "planner_gate.md").is_file()
     assert (path / "repair.md").is_file()
     assert (path / "file_patch_repair.md").is_file()
+    assert (path / "wizard_planner.md").is_file()
     assert (path / "manifest" / "tools.md").is_file()
 
 
@@ -140,3 +142,12 @@ def test_build_analysis_prompt_has_result_context_variable() -> None:
     tmpl = build_analysis_prompt()
     assert isinstance(tmpl, ChatPromptTemplate)
     assert "result_context" in tmpl.input_variables
+
+
+def test_build_wizard_planner_prompt_has_user_input_variable() -> None:
+    tmpl = build_wizard_planner_prompt()
+    assert isinstance(tmpl, ChatPromptTemplate)
+    assert "user_input" in tmpl.input_variables
+    body = str(tmpl.messages[0].prompt.template)
+    assert "WizardPlan schema" in body
+    assert "Type something" in body
