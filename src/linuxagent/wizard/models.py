@@ -171,6 +171,34 @@ class WizardResult(BaseModel):
             raise ValueError("submit result must answer every step")
 
 
+class WizardStableState(BaseModel):
+    model_config = _FROZEN
+
+    answers: tuple[WizardAnswer, ...] = ()
+    current_step_id: str | None = None
+
+    @field_validator("current_step_id")
+    @classmethod
+    def _strip_current_step_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    def validate_for_plan(self, plan: WizardPlan) -> None:
+        steps = {step.id: step for step in plan.steps}
+        answer_ids = [answer.step_id for answer in self.answers]
+        if len(answer_ids) != len(set(answer_ids)):
+            raise ValueError("stable answers must not repeat step ids")
+        for answer in self.answers:
+            step = steps.get(answer.step_id)
+            if step is None:
+                raise ValueError(f"unknown stable answer step id: {answer.step_id}")
+            answer.validate_for_step(step)
+        if self.current_step_id is not None and self.current_step_id not in steps:
+            raise ValueError(f"unknown current step id: {self.current_step_id}")
+
+
 def parse_wizard_plan_payload(payload: Any) -> WizardPlan:
     """Validate raw decoded JSON as a :class:`WizardPlan`."""
     if not isinstance(payload, dict):

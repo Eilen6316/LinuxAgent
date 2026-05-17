@@ -6,7 +6,6 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from ..interfaces import ExecutionResult, UserInterface
-from ..wizard import WizardResult
 from .wizard_interrupt import handle_wizard_interrupt
 
 
@@ -21,8 +20,7 @@ class WizardAwareUserInterface(UserInterface):
     async def handle_interrupt(self, payload: dict[str, Any]) -> dict[str, Any]:
         if payload.get("type") != "wizard":
             return await self._wrapped.handle_interrupt(payload)
-        result = await handle_wizard_interrupt(payload)
-        return _wizard_result_payload(result)
+        return await handle_wizard_interrupt(payload)
 
     async def print(self, text: str) -> None:
         await self._wrapped.print(text)
@@ -66,7 +64,3 @@ class WizardAwareUserInterface(UserInterface):
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._wrapped, name)
-
-
-def _wizard_result_payload(result: WizardResult) -> dict[str, object]:
-    return result.model_dump(mode="json")

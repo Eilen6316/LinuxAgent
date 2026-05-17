@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.application.current import get_app
@@ -13,7 +14,7 @@ from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
-from ..wizard import WizardController, WizardPlan, WizardResult
+from ..wizard import WizardController, WizardPlan, WizardResult, WizardStableState
 from ..wizard.render_model import WizardOptionRow, WizardRenderModel, build_render_model
 
 _USER_INTENT_LIMIT = 120
@@ -21,24 +22,48 @@ _ROW_LABEL_LIMIT = 48
 _DESCRIPTION_LIMIT = 72
 
 
+StableStateCallback = Callable[[WizardStableState], None]
+
+
+@dataclass(frozen=True)
+class WizardCheckpoint:
+    stable_state: WizardStableState
+    status: str = "checkpoint"
+
+
+WizardExit = WizardResult | WizardCheckpoint
+
+
 class WizardTUI:
-    def __init__(self, plan: WizardPlan) -> None:
-        self.controller = WizardController(plan)
+    def __init__(
+        self,
+        plan: WizardPlan,
+        *,
+        stable_state: WizardStableState | None = None,
+        on_stable_state: StableStateCallback | None = None,
+        checkpoint_on_stable_state: bool = False,
+    ) -> None:
+        self.controller = WizardController.from_stable_state(plan, stable_state)
         self._control = FormattedTextControl(self._fragments, focusable=True)
-        self._application: Application[WizardResult] = Application(
+        self._application: Application[WizardExit] = Application(
             layout=Layout(HSplit([Window(self._control, wrap_lines=False)])),
-            key_bindings=wizard_key_bindings(self.controller, self._exit),
+            key_bindings=wizard_key_bindings(
+                self.controller,
+                self._exit,
+                on_stable_state=on_stable_state,
+                checkpoint_on_stable_state=checkpoint_on_stable_state,
+            ),
             style=_style(),
             full_screen=True,
         )
 
-    async def run_async(self) -> WizardResult:
+    async def run_async(self) -> WizardExit:
         result = await self._application.run_async()
-        if isinstance(result, WizardResult):
+        if isinstance(result, WizardResult | WizardCheckpoint):
             return result
-        raise RuntimeError("wizard TUI exited without a WizardResult")
+        raise RuntimeError("wizard TUI exited without a wizard result")
 
-    def _exit(self, result: WizardResult) -> None:
+    def _exit(self, result: WizardExit) -> None:
         get_app().exit(result=result)
 
     def _fragments(self) -> StyleAndTextTuples:
@@ -60,11 +85,20 @@ def render_fragments(model: WizardRenderModel) -> StyleAndTextTuples:
 
 def wizard_key_bindings(
     controller: WizardController,
-    exit_callback: Callable[[WizardResult], None],
+    exit_callback: Callable[[WizardExit], None],
+    *,
+    on_stable_state: StableStateCallback | None = None,
+    checkpoint_on_stable_state: bool = False,
 ) -> KeyBindings:
     bindings = KeyBindings()
     _bind_navigation(bindings, controller)
-    _bind_selection(bindings, controller, exit_callback)
+    _bind_selection(
+        bindings,
+        controller,
+        exit_callback,
+        on_stable_state,
+        checkpoint_on_stable_state,
+    )
     _bind_text_editing(bindings, controller, exit_callback)
     return bindings
 
@@ -95,11 +129,19 @@ def _bind_navigation(bindings: KeyBindings, controller: WizardController) -> Non
 def _bind_selection(
     bindings: KeyBindings,
     controller: WizardController,
-    exit_callback: Callable[[WizardResult], None],
+    exit_callback: Callable[[WizardExit], None],
+    on_stable_state: StableStateCallback | None,
+    checkpoint_on_stable_state: bool,
 ) -> None:
     @bindings.add("enter")
     def _enter(_event: object) -> None:
+        before = controller.stable_state()
+        checkpoint = _stable_checkpoint_target(controller)
         result = controller.enter()
+        stable_state = _notify_stable_state_change(controller, before, on_stable_state)
+        if checkpoint_on_stable_state and checkpoint and stable_state is not None:
+            exit_callback(WizardCheckpoint(stable_state))
+            return
         if result is not None:
             exit_callback(result)
 
@@ -112,7 +154,7 @@ def _bind_selection(
 def _bind_text_editing(
     bindings: KeyBindings,
     controller: WizardController,
-    exit_callback: Callable[[WizardResult], None],
+    exit_callback: Callable[[WizardExit], None],
 ) -> None:
     @bindings.add("backspace")
     def _backspace(_event: object) -> None:
@@ -135,9 +177,20 @@ def _bind_text_editing(
             controller.append_text(str(data))
 
 
-async def run_wizard(plan: WizardPlan) -> WizardResult:
+async def run_wizard(
+    plan: WizardPlan,
+    *,
+    stable_state: WizardStableState | None = None,
+    on_stable_state: StableStateCallback | None = None,
+    checkpoint_on_stable_state: bool = False,
+) -> WizardExit:
     """Run the full-screen wizard TUI."""
-    return await WizardTUI(plan).run_async()
+    return await WizardTUI(
+        plan,
+        stable_state=stable_state,
+        on_stable_state=on_stable_state,
+        checkpoint_on_stable_state=checkpoint_on_stable_state,
+    ).run_async()
 
 
 def _bind_number(bindings: KeyBindings, controller: WizardController, number: int) -> None:
@@ -178,6 +231,25 @@ def _truncate(value: str, limit: int) -> str:
     if len(value) <= limit:
         return value
     return f"{value[: limit - 3]}..."
+
+
+def _notify_stable_state_change(
+    controller: WizardController,
+    before: WizardStableState,
+    callback: StableStateCallback | None,
+) -> WizardStableState | None:
+    after = controller.stable_state()
+    if after == before:
+        return None
+    if callback is not None:
+        callback(after)
+    return after
+
+
+def _stable_checkpoint_target(controller: WizardController) -> bool:
+    if controller.editing_text:
+        return True
+    return controller.focused_row_kind == "option" and controller.current_step.kind == "single"
 
 
 def _style() -> Style:

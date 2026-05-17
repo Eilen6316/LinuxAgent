@@ -23,6 +23,7 @@ def test_initial_state_seeds_human_message() -> None:
     assert state["wizard_plan"] is None
     assert state["wizard_result"] is None
     assert state["wizard_context"] is None
+    assert state["wizard_stable_state"] is None
     assert state["wizard_completed"] is False
     assert state["wizard_attempted"] is False
     assert state["wizard_failed_reason"] is None

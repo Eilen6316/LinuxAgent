@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from linuxagent.wizard.controller import WizardController
-from linuxagent.wizard.models import WizardOption, WizardPlan, WizardStep
+from linuxagent.wizard.models import WizardOption, WizardPlan, WizardStableState, WizardStep
 
 
 def _option(option_id: str) -> WizardOption:
@@ -154,3 +156,34 @@ def test_escape_cancels_outside_text_edit() -> None:
 
     assert result is not None
     assert result.status == "cancel"
+
+
+def test_stable_state_round_trips_confirmed_answers() -> None:
+    controller = WizardController(_plan())
+    controller.enter()
+
+    restored = WizardController.from_stable_state(_plan(), controller.stable_state())
+
+    assert restored.answers["database"].selected_ids == ("postgres",)
+    assert restored.current_step_id == "extras"
+    assert restored.editing_text is False
+    assert restored.text_buffer == ""
+
+
+def test_stable_state_does_not_include_uncommitted_text() -> None:
+    controller = WizardController(_plan())
+    controller.focus_option_number(4)
+    controller.start_text_edit()
+    controller.append_text("temporary")
+
+    stable = controller.stable_state()
+
+    assert stable.answers == ()
+    assert stable.current_step_id == "database"
+
+
+def test_restore_stable_state_rejects_unknown_step() -> None:
+    stable = WizardStableState(current_step_id="missing")
+
+    with pytest.raises(ValueError, match="unknown current step id"):
+        WizardController.from_stable_state(_plan(), stable)

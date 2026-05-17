@@ -52,6 +52,7 @@ class AgentState(TypedDict, total=False):
     wizard_plan: dict[str, object] | None
     wizard_result: dict[str, object] | None
     wizard_context: str | None
+    wizard_stable_state: dict[str, object] | None
     wizard_completed: bool
     wizard_attempted: bool
     wizard_failed_reason: WizardFailedReason | None
@@ -134,6 +135,7 @@ def _initial_wizard_state(ui_interactive: bool) -> AgentState:
         "wizard_plan": None,
         "wizard_result": None,
         "wizard_context": None,
+        "wizard_stable_state": None,
         "wizard_completed": False,
         "wizard_attempted": False,
         "wizard_failed_reason": None,

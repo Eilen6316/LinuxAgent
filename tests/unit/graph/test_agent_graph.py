@@ -536,11 +536,22 @@ async def test_graph_wizard_submit_resume_records_result_without_command(tmp_pat
         initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
         config=config,
     )
-    await graph.ainvoke(Command(resume=_wizard_submit_result()), config=config)
+    resume_payload = {
+        **_wizard_submit_result(),
+        "stable_state": {
+            "answers": [{"step_id": "database", "selected_ids": ["postgres"]}],
+            "current_step_id": "target",
+        },
+    }
+    await graph.ainvoke(Command(resume=resume_payload), config=config)
 
     snapshot = await graph.aget_state(config)
     assert snapshot.values["wizard_completed"] is True
     assert snapshot.values.get("wizard_result") is None
+    assert snapshot.values["wizard_stable_state"] == {
+        "answers": [{"step_id": "database", "selected_ids": ["postgres"], "text": None}],
+        "current_step_id": "target",
+    }
     assert snapshot.values["pending_command"] == "python3 -c 'print(1)'"
     assert snapshot.values["direct_response"] is False
     assert snapshot.tasks[0].interrupts[0].value["type"] == "confirm_command"
@@ -558,6 +569,62 @@ async def test_graph_wizard_submit_resume_records_result_without_command(tmp_pat
         "\n".join(str(message.content) for message in call) for call in provider.complete_messages
     ]
     assert any("wizard_context" in prompt for prompt in prompts)
+
+
+async def test_graph_wizard_payload_includes_stable_state_on_resume(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [_router_response("WIZARD_NEEDED"), _wizard_plan_json()],
+    )
+    config = {"configurable": {"thread_id": "wizard-stable-payload"}}
+    state = initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True)
+    state["wizard_stable_state"] = {
+        "answers": [{"step_id": "database", "selected_ids": ["postgres"], "text": None}],
+        "current_step_id": "target",
+    }
+
+    await graph.ainvoke(state, config=config)
+
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+    assert payload["context"]["stable_state"] == {
+        "answers": [{"step_id": "database", "selected_ids": ["postgres"], "text": None}],
+        "current_step_id": "target",
+    }
+
+
+async def test_graph_wizard_checkpoint_resume_updates_stable_state(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [_router_response("WIZARD_NEEDED"), _wizard_plan_json()],
+    )
+    config = {"configurable": {"thread_id": "wizard-checkpoint"}}
+
+    await graph.ainvoke(
+        initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+    await graph.ainvoke(
+        Command(
+            resume={
+                "status": "checkpoint",
+                "stable_state": {
+                    "answers": [{"step_id": "database", "selected_ids": ["postgres"]}],
+                    "current_step_id": "target",
+                },
+            }
+        ),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["wizard_stable_state"] == {
+        "answers": [{"step_id": "database", "selected_ids": ["postgres"], "text": None}],
+        "current_step_id": "target",
+    }
+    payload = snapshot.tasks[0].interrupts[0].value
+    assert payload["type"] == "wizard"
+    assert payload["context"]["stable_state"] == snapshot.values["wizard_stable_state"]
 
 
 async def test_graph_wizard_chat_requested_resume_records_result(tmp_path) -> None:

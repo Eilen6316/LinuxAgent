@@ -8,7 +8,9 @@ from typing import Any
 import pytest
 
 from linuxagent.ui.interrupt_dispatcher import WizardAwareUserInterface
+from linuxagent.ui.wizard import WizardCheckpoint
 from linuxagent.ui.wizard_interrupt import handle_wizard_interrupt
+from linuxagent.wizard import WizardResult
 
 
 async def test_wizard_aware_ui_delegates_non_wizard_interrupts() -> None:
@@ -24,7 +26,7 @@ async def test_wizard_aware_ui_delegates_non_wizard_interrupts() -> None:
 async def test_wizard_aware_ui_handles_wizard_interrupt(monkeypatch) -> None:
     async def fake_handler(payload: dict[str, object]) -> Any:
         assert payload["type"] == "wizard"
-        return _Result()
+        return {"status": "cancel", "answers": [], "partial": True}
 
     import linuxagent.ui.interrupt_dispatcher as dispatcher
 
@@ -70,19 +72,83 @@ async def test_handle_wizard_interrupt_non_tty_refuses(monkeypatch) -> None:
 
     result = await handle_wizard_interrupt({"type": "wizard", "plan": _wizard_plan_payload()})
 
-    assert result.status == "non_tty_refused"
-    assert result.partial is True
+    assert result["status"] == "non_tty_refused"
+    assert result["partial"] is True
+
+
+async def test_handle_wizard_interrupt_passes_stable_state_to_tui(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    captured: dict[str, object] = {}
+
+    async def fake_run_wizard(plan: object, **kwargs: Any) -> WizardResult:
+        del plan
+        captured.update(kwargs)
+        callback = kwargs["on_stable_state"]
+        callback(kwargs["stable_state"])
+        return WizardResult(
+            status="chat_requested",
+            partial=True,
+            answers=tuple(kwargs["stable_state"].answers),
+        )
+
+    import linuxagent.ui.wizard_interrupt as wizard_interrupt
+
+    monkeypatch.setattr(wizard_interrupt, "run_wizard", fake_run_wizard)
+    payload = {
+        "type": "wizard",
+        "plan": _wizard_plan_payload(),
+        "context": {
+            "stable_state": {
+                "current_step_id": "target",
+                "answers": [{"step_id": "target", "selected_ids": ["dev"]}],
+            }
+        },
+    }
+
+    result = await handle_wizard_interrupt(payload)
+
+    assert result["status"] == "chat_requested"
+    assert result["stable_state"] == {
+        "answers": [{"step_id": "target", "selected_ids": ["dev"], "text": None}],
+        "current_step_id": "target",
+    }
+
+
+async def test_handle_wizard_interrupt_returns_checkpoint_payload(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    async def fake_run_wizard(plan: object, **kwargs: Any) -> WizardCheckpoint:
+        del plan
+        return WizardCheckpoint(kwargs["stable_state"])
+
+    import linuxagent.ui.wizard_interrupt as wizard_interrupt
+
+    monkeypatch.setattr(wizard_interrupt, "run_wizard", fake_run_wizard)
+    payload = {
+        "type": "wizard",
+        "plan": _wizard_plan_payload(),
+        "context": {
+            "stable_state": {
+                "current_step_id": "target",
+                "answers": [{"step_id": "target", "selected_ids": ["dev"]}],
+            }
+        },
+    }
+
+    result = await handle_wizard_interrupt(payload)
+
+    assert result == {
+        "status": "checkpoint",
+        "stable_state": {
+            "answers": [{"step_id": "target", "selected_ids": ["dev"], "text": None}],
+            "current_step_id": "target",
+        },
+    }
 
 
 async def test_handle_wizard_interrupt_rejects_non_wizard_payload() -> None:
     with pytest.raises(ValueError, match="wizard interrupt payload type required"):
         await handle_wizard_interrupt({"type": "confirm_command"})
-
-
-class _Result:
-    def model_dump(self, *, mode: str) -> dict[str, object]:
-        assert mode == "json"
-        return {"status": "cancel", "answers": [], "partial": True}
 
 
 class _WrappedUI:

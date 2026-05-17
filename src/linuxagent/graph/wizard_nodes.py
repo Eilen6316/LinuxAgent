@@ -15,9 +15,16 @@ from ..interfaces import LLMProvider
 from ..prompts_loader import build_wizard_response_prompt
 from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
-from ..wizard import WizardPlanner, WizardResult, render_wizard_context
 from ..wizard.audit import record_wizard_event
-from ..wizard.models import WizardPlan, WizardPlanParseError, parse_wizard_plan_payload
+from ..wizard.context import render_wizard_context
+from ..wizard.models import (
+    WizardPlan,
+    WizardPlanParseError,
+    WizardResult,
+    WizardStableState,
+    parse_wizard_plan_payload,
+)
+from ..wizard.planner import WizardPlanner
 from .common import trace_id
 from .llm_calls import complete_llm
 from .state import AgentState
@@ -96,6 +103,9 @@ async def _resume_wizard(
     telemetry: TelemetryRecorder | None,
 ) -> AgentState | Command[Any]:
     response = interrupt(_wizard_payload(current_trace_id, user_intent, plan, state))
+    stable_state = _parse_wizard_stable_state(response, plan)
+    if _is_wizard_checkpoint_response(response):
+        return _wizard_checkpoint_command(current_trace_id, plan, stable_state)
     result = _parse_wizard_response(response, plan)
     if result is None:
         return await _wizard_refused_update(
@@ -112,6 +122,7 @@ async def _resume_wizard(
         "wizard_attempted": True,
         "wizard_plan": plan.model_dump(mode="json"),
         "wizard_result": result.model_dump(mode="json"),
+        "wizard_stable_state": _wizard_stable_state_payload(stable_state),
         "wizard_failed_reason": None,
         "direct_response": False,
     }
@@ -128,6 +139,24 @@ async def _resume_wizard(
         telemetry,
         current_trace_id,
         update,
+    )
+
+
+def _wizard_checkpoint_command(
+    current_trace_id: str,
+    plan: WizardPlan,
+    stable_state: WizardStableState | None,
+) -> Command[Any]:
+    return Command(
+        goto="wizard",
+        update={
+            "trace_id": current_trace_id,
+            "wizard_attempted": True,
+            "wizard_plan": plan.model_dump(mode="json"),
+            "wizard_stable_state": _wizard_stable_state_payload(stable_state),
+            "wizard_failed_reason": None,
+            "direct_response": False,
+        },
     )
 
 
@@ -264,16 +293,20 @@ def _wizard_payload(
     plan: WizardPlan,
     state: AgentState,
 ) -> dict[str, object]:
+    context: dict[str, object] = {
+        "source": "auto",
+        "original_user_input": user_intent,
+        "attempt": _wizard_attempt(state),
+    }
+    stable_state = state.get("wizard_stable_state")
+    if stable_state is not None:
+        context["stable_state"] = stable_state
     return {
         "type": "wizard",
         "trace_id": current_trace_id,
         "user_intent": user_intent,
         "plan": plan.model_dump(mode="json"),
-        "context": {
-            "source": "auto",
-            "original_user_input": user_intent,
-            "attempt": _wizard_attempt(state),
-        },
+        "context": context,
     }
 
 
@@ -295,11 +328,47 @@ def _parse_wizard_response(response: Any, plan: WizardPlan) -> WizardResult | No
     if not isinstance(response, dict):
         return None
     try:
-        result = WizardResult.model_validate(response)
+        result = WizardResult.model_validate(_wizard_result_payload(response))
         result.validate_for_plan(plan)
     except (ValidationError, ValueError):
         return None
     return result
+
+
+def _wizard_result_payload(response: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": response.get("status"),
+        "answers": response.get("answers", ()),
+        "partial": response.get("partial"),
+    }
+
+
+def _parse_wizard_stable_state(response: Any, plan: WizardPlan) -> WizardStableState | None:
+    if not isinstance(response, dict):
+        return None
+    payload = response.get("stable_state")
+    if payload is None:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        stable_state = WizardStableState.model_validate(payload)
+        stable_state.validate_for_plan(plan)
+    except (ValidationError, ValueError):
+        return None
+    return stable_state
+
+
+def _is_wizard_checkpoint_response(response: Any) -> bool:
+    return isinstance(response, dict) and response.get("status") == "checkpoint"
+
+
+def _wizard_stable_state_payload(
+    stable_state: WizardStableState | None,
+) -> dict[str, object] | None:
+    if stable_state is None:
+        return None
+    return stable_state.model_dump(mode="json")
 
 
 def _wizard_user_intent(state: AgentState) -> str:

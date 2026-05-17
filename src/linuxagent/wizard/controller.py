@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .models import WizardAnswer, WizardPlan, WizardResult, WizardStep
+from .models import WizardAnswer, WizardPlan, WizardResult, WizardStableState, WizardStep
 
 TYPE_SOMETHING_ROW = "type_something"
 CHAT_ABOUT_THIS_ROW = "chat_about_this"
@@ -19,6 +19,20 @@ class WizardController:
     editing_text: bool = False
     text_buffer: str = ""
     _edit_original: WizardAnswer | None = None
+
+    @classmethod
+    def from_stable_state(
+        cls,
+        plan: WizardPlan,
+        stable_state: WizardStableState | None,
+    ) -> WizardController:
+        controller = cls(plan)
+        if stable_state is None:
+            return controller
+        stable_state.validate_for_plan(plan)
+        controller.answers = {answer.step_id: answer for answer in stable_state.answers}
+        controller._restore_current_step(stable_state.current_step_id)
+        return controller
 
     @property
     def current_step_id(self) -> str:
@@ -161,6 +175,10 @@ class WizardController:
     def is_step_confirmed(self, step_id: str) -> bool:
         return step_id in self.answers
 
+    def stable_state(self) -> WizardStableState:
+        current_step_id = None if self.is_submit_tab else self.current_step_id
+        return WizardStableState(answers=self.answer_tuple(), current_step_id=current_step_id)
+
     def _select_focused_option(self) -> None:
         step = self.current_step
         option = step.options[self.option_focus_index]
@@ -191,3 +209,12 @@ class WizardController:
         self.editing_text = False
         self.text_buffer = ""
         self._edit_original = None
+
+    def _restore_current_step(self, step_id: str | None) -> None:
+        if step_id is not None:
+            for index, step in enumerate(self.plan.steps):
+                if step.id == step_id:
+                    self.current_step_index = index
+                    self.option_focus_index = 0
+                    return
+        self._jump_to_next_unconfirmed()

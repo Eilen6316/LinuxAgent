@@ -7,9 +7,9 @@ from typing import Any
 
 from prompt_toolkit.keys import Keys
 
-from linuxagent.ui.wizard import render_fragments, wizard_key_bindings
+from linuxagent.ui.wizard import WizardCheckpoint, render_fragments, wizard_key_bindings
 from linuxagent.wizard.controller import WizardController
-from linuxagent.wizard.models import WizardOption, WizardPlan, WizardStep
+from linuxagent.wizard.models import WizardOption, WizardPlan, WizardStableState, WizardStep
 from linuxagent.wizard.render_model import build_render_model
 
 
@@ -96,6 +96,64 @@ def test_key_bindings_drive_controller() -> None:
     assert controller.is_submit_tab
     handlers["enter"](_Event())
     assert exits == ["submit"]
+
+
+def test_key_bindings_checkpoint_only_stable_answer_changes() -> None:
+    controller = WizardController(_plan())
+    stable_states: list[WizardStableState] = []
+    bindings = wizard_key_bindings(
+        controller,
+        lambda result: None,
+        on_stable_state=stable_states.append,
+    )
+    handlers = _handlers(bindings)
+
+    handlers["down"](_Event())
+    handlers["<any>"](_Event("x"))
+    assert stable_states == []
+
+    handlers["enter"](_Event())
+
+    assert len(stable_states) == 1
+    assert stable_states[0].answers[0].step_id == "database"
+
+
+def test_key_bindings_can_exit_with_checkpoint_on_stable_answer_change() -> None:
+    controller = WizardController(_plan())
+    exits: list[object] = []
+    bindings = wizard_key_bindings(
+        controller,
+        exits.append,
+        checkpoint_on_stable_state=True,
+    )
+    handlers = _handlers(bindings)
+
+    handlers["enter"](_Event())
+
+    assert isinstance(exits[0], WizardCheckpoint)
+    assert exits[0].stable_state.answers[0].step_id == "database"
+
+
+def test_key_bindings_checkpoint_text_commit_only() -> None:
+    controller = WizardController(_plan())
+    stable_states: list[WizardStableState] = []
+    bindings = wizard_key_bindings(
+        controller,
+        lambda result: None,
+        on_stable_state=stable_states.append,
+    )
+    handlers = _handlers(bindings)
+
+    controller.focus_option_number(4)
+    handlers["e"](_Event())
+    handlers["<any>"](_Event("a"))
+    handlers["<any>"](_Event("b"))
+    assert stable_states == []
+
+    handlers["enter"](_Event())
+
+    assert len(stable_states) == 1
+    assert stable_states[0].answers[0].text == "ab"
 
 
 def test_text_edit_bindings() -> None:
