@@ -60,6 +60,40 @@ display-only metadata. New user-visible fixed strings should use a locale key;
 new model-visible instructions belong in `prompts/`, runbooks, policy YAML, or
 the relevant structured data source.
 
+## Architecture Stabilization Track
+
+The current stabilization track is focused on reducing orchestration complexity
+before adding more product surface. During this track, feature work should be
+deferred unless a maintainer explicitly interrupts the sequence.
+
+Work must stay one subplan scoped: do not mix graph boundary work, node splits,
+file patch engine movement, sandbox wording, and container wiring in the same
+change. Behavior-preserving refactors must not change prompt templates,
+planner schemas, policy decisions, HITL semantics, audit JSON fields, or CLI
+UX.
+
+Baseline hotspots being reduced:
+
+| Module | Current responsibility | Intended owner after stabilization |
+|---|---|---|
+| `src/linuxagent/graph/intent.py` | Intent routing, direct answer, planner gate, tool planning, parse repair, wizard gates | Facade plus focused router, direct-answer, planner, tool-loop, no-change, and repair modules |
+| `src/linuxagent/graph/nodes.py` | Confirmation, permissions, execution, batching, runbook advance, analysis | Facade plus focused confirm, permission, execution, batch, runbook, and analysis modules |
+| `src/linuxagent/graph/file_patch_nodes.py` | File patch confirmation, apply, verification, repair | Facade plus focused file patch graph-node modules |
+| `src/linuxagent/plans/file_patch.py` | File patch models, parsing, safety, diff apply, transactions, summaries | Public facade plus focused implementation modules under `plans/` |
+| `src/linuxagent/graph/state.py` | Broad graph state contract | Documented section contracts with producer/consumer ownership |
+| `src/linuxagent/container.py` | Provider, service, tool, UI, graph, and telemetry wiring | Public composition root delegating to focused wiring helpers |
+
+Execution order for the first phase is:
+
+1. stabilization inventory and baseline gates
+2. `GraphRuntime` adapter boundary
+3. architecture boundary checks for raw LangGraph leakage
+4. `AgentState` section contracts
+5. intent and planner splits
+6. command confirmation/execution splits
+7. file patch graph and engine splits
+8. sandbox product-contract visibility
+
 ## Security Red Lines
 
 These are enforced both locally and in CI:
