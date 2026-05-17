@@ -374,6 +374,33 @@ async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
     assert ui.markdown_printed == ["ok"]
 
 
+async def test_run_turn_persists_pending_interrupt_history(tmp_path) -> None:
+    chat_service = ChatService(tmp_path / "history.json", max_messages=10)
+    graph = _FakeGraph(
+        [
+            {
+                "__interrupt__": [Interrupt(value={"type": "wizard"}, resumable=True, ns=["n"])],
+            },
+            {},
+        ],
+        snapshot_values={"messages": [HumanMessage(content="deploy app")]},
+    )
+    ui = _FakeUI(interrupt_response={"status": "cancel", "partial": True, "answers": []})
+    agent = _agent(tmp_path, graph=graph, ui=ui, chat_service=chat_service)
+
+    await agent.run_turn("deploy app", thread_id="wizard-thread")
+
+    session = chat_service.get_session("wizard-thread")
+    assert session is not None
+    assert [message.content for message in session.messages] == ["deploy app"]
+    loaded = ChatService(tmp_path / "history.json", max_messages=10)
+    loaded.load()
+    loaded_session = loaded.get_session("wizard-thread")
+    assert loaded_session is not None
+    assert [message.content for message in loaded_session.messages] == ["deploy app"]
+    assert ui.interrupts == [{"type": "wizard"}]
+
+
 async def test_run_starts_and_stops_services(tmp_path) -> None:
     history_path = tmp_path / "history.json"
     monitoring = _FakeMonitoringService()
@@ -677,6 +704,49 @@ async def test_resume_continues_pending_interrupt(tmp_path) -> None:
     assert isinstance(graph.calls[0], Command)
     assert "pending confirm" in ui.resume_sessions[0].label
     assert ui.markdown_printed == ["done"]
+
+
+async def test_resume_lists_and_continues_pending_wizard(tmp_path) -> None:
+    chat_service = ChatService(tmp_path / "history.json", max_messages=10)
+    chat_service.replace_session("wizard-thread", [HumanMessage(content="deploy app")])
+    ui = _FakeUI(
+        inputs=["/resume"],
+        interrupt_response={"status": "cancel", "partial": True, "answers": []},
+    )
+    ui.resume_selector_enabled = True
+    ui.resume_choice = "wizard-thread"
+    graph = _ResumeGraph(
+        [{"messages": [HumanMessage(content="deploy app"), AIMessage(content="done")]}],
+        snapshot_interrupts=[Interrupt(value={"type": "wizard"}, resumable=True, ns=["n"])],
+        snapshot_values={"messages": [HumanMessage(content="deploy app")]},
+    )
+    agent = _agent(tmp_path, graph=graph, ui=ui, chat_service=chat_service)
+
+    await agent.run(thread_id="cli")
+
+    assert ui.interrupts == [{"type": "wizard"}]
+    assert isinstance(graph.calls[0], Command)
+    assert graph.calls[0].resume == {"status": "cancel", "partial": True, "answers": []}
+    assert "pending wizard" in ui.resume_sessions[0].label
+    assert ui.markdown_printed == ["done"]
+
+
+async def test_resume_status_keeps_patch_and_confirm_labels(tmp_path) -> None:
+    chat_service = ChatService(tmp_path / "history.json", max_messages=10)
+    chat_service.replace_session("patch-thread", [HumanMessage(content="edit file")])
+    ui = _FakeUI(inputs=["/resume"])
+    ui.resume_selector_enabled = True
+    graph = _FakeGraph(
+        [],
+        snapshot_interrupts=[
+            Interrupt(value={"type": "confirm_file_patch"}, resumable=True, ns=["n"])
+        ],
+    )
+    agent = _agent(tmp_path, graph=graph, ui=ui, chat_service=chat_service)
+
+    await agent.run(thread_id="cli")
+
+    assert "pending patch" in ui.resume_sessions[0].label
 
 
 async def test_new_slash_command_resets_active_context(tmp_path) -> None:

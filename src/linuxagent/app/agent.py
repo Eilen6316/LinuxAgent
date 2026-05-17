@@ -120,6 +120,7 @@ class LinuxAgent:
                     await print_assistant_response(self.ui, str(result["messages"][-1].content))
                 return result if isinstance(result, dict) else {}
             payload = interrupts[0].value
+            await self._persist_pending_history(config, thread_id)
             response = await self.ui.handle_interrupt(payload)
             state = Command(resume=response)
 
@@ -251,6 +252,8 @@ class LinuxAgent:
         if not interrupts:
             return ""
         payload = interrupts[0].value
+        if isinstance(payload, dict) and payload.get("type") == "wizard":
+            return "pending wizard"
         if isinstance(payload, dict) and payload.get("type") == "confirm_file_patch":
             return "pending patch"
         return "pending confirm"
@@ -262,6 +265,7 @@ class LinuxAgent:
             interrupts = await self._interrupts(state, config)
             if not interrupts:
                 return
+            await self._persist_pending_history(config, thread_id)
             response = await self.ui.handle_interrupt(interrupts[0].value)
             result = await self._ainvoke_with_cancel(Command(resume=response), config)
             if result is None:
@@ -284,3 +288,11 @@ class LinuxAgent:
     def _persist_active_history(self, thread_id: str) -> None:
         active = self.context_manager.snapshot()
         self.chat_service.replace_session(thread_id, active, title=session_title(active))
+
+    async def _persist_pending_history(self, config: RunnableConfig, thread_id: str) -> None:
+        history = await self._history(config)
+        if not history:
+            return
+        self.context_manager.replace(history)
+        self._persist_active_history(thread_id)
+        self.chat_service.save()
