@@ -443,4 +443,4 @@ async def _wait_for_escape() -> str:
         return await future
     finally:
         loop.remove_reader(fd)
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
+        termios.tcsetattr(fd, termios.TCSANOW, old_attrs)
