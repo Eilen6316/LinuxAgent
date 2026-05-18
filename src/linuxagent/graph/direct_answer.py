@@ -52,6 +52,8 @@ async def _complete_direct_answer(
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
+    *,
+    mode: str = "direct_answer",
 ) -> str:
     prompt_messages = context.direct_answer_prompt.format_messages(
         chat_history=messages[:-1],
@@ -64,7 +66,7 @@ async def _complete_direct_answer(
             prompt_messages,
             telemetry=context.telemetry,
             trace_id=current_trace_id,
-            attributes={"node": "parse_intent", "mode": "direct_answer"},
+            attributes={"node": "parse_intent", "mode": mode},
             prompt_cache_key=context.prompt_cache_key,
         )
     ).strip()

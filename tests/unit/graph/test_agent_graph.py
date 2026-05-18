@@ -25,6 +25,7 @@ from linuxagent.config.models import (
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.graph.checkpoint import PersistentMemorySaver
+from linuxagent.graph.intent_router import _parse_intent_decision
 from linuxagent.i18n import Translator
 from linuxagent.interfaces import LLM_CALL_METADATA_KEY, CommandSource, ExecutionResult
 from linuxagent.operating_manifest import operating_manifest_context
@@ -296,6 +297,7 @@ def _router_response(
     answer: str = "",
     reason: str = "test route",
     answer_context: str = "none",
+    parallel_tasks: list[dict[str, str]] | None = None,
 ) -> str:
     return json.dumps(
         {
@@ -303,6 +305,7 @@ def _router_response(
             "answer": answer,
             "reason": reason,
             "answer_context": answer_context,
+            "parallel_tasks": [] if parallel_tasks is None else parallel_tasks,
         },
         ensure_ascii=False,
     )
@@ -2508,6 +2511,71 @@ async def test_graph_answers_conversational_deliverable_despite_internal_strateg
     assert not snapshot.tasks
     assert snapshot.values.get("pending_command") is None
     assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_runs_parallel_direct_answer_tasks(tmp_path) -> None:
+    events: list[dict[str, Any]] = []
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _router_response(
+                "DIRECT_ANSWER",
+                "fallback answer",
+                parallel_tasks=[
+                    {"id": "joke-a", "goal": "第一个笑话", "prompt": "讲第一个笑话"},
+                    {"id": "joke-b", "goal": "第二个笑话", "prompt": "讲第二个笑话"},
+                ],
+            ),
+            "第一个笑话正文。",
+            "第二个笑话正文。",
+        ],
+        runtime_observer=events.append,
+    )
+    config = {"configurable": {"thread_id": "parallel-direct-answer"}}
+
+    result = await graph.ainvoke(
+        initial_state("开两个子agent，并发讲两个笑话", source=CommandSource.USER),
+        config=config,
+    )
+
+    answer = str(result["messages"][-1].content)
+    assert "**第一个笑话**" in answer
+    assert "第一个笑话正文。" in answer
+    assert "**第二个笑话**" in answer
+    assert "第二个笑话正文。" in answer
+    worker_events = [event for event in events if event.get("type") == "worker_group"]
+    assert [event["phase"] for event in worker_events] == ["running", "finished"]
+    assert worker_events[0]["label_key"] == "runtime.group.direct_answer_tasks"
+    assert [worker["id"] for worker in worker_events[0]["workers"]] == ["joke-a", "joke-b"]
+    assert [worker["status"] for worker in worker_events[-1]["workers"]] == [
+        "finished",
+        "finished",
+    ]
+    assert _llm_call_count(provider, node="parse_intent", mode="parallel_direct_answer") == 2
+    assert provider.tool_calls == 0
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+
+
+def test_intent_router_caps_parallel_direct_tasks() -> None:
+    decision = _parse_intent_decision(
+        _router_response(
+            "DIRECT_ANSWER",
+            "fallback",
+            parallel_tasks=[
+                {"id": f"task-{index}", "goal": f"goal {index}", "prompt": f"prompt {index}"}
+                for index in range(8)
+            ],
+        )
+    )
+
+    assert [task.id for task in decision.parallel_tasks] == [
+        "task-0",
+        "task-1",
+        "task-2",
+        "task-3",
+    ]
 
 
 async def test_graph_falls_back_to_direct_answer_for_history_question_nochange(

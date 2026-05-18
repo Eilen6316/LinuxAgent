@@ -49,6 +49,7 @@ from .intent_router import (
     _route_intent,
 )
 from .no_change import _no_change_answer, _no_change_evidence_error
+from .parallel_direct import complete_parallel_direct_answer
 from .plan_parsing import PLAN_PARSE_EXCEPTIONS, PlannedWork, _parse_planned_work
 from .plan_repair import _recover_plan_parse_error, _retry_plan_or_error
 from .planner_node import _complete_plan_candidate, _plan_gate
@@ -235,6 +236,16 @@ async def _direct_answer_update(
     if intent.answer_context is AnswerContext.SELF_MANUAL:
         answer = await _complete_direct_answer(context, messages, user_text, current_trace_id)
         return _direct_response_update(current_trace_id, answer)
+    if intent.parallel_tasks:
+        return await complete_parallel_direct_answer(
+            context,
+            runtime_observer=context.runtime_observer,
+            messages=messages,
+            user_text=user_text,
+            current_trace_id=current_trace_id,
+            tasks=intent.parallel_tasks,
+            router_answer=intent.answer,
+        )
     reviewed = await _review_direct_answer(context, messages, user_text, intent, current_trace_id)
     if reviewed.mode is not DirectAnswerReviewMode.WIZARD_NEEDED:
         return _direct_response_update(current_trace_id, intent.answer)

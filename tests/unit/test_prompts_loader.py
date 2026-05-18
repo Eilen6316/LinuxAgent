@@ -91,6 +91,11 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "what files, directories, scripts" in body
     assert "so the planner can inspect reality" in body
     assert '"answer_context": "none"' in body
+    assert '"parallel_tasks": []' in body
+    assert "`parallel_tasks`" in body
+    assert "independent conversational subtasks" in body
+    assert "without reading/changing the machine" in body
+    assert "Use at most four tasks" in body
     assert "`self_manual`" in body
     assert "`WIZARD_NEEDED`" in body
     assert "automatic discovery" in body

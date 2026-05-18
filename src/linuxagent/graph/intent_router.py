@@ -13,6 +13,8 @@ from ..interfaces import LLMProvider
 from ..telemetry import TelemetryRecorder
 from .llm_calls import complete_llm
 
+MAX_PARALLEL_DIRECT_TASKS = 4
+
 
 class IntentMode(StrEnum):
     DIRECT_ANSWER = "DIRECT_ANSWER"
@@ -27,11 +29,19 @@ class AnswerContext(StrEnum):
 
 
 @dataclass(frozen=True)
+class ParallelDirectTask:
+    id: str
+    goal: str
+    prompt: str
+
+
+@dataclass(frozen=True)
 class IntentDecision:
     mode: IntentMode
     answer: str
     reason: str
     answer_context: AnswerContext = AnswerContext.NONE
+    parallel_tasks: tuple[ParallelDirectTask, ...] = ()
 
 
 class IntentRouterContext(Protocol):
@@ -89,11 +99,12 @@ def _parse_intent_decision(raw: str) -> IntentDecision:
     answer = str(payload.get("answer", "")).strip()
     reason = str(payload.get("reason", "")).strip()
     answer_context = _parse_answer_context(payload, mode)
+    parallel_tasks = _parse_parallel_tasks(payload, mode, answer_context)
     if mode is IntentMode.CLARIFY and not answer:
         return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
     if mode is IntentMode.DIRECT_ANSWER and answer_context is AnswerContext.NONE and not answer:
         return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
-    return IntentDecision(mode, answer, reason, answer_context)
+    return IntentDecision(mode, answer, reason, answer_context, parallel_tasks)
 
 
 def _parse_answer_context(payload: dict[str, Any], mode: IntentMode) -> AnswerContext:
@@ -104,3 +115,27 @@ def _parse_answer_context(payload: dict[str, Any], mode: IntentMode) -> AnswerCo
         return AnswerContext(raw)
     except ValueError:
         return AnswerContext.NONE
+
+
+def _parse_parallel_tasks(
+    payload: dict[str, Any],
+    mode: IntentMode,
+    answer_context: AnswerContext,
+) -> tuple[ParallelDirectTask, ...]:
+    if mode is not IntentMode.DIRECT_ANSWER or answer_context is not AnswerContext.NONE:
+        return ()
+    raw_tasks = payload.get("parallel_tasks")
+    if not isinstance(raw_tasks, list):
+        return ()
+    tasks: list[ParallelDirectTask] = []
+    for index, item in enumerate(raw_tasks):
+        if not isinstance(item, dict):
+            continue
+        goal = str(item.get("goal") or "").strip()
+        prompt = str(item.get("prompt") or "").strip()
+        if not goal or not prompt:
+            continue
+        raw_id = str(item.get("id") or "").strip()
+        task_id = raw_id or f"task-{index + 1}"
+        tasks.append(ParallelDirectTask(id=task_id, goal=goal, prompt=prompt))
+    return tuple(tasks[:MAX_PARALLEL_DIRECT_TASKS])

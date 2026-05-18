@@ -27,7 +27,8 @@ Return only one JSON object with this exact shape:
   "mode": "DIRECT_ANSWER",
   "answer": "answer to show the user, or an empty string for COMMAND_PLAN",
   "reason": "short routing reason",
-  "answer_context": "none"
+  "answer_context": "none",
+  "parallel_tasks": []
 }}
 ```
 
@@ -96,6 +97,13 @@ deliverable itself, not a capability refusal, apology, or offer to provide the
 same deliverable later. For example, if the user asks for two jokes while naming
 subagents or parallelism, answer with two jokes; do not say LinuxAgent cannot
 create subagents.
+
+For `DIRECT_ANSWER` only, you may include `parallel_tasks` when the requested
+visible result naturally decomposes into independent conversational subtasks
+that can be answered without reading/changing the machine and without HITL. Each
+task must have `id`, `goal`, and `prompt`. Use this for genuine independent
+subresults, not as a default style. Use at most four tasks. Leave it empty for `COMMAND_PLAN`,
+`CLARIFY`, `WIZARD_NEEDED`, and LinuxAgent self-manual answers.
 
 For `DIRECT_ANSWER`, set `answer_context` to `self_manual` when the user is
 asking about LinuxAgent itself, including identity, capabilities, limits,

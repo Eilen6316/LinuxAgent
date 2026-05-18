@@ -128,8 +128,10 @@ runtime:
   group:
     read_only_batch: "只读批次"
     graph_turn: "当前请求"
+    direct_answer_tasks: "对话子任务"
   agent:
     graph_turn_worker: "主任务"
+    direct_answer_worker: "子任务 {index}"
     command_worker: "命令 worker {index}"
     status:
       queued: "排队中"

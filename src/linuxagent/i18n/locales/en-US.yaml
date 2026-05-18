@@ -128,8 +128,10 @@ runtime:
   group:
     read_only_batch: "read-only batch"
     graph_turn: "current request"
+    direct_answer_tasks: "conversation subtasks"
   agent:
     graph_turn_worker: "main task"
+    direct_answer_worker: "subtask {index}"
     command_worker: "command worker {index}"
     status:
       queued: "queued"
