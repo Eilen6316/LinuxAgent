@@ -703,6 +703,35 @@ async def test_console_print_activity_uses_transient_working_status(monkeypatch)
     await ui.print("done")
 
     assert ui._working_status is None
+    final_rendered = console.export_text()
+    assert "已完成步骤" in final_rendered
+    assert "规划命令" in final_rendered
+
+
+async def test_console_print_activity_keeps_cumulative_working_history(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_activity("LinuxAgent 正在分类意图")
+    await ui.print_activity("LinuxAgent 正在规划命令")
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "分类意图" in rendered
+    assert "规划命令" in rendered
+    assert "esc 中断" in rendered
+
+    await ui.print("done")
+
+    final_rendered = console.export_text()
+    assert "已完成步骤" in final_rendered
+    assert "分类意图" in final_rendered
+    assert "规划命令" in final_rendered
 
 
 async def test_console_print_activity_supports_multiline_working_status(monkeypatch) -> None:
@@ -787,7 +816,7 @@ async def test_console_print_activity_keeps_non_working_messages_plain(monkeypat
     assert "LinuxAgent 命令结束：exit 0" in console.export_text()
 
 
-async def test_console_print_execution_result_can_omit_streamed_output() -> None:
+async def test_console_print_execution_result_can_show_compact_summary() -> None:
     console = Console(record=True, width=120)
     ui = _english_console_ui(console)
 
@@ -799,5 +828,6 @@ async def test_console_print_execution_result_can_omit_streamed_output() -> None
     rendered = console.export_text()
     assert "Command result · exit 0" in rendered
     assert "/bin/echo marker" in rendered
-    assert "stdout-body" not in rendered
-    assert "[streamed above]" in rendered
+    assert "stdout: 12 chars, 1 lines" in rendered
+    assert "stdout-body" in rendered
+    assert "[streamed above]" not in rendered

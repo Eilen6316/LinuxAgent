@@ -431,11 +431,10 @@ class Container:
             if stream == "result":
                 result = event.get("result")
                 if isinstance(result, ExecutionResult):
-                    streamed = command_event_key(event) in self._streamed_outputs
                     self._streamed_outputs.discard(command_event_key(event))
                     printer = getattr(self.ui(), "print_execution_result", None)
                     if callable(printer):
-                        await printer(result, include_output=not streamed)
+                        await printer(result, include_output=False)
 
         return observe
 

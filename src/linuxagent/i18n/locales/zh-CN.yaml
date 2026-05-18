@@ -283,6 +283,11 @@ ui:
     yes_all_description: "允许当前计划中的匹配命令，仅在当前对话和 /resume 这个对话时生效。"
     no_label: "不接受"
     no_description: "拒绝这次操作；LinuxAgent 不会执行它。"
+    summary:
+      "yes": "已确认：{subject}"
+      yes_all: "已确认并允许本对话复用：{subject}"
+      "no": "已拒绝：{subject}"
+      file_patch: "{count} 个文件修改"
   confirm:
     allow_operation: "允许这次操作吗？"
     apply_file: "应用 {file} 吗？"
@@ -370,6 +375,8 @@ ui:
     untitled: "未命名会话"
   working:
     title: "处理中"
+    completed_title: "已完成步骤"
+    omitted: "前面还有 {count} 个步骤"
     suffix: "（{elapsed}s • esc 中断）"
     activity_prefix: "LinuxAgent 正在"
   wizard:

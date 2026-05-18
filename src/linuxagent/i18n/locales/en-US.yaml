@@ -283,6 +283,11 @@ ui:
     yes_all_description: "Allow matching commands in the current plan only for this conversation and its /resume."
     no_label: "No"
     no_description: "Deny this operation; LinuxAgent will not run it."
+    summary:
+      "yes": "Approved: {subject}"
+      yes_all: "Approved for this conversation: {subject}"
+      "no": "Denied: {subject}"
+      file_patch: "{count} file changes"
   confirm:
     allow_operation: "Allow this operation?"
     apply_file: "Apply {file}?"
@@ -370,6 +375,8 @@ ui:
     untitled: "Untitled session"
   working:
     title: "Working"
+    completed_title: "Completed steps"
+    omitted: "{count} earlier steps"
     suffix: " ({elapsed}s • esc to interrupt)"
     activity_prefix: "LinuxAgent is"
   wizard:

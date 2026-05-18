@@ -12,6 +12,7 @@ from ..i18n import Translator, default_translator
 
 WORKING_REFRESH_PER_SECOND = 30
 ACTIVITY_INTERVAL_MS = 600
+MAX_ACTIVITY_ITEMS = 8
 
 
 class WorkingStatus:
@@ -28,9 +29,12 @@ class WorkingStatus:
         self._live: Live | None = None
         self._started_at = 0.0
         self._message = self._working_title()
+        self._items: list[str] = []
+        self._omitted_count = 0
 
     def update(self, message: str) -> None:
         self._message = _working_label(message, self._translator)
+        self._append_item(self._message)
         if self._live is None or not self._live.is_started:
             self._started_at = time.monotonic()
             self._live = Live(
@@ -45,11 +49,13 @@ class WorkingStatus:
             return
         self._live.refresh()
 
-    def stop(self) -> None:
+    def stop(self, *, summarize: bool = False) -> Text | None:
+        summary = self.summary() if summarize else None
         if self._live is None:
-            return
+            return summary
         self._live.stop()
         self._live = None
+        return summary
 
     def cancel(self) -> None:
         if self._live is None:
@@ -58,11 +64,21 @@ class WorkingStatus:
         self._live = None
         _cancel_live_without_final_refresh(live)
 
+    def summary(self) -> Text | None:
+        if not self._items:
+            return None
+        title = self._translator.t("ui.working.completed_title")
+        text = Text.assemble(("✓", "green"), " ", (title, "dim"))
+        for item in self._summary_items():
+            text.append("\n")
+            text.append(f"  - {item}", style="dim")
+        return text
+
     def _render(self) -> Text:
         elapsed = max(0, int(time.monotonic() - self._started_at))
         suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
         title = self._working_title()
-        if "\n" not in self._message:
+        if len(self._items) <= 1 and "\n" not in self._message:
             return Text.assemble(
                 (_activity_indicator(), self._accent_style()),
                 " ",
@@ -70,14 +86,17 @@ class WorkingStatus:
                 (f": {self._message}", "bold") if self._message != title else "",
                 (suffix, "dim"),
             )
-        return Text.assemble(
+        text = Text.assemble(
             (_activity_indicator(), self._accent_style()),
             " ",
             (title, "bold"),
             (suffix, "dim"),
-            "\n",
-            (self._message, "bold"),
         )
+        visible_items = self._visible_items()
+        for index, item in enumerate(visible_items):
+            text.append("\n")
+            _append_render_item(text, item, current=index == len(visible_items) - 1)
+        return text
 
     def _accent_style(self) -> str:
         if self._theme == "light":
@@ -86,6 +105,24 @@ class WorkingStatus:
 
     def _working_title(self) -> str:
         return self._translator.t("ui.working.title")
+
+    def _append_item(self, message: str) -> None:
+        if self._items and self._items[-1] == message:
+            return
+        self._items.append(message)
+        if len(self._items) <= MAX_ACTIVITY_ITEMS:
+            return
+        self._items.pop(0)
+        self._omitted_count += 1
+
+    def _visible_items(self) -> list[str]:
+        if self._omitted_count <= 0:
+            return list(self._items)
+        omitted = self._translator.t("ui.working.omitted", count=self._omitted_count)
+        return [omitted, *self._items]
+
+    def _summary_items(self) -> list[str]:
+        return [_compact_item(item) for item in self._visible_items()]
 
 
 def _working_label(message: str, translator: Translator) -> str:
@@ -103,6 +140,26 @@ def _working_label(message: str, translator: Translator) -> str:
 def _activity_indicator() -> str:
     tick = int(time.monotonic() * 1000 / ACTIVITY_INTERVAL_MS)
     return "•" if tick % 2 == 0 else "◦"
+
+
+def _append_render_item(text: Text, item: str, *, current: bool) -> None:
+    marker = "•" if current else "✓"
+    style = "bold" if current else "dim"
+    lines = item.splitlines() or [""]
+    text.append(f"  {marker} ", style=style)
+    text.append(lines[0], style=style)
+    for line in lines[1:]:
+        text.append("\n")
+        text.append(f"    {line.strip()}", style=style)
+
+
+def _compact_item(item: str) -> str:
+    lines = [line.strip() for line in item.splitlines() if line.strip()]
+    if not lines:
+        return item.strip()
+    if len(lines) == 1:
+        return lines[0]
+    return f"{lines[0]} / {' / '.join(lines[1:3])}"
 
 
 def _cancel_live_without_final_refresh(live: Live) -> None:

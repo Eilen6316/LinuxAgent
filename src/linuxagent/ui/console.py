@@ -22,7 +22,7 @@ from rich.prompt import Confirm
 from rich.text import Text
 
 from .. import __version__
-from ..execution_display import execution_display_text
+from ..execution_display import execution_display_text, execution_summary_text
 from ..i18n import Translator, default_translator
 from ..interfaces import ExecutionResult, UserInterface
 from .approval_selector import ApprovalOption, ApprovalSelector
@@ -100,6 +100,7 @@ class ConsoleUI(UserInterface):
         self._confirmation_renderer.render(payload)
         response = self._approval_response(payload)
         response["latency_ms"] = int((time.monotonic() - started) * 1000)
+        self._print_approval_summary(payload, response)
         return response
 
     def is_interactive(self) -> bool:
@@ -132,7 +133,7 @@ class ConsoleUI(UserInterface):
         ):
             return
         self.clear_activity()
-        display = execution_display_text(result, include_output=include_output)
+        display = _execution_result_display(result, include_output=include_output)
         style = "green" if result.exit_code == 0 else "red"
         title = self._translator.t("ui.console.command_result_title", exit_code=result.exit_code)
         self._console.print(Panel(Text(display.text), title=title, border_style=style))
@@ -165,8 +166,10 @@ class ConsoleUI(UserInterface):
 
     def clear_activity(self) -> None:
         if self._working_status is not None:
-            self._working_status.stop()
+            summary = self._working_status.stop(summarize=True)
             self._working_status = None
+            if summary is not None:
+                self._console.print(summary)
 
     async def cancel_activity(self, reason: str) -> None:
         if await self._run_on_owner_loop(lambda: self.cancel_activity(reason)):
@@ -301,6 +304,11 @@ class ConsoleUI(UserInterface):
         )
         return {"decision": "yes" if approved else "no"}
 
+    def _print_approval_summary(self, payload: dict[str, Any], response: dict[str, Any]) -> None:
+        summary = _approval_summary(payload, response, self._translator)
+        if summary:
+            self._console.print(Text(summary, style="dim"))
+
 
 _render_unified_diff = render_unified_diff
 _diff_line_style = diff_line_style
@@ -410,6 +418,44 @@ def _permission_candidates(payload: dict[str, Any]) -> list[dict[str, str]]:
         for item in candidates
         if isinstance(item, dict) and isinstance(item.get("command"), str)
     ]
+
+
+def _execution_result_display(result: ExecutionResult, *, include_output: bool) -> Any:
+    if include_output:
+        return execution_display_text(result)
+    return execution_summary_text(result)
+
+
+def _approval_summary(
+    payload: dict[str, Any], response: dict[str, Any], translator: Translator
+) -> str:
+    decision = str(response.get("decision") or "no")
+    key = _approval_summary_key(decision)
+    subject = _approval_subject(payload, translator)
+    return translator.t(key, subject=subject)
+
+
+def _approval_summary_key(decision: str) -> str:
+    if decision == "yes":
+        return "ui.approval.summary.yes"
+    if decision == "yes_all":
+        return "ui.approval.summary.yes_all"
+    return "ui.approval.summary.no"
+
+
+def _approval_subject(payload: dict[str, Any], translator: Translator) -> str:
+    if payload.get("type") == "confirm_file_patch":
+        files = [str(item) for item in payload.get("files_changed", ()) if str(item)]
+        return translator.t("ui.approval.summary.file_patch", count=len(files))
+    command = str(payload.get("command") or payload.get("type") or "")
+    return _compact_subject(command)
+
+
+def _compact_subject(value: str, *, limit: int = 120) -> str:
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 3]}..."
 
 
 def _review_file_patch_diff(
