@@ -23,7 +23,7 @@ from linuxagent.config.models import (
 from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph
 from linuxagent.graph.runtime import GraphRuntime
-from linuxagent.interfaces import ExecutionResult
+from linuxagent.interfaces import LLM_CALL_METADATA_KEY, ExecutionResult
 from linuxagent.plans import command_plan_json
 from linuxagent.runbooks import Runbook, RunbookEngine, RunbookStep
 from linuxagent.services import ChatService, ClusterService, CommandService
@@ -36,12 +36,13 @@ class _Provider:
         self.complete_messages: list[list[BaseMessage]] = []
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
-        del kwargs
         self.complete_messages.append(messages)
-        if _is_intent_router_call(messages):
+        if _is_llm_call(kwargs, node="parse_intent", mode="intent_router"):
             if self._responses and _is_intent_router_response(self._responses[0]):
                 return self._responses.pop(0)
             return _router_response("COMMAND_PLAN")
+        if _is_llm_call(kwargs, node="parse_intent", mode="planner_gate"):
+            return _continue_planning_plan_json()
         return self._responses.pop(0)
 
     async def complete_with_tools(
@@ -84,8 +85,11 @@ def _router_response(mode: str, answer: str = "", reason: str = "test route") ->
     return json.dumps({"mode": mode, "answer": answer, "reason": reason}, ensure_ascii=False)
 
 
-def _is_intent_router_call(messages: list[BaseMessage]) -> bool:
-    return bool(messages) and "intent router" in str(messages[0].content).casefold()
+def _continue_planning_plan_json() -> str:
+    return json.dumps(
+        {"plan_type": "continue_planning", "reason": "integration planning needed"},
+        ensure_ascii=False,
+    )
 
 
 def _is_intent_router_response(text: str) -> bool:
@@ -98,6 +102,18 @@ def _is_intent_router_response(text: str) -> bool:
         "COMMAND_PLAN",
         "CLARIFY",
     }
+
+
+def _is_llm_call(kwargs: dict[str, Any], *, node: str, mode: str) -> bool:
+    metadata = kwargs.get(LLM_CALL_METADATA_KEY)
+    if not isinstance(metadata, dict):
+        return False
+    attributes = metadata.get("attributes")
+    return (
+        isinstance(attributes, dict)
+        and attributes.get("node") == node
+        and attributes.get("mode") == mode
+    )
 
 
 def _multi_command_plan_json(commands: list[str]) -> str:

@@ -22,6 +22,7 @@ def check_source_tree(source_root: Path) -> list[str]:
     app_root = source_root / "app"
     service_root = source_root / "services"
     tools_root = source_root / "tools"
+    wizard_root = source_root / "wizard"
     for path in sorted(source_root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if _is_under(path, app_root):
@@ -31,6 +32,8 @@ def check_source_tree(source_root: Path) -> list[str]:
             violations.extend(_langgraph_import_violations(path, tree, "services"))
         elif _is_under(path, tools_root):
             violations.extend(_langgraph_import_violations(path, tree, "tools"))
+        elif _is_under(path, wizard_root):
+            violations.extend(_wizard_graph_import_violations(path, tree))
     return violations
 
 
@@ -65,6 +68,33 @@ def _app_graph_runtime_violations(path: Path, tree: ast.AST) -> list[str]:
                 f"{path}:{node.lineno}: app layer must not inspect graph snapshot tasks"
             )
     return violations
+
+
+def _wizard_graph_import_violations(path: Path, tree: ast.AST) -> list[str]:
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if _is_linuxagent_graph_module(alias.name):
+                    violations.append(
+                        f"{path}:{node.lineno}: wizard layer must not import {alias.name}"
+                    )
+        elif isinstance(node, ast.ImportFrom) and _imports_graph_from_wizard(node):
+            module = "." * node.level + (node.module or "")
+            violations.append(f"{path}:{node.lineno}: wizard layer must not import {module}")
+    return violations
+
+
+def _is_linuxagent_graph_module(name: str) -> bool:
+    return name == "linuxagent.graph" or name.startswith("linuxagent.graph.")
+
+
+def _imports_graph_from_wizard(node: ast.ImportFrom) -> bool:
+    if node.level == 0:
+        return node.module is not None and _is_linuxagent_graph_module(node.module)
+    if node.level == 2:
+        return node.module == "graph" or (node.module or "").startswith("graph.")
+    return False
 
 
 def _is_langgraph_module(name: str) -> bool:

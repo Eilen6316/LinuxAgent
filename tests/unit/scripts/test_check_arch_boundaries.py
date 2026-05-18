@@ -84,3 +84,23 @@ def test_graph_layer_is_allowed_to_use_langgraph(tmp_path: Path) -> None:
     )
 
     assert check_source_tree(root) == []
+
+
+def test_wizard_layer_graph_imports_are_rejected(tmp_path: Path) -> None:
+    root = tmp_path / "linuxagent"
+    wizard = root / "wizard"
+    wizard.mkdir(parents=True)
+    (wizard / "planner.py").write_text(
+        "\n".join(
+            [
+                "from ..graph.llm_calls import complete_llm",
+                "import linuxagent.graph.runtime",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    violations = check_source_tree(root)
+
+    assert len(violations) == 2
+    assert all("wizard layer must not import" in item for item in violations)
