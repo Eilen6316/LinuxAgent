@@ -61,6 +61,11 @@ class UserInterface(ABC):
         """Clear any transient activity display before normal output."""
         return None
 
+    async def cancel_activity(self, reason: str) -> None:
+        """Return from in-flight work cancellation with minimal terminal redraw."""
+        del reason
+        self.clear_activity()
+
     def set_activity_visible(self, visible: bool) -> None:
         """Toggle high-level runtime activity event visibility."""
         del visible

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import select
 import sys
 import termios
 import threading
@@ -148,6 +149,12 @@ class ConsoleUI(UserInterface):
     def clear_activity(self) -> None:
         if self._working_status is not None:
             self._working_status.stop()
+            self._working_status = None
+
+    async def cancel_activity(self, reason: str) -> None:
+        del reason
+        if self._working_status is not None:
+            self._working_status.cancel()
             self._working_status = None
 
     def set_activity_visible(self, visible: bool) -> None:
@@ -442,6 +449,9 @@ async def _wait_for_escape() -> str:
 
 def _read_escape(fd: int, stop_event: threading.Event) -> str:
     while not stop_event.is_set():
+        readable, _, _ = select.select((fd,), (), (), 0.02)
+        if not readable:
+            continue
         if os.read(fd, 1) == b"\x1b":
             return "escape"
     return "escape"

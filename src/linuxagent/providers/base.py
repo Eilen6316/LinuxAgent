@@ -3,7 +3,8 @@
 Responsibilities:
 
 - Expose ``complete()`` / ``stream()`` per the :class:`LLMProvider` contract.
-- Enforce ``APIConfig.timeout`` via ``asyncio.wait_for`` around ``ainvoke``.
+- Enforce ``APIConfig.timeout`` via ``asyncio.wait_for`` around provider calls
+  that run outside the CLI event loop.
 - Enforce ``APIConfig.stream_timeout`` via ``asyncio.timeout`` around the
   whole stream — the old per-chunk timer from v3 is gone because a slow
   provider legitimately pauses between tokens.
@@ -105,7 +106,7 @@ class BaseLLMProvider(LLMProvider):
         result: BaseMessage
         try:
             result = await asyncio.wait_for(
-                self._model.ainvoke(request_messages, **request_kwargs),
+                _invoke_model_off_loop(self._model, request_messages, request_kwargs),
                 timeout=self._config.timeout,
             )
         except TimeoutError as exc:
@@ -236,7 +237,7 @@ class BaseLLMProvider(LLMProvider):
         request_messages, request_kwargs = self._prepare_request(messages, kwargs)
         try:
             return await asyncio.wait_for(
-                model.ainvoke(request_messages, **request_kwargs),
+                _invoke_model_off_loop(model, request_messages, request_kwargs),
                 timeout=self._config.timeout,
             )
         except TimeoutError as exc:
@@ -270,7 +271,7 @@ class BaseLLMProvider(LLMProvider):
         logger.info("provider rejected prompt cache metadata; retrying without prompt cache")
         try:
             return await asyncio.wait_for(
-                model.ainvoke(retry_messages, **retry_kwargs),
+                _invoke_model_off_loop(model, retry_messages, retry_kwargs),
                 timeout=self._config.timeout,
             )
         except TimeoutError as retry_exc:
@@ -279,6 +280,28 @@ class BaseLLMProvider(LLMProvider):
             ) from retry_exc
         except Exception as retry_exc:
             raise self._map_error(retry_exc) from retry_exc
+
+
+async def _invoke_model_off_loop(
+    model: Any,
+    messages: list[BaseMessage],
+    kwargs: dict[str, Any],
+) -> BaseMessage:
+    return await asyncio.to_thread(_invoke_model_sync, model, messages, kwargs)
+
+
+def _invoke_model_sync(
+    model: Any,
+    messages: list[BaseMessage],
+    kwargs: dict[str, Any],
+) -> BaseMessage:
+    invoke = getattr(model, "invoke", None)
+    if callable(invoke):
+        return cast(BaseMessage, invoke(messages, **kwargs))
+    ainvoke = getattr(model, "ainvoke", None)
+    if callable(ainvoke):
+        return cast(BaseMessage, asyncio.run(ainvoke(messages, **kwargs)))
+    raise TypeError("chat model must provide invoke() or ainvoke()")
 
 
 def _is_prompt_cache_key_compat_error(exc: Exception, kwargs: dict[str, Any]) -> bool:

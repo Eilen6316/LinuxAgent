@@ -52,6 +52,13 @@ class WizardAwareUserInterface(UserInterface):
     def clear_activity(self) -> None:
         self._wrapped.clear_activity()
 
+    async def cancel_activity(self, reason: str) -> None:
+        cancel_activity = getattr(self._wrapped, "cancel_activity", None)
+        if callable(cancel_activity):
+            await cancel_activity(reason)
+            return
+        self._wrapped.clear_activity()
+
     def set_activity_visible(self, visible: bool) -> None:
         self._wrapped.set_activity_visible(visible)
 

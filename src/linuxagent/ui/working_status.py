@@ -51,6 +51,15 @@ class WorkingStatus:
         self._live.stop()
         self._live = None
 
+    def cancel(self) -> None:
+        if self._live is None:
+            return
+        live = self._live
+        self._live = None
+        live.auto_refresh = False
+        live.transient = True
+        live.stop()
+
     def _render(self) -> Text:
         elapsed = max(0, int(time.monotonic() - self._started_at))
         suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)

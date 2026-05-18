@@ -89,6 +89,7 @@ async def test_wait_for_escape_restores_terminal_without_drain(monkeypatch) -> N
     monkeypatch.setattr(console_module.asyncio, "get_running_loop", lambda: fake_loop)
     monkeypatch.setattr(console_module.termios, "tcgetattr", lambda value: ["old", str(value)])
     monkeypatch.setattr(console_module.tty, "setcbreak", lambda value: None)
+    monkeypatch.setattr(console_module.select, "select", lambda r, w, x, timeout: (r, w, x))
     monkeypatch.setattr(console_module.os, "read", lambda value, count: b"\x1b")
     monkeypatch.setattr(
         console_module.termios,
@@ -102,6 +103,22 @@ async def test_wait_for_escape_restores_terminal_without_drain(monkeypatch) -> N
     assert executor_calls[0][1] == fd
     assert executor_calls[0][2].is_set()
     assert restored == [(fd, console_module.termios.TCSANOW, ["old", str(fd)])]
+
+
+def test_read_escape_can_stop_without_key(monkeypatch) -> None:
+    stop_event = console_module.threading.Event()
+    calls = 0
+
+    def fake_select(readable: object, writable: object, errors: object, timeout: float) -> Any:
+        nonlocal calls
+        calls += 1
+        stop_event.set()
+        return ((), writable, errors)
+
+    monkeypatch.setattr(console_module.select, "select", fake_select)
+
+    assert console_module._read_escape(7, stop_event) == "escape"
+    assert calls == 1
 
 
 def test_console_ui_prints_linuxagent_wordmark() -> None:

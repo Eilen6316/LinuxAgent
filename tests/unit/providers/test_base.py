@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -145,6 +146,33 @@ async def test_complete_strips_internal_llm_call_metadata() -> None:
 
     assert out == "hello"
     assert LLM_CALL_METADATA_KEY not in model.invoke_kwargs[0]
+
+
+async def test_complete_keeps_event_loop_responsive_during_blocking_model_call() -> None:
+    model = _BlockingAinvokeOnlyModel(delay=0.15)
+    provider = BaseLLMProvider(_cfg(timeout=1.0), model)  # type: ignore[arg-type]
+
+    started = time.monotonic()
+    task = asyncio.create_task(provider.complete([HumanMessage(content="hi")]))
+    await asyncio.sleep(0.02)
+
+    assert time.monotonic() - started < 0.1
+    assert not task.done()
+    assert await task == "hello"
+
+
+class _BlockingAinvokeOnlyModel:
+    def __init__(self, *, delay: float) -> None:
+        self.delay = delay
+
+    async def ainvoke(self, messages: list[BaseMessage], **kwargs: Any) -> AIMessage:
+        del messages, kwargs
+        _blocking_pause(self.delay)
+        return AIMessage(content="hello")
+
+
+def _blocking_pause(delay: float) -> None:
+    time.sleep(delay)
 
 
 class _ToolCallingModel:
@@ -822,6 +850,17 @@ async def test_complete_gives_up_after_max_retries() -> None:
 
 
 class _SlowModel(FakeListChatModel):
+    def _call(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> str:
+        del messages, stop, run_manager, kwargs
+        _blocking_pause(5)
+        return "never"
+
     async def _agenerate(
         self,
         messages: list[BaseMessage],
