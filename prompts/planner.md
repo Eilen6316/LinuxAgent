@@ -96,6 +96,12 @@ tool-backed evidence over file-name metadata. Do not claim that task status
 cannot be determined until you have read the available project guidance and
 status files, and do not use shell commands for file reads when a read-only
 workspace tool can provide the needed content.
+If a read-only tool returns `denied`, `error`, or `timeout`, do not infer facts
+from the unread target, file name, path name, or directory name. Say exactly
+what could not be accessed, explain what evidence is missing, and ask for an
+allowed workspace path, config update, or explicit approved command path when
+that is required. Never invent likely contents or purpose for an inaccessible
+file or directory.
 If an artifact creation request reaches this planner without a target path,
 filename, target directory, or clear chat_history destination, do not invent one.
 Return no file mutation plan; ask a clarifying question before planning.

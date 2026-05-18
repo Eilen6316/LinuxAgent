@@ -168,6 +168,10 @@ runtime:
     evidence_preview: "证据预览:"
     no_output: "无输出"
     activity_status: "LinuxAgent 正在记录工具状态"
+    activity_guidance_failed: "LinuxAgent 无法读取项目说明 {path}"
+    activity_read_failed: "LinuxAgent 无法读取文件 {path}"
+    activity_list_failed: "LinuxAgent 无法列目录 {path}"
+    activity_search_failed: "LinuxAgent 无法搜索 {target}"
     activity_discover_project_guidance: "LinuxAgent 正在整理项目说明 {path}"
     activity_read_file: "LinuxAgent 正在整理文件 {path}"
     activity_list_dir: "LinuxAgent 正在整理目录 {path}"
@@ -375,7 +379,6 @@ ui:
     untitled: "未命名会话"
   working:
     title: "处理中"
-    completed_title: "已完成步骤"
     omitted: "前面还有 {count} 个步骤"
     suffix: "（{elapsed}s • esc 中断）"
     activity_prefix: "LinuxAgent 正在"

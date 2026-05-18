@@ -144,6 +144,8 @@ def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() ->
     assert "first discover project guidance" in body
     assert "tool-backed evidence over file-name metadata" in body
     assert "do not use shell commands for file reads" in body
+    assert "do not infer facts" in body
+    assert "Never invent likely contents or purpose" in body
     assert '"background": false' in body
     assert "timeout_seconds" in body
     assert "bounded long-running operations" in body

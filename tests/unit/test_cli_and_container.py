@@ -869,6 +869,28 @@ def test_tool_activity_message_marks_finished_tools_as_transient() -> None:
     assert message == ("LinuxAgent 正在整理目录 workspace\n  list_dir · 2 items")
 
 
+def test_tool_activity_message_uses_human_readable_denied_status() -> None:
+    message = tool_activity_message(
+        {
+            "phase": "error",
+            "status": "denied",
+            "tool_name": "list_dir",
+            "args": {"path": "/LinuxAgent/.work/plan"},
+            "output_preview": json.dumps(
+                {
+                    "status": "error",
+                    "tool": "list_dir",
+                    "error_type": "denied",
+                    "message": "path is outside allowed roots",
+                }
+            ),
+        }
+    )
+
+    assert message == "LinuxAgent 无法列目录 /LinuxAgent/.work/plan\n  denied"
+    assert "list_dir" not in message
+
+
 def test_tool_activity_message_formats_project_guidance_tool() -> None:
     message = tool_activity_message(
         {

@@ -166,10 +166,8 @@ class ConsoleUI(UserInterface):
 
     def clear_activity(self) -> None:
         if self._working_status is not None:
-            summary = self._working_status.stop(summarize=True)
+            self._working_status.stop()
             self._working_status = None
-            if summary is not None:
-                self._console.print(summary)
 
     async def cancel_activity(self, reason: str) -> None:
         if await self._run_on_owner_loop(lambda: self.cancel_activity(reason)):

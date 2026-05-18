@@ -10,7 +10,7 @@ from rich.text import Text
 
 from ..i18n import Translator, default_translator
 
-WORKING_REFRESH_PER_SECOND = 30
+WORKING_REFRESH_PER_SECOND = 4
 ACTIVITY_INTERVAL_MS = 600
 MAX_ACTIVITY_ITEMS = 8
 
@@ -34,13 +34,15 @@ class WorkingStatus:
 
     def update(self, message: str) -> None:
         self._message = _working_label(message, self._translator)
-        self._append_item(self._message)
+        if self._message != self._working_title():
+            self._append_item(self._message)
         if self._live is None or not self._live.is_started:
             self._started_at = time.monotonic()
             self._live = Live(
                 get_renderable=self._render,
                 console=self._console,
                 transient=True,
+                auto_refresh=False,
                 refresh_per_second=WORKING_REFRESH_PER_SECOND,
                 redirect_stdout=False,
                 redirect_stderr=False,
@@ -49,13 +51,11 @@ class WorkingStatus:
             return
         self._live.refresh()
 
-    def stop(self, *, summarize: bool = False) -> Text | None:
-        summary = self.summary() if summarize else None
+    def stop(self) -> None:
         if self._live is None:
-            return summary
+            return
         self._live.stop()
         self._live = None
-        return summary
 
     def cancel(self) -> None:
         if self._live is None:
@@ -64,21 +64,18 @@ class WorkingStatus:
         self._live = None
         _cancel_live_without_final_refresh(live)
 
-    def summary(self) -> Text | None:
-        if not self._items:
-            return None
-        title = self._translator.t("ui.working.completed_title")
-        text = Text.assemble(("✓", "green"), " ", (title, "dim"))
-        for item in self._summary_items():
-            text.append("\n")
-            text.append(f"  - {item}", style="dim")
-        return text
-
     def _render(self) -> Text:
         elapsed = max(0, int(time.monotonic() - self._started_at))
         suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
         title = self._working_title()
-        if len(self._items) <= 1 and "\n" not in self._message:
+        if not self._items:
+            return Text.assemble(
+                (_activity_indicator(), self._accent_style()),
+                " ",
+                (title, "bold"),
+                (suffix, "dim"),
+            )
+        if len(self._items) == 1 and "\n" not in self._message:
             return Text.assemble(
                 (_activity_indicator(), self._accent_style()),
                 " ",
@@ -121,9 +118,6 @@ class WorkingStatus:
         omitted = self._translator.t("ui.working.omitted", count=self._omitted_count)
         return [omitted, *self._items]
 
-    def _summary_items(self) -> list[str]:
-        return [_compact_item(item) for item in self._visible_items()]
-
 
 def _working_label(message: str, translator: Translator) -> str:
     normalized = message.strip()
@@ -151,15 +145,6 @@ def _append_render_item(text: Text, item: str, *, current: bool) -> None:
     for line in lines[1:]:
         text.append("\n")
         text.append(f"    {line.strip()}", style=style)
-
-
-def _compact_item(item: str) -> str:
-    lines = [line.strip() for line in item.splitlines() if line.strip()]
-    if not lines:
-        return item.strip()
-    if len(lines) == 1:
-        return lines[0]
-    return f"{lines[0]} / {' / '.join(lines[1:3])}"
 
 
 def _cancel_live_without_final_refresh(live: Live) -> None:

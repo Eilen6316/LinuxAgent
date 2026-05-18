@@ -39,6 +39,7 @@ async def test_unwrapped_tool_is_denied_before_execution() -> None:
     assert result.event["status"] == "denied"
     assert result.event["sandbox"] is None
     assert "missing ToolSandboxSpec metadata" in result.content
+    assert "Do not infer facts" in result.content
 
 
 def test_tool_catalog_reports_missing_metadata() -> None:

@@ -317,6 +317,10 @@ def _structured_error(tool_name: str, status: str, message: str) -> str:
             "tool": tool_name,
             "error_type": status,
             "message": message,
+            "constraint": (
+                "Do not infer facts from unread content. "
+                "Ask for an allowed path, config update, or approved command."
+            ),
         },
         ensure_ascii=False,
     )

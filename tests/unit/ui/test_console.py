@@ -704,7 +704,7 @@ async def test_console_print_activity_uses_transient_working_status(monkeypatch)
 
     assert ui._working_status is None
     final_rendered = console.export_text()
-    assert "已完成步骤" in final_rendered
+    assert "已完成步骤" not in final_rendered
     assert "规划命令" in final_rendered
 
 
@@ -729,9 +729,23 @@ async def test_console_print_activity_keeps_cumulative_working_history(
     await ui.print("done")
 
     final_rendered = console.export_text()
-    assert "已完成步骤" in final_rendered
-    assert "分类意图" in final_rendered
-    assert "规划命令" in final_rendered
+    assert "已完成步骤" not in final_rendered
+
+
+async def test_console_working_status_ignores_empty_working_step(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_activity("LinuxAgent 正在")
+    await ui.print_activity("LinuxAgent 正在分类意图")
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "处理中\n" not in rendered
+    assert "分类意图" in rendered
 
 
 async def test_console_print_activity_supports_multiline_working_status(monkeypatch) -> None:

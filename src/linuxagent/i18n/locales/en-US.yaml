@@ -168,6 +168,10 @@ runtime:
     evidence_preview: "Evidence preview:"
     no_output: "No output"
     activity_status: "LinuxAgent is recording tool status"
+    activity_guidance_failed: "LinuxAgent cannot read project guidance {path}"
+    activity_read_failed: "LinuxAgent cannot read file {path}"
+    activity_list_failed: "LinuxAgent cannot list directory {path}"
+    activity_search_failed: "LinuxAgent cannot search {target}"
     activity_discover_project_guidance: "LinuxAgent is organizing project guidance {path}"
     activity_read_file: "LinuxAgent is organizing file {path}"
     activity_list_dir: "LinuxAgent is organizing directory {path}"
@@ -375,7 +379,6 @@ ui:
     untitled: "Untitled session"
   working:
     title: "Working"
-    completed_title: "Completed steps"
     omitted: "{count} earlier steps"
     suffix: " ({elapsed}s • esc to interrupt)"
     activity_prefix: "LinuxAgent is"

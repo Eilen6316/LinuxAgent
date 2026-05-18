@@ -367,10 +367,22 @@ def _tool_activity_error(
 ) -> str:
     status = str(event.get("status") or "error")
     target = _tool_target(tool_name, args)
+    if tool_name in {"read_file", "list_dir", "search_files", "discover_project_guidance"}:
+        return _tool_activity_summary(_tool_error_heading(tool_name, target, translator), status)
     label = f"{tool_name} {target}".strip()
-    return _tool_activity_summary(
-        translator.t("runtime.tool.activity_status"), f"{label} · {status}"
-    )
+    return _tool_activity_summary(translator.t("runtime.tool.activity_status"), status or label)
+
+
+def _tool_error_heading(tool_name: str, target: str, translator: Translator) -> str:
+    if tool_name == "discover_project_guidance":
+        return translator.t("runtime.tool.activity_guidance_failed", path=target or ".")
+    if tool_name == "read_file":
+        return translator.t("runtime.tool.activity_read_failed", path=target)
+    if tool_name == "list_dir":
+        return translator.t("runtime.tool.activity_list_failed", path=target or ".")
+    if tool_name == "search_files":
+        return translator.t("runtime.tool.activity_search_failed", target=target)
+    return translator.t("runtime.tool.activity_status")
 
 
 def _tool_activity_end(
