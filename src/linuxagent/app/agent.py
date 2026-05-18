@@ -142,8 +142,7 @@ class LinuxAgent:
             return await invoke_task
         cancel_reason = await cancel_task
         invoke_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await invoke_task
+        invoke_task.add_done_callback(_consume_cancelled_task)
         await self._publish_cancelled_worker_group(cancel_reason)
         await self.ui.print(self.translator.t("app.cancelled"))
         return None
@@ -286,3 +285,8 @@ class LinuxAgent:
         self.context_manager.replace(history)
         self._persist_active_history(thread_id)
         self.chat_service.save()
+
+
+def _consume_cancelled_task(task: asyncio.Task[Any]) -> None:
+    with suppress(asyncio.CancelledError):
+        task.exception()

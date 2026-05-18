@@ -207,6 +207,24 @@ class _SlowGraph(_FakeGraph):
         return {}
 
 
+class _SlowCancelGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.cancel_cleanup_started = asyncio.Event()
+        self.cancel_cleanup_done = asyncio.Event()
+        self.finish_cancel_cleanup = asyncio.Event()
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del state, config
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            self.cancel_cleanup_started.set()
+            await self.finish_cancel_cleanup.wait()
+            self.cancel_cleanup_done.set()
+            raise
+
+
 class _ResumeGraph(_FakeGraph):
     async def ainvoke(self, state: Any, config: Any) -> Any:
         result = await super().ainvoke(state, config)
@@ -347,6 +365,22 @@ async def test_run_turn_escape_cancels_inflight_graph(tmp_path) -> None:
     assert result == {}
     assert ui.printed == ["已终止当前 AI 工作。"]
     assert ui.activities == ["LinuxAgent 正在并发处理 当前请求：0/1\n  - 主任务: 已取消 - escape"]
+
+
+async def test_run_turn_escape_does_not_wait_for_slow_graph_cleanup(tmp_path) -> None:
+    ui = _FakeUI()
+    ui.cancel_immediately = True
+    graph = _SlowCancelGraph()
+    agent = _agent(tmp_path, graph=graph, ui=ui)
+
+    result = await asyncio.wait_for(agent.run_turn("slow task", thread_id="cancel"), timeout=0.2)
+
+    assert result == {}
+    assert ui.printed == ["已终止当前 AI 工作。"]
+    await asyncio.wait_for(graph.cancel_cleanup_started.wait(), timeout=0.2)
+    assert not graph.cancel_cleanup_done.is_set()
+    graph.finish_cancel_cleanup.set()
+    await asyncio.wait_for(graph.cancel_cleanup_done.wait(), timeout=0.2)
 
 
 async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
