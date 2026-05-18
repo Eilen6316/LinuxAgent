@@ -1158,8 +1158,8 @@ async def test_graph_allow_all_is_scoped_to_conversation_state(tmp_path) -> None
     ]
     snapshot = await graph.aget_state(config)
     assert tuple(snapshot.values["command_permissions"]) == (
-        "/bin/echo os",
-        "/bin/echo nginx",
+        'argv:["/bin/echo","os"]',
+        'argv:["/bin/echo","nginx"]',
     )
     results = snapshot.values["runbook_results"]
     assert [result.command for result in results] == ["/bin/echo os", "/bin/echo nginx"]

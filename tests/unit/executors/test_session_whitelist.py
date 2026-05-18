@@ -25,6 +25,18 @@ def test_flag_reorder_not_normalised() -> None:
     assert wl.contains("ls -a -l") is False
 
 
+def test_argument_insertion_not_whitelisted() -> None:
+    wl = SessionWhitelist()
+    wl.add("git status")
+    assert wl.contains("git status --short") is False
+
+
+def test_position_change_not_whitelisted() -> None:
+    wl = SessionWhitelist()
+    wl.add("systemctl status nginx")
+    assert wl.contains("systemctl stop nginx") is False
+
+
 def test_destructive_rejected() -> None:
     wl = SessionWhitelist()
     assert wl.add("rm -rf /tmp/x") is False

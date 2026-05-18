@@ -9,7 +9,10 @@ import pytest
 from linuxagent.interfaces import CommandSource, SafetyLevel
 from linuxagent.policy import (
     DEFAULT_POLICY_ENGINE,
+    PolicyArgvPattern,
+    PolicyArgvToken,
     PolicyEngine,
+    PolicyFlagValue,
     load_policy_config,
     merge_policy_configs,
     runtime_policy_config,
@@ -311,6 +314,76 @@ def test_custom_policy_rule_can_override_decision_shape() -> None:
     assert decision.matched_rules == ("CUSTOM_RESTART",)
 
 
+def test_argv_prefix_policy_distinguishes_git_shapes() -> None:
+    assert DEFAULT_POLICY_ENGINE.evaluate("git status").level is SafetyLevel.SAFE
+    assert DEFAULT_POLICY_ENGINE.evaluate("git status --short").level is SafetyLevel.SAFE
+
+    decision = DEFAULT_POLICY_ENGINE.evaluate("git push origin main")
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert decision.matched_rule == "DESTRUCTIVE"
+    assert "git.mutate" in decision.capabilities
+    assert decision.can_whitelist is False
+
+
+def test_argv_exact_policy_rejects_argument_insertion() -> None:
+    engine = _single_rule_engine(
+        PolicyMatch(argv=(PolicyArgvPattern(prefix=("git", "status"), exact=True),))
+    )
+
+    assert engine.evaluate("git status").matched_rule == "CUSTOM_ARGV"
+    assert engine.evaluate("git status --short").level is SafetyLevel.SAFE
+
+
+def test_argv_token_policy_matches_position_without_generalizing() -> None:
+    engine = _single_rule_engine(
+        PolicyMatch(
+            argv=(
+                PolicyArgvPattern(
+                    prefix=("systemctl", "status"),
+                    tokens=(PolicyArgvToken(index=2, values=("nginx",)),),
+                ),
+            )
+        )
+    )
+
+    assert engine.evaluate("systemctl status nginx").matched_rule == "CUSTOM_ARGV"
+    assert engine.evaluate("systemctl status ssh").level is SafetyLevel.SAFE
+    assert engine.evaluate("systemctl stop nginx").level is SafetyLevel.SAFE
+
+
+@pytest.mark.parametrize("command", ["journalctl --unit nginx", "journalctl --unit=nginx"])
+def test_argv_flag_value_policy_matches_separate_and_equals_values(command: str) -> None:
+    engine = _single_rule_engine(
+        PolicyMatch(
+            argv=(
+                PolicyArgvPattern(
+                    prefix=("journalctl",),
+                    flag_values=(PolicyFlagValue(flag="--unit", values=("nginx",)),),
+                ),
+            )
+        )
+    )
+
+    assert engine.evaluate(command).matched_rule == "CUSTOM_ARGV"
+
+
+def test_argv_flag_value_policy_requires_allowed_value() -> None:
+    engine = _single_rule_engine(
+        PolicyMatch(
+            argv=(
+                PolicyArgvPattern(
+                    prefix=("journalctl",),
+                    flag_values=(PolicyFlagValue(flag="--unit", values=("nginx",)),),
+                ),
+            )
+        )
+    )
+
+    assert engine.evaluate("journalctl --unit ssh").level is SafetyLevel.SAFE
+    assert engine.evaluate("journalctl --unit").level is SafetyLevel.SAFE
+
+
 def test_runtime_policy_config_merges_user_rules_with_builtin(tmp_path: Path) -> None:
     path = tmp_path / "policy.yaml"
     path.write_text(
@@ -380,6 +453,24 @@ def test_merge_policy_configs_replaces_duplicate_rule_ids() -> None:
     decision = engine.evaluate("systemctl restart nginx")
     assert decision.level is SafetyLevel.BLOCK
     assert decision.matched_rule == "CUSTOM_SERVICE"
+
+
+def _single_rule_engine(match: PolicyMatch) -> PolicyEngine:
+    return PolicyEngine(
+        PolicyConfig(
+            rules=(
+                PolicyRule(
+                    id="custom.argv",
+                    legacy_rule="CUSTOM_ARGV",
+                    level=SafetyLevel.CONFIRM,
+                    risk_score=50,
+                    capabilities=("custom.argv",),
+                    reason="custom argv shape",
+                    match=match,
+                ),
+            )
+        )
+    )
 
 
 DANGEROUS_GOLDEN_CASES = (

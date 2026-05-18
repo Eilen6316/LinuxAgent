@@ -17,8 +17,11 @@ from .models import (
     ApprovalMode,
     CommandFlagSet,
     PolicyApproval,
+    PolicyArgvPattern,
+    PolicyArgvToken,
     PolicyConfig,
     PolicyDecision,
+    PolicyFlagValue,
     PolicyMatch,
     PolicyRule,
 )
@@ -510,6 +513,7 @@ class _CompiledRule:
         self._args_regex = tuple(re.compile(pattern) for pattern in rule.match.args_regex)
         self._path_regex = tuple(re.compile(pattern) for pattern in rule.match.path_regex)
         self._embedded_regex = tuple(re.compile(pattern) for pattern in rule.match.embedded_regex)
+        self._argv = tuple(_CompiledArgvPattern(pattern) for pattern in rule.match.argv)
 
     def matches(self, facts: CommandFacts) -> bool:
         match = self.rule.match
@@ -524,7 +528,7 @@ class _CompiledRule:
             return True
         if not self._matches_command_shape(facts):
             return False
-        if match.command:
+        if match.command or self._argv:
             return True
         return _has_non_command_matcher(match)
 
@@ -544,6 +548,8 @@ class _CompiledRule:
 
     def _matches_command_shape(self, facts: CommandFacts) -> bool:
         match = self.rule.match
+        if self._argv and not any(pattern.matches(facts.tokens) for pattern in self._argv):
+            return False
         if match.command and facts.head not in match.command:
             return False
         if match.subcommand_any and (not facts.args or facts.args[0] not in match.subcommand_any):
@@ -556,16 +562,63 @@ class _CompiledRule:
             return False
         if match.path_any and not any(arg in match.path_any for arg in facts.args):
             return False
-        if self._path_regex and not any(
+        return not self._path_regex or any(
             pattern.match(path)
             for arg in facts.args
             for path in _path_match_candidates(arg)
             for pattern in self._path_regex
-        ):
+        )
+
+
+class _CompiledArgvPattern:
+    def __init__(self, pattern: PolicyArgvPattern) -> None:
+        self._pattern = pattern
+        self._tokens = tuple(_CompiledArgvToken(token) for token in pattern.tokens)
+        self._flag_values = tuple(_CompiledFlagValue(flag) for flag in pattern.flag_values)
+
+    def matches(self, tokens: tuple[str, ...]) -> bool:
+        pattern = self._pattern
+        if pattern.prefix and tokens[: len(pattern.prefix)] != pattern.prefix:
             return False
-        if match.command:
-            return facts.head in match.command
-        return True
+        if pattern.exact and len(tokens) != len(pattern.prefix):
+            return False
+        if not all(token.matches(tokens) for token in self._tokens):
+            return False
+        return all(flag.matches(tokens) for flag in self._flag_values)
+
+
+class _CompiledArgvToken:
+    def __init__(self, token: PolicyArgvToken) -> None:
+        self._token = token
+        self._regex = tuple(re.compile(pattern) for pattern in token.regex)
+
+    def matches(self, tokens: tuple[str, ...]) -> bool:
+        if self._token.index >= len(tokens):
+            return False
+        value = tokens[self._token.index]
+        return value in self._token.values or any(pattern.match(value) for pattern in self._regex)
+
+
+class _CompiledFlagValue:
+    def __init__(self, flag: PolicyFlagValue) -> None:
+        self._flag = flag
+        self._regex = tuple(re.compile(pattern) for pattern in flag.regex)
+
+    def matches(self, tokens: tuple[str, ...]) -> bool:
+        values = _flag_values(
+            tokens,
+            self._flag.flag,
+            allow_equals=self._flag.allow_equals,
+            allow_separate=self._flag.allow_separate,
+        )
+        if not values:
+            return not self._flag.required
+        if not self._flag.values and not self._regex:
+            return True
+        return any(self._value_matches(value) for value in values)
+
+    def _value_matches(self, value: str) -> bool:
+        return value in self._flag.values or any(pattern.match(value) for pattern in self._regex)
 
 
 def _structural_match_state(facts: CommandFacts, match: PolicyMatch) -> bool | None:
@@ -586,12 +639,29 @@ def _structural_match_state(facts: CommandFacts, match: PolicyMatch) -> bool | N
 
 def _has_non_command_matcher(match: PolicyMatch) -> bool:
     return bool(
-        match.args_any
+        match.argv
+        or match.args_any
         or match.args_regex
         or match.path_any
         or match.path_regex
         or match.subcommand_any
     )
+
+
+def _flag_values(
+    tokens: tuple[str, ...],
+    flag: str,
+    *,
+    allow_equals: bool,
+    allow_separate: bool,
+) -> tuple[str, ...]:
+    values: list[str] = []
+    for index, token in enumerate(tokens[1:], start=1):
+        if allow_equals and token.startswith(f"{flag}="):
+            values.append(token[len(flag) + 1 :])
+        if allow_separate and token == flag and index + 1 < len(tokens):
+            values.append(tokens[index + 1])
+    return tuple(values)
 
 
 def _path_match_candidates(arg: str) -> tuple[str, ...]:

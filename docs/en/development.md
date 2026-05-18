@@ -195,6 +195,21 @@ rules:
       subcommand_any: [stop, restart, reload, disable]
 ```
 
+For argument-sensitive rules, prefer `match.argv` so the policy can express
+fixed prefixes, exact arity, token positions, and flags that take values without
+falling back to substring checks:
+
+```yaml
+match:
+  argv:
+    - prefix: [git, status]
+      exact: true
+    - prefix: [journalctl]
+      flag_values:
+        - flag: --unit
+          values: [nginx]
+```
+
 Policy YAML is validated fail-fast with Pydantic and can be enabled at runtime:
 
 ```yaml
@@ -283,9 +298,10 @@ never enabled by default.
 HITL "allow all" decisions are recorded as `decision: yes_all` with a
 Claude-style `permissions.allow` list such as `Bash(cat /etc/os-release)`.
 Those permissions live in LangGraph state for the current conversation thread
-and the same thread after `/resume`; they are not global executor permissions
-and are still blocked by `never_whitelist`, destructive capabilities, SSH batch
-confirmation, policy, and sandbox gates.
+and the same thread after `/resume`. They match exact argv token shapes rather
+than substrings, are not global executor permissions, and are still blocked by
+`never_whitelist`, destructive capabilities, SSH batch confirmation, policy,
+and sandbox gates.
 
 Audit records are hash-chained with `prev_hash` and `hash`. Use
 `linuxagent audit verify` to validate the current audit log and locate the

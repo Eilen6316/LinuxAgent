@@ -55,8 +55,8 @@ When LinuxAgent proposes a first LLM-generated command, use the confirmation
 menu:
 
 - `Yes`: run this operation once.
-- `Yes, don't ask again`: allow matching commands only in this conversation and
-  the same `/resume` thread.
+- `Yes, don't ask again`: allow the same argv command shape only in this
+  conversation and the same `/resume` thread.
 - `No`: refuse the operation.
 
 Direct operator commands use the `!` prefix and stream output into the current

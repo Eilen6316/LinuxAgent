@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import shlex
 from typing import Any
 
 from ..interfaces import CommandSource, SafetyLevel
+from ..policy.argv import command_permission_key, command_permission_matches
 from ..policy.capabilities import DESTRUCTIVE_CAPABILITY_PREFIXES
 from ..services import CommandService
 from .payloads import may_whitelist
@@ -31,19 +31,13 @@ def updated_command_permissions(
         if has_destructive_capability(verdict.capabilities):
             continue
         key = normalize_command(command)
-        if key is not None and key not in allowed:
+        if key is not None and key not in allowed and not _permission_exists(allowed, command):
             allowed.append(key)
     return tuple(allowed)
 
 
 def normalize_command(command: str) -> str | None:
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return None
-    if not tokens:
-        return None
-    return " ".join(tokens)
+    return command_permission_key(command)
 
 
 def conversation_permissions_enabled(command_service: CommandService) -> bool:
@@ -67,3 +61,7 @@ def _plan_commands(state: AgentState) -> tuple[str, ...]:
     if plan is None:
         return _current_command(state)
     return tuple(item.command for item in plan.commands)
+
+
+def _permission_exists(permissions: list[str], command: str) -> bool:
+    return any(command_permission_matches(permission, command) for permission in permissions)

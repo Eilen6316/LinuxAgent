@@ -265,8 +265,12 @@ rules:
     reason: git history or remote mutation
     never_whitelist: true
     match:
-      command: [git]
-      subcommand_any: [push, reset, clean, checkout, rebase]
+      argv:
+        - prefix: [git, push]
+        - prefix: [git, reset]
+        - prefix: [git, clean]
+        - prefix: [git, checkout]
+        - prefix: [git, rebase]
 
   - id: network.firewall
     legacy_rule: DESTRUCTIVE

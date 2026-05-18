@@ -10,9 +10,10 @@ from langgraph.types import Command
 from ..cluster.remote_command import RemoteCommandError, validate_remote_command
 from ..config.models import ClusterHost
 from ..interfaces import CommandSource, SafetyLevel
+from ..policy.argv import any_command_permission_matches
 from ..services import ClusterService, CommandService
 from ..telemetry import TelemetryRecorder
-from .command_permissions import conversation_permissions_enabled, normalize_command
+from .command_permissions import conversation_permissions_enabled
 from .common import span, trace_id
 from .events import RuntimeEventObserver, notify_event
 from .state import AgentState
@@ -239,10 +240,7 @@ def _safety_reason(
 
 
 def _has_permission(state: AgentState, command: str) -> bool:
-    key = normalize_command(command)
-    if key is None:
-        return False
-    return key in state.get("command_permissions", ())
+    return any_command_permission_matches(state.get("command_permissions", ()), command)
 
 
 def _can_whitelist(verdict: Any) -> bool:

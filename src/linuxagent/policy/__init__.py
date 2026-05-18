@@ -6,8 +6,11 @@ from .engine import PolicyEngine
 from .models import (
     ApprovalMode,
     PolicyApproval,
+    PolicyArgvPattern,
+    PolicyArgvToken,
     PolicyConfig,
     PolicyDecision,
+    PolicyFlagValue,
     PolicyMatch,
     PolicyRule,
 )
@@ -17,10 +20,13 @@ DEFAULT_POLICY_ENGINE = PolicyEngine(builtin_policy_config())
 __all__ = [
     "DEFAULT_POLICY_ENGINE",
     "ApprovalMode",
+    "PolicyArgvPattern",
+    "PolicyArgvToken",
     "PolicyApproval",
     "PolicyConfig",
     "PolicyDecision",
     "PolicyEngine",
+    "PolicyFlagValue",
     "PolicyMatch",
     "PolicyRule",
     "builtin_policy_config",

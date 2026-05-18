@@ -61,7 +61,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
 | Runbooks | 11 YAML runbooks supplied as planner guidance, not pre-LLM hard routes |
 | Human-in-the-Loop | LangGraph `interrupt()` + session resume; confirmations show policy and planned sandbox context |
-| Conversation permissions | Approved SAFE commands can skip confirmation only within the same conversation thread, including `/resume`; destructive commands never enter |
+| Conversation permissions | Approved SAFE command shapes can skip confirmation only within the same conversation thread, including `/resume`; destructive commands never enter |
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
 | Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
 | Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
@@ -602,10 +602,10 @@ drwxr-xr-x  12 user user 4096 ...
 Twelve subdirectories and a few files, permissions 755/644, owned by user.
 ```
 
-Ask "list the files" again in the same resumed conversation thread — `ls -la`
-can run straight through without another confirmation if it was allowed for
-that conversation. Starting `/new` or a different saved session does not inherit
-that permission.
+Ask "list the files" again in the same resumed conversation thread: the same
+argv shape for `ls -la` can run without another confirmation if it was allowed
+for that conversation. Starting `/new` or a different saved session does not
+inherit that permission.
 
 ### Scenario 2: destructive command (CONFIRM every time)
 

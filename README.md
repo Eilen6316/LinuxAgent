@@ -114,8 +114,8 @@ check the Linux version
 ```
 
 When a first LLM-generated command appears, choose `Yes` for one execution,
-`Yes, don't ask again` for matching commands only in this conversation and the
-same `/resume` thread, or `No` to refuse. Use `!uname -a` for direct
+`Yes, don't ask again` for the same argv command shape only in this conversation
+and the same `/resume` thread, or `No` to refuse. Use `!uname -a` for direct
 operator-authored command mode.
 
 `config.yaml` must be owned by the current user and `chmod 600`; secrets are not loaded from `.env`.
@@ -150,9 +150,9 @@ a running CLI session and `/tools` to see available slash/tool entry points.
 Typing `/` opens the slash-command completion menu. Command confirmations use
 an arrow-key menu with `Yes`, `Yes, don't ask again`, and `No` when conversation
 permissions are allowed. `Yes, don't ask again` is scoped to the current
-conversation thread and the same thread when resumed with `/resume`. New
-conversations do not inherit it, and destructive or `never_whitelist` policy
-matches still ask every time.
+conversation thread, the same thread when resumed with `/resume`, and the same
+argv command shape. New conversations do not inherit it, and destructive or
+`never_whitelist` policy matches still ask every time.
 Input beginning with `!` is direct command mode: LinuxAgent executes the
 operator-authored command, streams stdout/stderr live, and records both
 `!<command>` and the system result into the active conversation context. It does
@@ -259,7 +259,7 @@ capability probing, fallback order, and the compatibility test matrix.
 |---|---|
 | User-authored read-only command | May run when policy returns `SAFE` |
 | First LLM-generated command | `CONFIRM` |
-| Conversation-approved LLM command | May skip repeat confirmation only in the same conversation thread, including `/resume` of that thread |
+| Conversation-approved LLM command | May skip repeat confirmation only for the same argv command shape in the same conversation thread, including `/resume` of that thread |
 | Destructive command | `CONFIRM` every time; never conversation-whitelisted |
 | Command targeting root or sensitive paths | `BLOCK` when matched by policy |
 | SSH batch across two or more hosts | Explicit batch confirmation with target hosts and remote profiles |

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..interfaces import CommandSource, SafetyLevel
 
@@ -41,10 +41,57 @@ class PolicyDecision(BaseModel):
         return self.matched_rules[0] if self.matched_rules else None
 
 
+class PolicyArgvToken(BaseModel):
+    model_config = _FROZEN
+
+    index: int = Field(ge=0)
+    values: tuple[str, ...] = ()
+    regex: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _has_matcher(self) -> PolicyArgvToken:
+        if not self.values and not self.regex:
+            raise ValueError("argv token matcher requires values or regex")
+        return self
+
+
+class PolicyFlagValue(BaseModel):
+    model_config = _FROZEN
+
+    flag: str = Field(min_length=1)
+    values: tuple[str, ...] = ()
+    regex: tuple[str, ...] = ()
+    required: bool = True
+    allow_equals: bool = True
+    allow_separate: bool = True
+
+    @model_validator(mode="after")
+    def _allows_a_value_form(self) -> PolicyFlagValue:
+        if not self.allow_equals and not self.allow_separate:
+            raise ValueError("flag value matcher requires at least one value form")
+        return self
+
+
+class PolicyArgvPattern(BaseModel):
+    model_config = _FROZEN
+
+    prefix: tuple[str, ...] = ()
+    exact: bool = False
+    tokens: tuple[PolicyArgvToken, ...] = ()
+    flag_values: tuple[PolicyFlagValue, ...] = ()
+
+    @model_validator(mode="after")
+    def _has_matcher(self) -> PolicyArgvPattern:
+        if not self.prefix and not self.tokens and not self.flag_values:
+            raise ValueError("argv pattern requires prefix, tokens, or flag_values")
+        return self
+
+
 class PolicyMatch(BaseModel):
     model_config = _FROZEN
 
     command: tuple[str, ...] = ()
+    argv: tuple[PolicyArgvPattern, ...] = ()
     subcommand_any: tuple[str, ...] = ()
     args_any: tuple[str, ...] = ()
     args_regex: tuple[str, ...] = ()

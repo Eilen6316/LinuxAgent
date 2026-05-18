@@ -8,6 +8,7 @@ from linuxagent.graph.command_permissions import normalize_command, updated_comm
 from linuxagent.graph.payloads import build_confirm_payload
 from linuxagent.interfaces import CommandSource, SafetyLevel, SafetyResult
 from linuxagent.plans import parse_command_plan
+from linuxagent.policy.argv import command_permission_matches
 
 
 class _Executor:
@@ -30,13 +31,47 @@ class _CommandService:
 
 
 def test_normalize_command_uses_shell_tokenization() -> None:
-    assert normalize_command(" /bin/echo   'hello world' ") == "/bin/echo hello world"
+    assert normalize_command(" /bin/echo   'hello world' ") == 'argv:["/bin/echo","hello world"]'
     assert normalize_command("unterminated 'quote") is None
+
+
+def test_structured_permission_matches_only_exact_argv_shape() -> None:
+    permission = normalize_command("git status")
+
+    assert permission is not None
+    assert command_permission_matches(permission, "git status") is True
+    assert command_permission_matches(permission, "git status --short") is False
+
+
+def test_legacy_permission_key_still_matches_exact_argv_shape() -> None:
+    assert command_permission_matches("/bin/echo scoped", "/bin/echo scoped") is True
+    assert command_permission_matches("/bin/echo scoped", "/bin/echo scoped extra") is False
 
 
 def test_yes_adds_only_current_command_when_allowed() -> None:
     command = "/bin/echo ok"
     state = _confirmable_state(command)
+    payload = build_confirm_payload(state, "audit-1")
+    service = _CommandService(
+        {
+            command: SafetyResult(
+                SafetyLevel.CONFIRM,
+                matched_rule="LLM_FIRST_RUN",
+                command_source=CommandSource.LLM,
+                can_whitelist=True,
+            )
+        }
+    )
+
+    assert updated_command_permissions(state, payload, service, allow_all=False) == (
+        'argv:["/bin/echo","ok"]',
+    )
+
+
+def test_yes_does_not_duplicate_legacy_permission_shape() -> None:
+    command = "/bin/echo ok"
+    state = _confirmable_state(command)
+    state["command_permissions"] = (command,)
     payload = build_confirm_payload(state, "audit-1")
     service = _CommandService(
         {
@@ -98,7 +133,9 @@ def test_yes_all_adds_only_eligible_plan_commands() -> None:
         permission_classifier=lambda command: service.classify(command, source=CommandSource.LLM),
     )
 
-    assert updated_command_permissions(state, payload, service, allow_all=True) == (first,)
+    assert updated_command_permissions(state, payload, service, allow_all=True) == (
+        'argv:["/bin/echo","ok"]',
+    )
 
 
 def test_batch_confirm_command_cannot_enter_permissions() -> None:

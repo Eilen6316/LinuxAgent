@@ -11,18 +11,17 @@ whitelist:
 - **Never accepts destructive commands** (R-HITL-03). ``add()`` silently drops
   anything for which :func:`.safety.is_destructive` returns True, so caller
   sites can't accidentally weaken the rule.
-- Normalises keys by tokenizing with ``shlex`` and joining with a single
-  space, which collapses redundant whitespace but preserves argument order.
-  Whitespace-only variants hash to the same key; reordered flags do not.
+- Normalises keys as structured argv token tuples, which collapses redundant
+  whitespace but preserves argument count, position, and order.
 """
 
 from __future__ import annotations
 
-import shlex
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from ..policy.argv import command_permission_key
 from .safety import is_destructive
 
 
@@ -100,10 +99,4 @@ class SessionWhitelist:
 
     @staticmethod
     def _normalize(command: str) -> str | None:
-        try:
-            tokens = shlex.split(command)
-        except ValueError:
-            return None
-        if not tokens:
-            return None
-        return " ".join(tokens)
+        return command_permission_key(command)

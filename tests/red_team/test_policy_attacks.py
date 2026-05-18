@@ -177,6 +177,36 @@ def _case(
             SafetyLevel.BLOCK,
             "sensitive path read",
         ),
+        _case(
+            "git push origin main",
+            SafetyLevel.CONFIRM,
+            "arity-aware git mutation prefix",
+        ),
+        _case(
+            "git status; git push origin main",
+            SafetyLevel.CONFIRM,
+            "shell control insertion around git mutation",
+        ),
+        _case(
+            "git status > /tmp/linuxagent-status",
+            SafetyLevel.CONFIRM,
+            "redirect write around safe git status shape",
+        ),
+        _case(
+            "systemctl stop nginx",
+            SafetyLevel.CONFIRM,
+            "service action token position is destructive",
+        ),
+        _case(
+            "systemctl status nginx",
+            SafetyLevel.SAFE,
+            "service status token position stays non-mutating",
+        ),
+        _case(
+            "echo ＇rm -rf /＇",
+            SafetyLevel.SAFE,
+            "unicode quote-like characters are data, not shell quotes",
+        ),
     ],
 )
 def test_attack_case_minimum_policy_level(case: AttackCase) -> None:

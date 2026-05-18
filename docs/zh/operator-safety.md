@@ -26,10 +26,13 @@ LinuxAgent 是 HITL-first 的 Linux 运维控制面，不是无人值守 shell c
 | 选项 | 含义 |
 |---|---|
 | `Yes` | 只批准本次操作 |
-| `Yes, don't ask again` | 仅在当前 conversation thread 和同一 `/resume` thread 中允许匹配命令 |
+| `Yes, don't ask again` | 仅在当前 conversation thread 和同一 `/resume` thread 中允许相同 argv 命令形态 |
 | `No` | 拒绝本次操作 |
 
 对话权限不适用于破坏性命令、`never_whitelist` 规则、SSH 批量确认或新对话。
+权限按精确 argv token 形状保存，因此批准 `git status` 不会批准
+`git status --short`，批准 `systemctl status nginx` 也不会批准
+`systemctl stop nginx`。
 
 ## Sandbox 边界
 

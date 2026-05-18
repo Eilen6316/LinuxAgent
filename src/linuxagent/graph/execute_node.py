@@ -11,10 +11,10 @@ from langgraph.types import Command
 from ..audit import AuditLog
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
 from ..plans import PlannedCommand
+from ..policy.argv import any_command_permission_matches
 from ..policy.capabilities import UNSAFE_BATCH_CAPABILITY_PREFIXES
 from ..services import BackgroundJobController, ClusterService, CommandService, JobDaemonError
 from ..telemetry import TelemetryRecorder
-from .command_permissions import normalize_command
 from .common import span, trace_id
 from .events import RuntimeEventObserver, notify_event
 from .execution import (
@@ -363,10 +363,8 @@ def _effective_batch_level(
 
 
 def _is_conversation_permission_hit(state: AgentState, command: str) -> bool:
-    key = normalize_command(command)
     return (
-        key is not None
-        and key in state.get("command_permissions", ())
+        any_command_permission_matches(state.get("command_permissions", ()), command)
         and state.get("command_source") is CommandSource.LLM
     )
 

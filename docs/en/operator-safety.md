@@ -27,11 +27,14 @@ operator.
 | Choice | Effect |
 |---|---|
 | `Yes` | Approves this operation once |
-| `Yes, don't ask again` | Allows matching commands in the current conversation thread and the same thread after `/resume` |
+| `Yes, don't ask again` | Allows the same argv command shape in the current conversation thread and the same thread after `/resume` |
 | `No` | Refuses the operation |
 
 Conversation permissions do not apply to destructive commands, rules marked
 `never_whitelist`, SSH batch confirmation, or new conversations.
+Permissions are stored as exact argv token shapes, so approving `git status`
+does not approve `git status --short`, and approving `systemctl status nginx`
+does not approve `systemctl stop nginx`.
 
 ## Sandbox Boundary
 

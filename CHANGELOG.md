@@ -62,6 +62,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - SSH execution now uses a manager-owned worker pool controlled by
   `cluster.max_workers` instead of creating a new one-worker pool for each
   remote command.
+- Policy rules and conversation permissions now support structured argv-shape
+  matching, including exact prefixes, token positions, and flag values, so an
+  approval for one command shape cannot generalize to inserted or reordered
+  arguments.
 - Added automatic parameter-collection wizard support for ambiguous
   multi-parameter operations, with `/resume` visibility, stable partial
   recovery checkpoints, and user documentation.
