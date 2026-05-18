@@ -18,6 +18,7 @@ from .intelligence_tools import (
     make_pattern_analyzer_tool,
     make_similar_commands_tool,
 )
+from .network_tools import build_network_tools, make_fetch_url_tool
 from .sandbox import ToolHITLMode, ToolRuntimeLimits, ToolSandboxSpec, attach_tool_sandbox
 from .system_tools import (
     LogFileAccessError,
@@ -46,12 +47,14 @@ __all__ = [
     "attach_tool_sandbox",
     "build_system_tools",
     "build_intelligence_tools",
+    "build_network_tools",
     "build_workspace_tools",
     "compact_tool_catalog_summary",
     "format_tool_catalog_check",
     "inspect_tool_catalog",
     "make_command_recommendations_tool",
     "make_execute_command_tool",
+    "make_fetch_url_tool",
     "make_get_system_info_tool",
     "make_knowledge_base_tool",
     "make_list_dir_tool",

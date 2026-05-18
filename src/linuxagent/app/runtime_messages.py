@@ -124,6 +124,8 @@ def _tool_start_message(tool_name: str, args: dict[str, Any], translator: Transl
         files = args.get("files") if isinstance(args.get("files"), list) else []
         suffix = f" {', '.join(str(item) for item in files)}" if files else ""
         return translator.t("runtime.tool.start_repair_file_patch", suffix=suffix)
+    if tool_name == "fetch_url":
+        return translator.t("runtime.tool.start_fetch_url", url=args.get("url") or "")
     return translator.t("runtime.tool.start_default", tool_name=tool_name)
 
 
@@ -144,6 +146,9 @@ def _tool_target(tool_name: str, args: dict[str, Any]) -> str:
     target = args.get("path")
     if isinstance(target, str) and target:
         return target
+    url = args.get("url")
+    if isinstance(url, str) and url:
+        return url
     return ""
 
 
@@ -212,6 +217,13 @@ def _tool_end_message(
             evidence,
             translator,
         )
+    if tool_name == "fetch_url":
+        evidence = _tool_evidence_summary(output, translator)
+        return _tool_evidence_message(
+            translator.t("runtime.tool.fetch_done", url=args.get("url") or "", suffix=suffix),
+            evidence,
+            translator,
+        )
     return None
 
 
@@ -257,6 +269,12 @@ def _tool_activity_end(
         return _tool_activity_summary(
             translator.t("runtime.tool.activity_search_files", root=root, pattern=pattern),
             f"search_files · {_count_label(_tool_item_count(output), 'match', 'matches')}{suffix}",
+        )
+    if tool_name == "fetch_url":
+        target = str(args.get("url") or "").strip()
+        return _tool_activity_summary(
+            translator.t("runtime.tool.activity_fetch_url", url=target),
+            f"fetch_url · {_count_label(_line_count(output), 'line', 'lines')}{suffix}",
         )
     return _tool_activity_summary(
         translator.t("runtime.tool.activity_update"), f"{tool_name} · done{suffix}"

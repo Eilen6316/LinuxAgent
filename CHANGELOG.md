@@ -69,6 +69,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added an application-level `network` policy foundation for future LLM/web
   tools, with default-deny configuration, domain allow/deny matching,
   network-decision audit records, and `linuxagent check` visibility.
+- Added an optional `fetch_url` tool behind the application network policy,
+  with HTTP/HTTPS-only URL validation, DNS/IP SSRF guards, redirect rechecks,
+  response budgets, and network/tool audit events.
 - Added automatic parameter-collection wizard support for ambiguous
   multi-parameter operations, with `/resume` visibility, stable partial
   recovery checkpoints, and user documentation.

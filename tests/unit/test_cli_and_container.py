@@ -30,7 +30,11 @@ from linuxagent.policy.config_rules import PolicyConfigError
 from linuxagent.product_context import product_capability_context, slash_help
 from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner, SandboxProfile
 from linuxagent.services import MonitoringAlert
-from linuxagent.tools import ToolCatalogReport, ToolSandboxSpec, attach_tool_sandbox
+from linuxagent.tools import (
+    ToolCatalogReport,
+    ToolSandboxSpec,
+    attach_tool_sandbox,
+)
 from linuxagent.ui import WizardAwareUserInterface
 from linuxagent.ui.prompt_session import SlashCommandCompleter
 
@@ -647,6 +651,20 @@ def test_container_adds_workspace_tools(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert captured["tool_config"] == cfg.sandbox.tools
 
 
+def test_container_adds_network_tools_when_enabled(tmp_path: Path) -> None:
+    runtime = Container(
+        AppConfig.model_validate(
+            {
+                "network": {"enabled": True, "default_action": "allow"},
+                "audit": {"path": tmp_path / "audit.log"},
+            }
+        )
+    )
+
+    assert [tool.name for tool in runtime.network_tools()] == ["fetch_url"]
+    assert [tool.name for tool in runtime.tools() if tool.name == "fetch_url"] == ["fetch_url"]
+
+
 def test_container_builds_cached_runtime(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -988,6 +1006,13 @@ def test_container_disables_embedding_tools_for_openai_by_default(
     container = Container(AppConfig.model_validate({"api": {"provider": "openai"}}))
 
     assert container.intelligence_tools() == []
+
+
+def test_container_disables_network_tools_by_default() -> None:
+    container = Container(AppConfig.model_validate({}))
+
+    assert container.network_tools() == []
+    assert all(tool.name != "fetch_url" for tool in container.tools())
 
 
 def test_chat_command_runs_agent(

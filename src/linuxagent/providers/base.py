@@ -129,6 +129,7 @@ class BaseLLMProvider(LLMProvider):
             return await self.complete(messages, **kwargs)
         tool_observer = _pop_tool_observer(kwargs)
         tool_limits = _pop_tool_runtime(kwargs)
+        trace_id = _tool_trace_id(kwargs)
         await _ensure_tool_sandbox_specs(tools, tool_observer)
 
         bound_model = self._model.bind_tools(tools)
@@ -151,6 +152,7 @@ class BaseLLMProvider(LLMProvider):
                 tool_observer,
                 tool_limits,
                 total_tool_output_chars,
+                trace_id,
             )
             history.extend(tool_messages)
 
@@ -469,6 +471,7 @@ async def _execute_tool_calls(
     observer: ToolObserver | None,
     limits: ToolRuntimeLimits,
     prior_output_chars: int,
+    trace_id: str | None,
 ) -> tuple[list[ToolMessage], int]:
     outputs: list[ToolMessage] = []
     total_output_chars = 0
@@ -494,6 +497,7 @@ async def _execute_tool_calls(
             args,
             limits=limits,
             remaining_total_chars=remaining,
+            trace_id=trace_id,
         )
         content = result.content
         total_output_chars += result.output_chars
@@ -530,6 +534,14 @@ def _pop_tool_runtime(kwargs: dict[str, Any]) -> ToolRuntimeLimits:
     if isinstance(raw, dict):
         return ToolRuntimeLimits(**raw)
     raise TypeError("tool_runtime_limits must be ToolRuntimeLimits or dict")
+
+
+def _tool_trace_id(kwargs: dict[str, Any]) -> str | None:
+    metadata = kwargs.get(LLM_CALL_METADATA_KEY)
+    if not isinstance(metadata, dict):
+        return None
+    trace_id = metadata.get("trace_id")
+    return trace_id if isinstance(trace_id, str) and trace_id else None
 
 
 async def _notify_tool_observer(observer: ToolObserver | None, event: dict[str, Any]) -> None:

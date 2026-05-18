@@ -97,7 +97,7 @@ policy:
   include_builtin: true
 
 network:
-  # Application-level policy for future LLM/web network tools. This is separate
+  # Application-level policy for optional LLM/web network tools such as fetch_url. This is separate
   # from sandbox.network, which describes OS execution isolation.
   enabled: false
   default_action: deny           # allow | deny

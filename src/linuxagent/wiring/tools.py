@@ -69,11 +69,13 @@ def build_tool_catalog(
     *,
     system_tools: list[BaseTool],
     intelligence_tools: list[BaseTool],
+    network_tools: list[BaseTool],
 ) -> ToolCatalogReport:
     return inspect_tool_catalog(
         [
             *system_tools,
             *build_workspace_tools(config.file_patch, config.sandbox.tools),
+            *network_tools,
             *intelligence_tools,
         ]
     )

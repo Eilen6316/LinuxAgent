@@ -148,6 +148,30 @@ class AuditLog:
             }
         )
 
+    def record_tool_event(
+        self,
+        *,
+        tool_name: str,
+        phase: str,
+        status: str,
+        args: dict[str, Any],
+        output_chars: int,
+        truncated: bool,
+        trace_id: str | None = None,
+    ) -> None:
+        self.append(
+            {
+                "event": "tool_event",
+                "tool_name": tool_name,
+                "phase": phase,
+                "status": status,
+                "args": args,
+                "output_chars": output_chars,
+                "truncated": truncated,
+                "trace_id": trace_id,
+            }
+        )
+
     def append(self, record: dict[str, Any]) -> None:
         self._append(record, send_to_sink=True)
 

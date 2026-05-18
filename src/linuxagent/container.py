@@ -46,7 +46,7 @@ from .services import (
 )
 from .skills import load_skill_manifests, skill_planner_guidance, skill_runbooks
 from .telemetry import TelemetryRecorder
-from .tools import ToolCatalogReport, ToolRuntimeLimits
+from .tools import ToolCatalogReport, ToolRuntimeLimits, build_network_tools
 from .usage_insights import (
     CommandLearner,
     ContextManager,
@@ -353,6 +353,16 @@ class Container:
             factory,
         )
 
+    def network_tools(self) -> list[BaseTool]:
+        return self._cached(
+            "network_tools",
+            lambda: build_network_tools(
+                self._config.network,
+                self.audit_log(),
+                self._config.sandbox.tools,
+            ),
+        )
+
     def tools(self) -> list[BaseTool]:
         return self._cached(
             "tools",
@@ -366,6 +376,7 @@ class Container:
                 self._config,
                 system_tools=self.system_tools(),
                 intelligence_tools=self.intelligence_tools(),
+                network_tools=self.network_tools(),
             ),
         )
 
@@ -380,11 +391,25 @@ class Container:
 
     def _tool_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
+            self._record_tool_audit_event(event)
             message = tool_activity_message(event, self.translator())
             if message:
                 await self.ui().print_activity(message)
 
         return observe
+
+    def _record_tool_audit_event(self, event: dict[str, Any]) -> None:
+        raw_args = event.get("args")
+        args = raw_args if isinstance(raw_args, dict) else {}
+        self.audit_log().record_tool_event(
+            tool_name=str(event.get("tool_name") or ""),
+            phase=str(event.get("phase") or ""),
+            status=str(event.get("status") or ""),
+            args=args,
+            output_chars=int(event.get("output_chars") or 0),
+            truncated=bool(event.get("truncated")),
+            trace_id=str(event.get("trace_id")) if event.get("trace_id") else None,
+        )
 
     def _runtime_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:

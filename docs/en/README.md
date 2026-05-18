@@ -251,8 +251,10 @@ policy:
   include_builtin: true  # built-ins + user rule overrides/appends
 ```
 
-Application network policy for future LLM/web tools is separate from
-`sandbox.network`:
+Application network policy for LLM/web tools is separate from `sandbox.network`.
+Network tools are disabled by default; when enabled, `fetch_url` can read known
+HTTP/HTTPS URLs and still applies domain policy plus SSRF checks on DNS results
+and every redirect hop.
 
 ```yaml
 network:
@@ -398,11 +400,11 @@ linuxagent check
 | `security` | `command_timeout` | `30.0` | Max local command runtime |
 | `security` | `max_command_length` | `2048` | Per-command character cap |
 | `security` | `session_whitelist_enabled` | `true` | Toggle conversation-scoped command permissions |
-| `network` | `enabled` | `false` | Enables future LLM/web network tools; disabled by default |
+| `network` | `enabled` | `false` | Enables optional LLM/web network tools such as `fetch_url`; disabled by default |
 | `network` | `default_action` | `deny` | `allow` or `deny` for domains not matched by explicit rules |
 | `network` | `allowed_domains` / `denied_domains` | `[]` | Exact domains or strict subdomain wildcard entries such as `.example.com`; deny wins |
-| `network` | `max_response_bytes` | `1048576` | Maximum response budget for future fetch/search tools |
-| `network` | `timeout_seconds` | `10.0` | Timeout budget for future fetch/search tools |
+| `network` | `max_response_bytes` | `1048576` | Maximum response budget for `fetch_url` |
+| `network` | `timeout_seconds` | `10.0` | Timeout budget for `fetch_url` |
 | `command_plan` | `max_repair_attempts` | `2` | Automatic failed-command replanning rounds; `0` disables command repair |
 | `file_patch` | `allow_roots` | `[".", "/tmp"]` | Roots where file patch tools may read and write |
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | Matching paths are shown as elevated-risk patch confirmations |

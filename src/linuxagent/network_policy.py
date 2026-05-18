@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
@@ -104,12 +105,24 @@ def _matching_rule(rules: tuple[str, ...], domain: str) -> str | None:
 
 def _normalize_host(host: str) -> str | None:
     trimmed = host.strip().rstrip(".").lower()
+    if trimmed.startswith("[") and trimmed.endswith("]"):
+        trimmed = trimmed[1:-1]
+    ip = _ip_literal(trimmed)
+    if ip is not None:
+        return str(ip)
     if not trimmed or any(char in trimmed for char in "/\\:@"):
         return None
     labels = tuple(label for label in trimmed.split(".") if label)
     if len(labels) != len(trimmed.split(".")):
         return None
     return _ascii_domain(labels)
+
+
+def _ip_literal(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        return None
 
 
 def _ascii_domain(labels: tuple[str, ...]) -> str | None:

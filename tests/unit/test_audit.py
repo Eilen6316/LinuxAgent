@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 from linuxagent.audit import AuditLog, verify_audit_log
@@ -189,10 +190,9 @@ def test_audit_append_is_process_safe(tmp_path) -> None:
 
     for process in processes:
         stdout, stderr = process.communicate(timeout=10)
-        assert process.returncode == 0, (
-            f"stdout={stdout.decode(errors='replace')}\n"
-            f"stderr={stderr.decode(errors='replace')}"
-        )
+        assert (
+            process.returncode == 0
+        ), f"stdout={stdout.decode(errors='replace')}\nstderr={stderr.decode(errors='replace')}"
 
     result = verify_audit_log(path)
     assert result.valid is True
@@ -339,4 +339,29 @@ def test_network_decision_audit_record_excludes_headers(tmp_path) -> None:
     assert record["decision"] == "deny"
     assert record["matched_rule"] == "network.denied_domains"
     assert "header" not in record
+    assert verify_audit_log(path).valid is True
+
+
+def test_tool_event_audit_record_excludes_full_output(tmp_path: Path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+
+    audit.record_tool_event(
+        tool_name="fetch_url",
+        phase="end",
+        status="allowed",
+        args={"url": "https://example.com?token=secret-token-value"},
+        output_chars=1234,
+        truncated=True,
+        trace_id="trace-tool",
+    )
+
+    record = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["event"] == "tool_event"
+    assert record["tool_name"] == "fetch_url"
+    assert record["args"]["url"] == "https://example.com?token=***redacted***"
+    assert record["output_chars"] == 1234
+    assert record["truncated"] is True
+    assert record["trace_id"] == "trace-tool"
+    assert "output_text" not in record
     assert verify_audit_log(path).valid is True

@@ -13,6 +13,7 @@ from langchain_core.tools import BaseTool
 
 from ..sandbox import SandboxProfile
 from ..security import redact_record, redact_text
+from .runtime_context import tool_trace_context
 
 SANDBOX_METADATA_KEY = "linuxagent_sandbox"
 
@@ -85,47 +86,114 @@ async def invoke_tool_with_sandbox(
     *,
     limits: ToolRuntimeLimits,
     remaining_total_chars: int,
+    trace_id: str | None = None,
 ) -> ToolRunResult:
     if tool_sandbox_record(tool) is None:
-        return _tool_error_result(
+        return _tool_denied_missing_metadata(
             tool,
             args,
-            "denied",
-            "tool is missing ToolSandboxSpec metadata",
             limits,
             remaining_total_chars,
+            trace_id,
         )
     timeout = _tool_timeout(tool, limits)
     try:
-        raw_result = await asyncio.wait_for(_invoke_tool(tool, args), timeout=timeout)
+        raw_result = await asyncio.wait_for(_invoke_tool(tool, args, trace_id), timeout=timeout)
     except TimeoutError:
-        return _tool_error_result(
+        return _tool_timeout_result(
             tool,
             args,
-            "timeout",
-            f"tool exceeded {timeout}s",
             limits,
             remaining_total_chars,
+            timeout,
+            trace_id,
         )
     except Exception as exc:  # noqa: BLE001 - tool failures are returned to the model
-        status = _error_status(exc)
-        return _tool_error_result(
-            tool, args, status, _redacted_output(str(exc)), limits, remaining_total_chars
-        )
+        return _tool_exception_result(tool, args, limits, remaining_total_chars, trace_id, exc)
 
     content, truncated = _finalize_tool_content(raw_result, limits, remaining_total_chars)
     status = "truncated" if truncated else "allowed"
     return ToolRunResult(
         content=content,
-        event=_tool_event(tool, args, "end", status, content, truncated=truncated),
+        event=_tool_event(
+            tool,
+            args,
+            "end",
+            status,
+            content,
+            truncated=truncated,
+            trace_id=trace_id,
+        ),
         output_chars=len(content),
     )
 
 
-async def _invoke_tool(tool: BaseTool, args: dict[str, Any]) -> Any:
+def _tool_exception_result(
+    tool: BaseTool,
+    args: dict[str, Any],
+    limits: ToolRuntimeLimits,
+    remaining_total_chars: int,
+    trace_id: str | None,
+    exc: Exception,
+) -> ToolRunResult:
+    return _tool_error_result(
+        tool,
+        args,
+        _error_status(exc),
+        _redacted_output(str(exc)),
+        limits,
+        remaining_total_chars,
+        trace_id,
+    )
+
+
+def _tool_denied_missing_metadata(
+    tool: BaseTool,
+    args: dict[str, Any],
+    limits: ToolRuntimeLimits,
+    remaining_total_chars: int,
+    trace_id: str | None,
+) -> ToolRunResult:
+    return _tool_error_result(
+        tool,
+        args,
+        "denied",
+        "tool is missing ToolSandboxSpec metadata",
+        limits,
+        remaining_total_chars,
+        trace_id,
+    )
+
+
+def _tool_timeout_result(
+    tool: BaseTool,
+    args: dict[str, Any],
+    limits: ToolRuntimeLimits,
+    remaining_total_chars: int,
+    timeout: float,
+    trace_id: str | None,
+) -> ToolRunResult:
+    return _tool_error_result(
+        tool,
+        args,
+        "timeout",
+        f"tool exceeded {timeout}s",
+        limits,
+        remaining_total_chars,
+        trace_id,
+    )
+
+
+async def _invoke_tool(tool: BaseTool, args: dict[str, Any], trace_id: str | None) -> Any:
     if _has_async_tool_callable(tool):
-        return await tool.ainvoke(args)
-    return await asyncio.to_thread(tool.invoke, args)
+        with tool_trace_context(trace_id):
+            return await tool.ainvoke(args)
+    return await asyncio.to_thread(_invoke_sync_tool, tool, args, trace_id)
+
+
+def _invoke_sync_tool(tool: BaseTool, args: dict[str, Any], trace_id: str | None) -> Any:
+    with tool_trace_context(trace_id):
+        return tool.invoke(args)
 
 
 def _has_async_tool_callable(tool: BaseTool) -> bool:
@@ -139,6 +207,7 @@ def _tool_error_result(
     message: str,
     limits: ToolRuntimeLimits,
     remaining_total_chars: int,
+    trace_id: str | None = None,
 ) -> ToolRunResult:
     content, truncated = _finalize_tool_content(
         _structured_error(tool.name, status, message),
@@ -147,7 +216,15 @@ def _tool_error_result(
     )
     return ToolRunResult(
         content=content,
-        event=_tool_event(tool, args, "error", status, content, truncated=truncated),
+        event=_tool_event(
+            tool,
+            args,
+            "error",
+            status,
+            content,
+            truncated=truncated,
+            trace_id=trace_id,
+        ),
         output_chars=len(content),
     )
 
@@ -216,6 +293,7 @@ def _tool_event(
     output: str,
     *,
     truncated: bool = False,
+    trace_id: str | None = None,
 ) -> dict[str, Any]:
     redacted_args = redact_record({"args": args}).get("args", {})
     return {
@@ -228,6 +306,7 @@ def _tool_event(
         "output_text": output,
         "output_chars": len(output),
         "truncated": truncated,
+        "trace_id": trace_id,
     }
 
 

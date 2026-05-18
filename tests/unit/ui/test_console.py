@@ -621,7 +621,7 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     ui = ConsoleUI(console=console)
 
     await ui.print_activity(
-        "LinuxAgent 正在整理文件 workspace/disk_info.sh\n" "  read_file · 95 lines"
+        "LinuxAgent 正在整理文件 workspace/disk_info.sh\n  read_file · 95 lines"
     )
 
     assert ui._working_status is not None

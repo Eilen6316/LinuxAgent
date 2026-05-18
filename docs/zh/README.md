@@ -246,7 +246,9 @@ policy:
   include_builtin: true  # 内置规则 + 用户规则覆盖/追加
 ```
 
-后续 LLM/web 工具使用的应用级网络策略与 `sandbox.network` 分开配置：
+LLM/web 工具使用的应用级网络策略与 `sandbox.network` 分开配置。网络工具默认关闭；
+启用后，`fetch_url` 可以读取已知 HTTP/HTTPS URL，并在 DNS 结果和每一次 redirect 上
+继续执行域名策略与 SSRF 检查。
 
 ```yaml
 network:
@@ -388,11 +390,11 @@ linuxagent check
 | `security` | `command_timeout` | `30.0` | 本地命令最长执行时间 |
 | `security` | `max_command_length` | `2048` | 单条命令字符上限 |
 | `security` | `session_whitelist_enabled` | `true` | 对话级命令权限开关 |
-| `network` | `enabled` | `false` | 是否启用后续 LLM/web 网络工具；默认关闭 |
+| `network` | `enabled` | `false` | 是否启用可选 LLM/web 网络工具，例如 `fetch_url`；默认关闭 |
 | `network` | `default_action` | `deny` | 未命中显式规则的域名默认 `allow` 或 `deny` |
 | `network` | `allowed_domains` / `denied_domains` | `[]` | 精确域名或严格子域通配符如 `.example.com`；deny 优先 |
-| `network` | `max_response_bytes` | `1048576` | 后续 fetch/search 工具的响应大小预算 |
-| `network` | `timeout_seconds` | `10.0` | 后续 fetch/search 工具的超时预算 |
+| `network` | `max_response_bytes` | `1048576` | `fetch_url` 响应大小预算 |
+| `network` | `timeout_seconds` | `10.0` | `fetch_url` 超时预算 |
 | `command_plan` | `max_repair_attempts` | `2` | 命令计划失败后的自动重规划轮数；`0` 表示关闭命令 repair |
 | `file_patch` | `allow_roots` | `[".", "/tmp"]` | 文件 patch 允许读写的根目录 |
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | 命中后以高风险 diff 确认展示 |
