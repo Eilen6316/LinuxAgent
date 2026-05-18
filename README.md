@@ -30,8 +30,8 @@ redaction, and a hash-chained audit log.
 
 The core project is intentionally narrow: command planning, policy, HITL,
 audit, SSH guardrails, and a small set of practical providers. Extra providers,
-runbooks, and integrations are treated as extension points rather than the
-center of the product.
+Skills, and integrations are treated as extension points rather than the center
+of the product.
 
 ## Why It Exists
 
@@ -171,13 +171,13 @@ not ask the LLM to explain or generate a reply for that turn.
 | Explicit resume control | New sessions do not inherit previous chats unless `/resume` is used; pending HITL checkpoints resume there too |
 | Direct `!` command mode | Runs operator-authored commands without an AI reply and adds command/output to current context |
 | Sandbox metadata boundary | Commands carry a selected sandbox profile into audit and telemetry; default `noop` records metadata only |
-| YAML runbooks | Common ops procedures are injected as planner guidance, not pre-LLM hard routes |
+| Skill guidance | Optional local Skill manifests can add advisory planner context without executable plugin hooks |
 | Learner memory | Successful command patterns are persisted locally after secret redaction |
 | LangGraph HITL | Confirmation uses `interrupt()` and checkpointing rather than inline `input()` |
 | SSH cluster guard | Batch confirmation, remote shell metacharacter blocking, remote profile audit |
 | Output protection | Command results are redacted and bounded before model-facing analysis |
 | Hash-chained audit | `linuxagent audit verify` detects local audit-log tampering |
-| Reproducible release | `constraints.txt`, wheel verification, and packaged config/prompt/runbook checks |
+| Reproducible release | `constraints.txt`, wheel verification, and packaged config/prompt/locale checks |
 
 ## File Changes
 
@@ -292,24 +292,6 @@ SSH execution is not protected by local OS sandboxing. Configure cluster hosts
 with least-privilege users, pre-registered `known_hosts`, a remote working
 directory, and explicit sudo allowlists when sudo is required.
 
-## Built-In Runbooks
-
-LinuxAgent v4 ships with eleven YAML runbooks for common diagnostics:
-
-| Runbook area | Examples |
-|---|---|
-| Disk and filesystem | `df`, top directories, journal usage |
-| Ports and networking | listeners, port ownership, connectivity checks |
-| Services and logs | systemd status, recent unit logs, error search |
-| System health, OS, load, and memory | overall host health, OS release, CPU pressure, memory pressure, OOM clues |
-| Containers, packages, and certificates | container status, installed packages, certificate expiry |
-
-Runbooks no longer perform natural-language hard matching before LLM planning.
-They are loaded, policy-validated, and supplied to the planner as advisory
-examples. The planner may use, adapt, or ignore that guidance based on the
-actual request. If it produces a multi-step plan inspired by a runbook, every
-step still goes through normal policy, HITL, audit, and analysis flow.
-
 ## Quality Gate
 
 Current quality gates:
@@ -321,7 +303,7 @@ Current quality gates:
 | Sandbox boundary suite | covered by `make sandbox` |
 | Red-team policy suite | adversarial command corpus |
 | Policy benchmark | [P50/P95/P99 policy latency](benchmarks/policy-benchmark.md) |
-| Harness scenarios | scenario-driven HITL / runbook / cluster / sandbox coverage |
+| Harness scenarios | scenario-driven HITL / cluster / sandbox / workspace-tool coverage |
 | Integration smoke tests | `make integration` |
 | Coverage | `--cov-fail-under=80` |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
@@ -361,7 +343,6 @@ make verify-build
 | [Quick Start](docs/en/quickstart.md) | Installation and first run |
 | [Provider Matrix](docs/en/provider-matrix.md) | Provider setup paths and compatibility status |
 | [Operator Safety Model](docs/en/operator-safety.md) | Plain-language safety boundaries for users |
-| [Runbook Authoring](docs/en/runbook-authoring.md) | How to contribute safe YAML runbooks |
 | [Roadmap](ROADMAP.md) | Maintainer priorities and good first issue areas |
 | [Migration Guide](docs/en/migration-v3-to-v4.md) | v3 to v4 breaking changes |
 | [Threat Model](docs/en/threat-model.md) | Assets, trust boundaries, and mitigations |

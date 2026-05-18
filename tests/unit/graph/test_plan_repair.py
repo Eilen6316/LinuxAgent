@@ -50,7 +50,6 @@ async def test_retry_plan_or_error_reports_argv_retry_exhaustion() -> None:
         provider=provider,
         planner_prompt=_Prompt(),
         direct_answer_prompt=_Prompt(),
-        runbook_guidance="",
         product_context="",
         telemetry=None,
         prompt_cache_key=None,

@@ -9,8 +9,8 @@ from langchain_core.messages import AIMessage
 from ..i18n import Translator, default_translator
 from ..interfaces import SafetyLevel
 from .file_patch_nodes import should_repair_file_patch
+from .plan_steps import has_next_plan_step
 from .replanning import should_repair_plan
-from .runbook_planning import has_next_plan_step
 from .state import AgentState
 
 
@@ -88,7 +88,7 @@ async def route_after_parse(state: AgentState) -> str:
 
 async def route_after_execute(state: AgentState) -> str:
     if has_next_plan_step(state):
-        return "CONTINUE_RUNBOOK"
+        return "CONTINUE_PLAN"
     if should_repair_plan(state):
         return "REPAIR_PLAN"
     return "ANALYZE"
@@ -97,7 +97,7 @@ async def route_after_execute(state: AgentState) -> str:
 def make_route_after_execute(max_repair_attempts: int) -> Callable[[AgentState], Awaitable[str]]:
     async def route(state: AgentState) -> str:
         if has_next_plan_step(state):
-            return "CONTINUE_RUNBOOK"
+            return "CONTINUE_PLAN"
         if should_repair_plan(state, max_repair_attempts=max_repair_attempts):
             return "REPAIR_PLAN"
         return "ANALYZE"

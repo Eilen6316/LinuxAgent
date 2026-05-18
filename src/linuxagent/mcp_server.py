@@ -16,13 +16,11 @@ from .mcp_tools import (
     MCP_READ_ONLY_RESOURCE_URIS,
     MCP_READ_ONLY_TOOL_NAMES,
     POLICY_TOOL_NAME,
-    RUNBOOKS_SUMMARY_RESOURCE,
     SKILLS_SUMMARY_RESOURCE,
     McpResourceUri,
     McpToolName,
 )
 from .policy import PolicyEngine
-from .runbooks import Runbook
 from .security import redact_record
 from .skills import SkillManifest
 
@@ -41,7 +39,7 @@ _TOOL_DEFINITIONS: dict[McpToolName, JsonObject] = {
                 "command": {"type": "string", "minLength": 1},
                 "source": {
                     "type": "string",
-                    "enum": ["user", "llm", "runbook", "whitelist"],
+                    "enum": ["user", "llm", "whitelist"],
                     "default": "user",
                 },
             },
@@ -61,12 +59,6 @@ _TOOL_DEFINITIONS: dict[McpToolName, JsonObject] = {
     },
 }
 _RESOURCE_DEFINITIONS: dict[McpResourceUri, JsonObject] = {
-    RUNBOOKS_SUMMARY_RESOURCE: {
-        "uri": RUNBOOKS_SUMMARY_RESOURCE,
-        "name": "LinuxAgent Runbook Summary",
-        "description": "Read-only summary of configured LinuxAgent runbooks.",
-        "mimeType": "application/json",
-    },
     SKILLS_SUMMARY_RESOURCE: {
         "uri": SKILLS_SUMMARY_RESOURCE,
         "name": "LinuxAgent Skill Summary",
@@ -83,7 +75,6 @@ class McpServer:
     audit_path: Path
     tools: tuple[McpToolName, ...] = MCP_READ_ONLY_TOOL_NAMES
     resources: tuple[McpResourceUri, ...] = MCP_READ_ONLY_RESOURCE_URIS
-    runbooks: tuple[Runbook, ...] = ()
     skills: tuple[SkillManifest, ...] = ()
 
     def handle(self, request: JsonObject) -> JsonObject | None:
@@ -137,11 +128,6 @@ class McpServer:
         uri = params.get("uri")
         if uri not in self.resources:
             return _error(request_id, -32602, f"unknown or disabled resource: {uri}")
-        if uri == RUNBOOKS_SUMMARY_RESOURCE:
-            return _result(
-                request_id,
-                _resource_result(uri, _runbook_summary(self.runbooks)),
-            )
         if uri == SKILLS_SUMMARY_RESOURCE:
             return _result(
                 request_id,
@@ -157,7 +143,7 @@ class McpServer:
         try:
             source = CommandSource(str(source_value))
         except ValueError:
-            return _tool_error("source must be one of: user, llm, runbook, whitelist")
+            return _tool_error("source must be one of: user, llm, whitelist")
         decision = self.policy_engine.evaluate(command, source=source)
         payload: JsonObject = {
             "level": decision.level.value,
@@ -251,33 +237,6 @@ def _resource_result(uri: str, payload: JsonObject) -> JsonObject:
     }
 
 
-def _runbook_summary(runbooks: tuple[Runbook, ...]) -> JsonObject:
-    return {
-        "runbooks": [
-            {
-                "id": runbook.id,
-                "title": runbook.title,
-                "step_count": len(runbook.steps),
-                "safety_posture": _runbook_safety_posture(runbook),
-                "steps": [
-                    {
-                        "purpose": step.purpose,
-                        "read_only": step.read_only,
-                    }
-                    for step in runbook.steps
-                ],
-            }
-            for runbook in runbooks
-        ]
-    }
-
-
-def _runbook_safety_posture(runbook: Runbook) -> str:
-    if all(step.read_only for step in runbook.steps):
-        return "read_only"
-    return "policy_gated"
-
-
 def _skill_summary(skills: tuple[SkillManifest, ...]) -> JsonObject:
     return {
         "enabled": bool(skills),
@@ -288,7 +247,6 @@ def _skill_summary(skills: tuple[SkillManifest, ...]) -> JsonObject:
                 "description": skill.description,
                 "permissions": list(skill.permissions),
                 "has_planner_guidance": bool(skill.planner_guidance),
-                "runbooks": [runbook.id for runbook in skill.runbooks],
             }
             for skill in skills
         ],

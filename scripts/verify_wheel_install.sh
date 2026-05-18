@@ -69,12 +69,8 @@ required = [
     root / "i18n" / "locales" / "en-US.yaml",
 ]
 missing = [str(path) for path in required if not path.is_file()]
-runbooks_dir = root / "_data" / "runbooks"
-runbooks = sorted(path.name for path in runbooks_dir.iterdir() if path.name.endswith(".yaml"))
 if missing:
     raise SystemExit(f"missing packaged data: {missing}")
-if len(runbooks) != 11:
-    raise SystemExit(f"expected 11 packaged runbooks, found {len(runbooks)}: {runbooks}")
 config = yaml.safe_load((root / "_data" / "default.yaml").read_text(encoding="utf-8"))
 if config.get("language") != "zh-CN":
     raise SystemExit(f"packaged default language is wrong: {config.get('language')}")
@@ -94,7 +90,6 @@ if mcp.get("tools") != [
 ]:
     raise SystemExit(f"packaged mcp.tools is wrong: {mcp.get('tools')}")
 if mcp.get("resources") != [
-    "linuxagent://runbooks/summary",
     "linuxagent://skills/summary",
 ]:
     raise SystemExit(f"packaged mcp.resources is wrong: {mcp.get('resources')}")

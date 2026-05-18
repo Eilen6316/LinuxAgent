@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import Any
 
 from ..command_review import command_review
@@ -10,7 +10,6 @@ from ..executors import is_destructive
 from ..interfaces import CommandSource, SafetyLevel, SafetyResult
 from ..plans import CommandPlan
 from ..policy.capabilities import DESTRUCTIVE_CAPABILITY_PREFIXES
-from ..runbooks import Runbook
 from .state import AgentState
 
 PermissionClassifier = Callable[[str], SafetyResult]
@@ -49,8 +48,7 @@ def build_confirm_payload(
         "is_destructive": _is_destructive(command or "", state.get("safety_capabilities", ())),
         "can_whitelist": state.get("safety_can_whitelist", True),
         "permission_candidates": _permission_candidates(state, permission_classifier),
-        **_plan_payload(state.get("command_plan"), state.get("runbook_step_index", 0)),
-        **_runbook_payload(state.get("selected_runbook"), state.get("runbook_step_index", 0)),
+        **_plan_payload(state.get("command_plan"), state.get("plan_step_index", 0)),
     }
 
 
@@ -144,27 +142,3 @@ def _plan_payload(plan: CommandPlan | None, step_index: int = 0) -> dict[str, An
         "expected_side_effects": list(plan.expected_side_effects),
         "requires_root": plan.requires_root,
     }
-
-
-def _runbook_payload(runbook: Runbook | None, step_index: int = 0) -> dict[str, Any]:
-    if runbook is None:
-        return {}
-    return {
-        "runbook_id": runbook.id,
-        "runbook_title": runbook.title,
-        "runbook_title_i18n": _localized_map(runbook.title_i18n),
-        "runbook_step_index": step_index,
-        "runbook_steps": [
-            {
-                "command": step.command,
-                "purpose": step.purpose,
-                "purpose_i18n": _localized_map(step.purpose_i18n),
-                "read_only": step.read_only,
-            }
-            for step in runbook.steps
-        ],
-    }
-
-
-def _localized_map(values: Mapping[Any, str]) -> dict[str, str]:
-    return {getattr(language, "value", str(language)): text for language, text in values.items()}

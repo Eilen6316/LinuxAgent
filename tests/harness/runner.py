@@ -37,7 +37,6 @@ from linuxagent.graph.state import AgentState
 from linuxagent.i18n import Translator
 from linuxagent.interfaces import LLM_CALL_METADATA_KEY, ExecutionResult, LLMProvider
 from linuxagent.providers.errors import ProviderError
-from linuxagent.runbooks import RunbookEngine, load_runbooks
 from linuxagent.sandbox import (
     BubblewrapSandboxRunner,
     LocalProcessSandboxRunner,
@@ -312,9 +311,6 @@ class HarnessRunner:
             runtime_events: list[dict[str, Any]] = []
             cluster_service = _cluster_service(scenario.setup.get("cluster_hosts", []))
             translator = _translator(scenario.setup.get("language"))
-            runbook_engine = None
-            if scenario.setup.get("runbooks_enabled", False):
-                runbook_engine = RunbookEngine(load_runbooks(_REPO_ROOT / "runbooks"))
             background_jobs = (
                 _FakeBackgroundJobs() if scenario.setup.get("background_jobs") else None
             )
@@ -330,7 +326,6 @@ class HarnessRunner:
                     command_service=CommandService(executor),
                     audit=audit,
                     cluster_service=cluster_service,
-                    runbook_engine=runbook_engine,
                     file_patch_config=file_patch_config,
                     tools=tuple(build_workspace_tools(file_patch_config, sandbox_config.tools))
                     if scenario.setup.get("workspace_tools", False)

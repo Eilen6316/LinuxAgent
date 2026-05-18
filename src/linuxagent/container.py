@@ -28,7 +28,6 @@ from .i18n import Translator
 from .interfaces import ExecutionResult, LLMProvider, UserInterface
 from .operating_manifest import operating_manifest_context
 from .policy import PolicyEngine, runtime_policy_config
-from .runbooks import RunbookEngine, find_runbooks_dir, load_runbooks
 from .sandbox import SandboxRunner
 from .services import (
     BackgroundJobController,
@@ -44,7 +43,7 @@ from .services import (
     daemon_socket_path,
     daemon_store_path,
 )
-from .skills import load_skill_manifests, skill_planner_guidance, skill_runbooks
+from .skills import load_skill_manifests
 from .telemetry import TelemetryRecorder
 from .tools import ToolCatalogReport, ToolRuntimeLimits, build_network_tools
 from .usage_insights import (
@@ -236,7 +235,6 @@ class Container:
                 background_jobs=self.background_jobs(),
                 tools=tuple(self.tools()),
                 telemetry=self.telemetry(),
-                runbook_engine=self.runbook_engine(),
                 tool_observer=self._tool_event_observer(),
                 runtime_observer=self._runtime_event_observer(),
                 tool_runtime_limits=self.tool_runtime_limits(),
@@ -293,17 +291,6 @@ class Container:
         return self._cached(
             "recommendation_engine",
             lambda: RecommendationEngine(self.learner(), self.nlp_enhancer()),
-        )
-
-    def runbook_engine(self) -> RunbookEngine:
-        return self._cached(
-            "runbook_engine",
-            lambda: RunbookEngine(
-                (*load_runbooks(find_runbooks_dir()), *skill_runbooks(self.skill_manifests())),
-                policy_engine=self.policy_engine(),
-                telemetry=self.telemetry(),
-                extra_guidance=skill_planner_guidance(self.skill_manifests()),
-            ),
         )
 
     def skill_manifests(self) -> tuple[SkillManifest, ...]:

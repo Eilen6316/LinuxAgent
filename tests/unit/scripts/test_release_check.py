@@ -18,7 +18,6 @@ def _write_minimal_project(root: Path, version: str = "4.1.0") -> None:
     (root / "docs" / "releases").mkdir(parents=True)
     (root / "docs" / "zh" / "releases").mkdir(parents=True)
     (root / "prompts").mkdir()
-    (root / "runbooks").mkdir()
     (root / "configs").mkdir()
     (root / "pyproject.toml").write_text(
         "\n".join(
@@ -59,7 +58,6 @@ def _write_minimal_project(root: Path, version: str = "4.1.0") -> None:
         encoding="utf-8",
     )
     (root / "prompts" / "system.md").write_text("system\n", encoding="utf-8")
-    (root / "runbooks" / "disk.yaml").write_text("id: disk\n", encoding="utf-8")
     (root / "configs" / "default.yaml").write_text(
         "language: zh-CN\napi: {}\n",
         encoding="utf-8",
@@ -201,7 +199,6 @@ def _write_wheel(
         "linuxagent/_data/default.yaml": "language: zh-CN\napi: {}\n",
         "linuxagent/_data/policy.default.yaml": "version: 1\n",
         "linuxagent/_data/prompts/system.md": "system\n",
-        "linuxagent/_data/runbooks/disk.yaml": "id: disk\n",
         "linuxagent/i18n/locales/zh-CN.yaml": "common:\n  ok: 正常\n",
         "linuxagent/i18n/locales/en-US.yaml": "common:\n  ok: OK\n",
         f"linuxagent-{version}.dist-info/METADATA": (
@@ -237,7 +234,6 @@ def _write_sdist(
         f"{prefix}/configs/default.yaml": "language: zh-CN\napi: {}\n",
         f"{prefix}/configs/policy.default.yaml": "version: 1\n",
         f"{prefix}/prompts/system.md": "system\n",
-        f"{prefix}/runbooks/disk.yaml": "id: disk\n",
         f"{prefix}/PKG-INFO": f"Metadata-Version: 2.4\nName: linuxagent\nVersion: {version}\n",
     }
     members.update(extra_members or {})

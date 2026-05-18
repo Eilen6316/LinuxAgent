@@ -79,7 +79,7 @@ def parallel_read_only_batch(
         return ()
     if state.get("selected_hosts") or state.get("batch_hosts"):
         return ()
-    current_index = state.get("runbook_step_index", 0)
+    current_index = state.get("plan_step_index", 0)
     if current_index >= len(plan.commands):
         return ()
     current_step = plan.commands[current_index]
@@ -143,13 +143,11 @@ def _parallel_batch_update(
     update: AgentState = {
         "trace_id": current_trace_id,
         "execution_result": results[-1],
-        "runbook_step_index": batch_steps[-1][0],
-        "runbook_results": (*state.get("runbook_results", ()), *results),
+        "plan_step_index": batch_steps[-1][0],
+        "plan_results": (*state.get("plan_results", ()), *results),
     }
     if runtime_observer is not None:
         update["execution_results_visible"] = True
-    if state.get("selected_runbook") is not None:
-        update["command_source"] = CommandSource.RUNBOOK
     return update
 
 

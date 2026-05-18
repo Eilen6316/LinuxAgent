@@ -8,7 +8,7 @@ from typing import Any
 from langgraph.types import Command
 
 from ..audit import AuditLog
-from ..interfaces import CommandSource, ExecutionResult
+from ..interfaces import ExecutionResult
 from ..plans import PlannedCommand
 from ..services import BackgroundJobController, ClusterService, CommandService, JobDaemonError
 from ..telemetry import TelemetryRecorder
@@ -194,7 +194,7 @@ def _current_plan_step(state: AgentState) -> PlannedCommand | None:
     plan = state.get("command_plan")
     if plan is None:
         return None
-    index = state.get("runbook_step_index", 0)
+    index = state.get("plan_step_index", 0)
     if not 0 <= index < len(plan.commands):
         return None
     return plan.commands[index]
@@ -210,9 +210,7 @@ def _single_command_update(
     if runtime_observer is not None:
         update["execution_results_visible"] = True
     if state.get("command_plan") is not None:
-        update["runbook_results"] = (*state.get("runbook_results", ()), result)
-    if state.get("selected_runbook") is not None:
-        update["command_source"] = CommandSource.RUNBOOK
+        update["plan_results"] = (*state.get("plan_results", ()), result)
     return update
 
 

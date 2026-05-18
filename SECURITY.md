@@ -67,8 +67,8 @@ runners, reviewers should check:
   profiles fail closed when the selected runner cannot enforce them.
 - audit completeness: sandbox, file patch, and SSH remote metadata are recorded
   where applicable.
-- package data: `make verify-build` confirms config, policy, prompts, runbooks,
-  and sandbox config sections are present in the wheel.
+- package data: `make verify-build` confirms config, policy, prompts, locale
+  catalogs, and sandbox config sections are present in the wheel.
 
 See [Operator Safety Model](docs/en/operator-safety.md),
 [Threat Model](docs/en/threat-model.md), and

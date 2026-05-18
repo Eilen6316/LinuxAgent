@@ -85,8 +85,6 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "conversational deliverable" in body
     assert "internal execution strategy" in body
     assert "set `answer_context` to `none`" in body
-    assert "answer with two jokes" in body
-    assert "do not say LinuxAgent cannot" in body
     assert "Current-state inspection requests are `COMMAND_PLAN`" in body
     assert "what files, directories, scripts" in body
     assert "so the planner can inspect reality" in body
@@ -95,7 +93,8 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "`parallel_tasks`" in body
     assert "independent conversational subtasks" in body
     assert "without reading/changing the machine" in body
-    assert "Use at most four tasks" in body
+    assert "operator configuration" in body
+    assert "Use at most four tasks" not in body
     assert "Never put commands, tool calls, file paths" in body
     assert "normal safety/HITL path" in body
     assert "`self_manual`" in body
@@ -110,11 +109,10 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "a checklist of missing" in body
 
 
-def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() -> None:
+def test_build_planner_prompt_has_user_input_variable() -> None:
     tmpl = build_planner_prompt()
     assert isinstance(tmpl, ChatPromptTemplate)
     assert "user_input" in tmpl.input_variables
-    assert "runbook_guidance" in tmpl.input_variables
     assert "product_context" in tmpl.input_variables
     body = str(tmpl.messages[0].prompt.template)
     assert "available read-only workspace tools" in body
@@ -167,7 +165,6 @@ def test_build_planner_gate_prompt_has_user_input_variable() -> None:
 def test_build_repair_prompt_has_recovery_variables() -> None:
     tmpl = build_repair_prompt()
     assert isinstance(tmpl, ChatPromptTemplate)
-    assert "runbook_guidance" in tmpl.input_variables
     assert "original_request" in tmpl.input_variables
     assert "current_goal" in tmpl.input_variables
     assert "failure_context" in tmpl.input_variables
@@ -176,7 +173,6 @@ def test_build_repair_prompt_has_recovery_variables() -> None:
 def test_build_file_patch_repair_prompt_has_recovery_variables() -> None:
     tmpl = build_file_patch_repair_prompt()
     assert isinstance(tmpl, ChatPromptTemplate)
-    assert "runbook_guidance" in tmpl.input_variables
     assert "original_request" in tmpl.input_variables
     assert "previous_plan" in tmpl.input_variables
     assert "failure_context" in tmpl.input_variables

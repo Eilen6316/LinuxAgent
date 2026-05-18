@@ -38,8 +38,8 @@ not be treated as an autonomous production remediator.
 - [ ] Audit log path is on durable local storage.
 - [ ] `linuxagent audit verify` is part of incident review practice.
 - [ ] Operators understand that `--yes` does not bypass command-level approval.
-- [ ] High-impact workflows are encoded as YAML runbooks and covered by harness
-      scenarios.
+- [ ] High-impact workflows are documented, rehearsed, and covered by harness
+      scenarios where they touch LinuxAgent behavior.
 - [ ] `make verify-build` passes for the release artifact you deploy.
 
 ## Release Verification

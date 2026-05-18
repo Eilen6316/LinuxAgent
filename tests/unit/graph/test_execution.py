@@ -69,7 +69,7 @@ def test_aggregate_cluster_results_records_remote_profiles() -> None:
     assert records[1]["error_class"] == "RuntimeError"
 
 
-def test_analysis_context_uses_single_result_without_runbook() -> None:
+def test_analysis_context_uses_single_result_without_plan_results() -> None:
     text = analysis_context({}, _result("/bin/echo password=hunter2", stdout="password=hunter2"))
 
     assert "hunter2" not in text
@@ -81,7 +81,7 @@ def test_analysis_context_uses_single_result_without_runbook() -> None:
 def test_analysis_context_aggregates_command_step_results() -> None:
     text = analysis_context(
         {
-            "runbook_results": (
+            "plan_results": (
                 _result("df -h", stdout="disk"),
                 _result("du -sh /var/log", stdout="logs"),
             )

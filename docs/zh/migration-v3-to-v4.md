@@ -88,7 +88,7 @@ linuxagent
 |---|---|
 | 直接改 prompt | 修改 `prompts/` |
 | 直接改命令 allow/block 逻辑 | 参考 `configs/policy.default.yaml` 并配置 `policy.path` |
-| 自定义脚本工作流 | 在 `runbooks/` 添加 YAML runbook，并补 harness 场景 |
+| 自定义脚本工作流 | 通过 prompt、Skill manifest 或外部脚本表达可复用指导，并补 harness 场景 |
 | 本地历史逻辑 | 使用内置 audit 和 telemetry 文件 |
 
 ## 回滚建议

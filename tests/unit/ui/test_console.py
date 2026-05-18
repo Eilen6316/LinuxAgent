@@ -584,31 +584,6 @@ def test_file_patch_approval_refuses_when_no_files_confirmed(monkeypatch) -> Non
     assert response == {"decision": "no"}
 
 
-def test_render_confirm_shows_only_remaining_runbook_steps() -> None:
-    console = Console(record=True, width=120)
-    ui = _english_console_ui(console)
-
-    ui._render_confirm(
-        {
-            "command": "du -sh /var/log",
-            "runbook_id": "disk.full",
-            "runbook_title": "Investigate disk usage",
-            "runbook_step_index": 1,
-            "runbook_steps": [
-                {"command": "df -h", "purpose": "Show filesystem usage"},
-                {"command": "du -sh /var/log", "purpose": "Estimate log directory usage"},
-                {"command": "find /tmp -maxdepth 1", "purpose": "Inspect temp files"},
-            ],
-        }
-    )
-
-    rendered = console.export_text()
-    assert "disk.full - Investigate disk usage" in rendered
-    assert "Next steps" in rendered
-    assert "find /tmp -maxdepth 1" in rendered
-    assert "df -h - Show filesystem usage" not in rendered
-
-
 def test_render_confirm_shows_batch_hosts() -> None:
     console = Console(record=True, width=120)
     ui = _english_console_ui(console)

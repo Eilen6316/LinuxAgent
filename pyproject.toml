@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "linuxagent"
 version = "4.1.0"
-description = "HITL-first Linux operations control plane with policy checks, audit trails, runbooks, and SSH guards."
+description = "HITL-first Linux operations control plane with policy checks, audit trails, and SSH guards."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -75,14 +75,12 @@ packages = ["src/linuxagent"]
 "configs/default.yaml" = "linuxagent/_data/default.yaml"
 "configs/policy.default.yaml" = "linuxagent/_data/policy.default.yaml"
 "prompts" = "linuxagent/_data/prompts"
-"runbooks" = "linuxagent/_data/runbooks"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "src/linuxagent",
     "configs",
     "prompts",
-    "runbooks",
     "docs",
     "pyproject.toml",
     "README.md",

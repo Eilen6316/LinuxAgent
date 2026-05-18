@@ -43,7 +43,6 @@ mcp:
     - linuxagent.policy.classify
     - linuxagent.audit.verify
   resources:
-    - linuxagent://runbooks/summary
     - linuxagent://skills/summary
 ```
 
@@ -71,18 +70,11 @@ configured audit path.
 
 | Resource | Behavior | State mutation |
 |---|---|---|
-| `linuxagent://runbooks/summary` | Returns runbook ids, titles, step counts, safety posture, and step purpose/read-only flags | None |
-| `linuxagent://skills/summary` | Returns Skill name/version/description/permissions/guidance presence/runbook ids | None |
+| `linuxagent://skills/summary` | Returns Skill name/version/description/permissions/guidance presence | None |
 
 Resources intentionally return summaries. They do not expose command strings,
 planner guidance bodies, execution results, raw audit logs, config secrets, or
 filesystem content.
-
-Runbook safety posture is summary-level metadata:
-
-- `read_only`: every exposed step is declared read-only.
-- `policy_gated`: one or more steps can have side effects and must still go
-  through planner, policy, HITL, sandbox metadata, and audit before execution.
 
 ## Non-Exposed Capabilities
 
@@ -93,7 +85,6 @@ These remain intentionally unavailable over MCP:
 - file patch application
 - SSH cluster execution
 - raw audit record search
-- runbook command-string export
 - full Skill planner guidance export
 - raw secrets, provider keys, config values, or environment values
 
@@ -138,11 +129,10 @@ validation failures inside a known tool return a tool result with
 
 ## Future Slices
 
-1. Add MCP resources for redacted runbook summaries.
-2. Add an audit summary tool that returns bounded, redacted aggregates rather
+1. Add an audit summary tool that returns bounded, redacted aggregates rather
    than raw audit lines.
-3. Add a command proposal tool that returns a `CommandPlan` preview only.
-4. Add execution only through the existing LangGraph HITL flow, with no
+2. Add a command proposal tool that returns a `CommandPlan` preview only.
+3. Add execution only through the existing LangGraph HITL flow, with no
    background or non-interactive auto-approval path.
-5. Consider Streamable HTTP only after authentication, authorization,
+4. Consider Streamable HTTP only after authentication, authorization,
    rate-limiting, and deployment guidance are designed.

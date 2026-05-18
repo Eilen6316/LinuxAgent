@@ -22,11 +22,11 @@ async def print_execution_results(ui: UserInterface, state: dict[str, Any]) -> N
 
 
 def _execution_results(state: dict[str, Any]) -> tuple[ExecutionResult, ...]:
-    runbook_results = state.get("runbook_results")
-    if isinstance(runbook_results, tuple) and all(
-        isinstance(result, ExecutionResult) for result in runbook_results
+    plan_results = state.get("plan_results")
+    if isinstance(plan_results, tuple) and all(
+        isinstance(result, ExecutionResult) for result in plan_results
     ):
-        return runbook_results
+        return plan_results
     result = state.get("execution_result")
     return (result,) if isinstance(result, ExecutionResult) else ()
 

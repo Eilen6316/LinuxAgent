@@ -59,7 +59,7 @@ Built on **LangGraph** for state-machine orchestration, **LangChain** for model 
 | File patch planning | Script, code, and config edits use structured `FilePatchPlan` output, unified-diff preview, transactional apply, and HITL approval |
 | Read-only workspace tools | The planner can inspect real files through `read_file`, `list_dir`, and `search_files` before proposing a patch |
 | Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
-| Runbooks | 11 YAML runbooks supplied as planner guidance, not pre-LLM hard routes |
+| Skill guidance | Optional Skill manifests can add advisory planner context without executable plugin hooks |
 | Human-in-the-Loop | LangGraph `interrupt()` + session resume; confirmations show policy and planned sandbox context |
 | Conversation permissions | Approved SAFE command shapes can skip confirmation only within the same conversation thread, including `/resume`; destructive commands never enter |
 | Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
@@ -264,7 +264,7 @@ network:
   denied_domains: []
 ```
 
-| End-to-end scenarios | none | 12 YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard / runbook |
+| End-to-end scenarios | none | YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard / workspace-tool flows |
 | Release flow | manual | tag-triggered GitHub Actions builds wheel + sdist, GitHub Release, and PyPI publish |
 
 ---
@@ -406,6 +406,7 @@ linuxagent check
 | `network` | `max_response_bytes` | `1048576` | Maximum response budget for `fetch_url` |
 | `network` | `timeout_seconds` | `10.0` | Timeout budget for `fetch_url` |
 | `command_plan` | `max_repair_attempts` | `2` | Automatic failed-command replanning rounds; `0` disables command repair |
+| `command_plan` | `parallel_direct_answer_tasks` | `8` | Maximum AI-decomposed conversational subtasks to fan out in parallel |
 | `file_patch` | `allow_roots` | `[".", "/tmp"]` | Roots where file patch tools may read and write |
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | Matching paths are shown as elevated-risk patch confirmations |
 | `file_patch` | `allow_permission_changes` | `true` | Allows patch plans to declare chmod-style permission changes |
@@ -453,7 +454,7 @@ language: en-US  # zh-CN | en-US
 The default is `zh-CN`. The setting affects LinuxAgent-owned fixed runtime
 text: slash help and completion descriptions, CLI/TUI labels, confirmation and
 block messages, wizard controls, diagnostics, policy display reasons, and
-localized display metadata for built-in runbooks, policies, and Skills.
+localized display metadata for policies and Skills.
 
 It does not change prompt templates, LLM routing/planning behavior, the final
 answer language chosen by the model, external command output, user file
@@ -464,8 +465,8 @@ fixed text follow `language`.
 
 Locale catalogs are not business templates and do not contain prompt
 instructions. AI-generated content still comes from the model and the user's
-request. External Skill, runbook, and policy text remains in its source
-language unless that data explicitly provides localized display metadata.
+request. External Skill and policy text remains in its source language unless
+that data explicitly provides localized display metadata.
 
 The hardcoded-string gate currently blocks unregistered Chinese runtime string
 literals in `src/linuxagent/`. English phrase scanning is report-only so
@@ -895,7 +896,6 @@ See [Release Guide](release.md).
 - [Quick Start](quickstart.md)
 - [Provider Compatibility Matrix](provider-matrix.md)
 - [Operator Safety Model](operator-safety.md)
-- [Runbook Authoring](runbook-authoring.md)
 - [Development Guide](development.md)
 - [Release Guide](release.md) / [中文发布指南](../zh/release.md)
 - [Migration Guide: v3 to v4.0.0](migration-v3-to-v4.md)

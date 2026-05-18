@@ -43,6 +43,7 @@ CONFIG_REQUIRED_PATHS = (
     ("network", "max_response_bytes"),
     ("network", "timeout_seconds"),
     ("command_plan", "max_repair_attempts"),
+    ("command_plan", "parallel_direct_answer_tasks"),
     ("file_patch", "allow_roots"),
     ("file_patch", "high_risk_roots"),
     ("file_patch", "allow_permission_changes"),
@@ -157,6 +158,7 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.network.default_action is NetworkPolicyAction.DENY
     assert cfg.network.allowed_domains == ()
     assert cfg.network.denied_domains == ()
+    assert cfg.command_plan.parallel_direct_answer_tasks == 8
     assert cfg.sandbox.enabled is False
     assert cfg.sandbox.runner is SandboxRunnerKind.NOOP
     assert cfg.sandbox.default_profile is SandboxProfile.SYSTEM_INSPECT
@@ -166,10 +168,7 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.mcp.enabled is True
     assert cfg.mcp.transport == "stdio"
     assert cfg.mcp.tools == ("linuxagent.policy.classify", "linuxagent.audit.verify")
-    assert cfg.mcp.resources == (
-        "linuxagent://runbooks/summary",
-        "linuxagent://skills/summary",
-    )
+    assert cfg.mcp.resources == ("linuxagent://skills/summary",)
     assert cfg.skills.enabled is False
     assert cfg.skills.manifests == ()
     assert cfg.ui.max_chat_history == 20
@@ -546,8 +545,8 @@ def test_mcp_config_rejects_duplicate_resources() -> None:
             {
                 "mcp": {
                     "resources": [
-                        "linuxagent://runbooks/summary",
-                        "linuxagent://runbooks/summary",
+                        "linuxagent://skills/summary",
+                        "linuxagent://skills/summary",
                     ]
                 }
             }

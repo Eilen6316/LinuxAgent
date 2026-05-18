@@ -16,7 +16,7 @@ from .file_patch_nodes import (
 from .intent import make_parse_intent_node
 from .nodes import (
     GraphDependencies,
-    make_advance_runbook_node,
+    make_advance_plan_node,
     make_analyze_result_node,
     make_confirm_node,
     make_execute_node,
@@ -61,12 +61,12 @@ def _add_planning_nodes(graph: Any, deps: GraphDependencies) -> None:
                 cluster_service=deps.cluster_service,
                 tools=deps.tools,
                 telemetry=deps.telemetry,
-                runbook_engine=deps.runbook_engine,
                 tool_observer=deps.tool_observer,
                 runtime_observer=deps.runtime_observer,
                 tool_runtime_limits=deps.tool_runtime_limits,
                 product_context=deps.product_context,
                 operating_manifest=deps.operating_manifest,
+                parallel_direct_answer_tasks=deps.parallel_direct_answer_tasks,
                 translator=deps.translator,
             )
         ),
@@ -138,7 +138,7 @@ def _add_execution_nodes(graph: Any, deps: GraphDependencies) -> None:
             )
         ),
     )
-    graph.add_node("advance_runbook", _langgraph_node(make_advance_runbook_node()))
+    graph.add_node("advance_plan", _langgraph_node(make_advance_plan_node()))
     graph.add_node(
         "repair_plan",
         _langgraph_node(
@@ -181,12 +181,12 @@ def _add_graph_edges(graph: Any, deps: GraphDependencies) -> None:
         "execute",
         make_route_after_execute(deps.command_plan_config.max_repair_attempts),
         {
-            "CONTINUE_RUNBOOK": "advance_runbook",
+            "CONTINUE_PLAN": "advance_plan",
             "REPAIR_PLAN": "repair_plan",
             "ANALYZE": "analyze",
         },
     )
-    graph.add_edge("advance_runbook", "safety_check")
+    graph.add_edge("advance_plan", "safety_check")
     graph.add_edge("repair_plan", "safety_check")
     graph.add_conditional_edges(
         "apply_file_patch",

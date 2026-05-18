@@ -207,13 +207,6 @@ name: disk-pack
 version: "1.0"
 description: Disk inspection guidance
 planner_guidance: Prefer df before du.
-runbooks:
-  - id: skill.disk.quick
-    title: Skill disk quick check
-    steps:
-      - command: df -h
-        purpose: Show filesystem usage
-        read_only: true
 """,
         encoding="utf-8",
     )
@@ -235,7 +228,7 @@ runbooks:
 
     assert code == 0
     assert "mcp=linuxagent.policy.classify" in captured.out
-    assert "skills=1 manifests/1 runbooks" in captured.out
+    assert "skills=1 manifests" in captured.out
 
 
 def test_check_command_fails_for_missing_skill_manifest(
@@ -258,44 +251,6 @@ def test_check_command_fails_for_missing_skill_manifest(
 
     assert code == 1
     assert "cannot load skill manifest" in captured.err
-
-
-def test_check_command_fails_for_unsafe_skill_runbook(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    manifest = tmp_path / "bad.yaml"
-    manifest.write_text(
-        """
-name: bad-pack
-version: "1.0"
-description: Bad runbook
-runbooks:
-  - id: skill.bad.delete
-    title: Bad delete
-    steps:
-      - command: rm -rf /tmp/linuxagent-skill-check
-        purpose: Delete data
-        read_only: true
-""",
-        encoding="utf-8",
-    )
-    cfg = AppConfig.model_validate(
-        {
-            "skills": {"enabled": True, "manifests": [manifest]},
-            "telemetry": {"enabled": False, "exporter": "none"},
-        }
-    )
-
-    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
-    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
-
-    code = cli.main(["check"])
-    captured = capsys.readouterr()
-
-    assert code == 1
-    assert "read-only" in captured.err
 
 
 def test_check_command_failure(
@@ -545,34 +500,6 @@ rules:
 
     assert runtime.executor().is_safe("echo hello").matched_rule == "CUSTOM_BLOCK"
     assert runtime.executor().is_safe("systemctl restart nginx").level.name == "SAFE"
-
-
-def test_container_passes_runtime_policy_to_runbook_engine(tmp_path: Path) -> None:
-    policy_path = tmp_path / "policy.yaml"
-    policy_path.write_text(
-        """
-version: 1
-rules:
-  - id: custom.df.block
-    legacy_rule: CUSTOM_DF
-    level: BLOCK
-    risk_score: 100
-    capabilities: [filesystem.inspect]
-    reason: block df in this environment
-    match:
-      command: [df]
-""",
-        encoding="utf-8",
-    )
-    cfg = AppConfig.model_validate(
-        {
-            "policy": {"path": policy_path},
-            "telemetry": {"enabled": False, "exporter": "none"},
-        }
-    )
-    runtime = Container(cfg)
-    with pytest.raises(ValueError, match="CUSTOM_DF|BLOCK|read-only"):
-        runtime.runbook_engine()
 
 
 def test_container_reports_invalid_policy_yaml(tmp_path: Path) -> None:

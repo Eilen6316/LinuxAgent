@@ -14,7 +14,6 @@ from ..graph.agent_graph import AgentGraph
 from ..graph.checkpoint import PersistentMemorySaver
 from ..i18n import Translator
 from ..interfaces import LLMProvider
-from ..runbooks import RunbookEngine
 from ..services import BackgroundJobController, ClusterService, CommandService
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
@@ -31,7 +30,6 @@ def build_graph(
     background_jobs: BackgroundJobController,
     tools: tuple[BaseTool, ...],
     telemetry: TelemetryRecorder,
-    runbook_engine: RunbookEngine,
     tool_observer: Callable[[dict[str, Any]], Any],
     runtime_observer: Callable[[dict[str, Any]], Any],
     tool_runtime_limits: ToolRuntimeLimits,
@@ -49,7 +47,6 @@ def build_graph(
             background_jobs=background_jobs,
             tools=tools,
             telemetry=telemetry,
-            runbook_engine=runbook_engine,
             command_plan_config=config.command_plan,
             file_patch_config=config.file_patch,
             tool_observer=tool_observer,
@@ -57,6 +54,7 @@ def build_graph(
             tool_runtime_limits=tool_runtime_limits,
             product_context=product_context,
             operating_manifest=operating_manifest,
+            parallel_direct_answer_tasks=config.command_plan.parallel_direct_answer_tasks,
             translator=translator,
         )
     )

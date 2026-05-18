@@ -94,7 +94,7 @@ linuxagent
 |---|---|
 | Hard-coded prompt edits | Edit files under `prompts/` |
 | Direct command allow/block edits | Use `configs/policy.default.yaml` as a template and configure `policy.path` |
-| Custom scripted workflow | Add a YAML runbook under `runbooks/` and cover it with harness scenarios |
+| Custom scripted workflow | Express reusable guidance through prompts, Skill manifests, or external scripts covered by harness scenarios |
 | Local history tweaks | Use the built-in audit and telemetry files |
 
 ## Rollback Guidance

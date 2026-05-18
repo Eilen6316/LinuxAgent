@@ -11,7 +11,6 @@ Core layers:
 - `executors/`: safe local command execution
 - `policy/`: capability-based command policy engine
 - `plans/`: strict JSON CommandPlan models and parsing
-- `runbooks/`: YAML runbook models, loading, matching, and policy validation
 - `cluster/`: SSH execution and host policy
 - `graph/`: LangGraph orchestration split into intent parsing, safety checks, routing, and node factories
 - `services/`: application services
@@ -57,8 +56,8 @@ that enter model context, MCP protocol metadata, audit JSON keys, policy ids,
 or other machine-readable fields. `src/linuxagent/i18n/locales/*.yaml` is for
 CLI/TUI labels, slash help, confirmation/block messages, diagnostics, and
 display-only metadata. New user-visible fixed strings should use a locale key;
-new model-visible instructions belong in `prompts/`, runbooks, policy YAML, or
-the relevant structured data source.
+new model-visible instructions belong in `prompts/`, policy YAML, Skill
+manifests, or the relevant structured data source.
 
 ## Architecture Stabilization Track
 
@@ -77,7 +76,7 @@ Baseline hotspots being reduced:
 | Module | Current responsibility | Intended owner after stabilization |
 |---|---|---|
 | `src/linuxagent/graph/intent.py` | Intent routing, direct answer, planner gate, tool planning, parse repair, wizard gates | Facade plus focused router, direct-answer, planner, tool-loop, no-change, and repair modules |
-| `src/linuxagent/graph/nodes.py` | Confirmation, permissions, execution, batching, runbook advance, analysis | Facade plus focused confirm, permission, execution, batch, runbook, and analysis modules |
+| `src/linuxagent/graph/nodes.py` | Confirmation, permissions, execution, batching, plan advancement, analysis | Facade plus focused confirm, permission, execution, batch, plan-step, and analysis modules |
 | `src/linuxagent/graph/file_patch_nodes.py` | File patch confirmation, apply, verification, repair | Facade plus focused file patch graph-node modules |
 | `src/linuxagent/plans/file_patch.py` | File patch models, parsing, safety, diff apply, transactions, summaries | Public facade plus focused implementation modules under `plans/` |
 | `src/linuxagent/graph/state.py` | Broad graph state contract | Documented section contracts with producer/consumer ownership |
@@ -151,7 +150,7 @@ Before a release or security-sensitive merge, review:
   metadata are recorded where applicable.
 - fallback behavior: disabled/no-op paths report `enforced=false`; unavailable
   safe profiles fail closed.
-- packaging: `make verify-build` confirms config, policy, prompts, runbooks,
+- packaging: `make verify-build` confirms config, policy, prompts,
   locale catalogs, and sandbox config sections are present in the wheel; the
   isolated wheel install also checks `zh-CN` / `en-US` locale key parity.
 
@@ -232,24 +231,16 @@ new IDs are appended. Set `include_builtin: false` only when intentionally
 replacing the full policy set. Invalid configured policy YAML fails before the
 runtime services are built.
 
-## CommandPlan And Runbooks
+## CommandPlan
 
 The graph no longer accepts a raw shell string from the LLM. Provider output is
 parsed as strict JSON `CommandPlan`; invalid JSON or schema errors are treated
 as `BLOCK` and no command is executed.
 
-Built-in runbooks live under `runbooks/`. Each runbook is YAML guidance for
-diagnostic procedures. Runbooks do not own fixed natural-language triggers or
-scenario phrases, and the graph does not run a matcher before LLM planning.
-Every packaged runbook step is policy-evaluated by
-`RunbookEngine.evaluate_steps()` during engine construction before the guidance
-is considered usable.
-
-The graph injects runbook summaries into the planner prompt as advisory context.
-The planner may use, adapt, combine, or ignore that guidance. The output is
-still a normal validated `CommandPlan` or `FilePatchPlan`, so policy, HITL,
-execution or patch confirmation, audit, and analysis continue through the same
-path as other LLM-generated plans.
+Multi-step operations are represented as normal validated `CommandPlan`
+entries. The graph advances through those entries generically; each command
+still goes through policy, HITL, execution or patch confirmation, audit, and
+analysis through the same path as any other LLM-generated plan.
 
 Remote scope is structured data, not Python natural-language matching:
 `commands[].target_hosts` is empty for local execution, contains exact configured

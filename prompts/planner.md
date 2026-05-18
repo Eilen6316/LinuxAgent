@@ -40,14 +40,6 @@ runtime inspection and must be planned with the minimum read-only command or
 workspace tool. Do not return a DirectAnswerPlan that says you have not checked,
 cannot answer yet, or will run a command later.
 
-{runbook_guidance}
-
-Runbooks are advisory examples, not routing rules. Use, adapt, combine, or
-ignore them according to the user's actual goal. If the user asks to write a
-shell, Python, Go, Ansible, YAML, systemd, nginx, cron, or other artifact,
-create an artifact plan instead of running diagnostic runbook commands only
-because words overlap.
-
 For artifact generation that depends on a runtime or toolchain, include a
 minimal read-only version/environment probe before creating the file when the
 version is not already known, then use conservative compatible code and

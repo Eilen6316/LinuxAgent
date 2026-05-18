@@ -240,7 +240,6 @@ def _context(
         direct_answer_review_prompt=build_direct_answer_review_prompt(),
         intent_router_prompt=build_intent_router_prompt(),
         wizard_response_prompt=build_wizard_response_prompt(),
-        runbook_guidance="",
         cluster_service=None,
         tools=(),
         telemetry=telemetry,
@@ -250,6 +249,7 @@ def _context(
         product_context="",
         operating_manifest="",
         prompt_cache_key=None,
+        parallel_direct_answer_tasks=8,
     )
 
 

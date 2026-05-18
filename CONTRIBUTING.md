@@ -58,9 +58,8 @@ versions in multiple places without explaining why in the PR.
 Start with [ROADMAP.md](ROADMAP.md). Good first contributions usually fit one
 of these areas:
 
-- read-only YAML runbooks
 - provider compatibility notes after testing a real endpoint
-- focused policy or runbook validation tests
+- focused policy or harness validation tests
 - CLI documentation and quickstart improvements
 - production smoke-test transcripts
 
@@ -76,12 +75,6 @@ redaction, or provider SDK boundaries.
 - Include migration notes for breaking changes.
 - Do not commit local files such as `.work/`, `.codex/`, `config.yaml`, build
   output, caches, or secrets.
-
-## Runbook Contributions
-
-Runbooks are advisory planner guidance. They do not bypass policy or HITL. See
-[docs/en/runbook-authoring.md](docs/en/runbook-authoring.md) before adding or
-changing files under `runbooks/`.
 
 ## Commit Messages
 

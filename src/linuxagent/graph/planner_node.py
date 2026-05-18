@@ -33,9 +33,6 @@ class PlannerContext(Protocol):
     def planner_gate_prompt(self) -> Any: ...
 
     @property
-    def runbook_guidance(self) -> str: ...
-
-    @property
     def product_context(self) -> str: ...
 
     @property
@@ -64,7 +61,6 @@ async def _complete_plan_candidate(
     prompt_messages = context.planner_prompt.format_messages(
         chat_history=messages[:-1],
         product_context=context.product_context,
-        runbook_guidance=context.runbook_guidance,
         user_input=user_text,
     )
     if not context.tools:

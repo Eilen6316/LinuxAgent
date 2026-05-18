@@ -25,7 +25,6 @@ from linuxagent.graph import GraphDependencies, build_agent_graph
 from linuxagent.graph.runtime import GraphRuntime
 from linuxagent.interfaces import LLM_CALL_METADATA_KEY, ExecutionResult
 from linuxagent.plans import command_plan_json
-from linuxagent.runbooks import Runbook, RunbookEngine, RunbookStep
 from linuxagent.services import ChatService, ClusterService, CommandService
 from linuxagent.usage_insights import ContextManager
 
@@ -189,39 +188,25 @@ async def test_agent_runtime_confirms_and_resumes_llm_command(tmp_path: Path) ->
 
 
 @pytest.mark.integration
-async def test_agent_runtime_continues_runbook_guided_plan_after_first_confirm(
+async def test_agent_runtime_continues_multi_step_plan_after_first_confirm(
     tmp_path: Path,
 ) -> None:
     provider = _Provider(
         [
             _multi_command_plan_json(["/bin/echo first", "/bin/echo second"]),
-            "runbook-guided analysis",
+            "multi-step analysis",
         ]
     )
     ui = _UI()
-    runbook = Runbook(
-        id="runtime.echo",
-        title="Runtime Echo",
-        steps=(
-            RunbookStep(command="/bin/echo first", purpose="First safe check", read_only=True),
-            RunbookStep(command="/bin/echo second", purpose="Second safe check", read_only=True),
-        ),
-    )
-    agent = _agent(
-        tmp_path,
-        provider=provider,
-        ui=ui,
-        runbook_engine=RunbookEngine((runbook,)),
-    )
+    agent = _agent(tmp_path, provider=provider, ui=ui)
 
-    await agent.run_turn("runtime-runbook", thread_id="runtime-runbook")
+    await agent.run_turn("runtime multi-step", thread_id="runtime-multi-step")
 
     assert [payload["command"] for payload in ui.interrupts] == [
         "/bin/echo first",
         "/bin/echo second",
     ]
-    assert all("runbook_id" not in payload for payload in ui.interrupts)
-    assert ui.printed == ["runbook-guided analysis"]
+    assert ui.printed == ["multi-step analysis"]
     analysis_prompt = str(provider.complete_messages[-1][-1].content)
     assert "/bin/echo first" in analysis_prompt
     assert "/bin/echo second" in analysis_prompt
@@ -345,7 +330,6 @@ def _agent(
     provider: _Provider,
     ui: _UI,
     cluster_service: ClusterService | None = None,
-    runbook_engine: RunbookEngine | None = None,
     command_plan_config: CommandPlanConfig | None = None,
     runtime_observer: Any | None = None,
 ) -> LinuxAgent:
@@ -361,7 +345,6 @@ def _agent(
             command_service=command_service,
             audit=AuditLog(tmp_path / "audit.log"),
             cluster_service=cluster_service,
-            runbook_engine=runbook_engine,
             command_plan_config=command_plan_config or CommandPlanConfig(),
             runtime_observer=runtime_observer,
         )

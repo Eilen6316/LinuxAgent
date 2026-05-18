@@ -74,7 +74,6 @@ def make_repair_file_patch_node(
         cache_key = state.get("prompt_cache_key") or prompt_cache_key
         await _notify_repair_start(state, telemetry, tool_observer, current_trace_id)
         prompt_messages = prompt.format_messages(
-            runbook_guidance="No runbook guidance is available for file patch repair.",
             original_request=_last_human_text(state.get("messages", [])),
             previous_plan=_previous_plan_json(state),
             failure_context=_patch_failure_context(state, config),
@@ -301,7 +300,6 @@ async def _retry_repair_plan_json(
     prompt_cache_key: str | None,
 ) -> str:
     prompt_messages = prompt.format_messages(
-        runbook_guidance="No runbook guidance is available for file patch repair.",
         original_request=_last_human_text(state.get("messages", [])),
         previous_plan=_previous_plan_json(state),
         failure_context=_retry_failure_context(state, config, proposed, error),
@@ -417,7 +415,7 @@ def _repair_command_update(
         "trace_id": current_trace_id,
         **reset_planning_for_command_plan(
             plan,
-            plan_result_start_index=len(state.get("runbook_results", ())),
+            plan_result_start_index=len(state.get("plan_results", ())),
         ),
         "file_patch_max_repair_attempts": max_repair_attempts(state),
         **reset_safety_for_replan(),

@@ -59,7 +59,7 @@
 | 文件修改计划 | 脚本、代码、配置文件等修改使用结构化 `FilePatchPlan`，先展示 unified diff，再经事务化写入和人工确认 |
 | 只读工作区工具 | planner 可先通过 `read_file` / `list_dir` / `search_files` 读取允许目录下的真实文件内容 |
 | 策略引擎 | `SAFE` / `CONFIRM` / `BLOCK`，并输出 `risk_score`、`capabilities`、审计用 `matched_rule` |
-| Runbook | 内置 11 个 YAML Runbook，作为 planner guidance 注入，不再在 LLM 规划前硬路由 |
+| Skill guidance | 可选 Skill manifest 可以提供建议性 planner 上下文，不包含可执行插件钩子 |
 | Human-in-the-Loop | LangGraph `interrupt()` + 会话恢复，服务受控的人机协同工作流 |
 | 对话权限 | 批准过的 SAFE 命令只在当前对话 thread 及其 `/resume` 恢复后免确认，破坏性命令永不进入 |
 | 集群批量执行 | SSH 连接池 + 并发扇出 + 失败隔离，异步包装 paramiko |
@@ -258,7 +258,7 @@ network:
   denied_domains: []
 ```
 
-| E2E 场景 | 无 | 12 个 YAML 场景覆盖普通命令 / 危险命令 / HITL / 批量集群 / 远程 shell 防护 / Runbook |
+| E2E 场景 | 无 | YAML 场景覆盖普通命令 / 危险命令 / HITL / 批量集群 / 远程 shell 防护 / 工作区工具流程 |
 | 发布流程 | 手动 | tag 触发 GitHub Actions 构建 wheel + sdist + GitHub Release + PyPI 发布 |
 
 ---
@@ -396,6 +396,7 @@ linuxagent check
 | `network` | `max_response_bytes` | `1048576` | `fetch_url` 响应大小预算 |
 | `network` | `timeout_seconds` | `10.0` | `fetch_url` 超时预算 |
 | `command_plan` | `max_repair_attempts` | `2` | 命令计划失败后的自动重规划轮数；`0` 表示关闭命令 repair |
+| `command_plan` | `parallel_direct_answer_tasks` | `8` | 并发展开的 AI 拆分式对话子任务最大数 |
 | `file_patch` | `allow_roots` | `[".", "/tmp"]` | 文件 patch 允许读写的根目录 |
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | 命中后以高风险 diff 确认展示 |
 | `file_patch` | `allow_permission_changes` | `true` | 是否允许 patch 计划声明权限位变更 |
@@ -441,7 +442,7 @@ language: en-US  # zh-CN | en-US
 
 默认值是 `zh-CN`。该设置影响 LinuxAgent 自有的固定运行时文案：slash help
 和补全描述、CLI/TUI 标签、确认/阻断消息、wizard 控件、诊断信息、policy 展示原因，
-以及内置 runbook、policy、Skill 的用户可见展示元数据。
+以及 policy、Skill 的用户可见展示元数据。
 
 它不影响 prompt 模板、LLM 路由/规划行为、模型最终回答语言、外部命令输出、
 用户文件内容、审计 JSON 字段名、MCP 协议字段、tool name、policy rule id
@@ -449,8 +450,7 @@ language: en-US  # zh-CN | en-US
 运行时 slash help（`/help`）和终端 UI 固定文案会跟随 `language`。
 
 locale catalog 不是业务模板，也不承载 prompt 指令。AI 生成内容仍由模型根据用户请求
-生成。外部 Skill、runbook、policy 的单语言内容保持原文，除非该数据自己提供了本地化
-展示元数据。
+生成。外部 Skill、policy 的单语言内容保持原文，除非该数据自己提供了本地化展示元数据。
 
 当前硬编码字符串门禁会阻止 `src/linuxagent/` 中未登记的中文运行时字符串字面量；
 英文 phrase 扫描仍是 report-only，便于维护者审查 UI/help/log 候选，同时避免把协议
@@ -826,7 +826,6 @@ git push origin v4.1.0     # 触发 release.yml
 - [快速开始](../en/quickstart.md)
 - [Provider 兼容矩阵](provider-matrix.md) / [Provider Matrix](../en/provider-matrix.md)
 - [操作员安全模型](operator-safety.md) / [Operator Safety Model](../en/operator-safety.md)
-- [Runbook 编写指南](runbook-authoring.md) / [Runbook Authoring](../en/runbook-authoring.md)
 - [开发指南](development.md)
 - [发布指南](release.md) / [Release Guide](../en/release.md)
 - [v3 到 v4.0.0 迁移指南（中文）](migration-v3-to-v4.md)

@@ -36,6 +36,7 @@ network:
 
 command_plan:
   max_repair_attempts: 2         # 0 disables automatic failed-command replanning
+  parallel_direct_answer_tasks: 8
 
 file_patch:
   allow_roots:
@@ -97,7 +98,6 @@ mcp:
     - linuxagent.policy.classify
     - linuxagent.audit.verify
   resources:
-    - linuxagent://runbooks/summary
     - linuxagent://skills/summary
 
 skills:
@@ -150,9 +150,4 @@ intelligence:
   context_window: 50
   embedding_model: text-embedding-3-small
   embedding_cache_dir: ~/.cache/linuxagent/embeddings
-  default_command_candidates:
-    - ls -la
-    - df -h
-    - du -sh /var/log
-    - systemctl status ssh
-    - journalctl -u ssh --no-pager -n 100
+  default_command_candidates: []

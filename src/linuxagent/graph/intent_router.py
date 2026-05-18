@@ -14,7 +14,6 @@ from ..interfaces import LLMProvider
 from ..telemetry import TelemetryRecorder
 from .llm_calls import complete_llm
 
-MAX_PARALLEL_DIRECT_TASKS = 4
 _PARALLEL_TASK_EXECUTION_KEYS = frozenset(
     {
         "command",
@@ -79,6 +78,9 @@ class IntentRouterContext(Protocol):
     @property
     def prompt_cache_key(self) -> str | None: ...
 
+    @property
+    def parallel_direct_answer_tasks(self) -> int: ...
+
 
 async def _route_intent(
     context: IntentRouterContext,
@@ -101,10 +103,10 @@ async def _route_intent(
             prompt_cache_key=context.prompt_cache_key,
         )
     ).strip()
-    return _parse_intent_decision(raw)
+    return _parse_intent_decision(raw, max_parallel_tasks=context.parallel_direct_answer_tasks)
 
 
-def _parse_intent_decision(raw: str) -> IntentDecision:
+def _parse_intent_decision(raw: str, *, max_parallel_tasks: int | None = None) -> IntentDecision:
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
@@ -118,7 +120,12 @@ def _parse_intent_decision(raw: str) -> IntentDecision:
     answer = str(payload.get("answer", "")).strip()
     reason = str(payload.get("reason", "")).strip()
     answer_context = _parse_answer_context(payload, mode)
-    parallel_tasks = _parse_parallel_tasks(payload, mode, answer_context)
+    parallel_tasks = _parse_parallel_tasks(
+        payload,
+        mode,
+        answer_context,
+        max_parallel_tasks=max_parallel_tasks,
+    )
     if mode is IntentMode.CLARIFY and not answer:
         return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
     if mode is IntentMode.DIRECT_ANSWER and answer_context is AnswerContext.NONE and not answer:
@@ -140,6 +147,8 @@ def _parse_parallel_tasks(
     payload: dict[str, Any],
     mode: IntentMode,
     answer_context: AnswerContext,
+    *,
+    max_parallel_tasks: int | None,
 ) -> tuple[ParallelDirectTask, ...]:
     if mode is not IntentMode.DIRECT_ANSWER or answer_context is not AnswerContext.NONE:
         return ()
@@ -159,7 +168,9 @@ def _parse_parallel_tasks(
         raw_id = str(item.get("id") or "").strip()
         task_id = raw_id or f"task-{index + 1}"
         tasks.append(ParallelDirectTask(id=task_id, goal=goal, prompt=prompt))
-    return tuple(tasks[:MAX_PARALLEL_DIRECT_TASKS])
+    if max_parallel_tasks is None:
+        return tuple(tasks)
+    return tuple(tasks[: max(max_parallel_tasks, 0)])
 
 
 def _has_execution_fields(item: Mapping[str, Any]) -> bool:

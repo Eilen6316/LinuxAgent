@@ -53,9 +53,8 @@ def test_initial_state_seeds_human_message() -> None:
     assert state["command_repair_attempts"] == 0
     assert state["command_max_repair_attempts"] == 2
     assert state["file_patch_selected_files"] == ()
-    assert state["selected_runbook"] is None
-    assert state["runbook_step_index"] == 0
-    assert state["runbook_results"] == ()
+    assert state["plan_step_index"] == 0
+    assert state["plan_results"] == ()
     assert state["plan_error"] is None
     assert state["safety_level"] is None
     assert state["matched_rule"] is None
@@ -128,7 +127,7 @@ def test_reset_planning_for_response_clears_stale_plans() -> None:
     assert update["plan_error"] is None
     assert update["command_source"] is CommandSource.USER
     assert update["direct_response"] is True
-    assert update["runbook_results"] == ()
+    assert update["plan_results"] == ()
 
 
 def test_reset_planning_for_parse_error_sets_error_without_command() -> None:
@@ -175,7 +174,6 @@ def test_reset_planning_for_file_patch_clears_command_plan_state(tmp_path) -> No
     assert update["file_patch_request_intent"] == "create"
     assert update["file_patch_repair_attempts"] == 2
     assert update["file_patch_max_repair_attempts"] == 5
-    assert update["selected_runbook"] is None
     assert update["direct_response"] is False
 
 

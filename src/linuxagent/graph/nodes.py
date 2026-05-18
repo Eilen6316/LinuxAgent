@@ -13,7 +13,6 @@ from ..audit import AuditLog
 from ..config.models import CommandPlanConfig, FilePatchConfig
 from ..i18n import Translator, default_translator
 from ..interfaces import LLMProvider
-from ..runbooks import RunbookEngine
 from ..services import BackgroundJobController, ClusterService, CommandService
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
@@ -22,7 +21,7 @@ from .confirm_node import make_confirm_node
 from .events import RuntimeEventObserver
 from .execute_node import make_execute_node
 from .intent import make_parse_intent_node
-from .runbook_node import make_advance_runbook_node
+from .plan_step_node import make_advance_plan_node
 from .safety_nodes import make_safety_check_node
 from .state import AgentState
 
@@ -31,7 +30,7 @@ ToolEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
 
 __all__ = [
     "GraphDependencies",
-    "make_advance_runbook_node",
+    "make_advance_plan_node",
     "make_analyze_result_node",
     "make_confirm_node",
     "make_execute_node",
@@ -50,7 +49,6 @@ class GraphDependencies:
     background_jobs: BackgroundJobController | None = None
     tools: tuple[BaseTool, ...] = ()
     telemetry: TelemetryRecorder | None = None
-    runbook_engine: RunbookEngine | None = None
     command_plan_config: CommandPlanConfig = field(default_factory=CommandPlanConfig)
     file_patch_config: FilePatchConfig = field(default_factory=FilePatchConfig)
     tool_observer: ToolEventObserver | None = None
@@ -58,4 +56,5 @@ class GraphDependencies:
     tool_runtime_limits: ToolRuntimeLimits = field(default_factory=ToolRuntimeLimits)
     product_context: str = ""
     operating_manifest: str = ""
+    parallel_direct_answer_tasks: int = 8
     translator: Translator = field(default_factory=default_translator)

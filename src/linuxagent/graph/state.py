@@ -16,7 +16,6 @@ from langgraph.graph.message import add_messages
 
 from ..interfaces import CommandSource, ExecutionResult, SafetyLevel
 from ..plans import CommandPlan, FilePatchPlan
-from ..runbooks import Runbook
 from .state_contracts import ALL_CONTRACT_FIELDS
 
 WizardFailedReason: TypeAlias = Literal["parse_failed", "provider_failed", "non_tty", "loop_guard"]
@@ -47,9 +46,8 @@ class AgentState(TypedDict, total=False):
     command_repair_attempts: int
     command_max_repair_attempts: int
     file_patch_selected_files: tuple[str, ...]
-    selected_runbook: Runbook | None
-    runbook_step_index: int
-    runbook_results: tuple[ExecutionResult, ...]
+    plan_step_index: int
+    plan_results: tuple[ExecutionResult, ...]
     plan_result_start_index: int
     plan_error: str | None
     command_source: CommandSource | None
@@ -230,9 +228,8 @@ def _base_planning_reset(source: CommandSource) -> AgentState:
         "file_patch_repair_attempts": 0,
         "command_repair_attempts": 0,
         "file_patch_selected_files": (),
-        "selected_runbook": None,
-        "runbook_step_index": 0,
-        "runbook_results": (),
+        "plan_step_index": 0,
+        "plan_results": (),
         "plan_result_start_index": 0,
         "plan_error": None,
         "command_source": source,

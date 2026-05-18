@@ -5,7 +5,6 @@ from .manifest import (
     SkillManifestError,
     load_skill_manifests,
     skill_planner_guidance,
-    skill_runbooks,
 )
 
 __all__ = [
@@ -13,5 +12,4 @@ __all__ = [
     "SkillManifestError",
     "load_skill_manifests",
     "skill_planner_guidance",
-    "skill_runbooks",
 ]

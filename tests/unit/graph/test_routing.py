@@ -38,8 +38,8 @@ async def test_route_after_execute_repairs_exhausted_failed_plan() -> None:
     route = await route_after_execute(
         {
             "command_plan": plan,
-            "runbook_step_index": 0,
-            "runbook_results": (result,),
+            "plan_step_index": 0,
+            "plan_results": (result,),
             "plan_result_start_index": 0,
         }
     )
@@ -60,8 +60,8 @@ async def test_route_after_execute_analyzes_when_command_repair_limit_reached() 
     route = await route_after_execute(
         {
             "command_plan": plan,
-            "runbook_step_index": 0,
-            "runbook_results": (result,),
+            "plan_step_index": 0,
+            "plan_results": (result,),
             "plan_result_start_index": 0,
             "command_repair_attempts": 2,
         }

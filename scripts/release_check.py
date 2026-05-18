@@ -233,10 +233,6 @@ def _required_wheel_members(root: Path) -> set[str]:
             f"linuxagent/_data/prompts/{path.name}"
             for path in sorted((root / "prompts").glob("*.md"))
         },
-        *{
-            f"linuxagent/_data/runbooks/{path.name}"
-            for path in sorted((root / "runbooks").glob("*.yaml"))
-        },
     }
 
 
@@ -252,7 +248,6 @@ def _required_sdist_members(root: Path, version: str) -> set[str]:
         f"{prefix}/configs/default.yaml",
         f"{prefix}/configs/policy.default.yaml",
         *{f"{prefix}/prompts/{path.name}" for path in sorted((root / "prompts").glob("*.md"))},
-        *{f"{prefix}/runbooks/{path.name}" for path in sorted((root / "runbooks").glob("*.yaml"))},
     }
 
 

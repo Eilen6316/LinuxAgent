@@ -57,9 +57,8 @@ def make_repair_plan_node(
             "trace_id": current_trace_id,
             "pending_command": plan.primary.command,
             "command_plan": plan,
-            "selected_runbook": None,
-            "runbook_step_index": 0,
-            "plan_result_start_index": len(state.get("runbook_results", ())),
+            "plan_step_index": 0,
+            "plan_result_start_index": len(state.get("plan_results", ())),
             "command_repair_attempts": state.get("command_repair_attempts", 0) + 1,
             "command_max_repair_attempts": max_repair_attempts,
             "plan_error": None,
@@ -115,7 +114,6 @@ async def _complete_repair_plan(
     rejected_response: str,
 ) -> str:
     prompt_messages = prompt.format_messages(
-        runbook_guidance="No runbook guidance is available for repair planning.",
         original_request=_last_human_text(state.get("messages", [])),
         current_goal=_current_goal(state),
         failure_context=_failure_context(
@@ -153,7 +151,7 @@ def should_repair_plan(
 
 
 def _current_plan_results(state: AgentState) -> tuple[Any, ...]:
-    results = state.get("runbook_results", ())
+    results = state.get("plan_results", ())
     start = state.get("plan_result_start_index", 0)
     if start < len(results):
         return results[start:]

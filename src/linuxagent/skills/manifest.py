@@ -1,7 +1,7 @@
 """Declarative Skill manifests.
 
-Skills are local YAML metadata only. They may add planner guidance and runbooks,
-but they cannot carry executable hooks or bypass policy/HITL/audit.
+Skills are local YAML metadata only. They may add planner guidance, but they
+cannot carry executable hooks or bypass policy/HITL/audit.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from ..config.models import LanguageCode
-from ..runbooks import Runbook
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -29,7 +28,6 @@ class SkillManifest(BaseModel):
     description: str = Field(min_length=1)
     description_i18n: dict[LanguageCode, str] = Field(default_factory=dict)
     planner_guidance: str = ""
-    runbooks: tuple[Runbook, ...] = ()
     permissions: tuple[str, ...] = ()
 
     @field_validator("name", "version", "description")
@@ -66,8 +64,8 @@ class SkillManifest(BaseModel):
 
     @model_validator(mode="after")
     def _require_capability(self) -> SkillManifest:
-        if not self.planner_guidance and not self.runbooks:
-            raise ValueError("skill manifest must define planner_guidance or runbooks")
+        if not self.planner_guidance:
+            raise ValueError("skill manifest must define planner_guidance")
         return self
 
 
@@ -75,10 +73,6 @@ def load_skill_manifests(paths: tuple[Path, ...]) -> tuple[SkillManifest, ...]:
     manifests = tuple(_load_skill_manifest(path) for path in paths)
     _validate_unique_names(manifests)
     return manifests
-
-
-def skill_runbooks(manifests: tuple[SkillManifest, ...]) -> tuple[Runbook, ...]:
-    return tuple(runbook for manifest in manifests for runbook in manifest.runbooks)
 
 
 def skill_planner_guidance(manifests: tuple[SkillManifest, ...]) -> tuple[str, ...]:

@@ -107,17 +107,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   status, and redacted recent command details.
 - MCP server exposure is now controlled by `mcp.tools`, keeping the stdio
   server read-only while allowing operators to disable individual tools.
-- Added declarative local Skill manifests for planner guidance and runbook
-  extension. Skills cannot include executable hooks, and Skill runbooks reuse
-  the existing policy validation path.
+- Added declarative local Skill manifests for planner guidance. Skills cannot
+  include executable hooks.
 - `linuxagent check` now reports MCP and Skill status and fails fast when Skill
-  manifests are missing, invalid, or contain read-only runbooks rejected by
-  policy.
-- MCP now exposes configurable read-only resources for runbook and Skill
-  summaries without returning command strings, full guidance bodies, or
-  execution handles.
-- MCP runbook summaries now include explicit step counts and summary safety
-  posture while keeping command strings redacted.
+  manifests are missing or invalid.
+- MCP now exposes configurable read-only Skill summaries without returning full
+  guidance bodies or execution handles.
 - Build verification now installs the built wheel and checks packaged MCP/Skill
   defaults plus importability of the new MCP and Skill modules.
 - Workspace tool activity now includes concise evidence snippets from completed
@@ -146,10 +141,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- General system health runbook for server-status requests, covering uptime,
-  memory, filesystem usage, and failed systemd units.
-- Package inventory and OS-version runbooks for common local diagnostic
-  requests.
 - Direct-answer prompt path for conversational capability questions, avoiding
   `echo` command plans and HITL prompts for non-execution answers.
 - Terminal-friendly analysis prompt for plain-text summaries without Markdown
@@ -201,8 +192,6 @@ policy-driven, audited CLI for controlled human-in-the-loop Linux operations.
 - Capability-based policy engine with `SAFE`, `CONFIRM`, `BLOCK`, risk scores,
   capabilities, matched rules, and runtime YAML policy overrides.
 - Structured JSON `CommandPlan` validation before policy evaluation.
-- Eleven YAML runbooks for common operations diagnostics, with multi-step
-  orchestration and per-step policy checks.
 - SSH cluster execution with batch confirmation, host-key verification, and
   remote shell-syntax guards.
 - Hash-chained JSONL audit log at `~/.linuxagent/audit.log`, plus
@@ -229,7 +218,7 @@ policy-driven, audited CLI for controlled human-in-the-loop Linux operations.
 - The README family, PyPI metadata, CHANGELOG, and release notes use the same
   v4.0.0 release narrative.
 - CI publishes coverage artifacts and runs build verification against packaged
-  config, prompt, and runbook data.
+  config and prompt data.
 
 ### Removed
 

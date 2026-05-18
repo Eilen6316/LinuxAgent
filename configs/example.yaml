@@ -113,6 +113,8 @@ command_plan:
   # Maximum number of automatic replanning rounds after a command plan fails.
   # Set to 0 to disable failed-command repair fallback.
   max_repair_attempts: 2
+  # Runtime budget for AI-decomposed conversational subtasks.
+  parallel_direct_answer_tasks: 8
 
 file_patch:
   # FilePatchPlan can only write below these roots. Relative paths resolve from
@@ -206,7 +208,6 @@ mcp:
     - linuxagent.policy.classify
     - linuxagent.audit.verify
   resources:
-    - linuxagent://runbooks/summary
     - linuxagent://skills/summary
 
 skills:
@@ -275,10 +276,5 @@ intelligence:
   # MUST be an API-hosted model — local pytorch models are banned.
   embedding_model: text-embedding-3-small
   embedding_cache_dir: ~/.cache/linuxagent/embeddings
-  # Seed candidates used only before learner memory has successful commands.
-  default_command_candidates:
-    - ls -la
-    - df -h
-    - du -sh /var/log
-    - systemctl status ssh
-    - journalctl -u ssh --no-pager -n 100
+  # Optional seed candidates used before learner memory has successful commands.
+  default_command_candidates: []

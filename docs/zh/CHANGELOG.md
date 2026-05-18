@@ -69,8 +69,6 @@ LinuxAgent 的重要变更记录在这里。
 - Slash command 帮助和补全现在共用同一个命令目录。
 - 新增 `linuxagent audit summary` 和 `linuxagent audit inspect` 只读审计诊断，
   可查看决策统计、safety 统计、hash-chain 状态和脱敏后的近期命令明细。
-- MCP runbook 摘要现在包含显式 step count 和摘要级 safety posture，同时继续
-  隐藏原始命令字符串。
 - Workspace tool 活动现在会展示来自 `read_file`、`list_dir` 和
   `search_files` 完成结果的简短 evidence 摘要。文件修改流程返回“无需修改”时，
   最终回答也会附带引用到的依据，方便操作员看到模型基于哪些文件行或搜索结果做判断。
@@ -87,9 +85,6 @@ LinuxAgent 的重要变更记录在这里。
 
 ### Added
 
-- 新增通用系统健康 Runbook，用于“查看服务器状态”类请求，覆盖 uptime、
-  内存、文件系统使用率和 failed systemd units。
-- 新增软件包清单和操作系统版本 Runbook，覆盖常见本机诊断请求。
 - 新增直接回答 Prompt 路径，用于能力说明类对话问题，避免为非执行回答生成
   `echo` 命令和 HITL 确认。
 - 新增面向终端的分析 Prompt，要求模型输出纯文本总结，避免 Markdown 格式影响阅读。
@@ -131,7 +126,6 @@ LinuxAgent v4.0.0 是重写后的第一个正式版本。它用基于 LangGraph 
 - 能力驱动策略引擎，输出 `SAFE`、`CONFIRM`、`BLOCK`、risk score、
   capabilities、matched rules，并支持 runtime YAML policy override。
 - 策略评估前校验结构化 JSON `CommandPlan`。
-- 11 个 YAML runbook，作为 planner guidance 覆盖常见运维诊断；支持多步骤计划和逐步策略检查。
 - SSH 集群执行，包含批量确认、host-key 验证和远程 shell 语法防护。
 - `~/.linuxagent/audit.log` hash-chained JSONL 审计日志，以及
   `linuxagent audit verify`。
@@ -150,7 +144,7 @@ LinuxAgent v4.0.0 是重写后的第一个正式版本。它用基于 LangGraph 
 - 配置使用 Pydantic v2 fail-fast 校验，用户配置要求当前用户所有且 `chmod 600`。
 - 密钥只通过 `config.yaml` 配置；`.env` 不承载密钥值。
 - README、PyPI 元信息、CHANGELOG 和 release notes 统一 v4.0.0 版本叙事。
-- CI 发布 coverage artifact，并验证 wheel 内置配置、prompt 和 runbook 数据。
+- CI 发布 coverage artifact，并验证 wheel 内置配置和 prompt 数据。
 
 ### Removed
 

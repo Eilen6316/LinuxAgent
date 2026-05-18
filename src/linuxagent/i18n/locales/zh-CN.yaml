@@ -41,7 +41,7 @@ cli:
   check:
     summary: "正常：provider={provider}，model={model}，batch_confirm_threshold={batch_confirm_threshold}，audit_log={audit_log}，network={network}，mcp={mcp}，skills={skills}，monitoring_alerts={monitoring_alerts}"
     skills_disabled: "已禁用"
-    skills_summary: "{manifest_count} manifests/{runbook_count} runbooks"
+    skills_summary: "{manifest_count} manifests"
   audit:
     missing_subcommand: "错误：缺少 audit 子命令"
     verify_ok: "正常：audit log 已验证（{records} 条记录）"
@@ -305,7 +305,6 @@ ui:
       command: "命令"
       command_note: "命令说明"
       inline_note: "内联内容说明"
-      runbook: "Runbook"
       goal: "目标"
       purpose: "用途"
       safety: "安全级别"

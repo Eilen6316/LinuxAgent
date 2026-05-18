@@ -16,8 +16,6 @@ homepage.
 | [中文开发指南](zh/development.md) | 中文本地开发流程和架构稳定性门禁 |
 | [Provider Matrix](en/provider-matrix.md) | Supported provider paths, token parameters, and compatibility report format |
 | [Provider 兼容矩阵](zh/provider-matrix.md) | 中文 provider 兼容路径和反馈格式 |
-| [Runbook Authoring](en/runbook-authoring.md) | How to add safe YAML runbook guidance |
-| [Runbook 编写指南](zh/runbook-authoring.md) | 中文 Runbook 贡献指南 |
 | [Red Team Baseline](en/red-team.md) | Adversarial policy test baseline and xfail semantics |
 | [Policy Benchmark](../benchmarks/policy-benchmark.md) | Policy/parser latency P50/P95/P99 report |
 | [Landlock Sandbox Design](design/sandbox-landlock.md) | Planned kernel-native sandbox backend design and compatibility matrix |

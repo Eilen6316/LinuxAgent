@@ -45,7 +45,7 @@ The artifact verification step builds wheel and sdist, checks wheel/sdist
 metadata, rejects `.work/`, local `config.yaml`, cache, and bytecode files, then
 installs the built wheel in a temporary virtualenv. It checks
 `linuxagent --version`, `linuxagent --help`, `linuxagent check`, and packaged
-config, policy, prompt, runbook, and locale data. The isolated wheel install
+config, policy, prompt, and locale data. The isolated wheel install
 also validates that packaged `zh-CN` / `en-US` locale catalogs load and have
 key parity. It uses PyPI by default; set `LINUXAGENT_PIP_INDEX_URL` to test
 against a private mirror.
@@ -78,10 +78,10 @@ Use the same release positioning everywhere:
 
 Recommended GitHub About fields:
 
-- Description: `LLM-driven Linux operations assistant CLI with mandatory HITL safety, policy engine, runbooks, SSH guards, and audit trails.`
-- 中文描述：`LLM 驱动、强制 HITL、人机确认、策略引擎、Runbook、SSH 防护和审计日志的 Linux 运维 CLI。`
+- Description: `LLM-driven Linux operations assistant CLI with mandatory HITL safety, policy engine, SSH guards, and audit trails.`
+- 中文描述：`LLM 驱动、强制 HITL、人机确认、策略引擎、SSH 防护和审计日志的 Linux 运维 CLI。`
 - Website: `https://github.com/Eilen6316/LinuxAgent#readme`
-- Topics: `linux`, `ops`, `llm`, `agent`, `langgraph`, `cli`, `hitl`, `runbooks`, `ssh`, `audit`
+- Topics: `linux`, `ops`, `llm`, `agent`, `langgraph`, `cli`, `hitl`, `ssh`, `audit`
 
 ## Dependency Constraints
 

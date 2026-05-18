@@ -19,9 +19,7 @@ from .i18n import Translator, default_translator
 from .logger import configure_dependency_logging, configure_logging
 from .mcp_server import McpServer, serve_stdio
 from .providers.errors import ProviderError
-from .runbooks import RunbookEngine
 from .services import MonitoringAlert, collect_system_snapshot, evaluate_alerts
-from .skills import skill_runbooks
 from .tools import format_tool_catalog_check
 
 logger = logging.getLogger(__name__)
@@ -341,7 +339,6 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
         cfg.audit.path,
         tools=cfg.mcp.tools,
         resources=cfg.mcp.resources,
-        runbooks=container.runbook_engine().runbooks,
         skills=container.skill_manifests(),
     )
     return serve_stdio(server)
@@ -424,15 +421,9 @@ def _skill_summary(container: Container) -> str:
     if not container.config.skills.enabled:
         return container.translator().t("cli.check.skills_disabled")
     manifests = container.skill_manifests()
-    runbooks = skill_runbooks(manifests)
-    RunbookEngine(
-        runbooks,
-        policy_engine=container.policy_engine(),
-    )
     return container.translator().t(
         "cli.check.skills_summary",
         manifest_count=len(manifests),
-        runbook_count=len(runbooks),
     )
 
 

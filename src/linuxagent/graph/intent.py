@@ -21,7 +21,6 @@ from ..prompts_loader import (
     build_planner_prompt,
     build_wizard_response_prompt,
 )
-from ..runbooks import RunbookEngine
 from ..services import ClusterService
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
@@ -48,7 +47,6 @@ from .parallel_direct import complete_parallel_direct_answer
 from .plan_parsing import PLAN_PARSE_EXCEPTIONS, PlannedWork, _parse_planned_work
 from .plan_repair import _recover_plan_parse_error, _retry_plan_or_error
 from .planner_node import _complete_plan_candidate, _plan_gate
-from .runbook_planning import build_runbook_guidance
 from .state import (
     AgentState,
     reset_planning_for_command_plan,
@@ -86,7 +84,6 @@ class IntentNodeContext:
     direct_answer_review_prompt: Any
     intent_router_prompt: Any
     wizard_response_prompt: Any
-    runbook_guidance: str
     cluster_service: ClusterService | None
     tools: tuple[BaseTool, ...]
     telemetry: TelemetryRecorder | None
@@ -96,6 +93,7 @@ class IntentNodeContext:
     product_context: str
     operating_manifest: str
     prompt_cache_key: str | None
+    parallel_direct_answer_tasks: int
     translator: Translator = field(default_factory=default_translator)
 
     def direct_answer_context(self) -> str:
@@ -111,13 +109,13 @@ def make_parse_intent_node(
     cluster_service: ClusterService | None = None,
     tools: tuple[BaseTool, ...] = (),
     telemetry: TelemetryRecorder | None = None,
-    runbook_engine: RunbookEngine | None = None,
     tool_observer: ToolEventObserver | None = None,
     runtime_observer: RuntimeEventObserver | None = None,
     tool_runtime_limits: ToolRuntimeLimits | None = None,
     product_context: str = "",
     operating_manifest: str = "",
     prompt_cache_key: str | None = None,
+    parallel_direct_answer_tasks: int = 8,
     translator: Translator | None = None,
 ) -> Node:
     context = IntentNodeContext(
@@ -128,7 +126,6 @@ def make_parse_intent_node(
         direct_answer_review_prompt=build_direct_answer_review_prompt(),
         intent_router_prompt=build_intent_router_prompt(),
         wizard_response_prompt=build_wizard_response_prompt(),
-        runbook_guidance=build_runbook_guidance(runbook_engine),
         cluster_service=cluster_service,
         tools=tools,
         telemetry=telemetry,
@@ -138,6 +135,7 @@ def make_parse_intent_node(
         product_context=product_context,
         operating_manifest=operating_manifest,
         prompt_cache_key=prompt_cache_key,
+        parallel_direct_answer_tasks=parallel_direct_answer_tasks,
         translator=translator or default_translator(),
     )
 

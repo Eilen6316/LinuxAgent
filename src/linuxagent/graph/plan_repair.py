@@ -39,9 +39,6 @@ class PlanRepairContext(Protocol):
     def direct_answer_prompt(self) -> Any: ...
 
     @property
-    def runbook_guidance(self) -> str: ...
-
-    @property
     def product_context(self) -> str: ...
 
     @property
@@ -118,7 +115,6 @@ async def _retry_plan_or_error(
         context.planner_prompt,
         messages,
         user_text,
-        context.runbook_guidance,
         context.product_context,
         current_trace_id,
         str(error),
@@ -196,7 +192,6 @@ async def _retry_command_plan(
     prompt: Any,
     messages: list[BaseMessage],
     user_text: str,
-    runbook_guidance: str,
     product_context: str,
     current_trace_id: str,
     error: str,
@@ -212,7 +207,6 @@ async def _retry_command_plan(
             prompt,
             messages,
             user_text,
-            runbook_guidance,
             product_context,
             current_trace_id,
             current_error,
@@ -245,7 +239,6 @@ async def _complete_retry_plan(
     prompt: Any,
     messages: list[BaseMessage],
     user_text: str,
-    runbook_guidance: str,
     product_context: str,
     current_trace_id: str,
     error: str,
@@ -257,7 +250,6 @@ async def _complete_retry_plan(
     retry_messages = prompt.format_messages(
         chat_history=messages[:-1],
         product_context=product_context,
-        runbook_guidance=runbook_guidance,
         user_input=_retry_intent_prompt(user_text, error, rejected_response, attempt),
     )
     return (

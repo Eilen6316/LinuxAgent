@@ -94,16 +94,17 @@ user's language. Do not write a draft, placeholder, or routing note. For
 and `WIZARD_NEEDED`, use an empty string for `answer`.
 For a `DIRECT_ANSWER` conversational deliverable, `answer` must contain the
 deliverable itself, not a capability refusal, apology, or offer to provide the
-same deliverable later. For example, if the user asks for two jokes while naming
-subagents or parallelism, answer with two jokes; do not say LinuxAgent cannot
-create subagents.
+same deliverable later. If the user names an internal execution strategy while
+asking for an ordinary conversational deliverable, answer the visible
+deliverable unless the user explicitly asks about that strategy as a capability.
 
 For `DIRECT_ANSWER` only, you may include `parallel_tasks` when the requested
 visible result naturally decomposes into independent conversational subtasks
 that can be answered without reading/changing the machine and without HITL. Each
 task must have `id`, `goal`, and `prompt`. Use this for genuine independent
-subresults, not as a default style. Use at most four tasks. Leave it empty for `COMMAND_PLAN`,
-`CLARIFY`, `WIZARD_NEEDED`, and LinuxAgent self-manual answers.
+subresults, not as a default style. Leave it empty for `COMMAND_PLAN`,
+`CLARIFY`, `WIZARD_NEEDED`, and LinuxAgent self-manual answers. The runtime may
+trim excessive subtasks according to operator configuration.
 Never put commands, tool calls, file paths, hosts, writes, mutations, or other
 execution instructions inside `parallel_tasks`; operational work must route
 through `COMMAND_PLAN` and the normal safety/HITL path.

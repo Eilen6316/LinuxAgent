@@ -13,8 +13,8 @@ Natural-language operational requests are planned as validated `CommandPlan`
 JSON before policy, HITL, execution, and analysis. File creation or edit
 requests are planned as validated `FilePatchPlan` JSON, previewed as diffs, and
 applied transactionally after approval. The planner may use read-only workspace
-inspection tools, log search, system information tools, configured YAML runbook
-guidance, optional Skill manifest guidance, optional usage-insight tools, and
+inspection tools, log search, system information tools, optional Skill manifest
+guidance, optional usage-insight tools, and
 optional bounded `fetch_url` reads when network policy enables that tool. SSH
 cluster fan-out, local background jobs, session checkpoints, `/resume`, audit
 inspection, and MCP read-only policy/audit tools are product entry points, not

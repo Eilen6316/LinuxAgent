@@ -31,7 +31,6 @@ class CommandSource(StrEnum):
 
     USER = "user"
     LLM = "llm"
-    RUNBOOK = "runbook"
     WHITELIST = "whitelist"
 
 

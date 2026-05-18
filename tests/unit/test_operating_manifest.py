@@ -39,7 +39,7 @@ def test_operating_manifest_usage_section_describes_background_jobs() -> None:
     assert "CommandPlan" in context
     assert "FilePatchPlan" in context
     assert "read-only workspace" in context
-    assert "Skill manifest guidance" in context
+    assert "Skill manifest" in context
     assert "fetch_url" in context
     assert "cluster fan-out" in context
     assert "/job status" in context

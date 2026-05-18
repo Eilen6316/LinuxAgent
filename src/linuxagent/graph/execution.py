@@ -23,16 +23,11 @@ def synthetic_result(command: str, exit_code: int, stdout: str, stderr: str) -> 
 
 
 def analysis_context(state: AgentState, result: ExecutionResult) -> str:
-    runbook_results = state.get("runbook_results", ())
-    if not runbook_results:
+    plan_results = state.get("plan_results", ())
+    if not plan_results:
         return execution_display_text(result).text
-    label = (
-        "Runbook step results:"
-        if state.get("selected_runbook") is not None
-        else "Command step results:"
-    )
-    sections = [label]
-    for index, step_result in enumerate(runbook_results, start=1):
+    sections = ["Command step results:"]
+    for index, step_result in enumerate(plan_results, start=1):
         sections.append(f"\nStep {index}:\n{execution_display_text(step_result).text}")
     return "\n".join(sections)
 

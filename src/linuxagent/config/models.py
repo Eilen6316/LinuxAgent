@@ -238,6 +238,7 @@ class CommandPlanConfig(BaseModel):
     model_config = _FROZEN
 
     max_repair_attempts: int = Field(default=2, ge=0, le=10)
+    parallel_direct_answer_tasks: int = Field(default=8, ge=1, le=64)
 
 
 class FilePatchConfig(BaseModel):
