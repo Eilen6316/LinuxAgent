@@ -6,6 +6,7 @@ import asyncio
 import os
 import sys
 import termios
+import threading
 import time
 import tty
 from collections.abc import AsyncGenerator
@@ -428,19 +429,19 @@ def _resume_choice_label(session: Any) -> str:
 async def _wait_for_escape() -> str:
     fd = sys.stdin.fileno()
     loop = asyncio.get_running_loop()
-    future: asyncio.Future[str] = loop.create_future()
     old_attrs = termios.tcgetattr(fd)
-
-    def on_input() -> None:
-        if future.done():
-            return
-        if os.read(fd, 1) == b"\x1b":
-            future.set_result("escape")
+    stop_event = threading.Event()
 
     try:
         tty.setcbreak(fd)
-        loop.add_reader(fd, on_input)
-        return await future
+        return await loop.run_in_executor(None, _read_escape, fd, stop_event)
     finally:
-        loop.remove_reader(fd)
+        stop_event.set()
         termios.tcsetattr(fd, termios.TCSANOW, old_attrs)
+
+
+def _read_escape(fd: int, stop_event: threading.Event) -> str:
+    while not stop_event.is_set():
+        if os.read(fd, 1) == b"\x1b":
+            return "escape"
+    return "escape"

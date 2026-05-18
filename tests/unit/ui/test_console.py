@@ -72,44 +72,21 @@ async def test_console_ui_input_stream_uses_prompt_session(monkeypatch, tmp_path
 
 async def test_wait_for_escape_restores_terminal_without_drain(monkeypatch) -> None:
     fd = 7
-    readers: dict[int, Any] = {}
     restored: list[tuple[int, int, list[str]]] = []
+    executor_calls: list[tuple[Any, int, Any]] = []
 
     class _FakeStdin:
         def fileno(self) -> int:
             return fd
 
     class _FakeLoop:
-        def create_future(self) -> Any:
-            return None
-
-        def add_reader(self, reader_fd: int, callback: Any) -> None:
-            readers[reader_fd] = callback
-
-        def remove_reader(self, reader_fd: int) -> None:
-            readers.pop(reader_fd, None)
-
-    class _DoneFuture:
-        def __init__(self) -> None:
-            self.result: str | None = None
-
-        def done(self) -> bool:
-            return self.result is not None
-
-        def set_result(self, value: str) -> None:
-            self.result = value
-
-        def __await__(self) -> Any:
-            if self.result is None:
-                readers[fd]()
-            if False:
-                yield None
-            return self.result
+        async def run_in_executor(self, executor: Any, func: Any, reader_fd: int, stop: Any) -> str:
+            executor_calls.append((executor, reader_fd, stop))
+            return func(reader_fd, stop)
 
     fake_loop = _FakeLoop()
     monkeypatch.setattr(console_module.sys, "stdin", _FakeStdin())
     monkeypatch.setattr(console_module.asyncio, "get_running_loop", lambda: fake_loop)
-    monkeypatch.setattr(fake_loop, "create_future", lambda: _DoneFuture())
     monkeypatch.setattr(console_module.termios, "tcgetattr", lambda value: ["old", str(value)])
     monkeypatch.setattr(console_module.tty, "setcbreak", lambda value: None)
     monkeypatch.setattr(console_module.os, "read", lambda value, count: b"\x1b")
@@ -121,8 +98,10 @@ async def test_wait_for_escape_restores_terminal_without_drain(monkeypatch) -> N
 
     assert await console_module._wait_for_escape() == "escape"
 
+    assert executor_calls[0][0] is None
+    assert executor_calls[0][1] == fd
+    assert executor_calls[0][2].is_set()
     assert restored == [(fd, console_module.termios.TCSANOW, ["old", str(fd)])]
-    assert readers == {}
 
 
 def test_console_ui_prints_linuxagent_wordmark() -> None:

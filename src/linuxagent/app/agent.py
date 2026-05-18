@@ -119,19 +119,24 @@ class LinuxAgent:
         return result.state
 
     async def _run_with_cancel(self, state: Any, thread_id: str) -> GraphRunResult | None:
+        cancel_task = asyncio.create_task(self._wait_for_cancel())
+        await asyncio.sleep(0)
         invoke_task = asyncio.create_task(self.graph_runtime.run(state, thread_id=thread_id))
-        return await self._await_graph_task(invoke_task)
+        return await self._await_graph_task(invoke_task, cancel_task)
 
     async def _resume_with_cancel(
         self, response: dict[str, Any], thread_id: str
     ) -> GraphRunResult | None:
+        cancel_task = asyncio.create_task(self._wait_for_cancel())
+        await asyncio.sleep(0)
         invoke_task = asyncio.create_task(self.graph_runtime.resume(response, thread_id=thread_id))
-        return await self._await_graph_task(invoke_task)
+        return await self._await_graph_task(invoke_task, cancel_task)
 
     async def _await_graph_task(
-        self, invoke_task: asyncio.Task[GraphRunResult]
+        self,
+        invoke_task: asyncio.Task[GraphRunResult],
+        cancel_task: asyncio.Task[str],
     ) -> GraphRunResult | None:
-        cancel_task = asyncio.create_task(self._wait_for_cancel())
         done, _pending = await asyncio.wait(
             {invoke_task, cancel_task}, return_when=asyncio.FIRST_COMPLETED
         )
