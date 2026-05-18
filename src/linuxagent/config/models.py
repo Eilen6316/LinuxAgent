@@ -27,6 +27,7 @@ from ..mcp_tools import (
     McpResourceUri,
     McpToolName,
 )
+from ..network_policy import NetworkPolicyAction, normalize_domain_rule
 from ..sandbox.models import SandboxNetworkPolicy, SandboxProfile, SandboxRunnerKind
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -200,6 +201,37 @@ class PolicyRuntimeConfig(BaseModel):
 
     path: OptionalUserPath = None
     include_builtin: bool = True
+
+
+class NetworkConfig(BaseModel):
+    model_config = _FROZEN
+
+    enabled: bool = False
+    default_action: NetworkPolicyAction = NetworkPolicyAction.DENY
+    allowed_domains: tuple[str, ...] = ()
+    denied_domains: tuple[str, ...] = ()
+    max_response_bytes: int = Field(default=1048576, ge=1024, le=104857600)
+    timeout_seconds: float = Field(default=10.0, gt=0, le=120)
+
+    @field_validator("allowed_domains", "denied_domains", mode="before")
+    @classmethod
+    def _empty_domain_list_is_tuple(cls, value: Any) -> Any:
+        return () if value is None else value
+
+    @field_validator("allowed_domains", "denied_domains")
+    @classmethod
+    def _normalize_domains(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(normalize_domain_rule(item) for item in value)
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("network domain entries cannot contain duplicates")
+        return normalized
+
+    @model_validator(mode="after")
+    def _reject_exact_allow_deny_conflicts(self) -> NetworkConfig:
+        conflicts = set(self.allowed_domains) & set(self.denied_domains)
+        if conflicts:
+            raise ValueError("network allowed_domains and denied_domains conflict")
+        return self
 
 
 class CommandPlanConfig(BaseModel):
@@ -537,6 +569,7 @@ class AppConfig(BaseModel):
     api: APIConfig = Field(default_factory=APIConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     policy: PolicyRuntimeConfig = Field(default_factory=PolicyRuntimeConfig)
+    network: NetworkConfig = Field(default_factory=NetworkConfig)
     command_plan: CommandPlanConfig = Field(default_factory=CommandPlanConfig)
     file_patch: FilePatchConfig = Field(default_factory=FilePatchConfig)
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)

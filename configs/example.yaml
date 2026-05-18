@@ -96,6 +96,19 @@ policy:
   # full policy set with user rules.
   include_builtin: true
 
+network:
+  # Application-level policy for future LLM/web network tools. This is separate
+  # from sandbox.network, which describes OS execution isolation.
+  enabled: false
+  default_action: deny           # allow | deny
+  # Domain rules are case-insensitive and strip one trailing dot.
+  # Exact: example.com matches only example.com.
+  # Wildcard: .example.com or *.example.com matches subdomains only.
+  allowed_domains: []
+  denied_domains: []
+  max_response_bytes: 1048576
+  timeout_seconds: 10.0
+
 command_plan:
   # Maximum number of automatic replanning rounds after a command plan fails.
   # Set to 0 to disable failed-command repair fallback.

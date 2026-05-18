@@ -21,6 +21,7 @@ from linuxagent.config.models import (
     LanguageCode,
     LLMProviderName,
 )
+from linuxagent.network_policy import NetworkPolicyAction
 from linuxagent.sandbox import SandboxProfile, SandboxRunnerKind
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +36,12 @@ CONFIG_REQUIRED_PATHS = (
     ("security", "session_whitelist_enabled"),
     ("policy", "path"),
     ("policy", "include_builtin"),
+    ("network", "enabled"),
+    ("network", "default_action"),
+    ("network", "allowed_domains"),
+    ("network", "denied_domains"),
+    ("network", "max_response_bytes"),
+    ("network", "timeout_seconds"),
     ("command_plan", "max_repair_attempts"),
     ("file_patch", "allow_roots"),
     ("file_patch", "high_risk_roots"),
@@ -146,6 +153,10 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.security.session_whitelist_enabled is True
     assert cfg.policy.path is None
     assert cfg.policy.include_builtin is True
+    assert cfg.network.enabled is False
+    assert cfg.network.default_action is NetworkPolicyAction.DENY
+    assert cfg.network.allowed_domains == ()
+    assert cfg.network.denied_domains == ()
     assert cfg.sandbox.enabled is False
     assert cfg.sandbox.runner is SandboxRunnerKind.NOOP
     assert cfg.sandbox.default_profile is SandboxProfile.SYSTEM_INSPECT
@@ -388,6 +399,50 @@ def test_command_plan_config_supports_repair_limit() -> None:
     cfg = AppConfig.model_validate({"command_plan": {"max_repair_attempts": 0}})
 
     assert cfg.command_plan.max_repair_attempts == 0
+
+
+def test_network_config_normalizes_domain_rules() -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "network": {
+                "enabled": True,
+                "default_action": "allow",
+                "allowed_domains": ["Example.COM.", "*.Docs.Example.com"],
+                "denied_domains": [".internal.example.com"],
+            }
+        }
+    )
+
+    assert cfg.network.enabled is True
+    assert cfg.network.default_action is NetworkPolicyAction.ALLOW
+    assert cfg.network.allowed_domains == ("example.com", ".docs.example.com")
+    assert cfg.network.denied_domains == (".internal.example.com",)
+
+
+@pytest.mark.parametrize(
+    "domain",
+    ["", ".", "https://example.com", "example..com", "-bad.example", "bad-.example"],
+)
+def test_network_config_rejects_invalid_domain_rules(domain: str) -> None:
+    with pytest.raises(ValidationError, match="invalid network domain"):
+        AppConfig.model_validate({"network": {"allowed_domains": [domain]}})
+
+
+def test_network_config_rejects_duplicate_domain_rules() -> None:
+    with pytest.raises(ValidationError, match="duplicates"):
+        AppConfig.model_validate({"network": {"allowed_domains": ["Example.COM", "example.com."]}})
+
+
+def test_network_config_rejects_exact_allow_deny_conflict() -> None:
+    with pytest.raises(ValidationError, match="conflict"):
+        AppConfig.model_validate(
+            {
+                "network": {
+                    "allowed_domains": ["example.com"],
+                    "denied_domains": ["EXAMPLE.com."],
+                }
+            }
+        )
 
 
 def test_sandbox_config_defaults_to_noop_metadata_mode() -> None:

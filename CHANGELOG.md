@@ -66,6 +66,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   matching, including exact prefixes, token positions, and flag values, so an
   approval for one command shape cannot generalize to inserted or reordered
   arguments.
+- Added an application-level `network` policy foundation for future LLM/web
+  tools, with default-deny configuration, domain allow/deny matching,
+  network-decision audit records, and `linuxagent check` visibility.
 - Added automatic parameter-collection wizard support for ambiguous
   multi-parameter operations, with `/resume` visibility, stable partial
   recovery checkpoints, and user documentation.

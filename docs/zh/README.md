@@ -245,6 +245,17 @@ policy:
   path: ~/.config/linuxagent/policy.yaml
   include_builtin: true  # 内置规则 + 用户规则覆盖/追加
 ```
+
+后续 LLM/web 工具使用的应用级网络策略与 `sandbox.network` 分开配置：
+
+```yaml
+network:
+  enabled: false
+  default_action: deny
+  allowed_domains: []
+  denied_domains: []
+```
+
 | E2E 场景 | 无 | 12 个 YAML 场景覆盖普通命令 / 危险命令 / HITL / 批量集群 / 远程 shell 防护 / Runbook |
 | 发布流程 | 手动 | tag 触发 GitHub Actions 构建 wheel + sdist + GitHub Release + PyPI 发布 |
 
@@ -377,6 +388,11 @@ linuxagent check
 | `security` | `command_timeout` | `30.0` | 本地命令最长执行时间 |
 | `security` | `max_command_length` | `2048` | 单条命令字符上限 |
 | `security` | `session_whitelist_enabled` | `true` | 对话级命令权限开关 |
+| `network` | `enabled` | `false` | 是否启用后续 LLM/web 网络工具；默认关闭 |
+| `network` | `default_action` | `deny` | 未命中显式规则的域名默认 `allow` 或 `deny` |
+| `network` | `allowed_domains` / `denied_domains` | `[]` | 精确域名或严格子域通配符如 `.example.com`；deny 优先 |
+| `network` | `max_response_bytes` | `1048576` | 后续 fetch/search 工具的响应大小预算 |
+| `network` | `timeout_seconds` | `10.0` | 后续 fetch/search 工具的超时预算 |
 | `command_plan` | `max_repair_attempts` | `2` | 命令计划失败后的自动重规划轮数；`0` 表示关闭命令 repair |
 | `file_patch` | `allow_roots` | `[".", "/tmp"]` | 文件 patch 允许读写的根目录 |
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | 命中后以高风险 diff 确认展示 |

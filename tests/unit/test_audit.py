@@ -319,3 +319,24 @@ def test_verify_audit_log_reports_non_object_json_record(tmp_path) -> None:
     assert result.checked_records == 0
     assert result.tampered_line == 1
     assert result.reason == "record is not an object"
+
+
+def test_network_decision_audit_record_excludes_headers(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+
+    audit.record_network_decision(
+        target_domain="api.example.com",
+        decision="deny",
+        matched_rule="network.denied_domains",
+        reason="domain matched deny rule api.example.com",
+        trace_id="trace-1",
+    )
+
+    record = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["event"] == "network_decision"
+    assert record["target_domain"] == "api.example.com"
+    assert record["decision"] == "deny"
+    assert record["matched_rule"] == "network.denied_domains"
+    assert "header" not in record
+    assert verify_audit_log(path).valid is True

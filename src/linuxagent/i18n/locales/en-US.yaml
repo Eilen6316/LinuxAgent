@@ -39,7 +39,7 @@ trace:
 cli:
   error: "error: {message}"
   check:
-    summary: "OK: provider={provider}, model={model}, batch_confirm_threshold={batch_confirm_threshold}, audit_log={audit_log}, mcp={mcp}, skills={skills}, monitoring_alerts={monitoring_alerts}"
+    summary: "OK: provider={provider}, model={model}, batch_confirm_threshold={batch_confirm_threshold}, audit_log={audit_log}, network={network}, mcp={mcp}, skills={skills}, monitoring_alerts={monitoring_alerts}"
     skills_disabled: "disabled"
     skills_summary: "{manifest_count} manifests/{runbook_count} runbooks"
   audit:

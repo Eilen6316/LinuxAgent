@@ -43,6 +43,8 @@ LinuxAgent 的重要变更记录在这里。
   控制并发数，不再每条远程命令创建一次单 worker pool。
 - Policy 规则和对话权限现在支持结构化 argv 形状匹配，包括精确前缀、token 位置
   和带值 flag，单次批准不会泛化到插入参数或重排参数后的命令形态。
+- 新增应用级 `network` 策略基础，用于后续 LLM/web 工具；默认拒绝，支持域名
+  allow/deny、network decision 审计记录，并会在 `linuxagent check` 中展示摘要。
 - 源码 checkout 的 bootstrap 现在会初始化
   `~/.config/linuxagent/config.yaml`，并安装用户级
   `~/.local/bin/linuxagent` 启动器；用户无需激活项目 venv，也能在任意目录启动

@@ -128,6 +128,26 @@ class AuditLog:
             record["file_patch"] = file_patch
         self.append(record)
 
+    def record_network_decision(
+        self,
+        *,
+        target_domain: str,
+        decision: str,
+        matched_rule: str,
+        reason: str,
+        trace_id: str | None = None,
+    ) -> None:
+        self.append(
+            {
+                "event": "network_decision",
+                "target_domain": target_domain,
+                "decision": decision,
+                "matched_rule": matched_rule,
+                "reason": reason,
+                "trace_id": trace_id,
+            }
+        )
+
     def append(self, record: dict[str, Any]) -> None:
         self._append(record, send_to_sink=True)
 

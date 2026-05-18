@@ -253,6 +253,14 @@ The planned Landlock backend is documented in
 [docs/design/sandbox-landlock.md](docs/design/sandbox-landlock.md), including
 capability probing, fallback order, and the compatibility test matrix.
 
+## Network Policy
+
+The top-level `network` config is the application policy for future LLM/web
+tools. It is disabled and default-deny by default, evaluates only normalized
+domains, and records network decisions without request headers. This is
+separate from `sandbox.network`, which describes OS execution isolation for
+local commands.
+
 ## Safety Model
 
 | Operation | Default behavior |

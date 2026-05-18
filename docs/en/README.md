@@ -250,6 +250,18 @@ policy:
   path: ~/.config/linuxagent/policy.yaml
   include_builtin: true  # built-ins + user rule overrides/appends
 ```
+
+Application network policy for future LLM/web tools is separate from
+`sandbox.network`:
+
+```yaml
+network:
+  enabled: false
+  default_action: deny
+  allowed_domains: []
+  denied_domains: []
+```
+
 | End-to-end scenarios | none | 12 YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard / runbook |
 | Release flow | manual | tag-triggered GitHub Actions builds wheel + sdist, GitHub Release, and PyPI publish |
 
@@ -386,6 +398,11 @@ linuxagent check
 | `security` | `command_timeout` | `30.0` | Max local command runtime |
 | `security` | `max_command_length` | `2048` | Per-command character cap |
 | `security` | `session_whitelist_enabled` | `true` | Toggle conversation-scoped command permissions |
+| `network` | `enabled` | `false` | Enables future LLM/web network tools; disabled by default |
+| `network` | `default_action` | `deny` | `allow` or `deny` for domains not matched by explicit rules |
+| `network` | `allowed_domains` / `denied_domains` | `[]` | Exact domains or strict subdomain wildcard entries such as `.example.com`; deny wins |
+| `network` | `max_response_bytes` | `1048576` | Maximum response budget for future fetch/search tools |
+| `network` | `timeout_seconds` | `10.0` | Timeout budget for future fetch/search tools |
 | `command_plan` | `max_repair_attempts` | `2` | Automatic failed-command replanning rounds; `0` disables command repair |
 | `file_patch` | `allow_roots` | `[".", "/tmp"]` | Roots where file patch tools may read and write |
 | `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | Matching paths are shown as elevated-risk patch confirmations |

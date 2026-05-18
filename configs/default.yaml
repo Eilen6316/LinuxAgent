@@ -26,6 +26,14 @@ policy:
   path:                         # optional user policy YAML path
   include_builtin: true          # true = built-ins + user overrides; false = user rules only
 
+network:
+  enabled: false                 # LLM/web network tools are disabled by default
+  default_action: deny           # allow | deny
+  allowed_domains: []
+  denied_domains: []
+  max_response_bytes: 1048576
+  timeout_seconds: 10.0
+
 command_plan:
   max_repair_attempts: 2         # 0 disables automatic failed-command replanning
 

@@ -13,7 +13,7 @@ from . import __version__
 from .audit import verify_audit_log
 from .audit_inspect import AuditInspectError, AuditInspection, inspect_audit_log
 from .config.loader import ConfigError, load_config
-from .config.models import AppConfig, McpConfig
+from .config.models import AppConfig, McpConfig, NetworkConfig
 from .container import Container
 from .i18n import Translator, default_translator
 from .logger import configure_dependency_logging, configure_logging
@@ -394,9 +394,20 @@ def _format_check_summary(
         model=cfg.api.model,
         batch_confirm_threshold=cfg.cluster.batch_confirm_threshold,
         audit_log=cfg.audit.path,
+        network=_network_summary(cfg.network, translator=tr),
         mcp=_mcp_summary(cfg.mcp, translator=tr),
         skills=skill_summary,
         monitoring_alerts=alert_summary,
+    )
+
+
+def _network_summary(config: NetworkConfig, *, translator: Translator | None = None) -> str:
+    tr = translator or default_translator()
+    status = tr.t("common.enabled") if config.enabled else tr.t("common.disabled")
+    return (
+        f"{status}, default={config.default_action.value}, "
+        f"allow={len(config.allowed_domains)}, deny={len(config.denied_domains)}, "
+        f"max_bytes={config.max_response_bytes}, timeout={config.timeout_seconds:g}s"
     )
 
 

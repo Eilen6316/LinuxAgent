@@ -89,6 +89,7 @@ def test_check_command_success(
     assert code == 0
     assert called == [logging.INFO]
     assert "正常：provider=deepseek" in captured.out
+    assert "network=已禁用, default=deny, allow=0, deny=0" in captured.out
     assert "mcp=linuxagent.policy.classify,linuxagent.audit.verify" in captured.out
     assert "skills=已禁用" in captured.out
     assert "monitoring_alerts=无" in captured.out
@@ -148,6 +149,7 @@ def test_check_command_uses_english_language_config(
 
     assert code == 0
     assert "OK: provider=deepseek" in captured.out
+    assert "network=disabled, default=deny, allow=0, deny=0" in captured.out
     assert "skills=disabled" in captured.out
     assert "monitoring_alerts=none" in captured.out
 

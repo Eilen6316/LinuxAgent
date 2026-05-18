@@ -168,6 +168,15 @@ The graph applies this check after host selection and returns `BLOCK` before
 HITL. `SSHManager` repeats the same validation before connecting so direct
 service calls cannot bypass the boundary.
 
+## Network Policy
+
+The top-level `network` config is reserved for application-level LLM/web tools.
+Plan 10 only defines configuration, deterministic domain evaluation, audit
+event shape, and `linuxagent check` visibility; it does not add fetch/search
+tools or perform DNS resolution. Domain rules are normalized to lowercase,
+strip one trailing dot, and may use `.example.com` / `*.example.com` for
+subdomains only. Deny entries take priority over allow entries.
+
 ## Policy Rules
 
 Command safety is evaluated by `src/linuxagent/policy/` and exposed through
