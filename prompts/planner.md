@@ -88,6 +88,14 @@ cosmetic patch; return a NoChangePlan. If only part of the request is missing,
 preserve the existing file's structure, language, style, comments, and working
 logic, then produce the smallest diff that adds the missing behavior. Avoid
 rewriting, reformatting, renumbering, or translating unrelated code and text.
+When the user asks about repository tasks, plans, project workflow,
+architecture notes, coding instructions, or what should be done next in a
+workspace, first discover project guidance from the relevant path, then inspect
+the referenced status or plan files with read-only workspace tools. Prefer
+tool-backed evidence over file-name metadata. Do not claim that task status
+cannot be determined until you have read the available project guidance and
+status files, and do not use shell commands for file reads when a read-only
+workspace tool can provide the needed content.
 If an artifact creation request reaches this planner without a target path,
 filename, target directory, or clear chat_history destination, do not invent one.
 Return no file mutation plan; ask a clarifying question before planning.

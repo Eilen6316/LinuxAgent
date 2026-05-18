@@ -1,0 +1,57 @@
+scenario: "project guidance status analysis uses workspace tools"
+provider_responses:
+  - tool_calls:
+      - tool: discover_project_guidance
+        args:
+          path: "{tmp}/repo/.work/plan"
+      - tool: read_file
+        args:
+          path: "{tmp}/repo/.work/README.md"
+      - tool: read_file
+        args:
+          path: "{tmp}/repo/.work/plan/Plan12a.md"
+    response: |
+      {"plan_type":"no_change","answer":"当前已完成 Plan 1；下一项是 Plan 12a。Plan 12a 的目标是本地 Skill archive dry-run 校验。","reason":"project guidance and status files were inspected","evidence":["3:- [x] Plan 1：Done","4:- [ ] Plan 12a：Remote Skill local archive verifier dry-run","1:# Plan 12a：Remote Skill local archive verifier dry-run"]}
+setup:
+  workspace_tools: true
+  file_patch:
+    allow_roots:
+      - "{tmp}/repo"
+    high_risk_roots: []
+  files:
+    - path: "{tmp}/repo/AGENTS.md"
+      content: |
+        # AGENTS.md
+        Read .work/README.md before implementation.
+    - path: "{tmp}/repo/.work/README.md"
+      content: |
+        # .work
+        ## 当前状态
+        - [x] Plan 1：Done
+        - [ ] Plan 12a：Remote Skill local archive verifier dry-run
+    - path: "{tmp}/repo/.work/plan/Plan12a.md"
+      content: |
+        # Plan 12a：Remote Skill local archive verifier dry-run
+        ## 目标
+        实现本地 Skill 包 dry-run 校验服务。
+inputs:
+  - role: human
+    content: "看看 {tmp}/repo/.work/plan 这些任务都完成哪些了，接下来应该做什么"
+expected:
+  command_executed: false
+  response_contains:
+    - "当前已完成 Plan 1"
+    - "下一项是 Plan 12a"
+  tool_events:
+    - tool_name: discover_project_guidance
+      status: allowed
+      args:
+        path: "{tmp}/repo/.work/plan"
+    - tool_name: read_file
+      status: allowed
+      args:
+        path: "{tmp}/repo/.work/README.md"
+    - tool_name: read_file
+      status: allowed
+      args:
+        path: "{tmp}/repo/.work/plan/Plan12a.md"

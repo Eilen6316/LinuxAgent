@@ -30,6 +30,7 @@ from .system_tools import (
 from .workspace_tools import (
     WorkspaceAccessError,
     build_workspace_tools,
+    make_discover_project_guidance_tool,
     make_list_dir_tool,
     make_read_file_tool,
     make_search_files_tool,
@@ -53,6 +54,7 @@ __all__ = [
     "format_tool_catalog_check",
     "inspect_tool_catalog",
     "make_command_recommendations_tool",
+    "make_discover_project_guidance_tool",
     "make_execute_command_tool",
     "make_fetch_url_tool",
     "make_get_system_info_tool",

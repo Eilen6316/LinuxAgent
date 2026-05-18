@@ -140,6 +140,10 @@ def test_build_planner_prompt_has_user_input_and_runbook_guidance_variables() ->
     assert "direct_answer" in body
     assert "runtime inspection and must be planned" in body
     assert "Do not return a DirectAnswerPlan that says you have not checked" in body
+    assert "repository tasks, plans, project workflow" in body
+    assert "first discover project guidance" in body
+    assert "tool-backed evidence over file-name metadata" in body
+    assert "do not use shell commands for file reads" in body
     assert '"background": false' in body
     assert "timeout_seconds" in body
     assert "bounded long-running operations" in body

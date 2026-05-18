@@ -18,6 +18,11 @@ MAX_SEARCH_QUERY_CHARS = 256
 DEFAULT_READ_LIMIT = 200
 MAX_READ_LIMIT = 2_000
 MAX_LIST_ENTRIES = 500
+DEFAULT_GUIDANCE_LIMIT = 220
+MAX_GUIDANCE_LIMIT = 800
+MAX_GUIDANCE_SEARCH_DEPTH = 8
+PROJECT_ROOT_MARKERS = ("AGENTS.md", ".work", ".git", "pyproject.toml")
+PROJECT_GUIDANCE_FILES = ("AGENTS.md", "CLAUDE.md", ".work/README.md")
 
 
 class WorkspaceAccessError(ValueError):
@@ -30,10 +35,49 @@ def build_workspace_tools(
 ) -> list[BaseTool]:
     limits = tool_config or SandboxToolConfig()
     return [
+        make_discover_project_guidance_tool(limits),
         make_read_file_tool(config, limits),
         make_list_dir_tool(config, limits),
         make_search_files_tool(config, limits),
     ]
+
+
+def make_discover_project_guidance_tool(
+    tool_config: SandboxToolConfig | None = None,
+) -> BaseTool:
+    limits = tool_config or SandboxToolConfig()
+
+    @tool
+    def discover_project_guidance(
+        path: str = ".",
+        max_lines: int = DEFAULT_GUIDANCE_LIMIT,
+    ) -> dict[str, object]:
+        """Discover bounded project guidance files near an explicit path."""
+        start = _resolve_explicit_path(Path(path))
+        root = _project_root_for(start)
+        line_limit = _bounded_limit(max_lines, MAX_GUIDANCE_LIMIT)
+        return {
+            "requested_path": str(start),
+            "project_root": str(root),
+            "guidance_files": [
+                record
+                for relpath in PROJECT_GUIDANCE_FILES
+                if (record := _project_guidance_record(root, relpath, line_limit, limits))
+            ],
+        }
+
+    return attach_tool_sandbox(
+        discover_project_guidance,
+        ToolSandboxSpec(
+            profile=SandboxProfile.READ_ONLY,
+            max_file_bytes=limits.max_file_bytes,
+            max_output_chars=limits.max_output_chars,
+            max_matches=limits.max_matches,
+            timeout_seconds=limits.timeout_seconds,
+            read_files=True,
+            system_inspect=True,
+        ),
+    )
 
 
 def make_read_file_tool(
@@ -140,6 +184,22 @@ def _read_text_window(path: Path, offset: int, limit: int, max_chars: int) -> st
     return "\n".join(lines)
 
 
+def _read_text_lines(path: Path, limit: int, max_chars: int) -> tuple[list[str], bool]:
+    lines: list[str] = []
+    total_chars = 0
+    truncated = False
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if len(lines) >= limit or total_chars >= min(MAX_READ_CHARS, max_chars):
+                truncated = True
+                break
+            text = line.rstrip("\n")
+            redacted = redact_text(text)
+            total_chars += len(redacted.text)
+            lines.append(f"{line_number}:{redacted.text}")
+    return lines, truncated
+
+
 def _search_query(pattern: str) -> str:
     query = pattern.strip()
     if not query:
@@ -199,6 +259,48 @@ def _bounded_limit(value: int, maximum: int) -> int:
     if value < 1:
         return 1
     return min(value, maximum)
+
+
+def _resolve_explicit_path(path: Path) -> Path:
+    resolved = path.expanduser()
+    if not resolved.is_absolute():
+        resolved = Path.cwd() / resolved
+    return resolved.resolve(strict=False)
+
+
+def _project_root_for(path: Path) -> Path:
+    current = path if path.is_dir() else path.parent
+    for _ in range(MAX_GUIDANCE_SEARCH_DEPTH):
+        if _has_project_root_marker(current):
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return path if path.is_dir() else path.parent
+
+
+def _has_project_root_marker(path: Path) -> bool:
+    return any((path / marker).exists() for marker in PROJECT_ROOT_MARKERS)
+
+
+def _project_guidance_record(
+    root: Path,
+    relpath: str,
+    line_limit: int,
+    limits: SandboxToolConfig,
+) -> dict[str, object] | None:
+    path = root / relpath
+    if not path.exists() or path.is_symlink() or not path.is_file():
+        return None
+    if path.stat().st_size > limits.max_file_bytes:
+        return {
+            "path": str(path),
+            "status": "skipped",
+            "reason": f"file exceeds max size ({limits.max_file_bytes} bytes)",
+        }
+    lines, truncated = _read_text_lines(path, line_limit, limits.max_output_chars)
+    return {"path": str(path), "status": "read", "truncated": truncated, "lines": lines}
 
 
 def _resolve_allowed_path(path: Path, config: FilePatchConfig) -> Path:

@@ -208,6 +208,11 @@ def _activity_event_message(phase: str, translator: Translator) -> str | None:
 
 
 def _tool_start_message(tool_name: str, args: dict[str, Any], translator: Translator) -> str:
+    if tool_name == "discover_project_guidance":
+        return translator.t(
+            "runtime.tool.start_discover_project_guidance",
+            path=args.get("path") or ".",
+        )
     if tool_name == "read_file":
         return translator.t("runtime.tool.start_read_file", path=args.get("path") or "").strip()
     if tool_name == "list_dir":
@@ -239,6 +244,9 @@ def _tool_target(tool_name: str, args: dict[str, Any]) -> str:
         root = args.get("root") or "."
         pattern = args.get("pattern") or ""
         return f"{root}: {pattern}".strip()
+    if tool_name == "discover_project_guidance":
+        target = args.get("path") or "."
+        return str(target)
     target = args.get("path")
     if isinstance(target, str) and target:
         return target
@@ -297,22 +305,12 @@ def _tool_end_message(
         evidence = _read_file_evidence_summary(output, translator)
         heading = translator.t("runtime.tool.read_done", path=args.get("path") or "", suffix=suffix)
         return _tool_evidence_message(heading.strip(), evidence, translator)
+    if tool_name == "discover_project_guidance":
+        return _guidance_tool_end_message(args, output, suffix, translator)
     if tool_name == "list_dir":
-        evidence = _tool_evidence_summary(output, translator)
-        return _tool_evidence_message(
-            translator.t("runtime.tool.list_done", path=args.get("path") or ".", suffix=suffix),
-            evidence,
-            translator,
-        )
+        return _list_tool_end_message(args, output, suffix, translator)
     if tool_name == "search_files":
-        evidence = _tool_evidence_summary(output, translator)
-        root = args.get("root") or "."
-        pattern = args.get("pattern") or ""
-        return _tool_evidence_message(
-            translator.t("runtime.tool.search_done", root=root, pattern=pattern, suffix=suffix),
-            evidence,
-            translator,
-        )
+        return _search_tool_end_message(args, output, suffix, translator)
     if tool_name == "fetch_url":
         evidence = _tool_evidence_summary(output, translator)
         return _tool_evidence_message(
@@ -321,6 +319,42 @@ def _tool_end_message(
             translator,
         )
     return None
+
+
+def _guidance_tool_end_message(
+    args: dict[str, Any], output: str, suffix: str, translator: Translator
+) -> str:
+    return _tool_evidence_message(
+        translator.t(
+            "runtime.tool.discover_project_guidance_done",
+            path=args.get("path") or ".",
+            suffix=suffix,
+        ),
+        _guidance_evidence_summary(output, translator),
+        translator,
+    )
+
+
+def _list_tool_end_message(
+    args: dict[str, Any], output: str, suffix: str, translator: Translator
+) -> str:
+    return _tool_evidence_message(
+        translator.t("runtime.tool.list_done", path=args.get("path") or ".", suffix=suffix),
+        _tool_evidence_summary(output, translator),
+        translator,
+    )
+
+
+def _search_tool_end_message(
+    args: dict[str, Any], output: str, suffix: str, translator: Translator
+) -> str:
+    root = args.get("root") or "."
+    pattern = args.get("pattern") or ""
+    return _tool_evidence_message(
+        translator.t("runtime.tool.search_done", root=root, pattern=pattern, suffix=suffix),
+        _tool_evidence_summary(output, translator),
+        translator,
+    )
 
 
 def _tool_evidence_message(heading: str, evidence: tuple[str, ...], translator: Translator) -> str:
@@ -352,6 +386,12 @@ def _tool_activity_end(
         return _tool_activity_summary(
             translator.t("runtime.tool.activity_read_file", path=target).strip(),
             f"read_file · {_count_label(_line_count(output), 'line', 'lines')}{suffix}",
+        )
+    if tool_name == "discover_project_guidance":
+        target = str(args.get("path") or ".").strip()
+        return _tool_activity_summary(
+            translator.t("runtime.tool.activity_discover_project_guidance", path=target),
+            f"discover_project_guidance · {_count_label(_guidance_file_count(output), 'file', 'files')}{suffix}",
         )
     if tool_name == "list_dir":
         target = str(args.get("path") or ".").strip()
@@ -392,6 +432,34 @@ def _tool_item_count(preview: str) -> int:
     if items:
         return len(items)
     return len([line for line in preview.splitlines() if line.strip()])
+
+
+def _guidance_evidence_summary(preview: str, translator: Translator) -> tuple[str, ...]:
+    try:
+        payload = json.loads(preview)
+    except json.JSONDecodeError:
+        return _tool_evidence_summary(preview, translator)
+    if not isinstance(payload, dict):
+        return _tool_evidence_summary(preview, translator)
+    files = payload.get("guidance_files")
+    if not isinstance(files, list) or not files:
+        return (translator.t("runtime.tool.no_output"),)
+    return tuple(
+        _trim_tool_evidence(str(item.get("path") or ""))
+        for item in files[:_TOOL_EVIDENCE_ITEMS]
+        if isinstance(item, dict)
+    ) or (translator.t("runtime.tool.no_output"),)
+
+
+def _guidance_file_count(preview: str) -> int:
+    try:
+        payload = json.loads(preview)
+    except json.JSONDecodeError:
+        return _tool_item_count(preview)
+    if not isinstance(payload, dict):
+        return _tool_item_count(preview)
+    files = payload.get("guidance_files")
+    return len(files) if isinstance(files, list) else 0
 
 
 def _count_label(count: int, singular: str, plural: str) -> str:

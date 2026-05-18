@@ -724,6 +724,16 @@ def test_container_builds_cached_runtime(
 def test_tool_event_message_formats_workspace_tools() -> None:
     assert (
         tool_event_message(
+            {
+                "phase": "start",
+                "tool_name": "discover_project_guidance",
+                "args": {"path": "/LinuxAgent/.work/plan"},
+            }
+        )
+        == "LinuxAgent 正在查找项目说明 /LinuxAgent/.work/plan"
+    )
+    assert (
+        tool_event_message(
             {"phase": "start", "tool_name": "read_file", "args": {"path": "README.md"}}
         )
         == "LinuxAgent 正在读取文件 README.md"
@@ -767,6 +777,28 @@ def test_tool_event_message_formats_workspace_tools() -> None:
             }
         )
         == "LinuxAgent 已读取文件 README.md\n  证据预览:\n  - 1:# LinuxAgent\n  - 2:Usage"
+    )
+    assert tool_event_message(
+        {
+            "phase": "end",
+            "status": "allowed",
+            "tool_name": "discover_project_guidance",
+            "args": {"path": "/LinuxAgent/.work/plan"},
+            "output_preview": json.dumps(
+                {
+                    "project_root": "/LinuxAgent",
+                    "guidance_files": [
+                        {"path": "/LinuxAgent/AGENTS.md", "lines": ["1:# AGENTS.md"]},
+                        {"path": "/LinuxAgent/.work/README.md", "lines": ["1:# .work"]},
+                    ],
+                }
+            ),
+        }
+    ) == (
+        "LinuxAgent 已读取项目说明 /LinuxAgent/.work/plan\n"
+        "  证据预览:\n"
+        "  - /LinuxAgent/AGENTS.md\n"
+        "  - /LinuxAgent/.work/README.md"
     )
     assert tool_event_message(
         {
@@ -835,6 +867,30 @@ def test_tool_activity_message_marks_finished_tools_as_transient() -> None:
     )
 
     assert message == ("LinuxAgent 正在整理目录 workspace\n  list_dir · 2 items")
+
+
+def test_tool_activity_message_formats_project_guidance_tool() -> None:
+    message = tool_activity_message(
+        {
+            "phase": "end",
+            "status": "allowed",
+            "tool_name": "discover_project_guidance",
+            "args": {"path": "/LinuxAgent/.work/plan"},
+            "output_preview": json.dumps(
+                {
+                    "guidance_files": [
+                        {"path": "/LinuxAgent/AGENTS.md"},
+                        {"path": "/LinuxAgent/.work/README.md"},
+                    ]
+                }
+            ),
+        }
+    )
+
+    assert message == (
+        "LinuxAgent 正在整理项目说明 /LinuxAgent/.work/plan\n"
+        "  discover_project_guidance · 2 files"
+    )
 
 
 async def test_tool_observer_sends_tool_events_to_activity(

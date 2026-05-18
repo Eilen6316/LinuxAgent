@@ -8,6 +8,7 @@ from linuxagent.config.models import FilePatchConfig, SandboxToolConfig
 from linuxagent.tools import (
     WorkspaceAccessError,
     build_workspace_tools,
+    make_discover_project_guidance_tool,
     make_list_dir_tool,
     make_read_file_tool,
     make_search_files_tool,
@@ -131,7 +132,56 @@ def test_search_files_treats_regex_metacharacters_as_literal_text(tmp_path) -> N
 def test_build_workspace_tools_exposes_expected_names(tmp_path) -> None:
     tools = build_workspace_tools(FilePatchConfig(allow_roots=(tmp_path,)))
 
-    assert [tool.name for tool in tools] == ["read_file", "list_dir", "search_files"]
+    assert [tool.name for tool in tools] == [
+        "discover_project_guidance",
+        "read_file",
+        "list_dir",
+        "search_files",
+    ]
+
+
+def test_discover_project_guidance_reads_agent_and_work_status(tmp_path) -> None:
+    root = tmp_path / "repo"
+    nested = root / "pkg"
+    work = root / ".work"
+    nested.mkdir(parents=True)
+    work.mkdir()
+    (root / "AGENTS.md").write_text("# Agent guide\nFollow project rules.\n", encoding="utf-8")
+    (work / "README.md").write_text("# Status\n- [x] Done\n- [ ] Next\n", encoding="utf-8")
+    tool = make_discover_project_guidance_tool()
+
+    output = tool.invoke({"path": str(nested)})
+
+    assert output["project_root"] == str(root)
+    records = {record["path"]: record for record in output["guidance_files"]}
+    assert str(root / "AGENTS.md") in records
+    assert str(work / "README.md") in records
+    assert records[str(root / "AGENTS.md")]["lines"] == [
+        "1:# Agent guide",
+        "2:Follow project rules.",
+    ]
+    assert records[str(work / "README.md")]["lines"] == [
+        "1:# Status",
+        "2:- [x] Done",
+        "3:- [ ] Next",
+    ]
+
+
+def test_discover_project_guidance_redacts_and_limits_output(tmp_path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "AGENTS.md").write_text(
+        "api_key: sk-prodsecret1234567890\nsecond\nthird\n",
+        encoding="utf-8",
+    )
+    tool = make_discover_project_guidance_tool()
+
+    output = tool.invoke({"path": str(root), "max_lines": 2})
+
+    record = output["guidance_files"][0]
+    lines = record["lines"]
+    assert lines == ["1:api_key=***redacted***", "2:second"]
+    assert record["truncated"] is True
 
 
 def test_workspace_tools_expose_sandbox_metadata(tmp_path) -> None:
@@ -148,4 +198,17 @@ def test_workspace_tools_expose_sandbox_metadata(tmp_path) -> None:
     assert sandbox["permissions"]["execute_commands"] is False
     assert sandbox["permissions"]["hitl"] == "none"
     assert sandbox["allowed_roots"] == [str(tmp_path)]
+    assert sandbox["timeout_seconds"] == 1.5
+
+
+def test_discover_project_guidance_exposes_read_only_metadata() -> None:
+    tool = make_discover_project_guidance_tool(SandboxToolConfig(timeout_seconds=1.5))
+
+    sandbox = (tool.metadata or {})["linuxagent_sandbox"]
+    assert sandbox["profile"] == "read_only"
+    assert sandbox["permissions"]["read_files"] is True
+    assert sandbox["permissions"]["system_inspect"] is True
+    assert sandbox["permissions"]["write_files"] is False
+    assert sandbox["permissions"]["execute_commands"] is False
+    assert sandbox["allowed_roots"] == []
     assert sandbox["timeout_seconds"] == 1.5
