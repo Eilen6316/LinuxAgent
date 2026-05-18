@@ -124,9 +124,12 @@ runtime:
   batch_finish: "LinuxAgent finished {count} concurrent read-only commands"
   agent_group_status: "LinuxAgent is processing concurrently: {active}/{total}"
   agent_group_status_named: "LinuxAgent is processing {label} concurrently: {active}/{total}"
+  agent_group_more: "{count} more workers; details are in trace/audit"
   group:
     read_only_batch: "read-only batch"
+    graph_turn: "current request"
   agent:
+    graph_turn_worker: "main task"
     command_worker: "command worker {index}"
     status:
       queued: "queued"

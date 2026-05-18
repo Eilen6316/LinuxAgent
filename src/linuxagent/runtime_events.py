@@ -88,6 +88,23 @@ def worker_group_event(
     return event.to_event()
 
 
+def cancelled_worker_group_event(*, trace_id: str, reason: str) -> dict[str, Any]:
+    return worker_group_event(
+        trace_id=trace_id,
+        phase=WorkerStatus.CANCELLED,
+        label_key="runtime.group.graph_turn",
+        active=0,
+        workers=(
+            RuntimeWorker(
+                id="graph-turn",
+                name_key="runtime.agent.graph_turn_worker",
+                status=WorkerStatus.CANCELLED,
+                error=reason,
+            ),
+        ),
+    )
+
+
 def _active_worker_count(workers: tuple[RuntimeWorker, ...]) -> int:
     active_statuses = {WorkerStatus.QUEUED, WorkerStatus.RUNNING}
     return sum(1 for worker in workers if worker.status in active_statuses)

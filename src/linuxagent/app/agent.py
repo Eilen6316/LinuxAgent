@@ -11,6 +11,7 @@ from ..audit import AuditLog
 from ..graph.runtime import GraphRunResult, GraphRuntime
 from ..i18n import Translator, default_translator
 from ..interfaces import UserInterface
+from ..runtime_events import cancelled_worker_group_event
 from ..telemetry import TelemetryRecorder
 from ..usage_insights import ContextManager
 from .direct_command import DirectCommandRunner
@@ -23,6 +24,7 @@ from .resume import (
     resume_list,
     session_title,
 )
+from .runtime_messages import runtime_event_message
 from .slash_router import handle_slash
 from .turn_state import new_turn_state
 
@@ -60,6 +62,7 @@ class LinuxAgent:
             telemetry=self.telemetry,
             translator=self.translator,
         )
+        self._cancel_sequence = 0
 
     async def run(self, *, thread_id: str = "default") -> None:
         await self.monitoring_service.start()
@@ -137,7 +140,11 @@ class LinuxAgent:
             with suppress(asyncio.CancelledError):
                 await cancel_task
             return await invoke_task
+        cancel_reason = await cancel_task
         invoke_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await invoke_task
+        await self._publish_cancelled_worker_group(cancel_reason)
         await self.ui.print(self.translator.t("app.cancelled"))
         return None
 
@@ -147,6 +154,18 @@ class LinuxAgent:
             future: asyncio.Future[str] = asyncio.Future()
             return await future
         return str(await wait_for_cancel())
+
+    async def _publish_cancelled_worker_group(self, reason: str) -> None:
+        self._cancel_sequence += 1
+        message = runtime_event_message(
+            cancelled_worker_group_event(
+                trace_id=f"cancel-{self._cancel_sequence}",
+                reason=reason,
+            ),
+            self.translator,
+        )
+        if message:
+            await self.ui.print_activity(message)
 
     async def _history(self, thread_id: str) -> list[Any]:
         history = await self.graph_runtime.history(thread_id=thread_id)

@@ -13,8 +13,8 @@ _READ_FILE_HEAD_EVIDENCE_ITEMS = 2
 _READ_FILE_TAIL_EVIDENCE_ITEMS = 3
 _TOOL_EVIDENCE_CHARS = 180
 _TOOL_ERROR_CHARS = 220
-_AGENT_ITEMS = 6
-_AGENT_DETAIL_CHARS = 120
+_WORKER_ITEMS = 6
+_WORKER_DETAIL_CHARS = 120
 
 
 def tool_event_message(event: dict[str, Any], translator: Translator | None = None) -> str | None:
@@ -98,7 +98,7 @@ def _worker_group_event_message(event: dict[str, Any], translator: Translator) -
     if not items:
         return title
     lines = [title]
-    for item in items[:_AGENT_ITEMS]:
+    for item in items[:_WORKER_ITEMS]:
         name = _trim_agent_detail(
             _localized_event_text(item, translator, "name").strip()
             or str(item.get("id") or "worker")
@@ -107,6 +107,9 @@ def _worker_group_event_message(event: dict[str, Any], translator: Translator) -
         detail = _worker_detail(item, translator)
         suffix = f" - {detail}" if detail else ""
         lines.append(f"  - {name}: {status}{suffix}")
+    remaining = len(items) - _WORKER_ITEMS
+    if remaining > 0:
+        lines.append(f"  - {translator.t('runtime.agent_group_more', count=remaining)}")
     return "\n".join(lines)
 
 
@@ -175,9 +178,9 @@ def _localized_event_key_text(item: dict[str, Any], translator: Translator, fiel
 
 
 def _trim_agent_detail(text: str) -> str:
-    if len(text) <= _AGENT_DETAIL_CHARS:
+    if len(text) <= _WORKER_DETAIL_CHARS:
         return text
-    return text[: _AGENT_DETAIL_CHARS - 1].rstrip() + "…"
+    return text[: _WORKER_DETAIL_CHARS - 1].rstrip() + "…"
 
 
 def _background_job_event_message(

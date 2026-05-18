@@ -124,9 +124,12 @@ runtime:
   batch_finish: "LinuxAgent 并发只读命令已完成：{count} 条"
   agent_group_status: "LinuxAgent 正在并发处理：{active}/{total}"
   agent_group_status_named: "LinuxAgent 正在并发处理 {label}：{active}/{total}"
+  agent_group_more: "另有 {count} 个 worker，详情见 trace/audit"
   group:
     read_only_batch: "只读批次"
+    graph_turn: "当前请求"
   agent:
+    graph_turn_worker: "主任务"
     command_worker: "命令 worker {index}"
     status:
       queued: "排队中"

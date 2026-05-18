@@ -993,6 +993,30 @@ def test_runtime_event_message_localizes_worker_group_item_keys() -> None:
     assert "命令 worker 2: 运行中 - /bin/echo ok" in message
 
 
+def test_runtime_event_message_limits_visible_worker_items() -> None:
+    message = runtime_event_message(
+        {
+            "type": "worker_group",
+            "phase": "running",
+            "active": 8,
+            "total": 8,
+            "workers": [
+                {
+                    "id": f"worker-{index}",
+                    "status": "running",
+                    "detail": f"task {index}",
+                }
+                for index in range(8)
+            ],
+        }
+    )
+
+    assert message is not None
+    assert "worker-5: 运行中 - task 5" in message
+    assert "worker-6: 运行中 - task 6" not in message
+    assert "另有 2 个 worker，详情见 trace/audit" in message
+
+
 def test_runtime_event_message_can_render_english() -> None:
     translator = Translator(LanguageCode.EN_US)
 

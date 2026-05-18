@@ -120,6 +120,7 @@ class _FakeUI:
         self.printed: list[str] = []
         self.markdown_printed: list[str] = []
         self.raw_printed: list[tuple[str, bool]] = []
+        self.activities: list[str] = []
         self.interrupts: list[dict[str, Any]] = []
         self.cancel_immediately = False
         self.resume_choice: str | None = None
@@ -153,6 +154,9 @@ class _FakeUI:
 
     def start_working(self, text: str = "Working") -> None:
         self.working.append(text)
+
+    async def print_activity(self, text: str) -> None:
+        self.activities.append(text)
 
     async def wait_for_cancel(self) -> str:
         if self.cancel_immediately:
@@ -342,6 +346,7 @@ async def test_run_turn_escape_cancels_inflight_graph(tmp_path) -> None:
 
     assert result == {}
     assert ui.printed == ["已终止当前 AI 工作。"]
+    assert ui.activities == ["LinuxAgent 正在并发处理 当前请求：0/1\n  - 主任务: 已取消 - escape"]
 
 
 async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
