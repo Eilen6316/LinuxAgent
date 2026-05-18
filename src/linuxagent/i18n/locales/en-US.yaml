@@ -122,6 +122,16 @@ runtime:
   command_finish: "LinuxAgent command finished: exit {exit_code}"
   batch_start: "LinuxAgent is running {count} read-only commands concurrently"
   batch_finish: "LinuxAgent finished {count} concurrent read-only commands"
+  agent_group_status: "LinuxAgent is processing concurrently: {active}/{total}"
+  agent_group_status_named: "LinuxAgent is processing {label} concurrently: {active}/{total}"
+  group:
+    read_only_batch: "read-only batch"
+  agent:
+    command_worker: "command worker {index}"
+    status:
+      running: "running"
+      finished: "finished"
+      exit: "exit {exit_code}"
   background_start: "LinuxAgent background job started: {job_id}"
   background_finish: "LinuxAgent background job finished: {job_id} ({status})"
   activity:

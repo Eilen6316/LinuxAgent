@@ -227,26 +227,35 @@ async def _execute_parallel_read_only_batch(
 ) -> AgentState:
     commands = tuple(step.command for _, step in batch_steps)
     await _notify_batch(runtime_observer, current_trace_id, "start", commands)
+    await _notify_parallel_agents(
+        runtime_observer,
+        current_trace_id,
+        "running",
+        commands,
+    )
     with span(
         telemetry,
         "command.execute_batch",
         current_trace_id,
         {"count": len(commands), "parallel": True},
     ):
-        results = await asyncio.gather(
-            *(
-                _run_parallel_read_only_command(
-                    state,
-                    command.command,
-                    command_service,
-                    current_trace_id,
+        results = tuple(
+            await asyncio.gather(
+                *(
+                    _run_parallel_read_only_command(
+                        state,
+                        command.command,
+                        command_service,
+                        current_trace_id,
+                    )
+                    for _, command in batch_steps
                 )
-                for _, command in batch_steps
             )
         )
     for result in results:
         await _record_command_execution(audit, state, result, current_trace_id)
         await notify_command_result(runtime_observer, current_trace_id, result)
+    await _notify_parallel_agent_results(runtime_observer, current_trace_id, results)
     await _notify_batch(runtime_observer, current_trace_id, "finish", commands)
     update: AgentState = {
         "trace_id": current_trace_id,
@@ -294,6 +303,64 @@ async def _notify_batch(
             "trace_id": trace_id,
             "count": len(commands),
             "commands": commands,
+        },
+    )
+
+
+async def _notify_parallel_agents(
+    observer: RuntimeEventObserver | None,
+    trace_id: str,
+    status: str,
+    commands: tuple[str, ...],
+) -> None:
+    await notify_event(
+        observer,
+        {
+            "type": "agent_group",
+            "phase": status,
+            "trace_id": trace_id,
+            "label_key": "runtime.group.read_only_batch",
+            "active": len(commands) if status == "running" else 0,
+            "total": len(commands),
+            "agents": [
+                {
+                    "id": f"cmd-{index}",
+                    "name_key": "runtime.agent.command_worker",
+                    "name_params": {"index": index + 1},
+                    "status_key": f"runtime.agent.status.{status}",
+                    "detail": command,
+                }
+                for index, command in enumerate(commands)
+            ],
+        },
+    )
+
+
+async def _notify_parallel_agent_results(
+    observer: RuntimeEventObserver | None,
+    trace_id: str,
+    results: tuple[ExecutionResult, ...],
+) -> None:
+    await notify_event(
+        observer,
+        {
+            "type": "agent_group",
+            "phase": "finished",
+            "trace_id": trace_id,
+            "label_key": "runtime.group.read_only_batch",
+            "active": 0,
+            "total": len(results),
+            "agents": [
+                {
+                    "id": f"cmd-{index}",
+                    "name_key": "runtime.agent.command_worker",
+                    "name_params": {"index": index + 1},
+                    "status_key": "runtime.agent.status.exit",
+                    "status_params": {"exit_code": result.exit_code},
+                    "detail": result.command,
+                }
+                for index, result in enumerate(results)
+            ],
         },
     )
 

@@ -638,6 +638,32 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     assert ui._working_status is None
 
 
+async def test_console_print_activity_shows_parallel_agent_group(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_activity(
+        "LinuxAgent 正在并发处理 只读批次：2/2\n"
+        "  - agent A: running - 查 systemctl 状态\n"
+        "  - agent B: done - 读取日志摘要"
+    )
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "处理中（" in rendered
+    assert "esc 中断" in rendered
+    assert "并发处理 只读批次：2/2" in rendered
+    assert "agent A: running - 查 systemctl 状态" in rendered
+    assert "agent B: done - 读取日志摘要" in rendered
+
+    await ui.print("done")
+
+    assert ui._working_status is None
+
+
 async def test_console_print_activity_keeps_non_working_messages_plain(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     console = Console(record=True, width=120, force_terminal=True)

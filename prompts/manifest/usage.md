@@ -9,6 +9,17 @@ the current CLI, and `/job stop <job_id>` requests cancellation. With the local 
 approved background jobs run in the daemon supervisor and remain inspectable through the same `/job`
 entry point. Help text must describe the same command catalog used by completion.
 
+Natural-language operational requests are planned as validated `CommandPlan`
+JSON before policy, HITL, execution, and analysis. File creation or edit
+requests are planned as validated `FilePatchPlan` JSON, previewed as diffs, and
+applied transactionally after approval. The planner may use read-only workspace
+inspection tools, log search, system information tools, configured YAML runbook
+guidance, optional Skill manifest guidance, optional usage-insight tools, and
+optional bounded `fetch_url` reads when network policy enables that tool. SSH
+cluster fan-out, local background jobs, session checkpoints, `/resume`, audit
+inspection, and MCP read-only policy/audit tools are product entry points, not
+hidden autonomous powers.
+
 When a request lacks several concrete parameters needed for safe planning, LinuxAgent can open an
 automatic parameter-collection wizard. This is AI-discovered from the user's natural-language
 request, not a user-invoked explicit command. Pending wizard sessions appear in `/resume`, and recovered

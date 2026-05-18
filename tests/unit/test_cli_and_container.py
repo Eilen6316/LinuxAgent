@@ -922,12 +922,62 @@ def test_runtime_event_message_formats_command_batch() -> None:
     )
 
 
+def test_runtime_event_message_formats_agent_group_status() -> None:
+    message = runtime_event_message(
+        {
+            "type": "agent_group",
+            "phase": "running",
+            "label_key": "runtime.group.read_only_batch",
+            "active": 2,
+            "total": 2,
+            "agents": [
+                {"name": "agent A", "status": "running", "content": "查 systemctl 状态"},
+                {"name": "agent B", "status": "done", "summary": "token=secret-value"},
+            ],
+        }
+    )
+
+    assert message is not None
+    assert "LinuxAgent 正在并发处理 只读批次：2/2" in message
+    assert "agent A: running - 查 systemctl 状态" in message
+    assert "agent B: done - token=***redacted***" in message
+
+
+def test_runtime_event_message_localizes_agent_group_item_keys() -> None:
+    message = runtime_event_message(
+        {
+            "type": "agent_group",
+            "phase": "running",
+            "active": 1,
+            "total": 1,
+            "agents": [
+                {
+                    "name_key": "runtime.agent.command_worker",
+                    "name_params": {"index": 2},
+                    "status_key": "runtime.agent.status.running",
+                    "detail": "/bin/echo ok",
+                },
+            ],
+        }
+    )
+
+    assert message is not None
+    assert "命令 worker 2: 运行中 - /bin/echo ok" in message
+
+
 def test_runtime_event_message_can_render_english() -> None:
     translator = Translator(LanguageCode.EN_US)
 
     assert (
         runtime_event_message({"type": "command_batch", "phase": "start", "count": 3}, translator)
         == "LinuxAgent is running 3 read-only commands concurrently"
+    )
+    assert (
+        runtime_event_message(
+            {"type": "agent_group", "phase": "running", "active": 1, "total": 2},
+            translator,
+        )
+        == "LinuxAgent is processing concurrently: 1/2"
     )
     assert (
         tool_event_message(

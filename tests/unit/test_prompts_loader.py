@@ -56,6 +56,11 @@ def test_build_direct_answer_prompt_has_user_input_variable() -> None:
     assert isinstance(tmpl, ChatPromptTemplate)
     assert "user_input" in tmpl.input_variables
     assert "product_context" in tmpl.input_variables
+    body = str(tmpl.messages[0].prompt.template)
+    assert "conversational deliverable" in body
+    assert "internal execution strategy" in body
+    assert "Do not answer with an apology" in body
+    assert "Do not refuse solely" in body
 
 
 def test_build_direct_answer_review_prompt_has_review_context_variable() -> None:
@@ -77,6 +82,11 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "Artifact creation needs an explicit destination" in body
     assert "Do not guess `/tmp`" in body
     assert "LinuxAgent self-description" in body
+    assert "conversational deliverable" in body
+    assert "internal execution strategy" in body
+    assert "set `answer_context` to `none`" in body
+    assert "answer with two jokes" in body
+    assert "do not say LinuxAgent cannot" in body
     assert "Current-state inspection requests are `COMMAND_PLAN`" in body
     assert "what files, directories, scripts" in body
     assert "so the planner can inspect reality" in body

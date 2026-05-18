@@ -1200,6 +1200,25 @@ async def test_graph_allow_all_parallelizes_read_only_plan_with_ordered_results(
     ]
     batch_events = [event for event in events if event.get("type") == "command_batch"]
     assert [event["phase"] for event in batch_events] == ["start", "finish"]
+    agent_events = [event for event in events if event.get("type") == "agent_group"]
+    assert [event["phase"] for event in agent_events] == ["running", "finished"]
+    assert agent_events[0]["active"] == 3
+    assert agent_events[0]["label_key"] == "runtime.group.read_only_batch"
+    assert agent_events[0]["agents"][0]["name_key"] == "runtime.agent.command_worker"
+    assert agent_events[0]["agents"][0]["status_key"] == "runtime.agent.status.running"
+    assert [agent["detail"] for agent in agent_events[0]["agents"]] == [
+        "/bin/echo os",
+        "/bin/echo kernel",
+        "/bin/echo nginx",
+    ]
+    assert {agent["status_key"] for agent in agent_events[-1]["agents"]} == {
+        "runtime.agent.status.exit",
+    }
+    assert [agent["status_params"]["exit_code"] for agent in agent_events[-1]["agents"]] == [
+        0,
+        0,
+        0,
+    ]
     result_events = [
         event
         for event in events
@@ -2455,6 +2474,35 @@ async def test_graph_answers_howto_without_command_panel(tmp_path) -> None:
     )
 
     assert "router supplied how-to answer" in str(result["messages"][-1].content)
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values.get("pending_command") is None
+    assert snapshot.values["direct_response"] is True
+
+
+async def test_graph_answers_conversational_deliverable_despite_internal_strategy_words(
+    tmp_path,
+) -> None:
+    manifest = operating_manifest_context(section_names=("tools", "safety"))
+    answer = "笑话一。笑话二。"
+    graph, provider = _graph(
+        tmp_path,
+        [_router_response("DIRECT_ANSWER", answer), _direct_answer_review_response()],
+        operating_manifest=manifest,
+    )
+    config = {"configurable": {"thread_id": "subagent-worded-chat"}}
+
+    result = await graph.ainvoke(
+        initial_state("开两个子agent，并发讲两个笑话", source=CommandSource.USER),
+        config=config,
+    )
+
+    assert answer in str(result["messages"][-1].content)
+    assert len(provider.complete_messages) == 2
+    prompt = "\n".join(str(message.content) for message in provider.complete_messages[0])
+    assert "# tools" not in prompt
+    assert "# safety" not in prompt
+    assert provider.tool_calls == 0
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
     assert snapshot.values.get("pending_command") is None

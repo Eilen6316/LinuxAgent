@@ -122,6 +122,16 @@ runtime:
   command_finish: "LinuxAgent 命令结束：exit {exit_code}"
   batch_start: "LinuxAgent 正在并发执行 {count} 条只读命令"
   batch_finish: "LinuxAgent 并发只读命令已完成：{count} 条"
+  agent_group_status: "LinuxAgent 正在并发处理：{active}/{total}"
+  agent_group_status_named: "LinuxAgent 正在并发处理 {label}：{active}/{total}"
+  group:
+    read_only_batch: "只读批次"
+  agent:
+    command_worker: "命令 worker {index}"
+    status:
+      running: "运行中"
+      finished: "已完成"
+      exit: "exit {exit_code}"
   background_start: "LinuxAgent 后台任务已启动：{job_id}"
   background_finish: "LinuxAgent 后台任务结束：{job_id}（{status}）"
   activity:
