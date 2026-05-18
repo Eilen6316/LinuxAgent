@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ from linuxagent.i18n import Translator
 from linuxagent.interfaces import ExecutionResult
 from linuxagent.ui import ConsoleUI
 from linuxagent.ui.console import SlashCommandCompleter
+from linuxagent.ui.working_status import WorkingStatus
 
 EN_TRANSLATOR = Translator(LanguageCode.EN_US)
 
@@ -656,6 +658,18 @@ async def test_console_print_treats_model_output_as_plain_text() -> None:
     assert "[bold]Rocky[/bold] **Linux**" in rendered
 
 
+async def test_console_activity_from_worker_loop_runs_on_owner_loop() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+    await ui.print_activity("owner-ready")
+
+    await asyncio.to_thread(lambda: asyncio.run(ui.print_activity("from-worker")))
+
+    rendered = console.export_text()
+    assert "owner-ready" in rendered
+    assert "from-worker" in rendered
+
+
 async def test_console_print_markdown_renders_model_output() -> None:
     console = Console(record=True, width=120)
     ui = ConsoleUI(console=console)
@@ -738,6 +752,28 @@ async def test_console_print_activity_shows_parallel_agent_group(monkeypatch) ->
     await ui.print("done")
 
     assert ui._working_status is None
+
+
+def test_working_status_cancel_skips_live_stop(monkeypatch) -> None:
+    console = Console(record=True, width=120, force_terminal=True)
+    status = WorkingStatus(console)
+    status.update("LinuxAgent 正在分析意图")
+    live = status._live
+    assert live is not None
+
+    stop_called = False
+
+    def fake_stop() -> None:
+        nonlocal stop_called
+        stop_called = True
+
+    monkeypatch.setattr(live, "stop", fake_stop)
+
+    status.cancel()
+
+    assert stop_called is False
+    assert status._live is None
+    assert not live.is_started
 
 
 async def test_console_print_activity_keeps_non_working_messages_plain(monkeypatch) -> None:

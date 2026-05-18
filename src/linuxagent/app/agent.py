@@ -15,6 +15,7 @@ from ..telemetry import TelemetryRecorder
 from ..usage_insights import ContextManager
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
+from .graph_invocation import GraphInvocation, start_graph_invocation
 from .output import print_assistant_response, start_working
 from .resume import (
     ResumeSessionItem,
@@ -119,33 +120,39 @@ class LinuxAgent:
     async def _run_with_cancel(self, state: Any, thread_id: str) -> GraphRunResult | None:
         cancel_task = asyncio.create_task(self._wait_for_cancel())
         await asyncio.sleep(0)
-        invoke_task = asyncio.create_task(self.graph_runtime.run(state, thread_id=thread_id))
-        return await self._await_graph_task(invoke_task, cancel_task)
+        invocation = start_graph_invocation(
+            lambda: self.graph_runtime.run(state, thread_id=thread_id)
+        )
+        return await self._await_graph_invocation(invocation, cancel_task)
 
     async def _resume_with_cancel(
         self, response: dict[str, Any], thread_id: str
     ) -> GraphRunResult | None:
         cancel_task = asyncio.create_task(self._wait_for_cancel())
         await asyncio.sleep(0)
-        invoke_task = asyncio.create_task(self.graph_runtime.resume(response, thread_id=thread_id))
-        return await self._await_graph_task(invoke_task, cancel_task)
+        invocation = start_graph_invocation(
+            lambda: self.graph_runtime.resume(response, thread_id=thread_id)
+        )
+        return await self._await_graph_invocation(invocation, cancel_task)
 
-    async def _await_graph_task(
+    async def _await_graph_invocation(
         self,
-        invoke_task: asyncio.Task[GraphRunResult],
+        invocation: GraphInvocation[GraphRunResult],
         cancel_task: asyncio.Task[str],
     ) -> GraphRunResult | None:
+        graph_future: asyncio.Future[Any] = invocation.future
+        cancel_future: asyncio.Future[Any] = cancel_task
         done, _pending = await asyncio.wait(
-            {invoke_task, cancel_task}, return_when=asyncio.FIRST_COMPLETED
+            {graph_future, cancel_future}, return_when=asyncio.FIRST_COMPLETED
         )
-        if invoke_task in done:
+        if graph_future in done:
             cancel_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cancel_task
-            return await invoke_task
+            return await invocation.future
         cancel_reason = await cancel_task
-        invoke_task.cancel()
-        invoke_task.add_done_callback(_consume_cancelled_task)
+        invocation.cancel()
+        invocation.future.add_done_callback(_consume_cancelled_task)
         await self._publish_cancelled(cancel_reason)
         return None
 
@@ -284,6 +291,6 @@ class LinuxAgent:
         self.chat_service.save()
 
 
-def _consume_cancelled_task(task: asyncio.Task[Any]) -> None:
+def _consume_cancelled_task(task: asyncio.Future[Any]) -> None:
     with suppress(asyncio.CancelledError):
         task.exception()

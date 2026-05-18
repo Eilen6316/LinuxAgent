@@ -10,7 +10,8 @@ import termios
 import threading
 import time
 import tty
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable, Coroutine
+from concurrent.futures import Future as ConcurrentFuture
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +63,7 @@ class ConsoleUI(UserInterface):
         self._model = model
         self._activity_visible = True
         self._working_status: WorkingStatus | None = None
+        self._owner_loop: asyncio.AbstractEventLoop | None = None
         self._prompt_session = PromptSessionManager(
             theme=theme,
             prompt_symbol=prompt_symbol,
@@ -76,6 +78,7 @@ class ConsoleUI(UserInterface):
         )
 
     async def input_stream(self) -> AsyncGenerator[str, None]:
+        self._bind_owner_loop()
         if not sys.stdin.isatty():
             return
         self._print_hero()
@@ -89,6 +92,7 @@ class ConsoleUI(UserInterface):
                 yield line
 
     async def handle_interrupt(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._bind_owner_loop()
         started = time.monotonic()
         self.clear_activity()
         if not sys.stdin.isatty():
@@ -102,14 +106,20 @@ class ConsoleUI(UserInterface):
         return sys.stdin.isatty() and self._console.is_terminal
 
     async def print(self, text: str) -> None:
+        if await self._run_on_owner_loop(lambda: self.print(text)):
+            return
         self.clear_activity()
         self._console.print(Panel(Text(text), border_style=self._panel_style()))
 
     async def print_markdown(self, text: str) -> None:
+        if await self._run_on_owner_loop(lambda: self.print_markdown(text)):
+            return
         self.clear_activity()
         self._console.print(Panel(Markdown(text), border_style=self._panel_style()))
 
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
+        if await self._run_on_owner_loop(lambda: self.print_raw(text, stderr=stderr)):
+            return
         self.clear_activity()
         rendered = Text(text, style="red") if stderr else Text(text)
         self._console.print(rendered, end="")
@@ -117,6 +127,10 @@ class ConsoleUI(UserInterface):
     async def print_execution_result(
         self, result: ExecutionResult, *, include_output: bool = True
     ) -> None:
+        if await self._run_on_owner_loop(
+            lambda: self.print_execution_result(result, include_output=include_output)
+        ):
+            return
         self.clear_activity()
         display = execution_display_text(result, include_output=include_output)
         style = "green" if result.exit_code == 0 else "red"
@@ -124,6 +138,8 @@ class ConsoleUI(UserInterface):
         self._console.print(Panel(Text(display.text), title=title, border_style=style))
 
     async def print_activity(self, text: str) -> None:
+        if await self._run_on_owner_loop(lambda: self.print_activity(text)):
+            return
         if not self._activity_visible:
             return
         working_prefix = self._translator.t("ui.working.activity_prefix")
@@ -134,6 +150,7 @@ class ConsoleUI(UserInterface):
         self._console.print(Text(text, style="dim"))
 
     def start_working(self, text: str = "Working") -> None:
+        self._bind_owner_loop()
         if not self._activity_visible:
             return
         if not sys.stdin.isatty() or not self._console.is_terminal:
@@ -152,7 +169,8 @@ class ConsoleUI(UserInterface):
             self._working_status = None
 
     async def cancel_activity(self, reason: str) -> None:
-        del reason
+        if await self._run_on_owner_loop(lambda: self.cancel_activity(reason)):
+            return
         if self._working_status is not None:
             self._working_status.cancel()
             self._working_status = None
@@ -166,15 +184,37 @@ class ConsoleUI(UserInterface):
         return sys.stdin.isatty()
 
     async def choose_resume_session(self, sessions: list[Any]) -> str | None:
+        self._bind_owner_loop()
         self.clear_activity()
         if not sys.stdin.isatty():
             return None
         return await ResumeSelector(sessions, translator=self._translator).choose()
 
     async def wait_for_cancel(self) -> str:
+        self._bind_owner_loop()
         if not sys.stdin.isatty():
             return await super().wait_for_cancel()
         return await _wait_for_escape()
+
+    def _bind_owner_loop(self) -> None:
+        if self._owner_loop is not None:
+            return
+        try:
+            self._owner_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+
+    async def _run_on_owner_loop(self, action: Callable[[], Coroutine[Any, Any, None]]) -> bool:
+        loop = asyncio.get_running_loop()
+        owner_loop = self._owner_loop
+        if owner_loop is None:
+            self._owner_loop = loop
+            return False
+        if owner_loop is loop:
+            return False
+        future: ConcurrentFuture[None] = asyncio.run_coroutine_threadsafe(action(), owner_loop)
+        await asyncio.wrap_future(future)
+        return True
 
     def _print_hero(self) -> None:
         self.clear_activity()

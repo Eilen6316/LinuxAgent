@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -175,6 +177,16 @@ class _FakeUI:
         return self.resume_choice
 
 
+class _CancelsAfterEventUI(_FakeUI):
+    def __init__(self, event: threading.Event) -> None:
+        super().__init__()
+        self._event = event
+
+    async def wait_for_cancel(self) -> str:
+        await asyncio.to_thread(self._event.wait)
+        return "escape"
+
+
 class _FakeGraph:
     def __init__(
         self,
@@ -211,20 +223,38 @@ class _SlowGraph(_FakeGraph):
         return {}
 
 
-class _SlowCancelGraph(_FakeGraph):
+class _BlockingGraph(_FakeGraph):
     def __init__(self) -> None:
         super().__init__([])
-        self.cancel_cleanup_started = asyncio.Event()
-        self.cancel_cleanup_done = asyncio.Event()
-        self.finish_cancel_cleanup = asyncio.Event()
+        self.started = threading.Event()
 
     async def ainvoke(self, state: Any, config: Any) -> Any:
         del state, config
+        self.started.set()
+        _blocking_pause(0.25)
+        return {}
+
+
+def _blocking_pause(delay: float) -> None:
+    time.sleep(delay)
+
+
+class _SlowCancelGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.cancel_cleanup_started = threading.Event()
+        self.cancel_cleanup_done = threading.Event()
+        self.finish_cancel_cleanup = threading.Event()
+        self.started = threading.Event()
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del state, config
+        self.started.set()
         try:
             await asyncio.Future()
         except asyncio.CancelledError:
             self.cancel_cleanup_started.set()
-            await self.finish_cancel_cleanup.wait()
+            await asyncio.to_thread(self.finish_cancel_cleanup.wait)
             self.cancel_cleanup_done.set()
             raise
 
@@ -372,10 +402,23 @@ async def test_run_turn_escape_cancels_inflight_graph(tmp_path) -> None:
     assert ui.cancelled == ["escape"]
 
 
+async def test_run_turn_escape_cancels_when_graph_blocks_event_loop(tmp_path) -> None:
+    graph = _BlockingGraph()
+    ui = _CancelsAfterEventUI(graph.started)
+    agent = _agent(tmp_path, graph=graph, ui=ui)
+
+    started = time.monotonic()
+    result = await asyncio.wait_for(agent.run_turn("slow task", thread_id="cancel"), timeout=0.2)
+
+    assert time.monotonic() - started < 0.2
+    assert result == {}
+    assert ui.cancelled == ["escape"]
+
+
 async def test_run_turn_escape_does_not_wait_for_slow_graph_cleanup(tmp_path) -> None:
     ui = _FakeUI()
-    ui.cancel_immediately = True
     graph = _SlowCancelGraph()
+    ui = _CancelsAfterEventUI(graph.started)
     agent = _agent(tmp_path, graph=graph, ui=ui)
 
     result = await asyncio.wait_for(agent.run_turn("slow task", thread_id="cancel"), timeout=0.2)
@@ -383,10 +426,10 @@ async def test_run_turn_escape_does_not_wait_for_slow_graph_cleanup(tmp_path) ->
     assert result == {}
     assert ui.printed == []
     assert ui.cancelled == ["escape"]
-    await asyncio.wait_for(graph.cancel_cleanup_started.wait(), timeout=0.2)
+    await asyncio.wait_for(asyncio.to_thread(graph.cancel_cleanup_started.wait), timeout=0.2)
     assert not graph.cancel_cleanup_done.is_set()
     graph.finish_cancel_cleanup.set()
-    await asyncio.wait_for(graph.cancel_cleanup_done.wait(), timeout=0.2)
+    await asyncio.wait_for(asyncio.to_thread(graph.cancel_cleanup_done.wait), timeout=0.2)
 
 
 async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:

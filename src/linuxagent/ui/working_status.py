@@ -56,9 +56,7 @@ class WorkingStatus:
             return
         live = self._live
         self._live = None
-        live.auto_refresh = False
-        live.transient = True
-        live.stop()
+        _cancel_live_without_final_refresh(live)
 
     def _render(self) -> Text:
         elapsed = max(0, int(time.monotonic() - self._started_at))
@@ -105,3 +103,20 @@ def _working_label(message: str, translator: Translator) -> str:
 def _activity_indicator() -> str:
     tick = int(time.monotonic() * 1000 / ACTIVITY_INTERVAL_MS)
     return "•" if tick % 2 == 0 else "◦"
+
+
+def _cancel_live_without_final_refresh(live: Live) -> None:
+    refresh_thread = getattr(live, "_refresh_thread", None)
+    if refresh_thread is not None:
+        refresh_thread.stop()
+    with live._lock:
+        if not live.is_started:
+            return
+        live._started = False
+        live.console.clear_live()
+        live._refresh_thread = None
+        live._disable_redirect_io()
+        live.console.pop_render_hook()
+        live.console.show_cursor(True)
+        if not live._alt_screen and live.transient:
+            live.console.control(live._live_render.restore_cursor())
