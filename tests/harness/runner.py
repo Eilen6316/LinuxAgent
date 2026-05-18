@@ -309,6 +309,7 @@ class HarnessRunner:
                 sandbox_config,
                 tool_runtime_limits,
             )
+            runtime_events: list[dict[str, Any]] = []
             cluster_service = _cluster_service(scenario.setup.get("cluster_hosts", []))
             translator = _translator(scenario.setup.get("language"))
             runbook_engine = None
@@ -340,6 +341,7 @@ class HarnessRunner:
                     tool_runtime_limits=tool_runtime_limits,
                     translator=translator,
                     background_jobs=background_jobs,
+                    runtime_observer=runtime_events.append,
                 )
             )
             thread_id = scenario.name.replace(" ", "-")
@@ -378,6 +380,7 @@ class HarnessRunner:
                     result,
                     audit.path,
                     tool_events,
+                    runtime_events,
                     background_jobs,
                     turn.expected,
                     label=f"turn {index}",
@@ -394,6 +397,7 @@ class HarnessRunner:
         result: Any,
         audit_path: Path,
         tool_events: list[dict[str, Any]],
+        runtime_events: list[dict[str, Any]],
         background_jobs: _FakeBackgroundJobs | None,
         expected: dict[str, Any] | None = None,
         *,
@@ -430,11 +434,9 @@ class HarnessRunner:
                         f"{scenario.name} {label}: audit log missing {expected_event!r}"
                     )
         if "tool_events" in expected:
-            for expected_event in expected["tool_events"]:
-                if not any(_contains_subset(event, expected_event) for event in tool_events):
-                    raise AssertionError(
-                        f"{scenario.name} {label}: tool event missing {expected_event!r}"
-                    )
+            _assert_event_expectations(scenario.name, label, "tool", tool_events, expected)
+        if "runtime_events" in expected:
+            _assert_event_expectations(scenario.name, label, "runtime", runtime_events, expected)
         if "files" in expected:
             for spec in expected["files"]:
                 _assert_expected_file(scenario.name, spec)
@@ -624,6 +626,20 @@ def _assert_expected_file(scenario_name: str, spec: dict[str, Any]) -> None:
         actual = path.read_text(encoding="utf-8")
         if actual != spec["content"]:
             raise AssertionError(f"{scenario_name}: file {path} content mismatch")
+
+
+def _assert_event_expectations(
+    scenario_name: str,
+    label: str,
+    event_type: str,
+    actual_events: list[dict[str, Any]],
+    expected: dict[str, Any],
+) -> None:
+    for expected_event in expected[f"{event_type}_events"]:
+        if not any(_contains_subset(event, expected_event) for event in actual_events):
+            raise AssertionError(
+                f"{scenario_name} {label}: {event_type} event missing {expected_event!r}"
+            )
 
 
 def _contains_subset(actual: Any, expected: Any) -> bool:

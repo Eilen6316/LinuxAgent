@@ -1,0 +1,67 @@
+scenario: "parallel read only command worker events"
+provider_responses:
+  - '{"goal":"inspect host","commands":[{"command":"/bin/echo os","purpose":"show os","read_only":true,"target_hosts":[]},{"command":"/bin/echo kernel","purpose":"show kernel","read_only":true,"target_hosts":[]},{"command":"/bin/echo nginx","purpose":"show nginx","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - "并发检查完成"
+inputs:
+  - role: human
+    content: "并发检查系统信息"
+expected_interrupts:
+  - type: confirm_command
+    matched_rule: LLM_FIRST_RUN
+resume:
+  decision: yes_all
+  latency_ms: 10
+  permissions:
+    allow:
+      - "Bash(/bin/echo os)"
+      - "Bash(/bin/echo kernel)"
+      - "Bash(/bin/echo nginx)"
+expected:
+  command_executed: true
+  exit_code: 0
+  response_contains:
+    - "并发检查完成"
+  runtime_events:
+    - type: activity
+      phase: waiting_confirm
+      command: "/bin/echo os"
+    - type: command_batch
+      phase: start
+      count: 3
+      commands:
+        - "/bin/echo os"
+        - "/bin/echo kernel"
+        - "/bin/echo nginx"
+    - type: worker_group
+      phase: running
+      label_key: runtime.group.read_only_batch
+      active: 3
+      total: 3
+      workers:
+        - id: cmd-0
+          status: running
+          detail: "/bin/echo os"
+        - id: cmd-1
+          status: running
+          detail: "/bin/echo kernel"
+        - id: cmd-2
+          status: running
+          detail: "/bin/echo nginx"
+    - type: worker_group
+      phase: finished
+      label_key: runtime.group.read_only_batch
+      active: 0
+      total: 3
+      workers:
+        - id: cmd-0
+          status: finished
+          summary_key: runtime.agent.status.exit
+        - id: cmd-1
+          status: finished
+          summary_key: runtime.agent.status.exit
+        - id: cmd-2
+          status: finished
+          summary_key: runtime.agent.status.exit
+    - type: command_batch
+      phase: finish
+      count: 3

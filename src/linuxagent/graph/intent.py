@@ -12,12 +12,7 @@ from langgraph.types import Command
 
 from ..i18n import Translator, default_translator
 from ..interfaces import CommandSource, LLMProvider
-from ..plans import (
-    CommandPlan,
-    DirectAnswerPlan,
-    FilePatchPlan,
-    NoChangePlan,
-)
+from ..plans import CommandPlan, DirectAnswerPlan, FilePatchPlan, NoChangePlan
 from ..prompts_loader import (
     build_direct_answer_prompt,
     build_direct_answer_review_prompt,
@@ -286,9 +281,9 @@ async def _planned_outcome_update(
     if isinstance(outcome, DirectAnswerPlan):
         return _direct_response_update(current_trace_id, outcome.answer)
     if isinstance(outcome, CommandPlan):
-        return _plan_update(current_trace_id, user_text, outcome, context.cluster_service)
+        return _plan_update(current_trace_id, outcome, context.cluster_service)
     if isinstance(outcome, FilePatchPlan):
-        return _file_patch_update(current_trace_id, user_text, outcome)
+        return _file_patch_update(current_trace_id, outcome)
     if isinstance(outcome, NoChangePlan):
         return await _no_change_update(
             context, messages, user_text, current_trace_id, outcome, observed_tool_outputs
@@ -383,7 +378,6 @@ def _parse_error_update(current_trace_id: str, message: str) -> AgentState:
 
 def _plan_update(
     current_trace_id: str,
-    user_text: str,
     plan: CommandPlan,
     cluster_service: ClusterService | None,
 ) -> AgentState:
@@ -396,12 +390,8 @@ def _plan_update(
     }
 
 
-def _file_patch_update(current_trace_id: str, user_text: str, plan: FilePatchPlan) -> AgentState:
-    del user_text
-    return {
-        "trace_id": current_trace_id,
-        **reset_planning_for_file_patch(plan),
-    }
+def _file_patch_update(current_trace_id: str, plan: FilePatchPlan) -> AgentState:
+    return {"trace_id": current_trace_id, **reset_planning_for_file_patch(plan)}
 
 
 def _last_message_text(messages: list[BaseMessage]) -> str:

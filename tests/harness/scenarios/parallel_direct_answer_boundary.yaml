@@ -1,0 +1,29 @@
+scenario: "parallel direct answer boundary filters execution tasks"
+provider_responses:
+  - '{"mode":"DIRECT_ANSWER","answer":"fallback answer","reason":"parallel direct tasks","parallel_tasks":[{"id":"safe","goal":"安全咨询","prompt":"回答安全咨询"},{"id":"unsafe","goal":"执行命令","prompt":"执行命令","command":"uname -a"}]}'
+  - "安全咨询正文。"
+inputs:
+  - role: human
+    content: "并发回答一个咨询问题，同时运行 uname"
+expected:
+  command_executed: false
+  response_contains:
+    - "**安全咨询**"
+    - "安全咨询正文。"
+  runtime_events:
+    - type: worker_group
+      phase: running
+      label_key: runtime.group.direct_answer_tasks
+      active: 1
+      total: 1
+      workers:
+        - id: safe
+          status: running
+    - type: worker_group
+      phase: finished
+      label_key: runtime.group.direct_answer_tasks
+      active: 0
+      total: 1
+      workers:
+        - id: safe
+          status: finished

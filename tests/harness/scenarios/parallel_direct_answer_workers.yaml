@@ -1,0 +1,40 @@
+scenario: "parallel direct answer workers"
+provider_responses:
+  - '{"mode":"DIRECT_ANSWER","answer":"fallback answer","reason":"parallel direct tasks","parallel_tasks":[{"id":"joke-a","goal":"第一个笑话","prompt":"讲第一个笑话"},{"id":"joke-b","goal":"第二个笑话","prompt":"讲第二个笑话"}]}'
+  - "第一个笑话正文。"
+  - "第二个笑话正文。"
+inputs:
+  - role: human
+    content: "开两个子agent，并发讲两个笑话"
+expected:
+  command_executed: false
+  response_contains:
+    - "**第一个笑话**"
+    - "第一个笑话正文。"
+    - "**第二个笑话**"
+    - "第二个笑话正文。"
+  runtime_events:
+    - type: worker_group
+      phase: running
+      label_key: runtime.group.direct_answer_tasks
+      active: 2
+      total: 2
+      workers:
+        - id: joke-a
+          status: running
+          goal: "第一个笑话"
+        - id: joke-b
+          status: running
+          goal: "第二个笑话"
+    - type: worker_group
+      phase: finished
+      label_key: runtime.group.direct_answer_tasks
+      active: 0
+      total: 2
+      workers:
+        - id: joke-a
+          status: finished
+          summary: "第一个笑话正文。"
+        - id: joke-b
+          status: finished
+          summary: "第二个笑话正文。"

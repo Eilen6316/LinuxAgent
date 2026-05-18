@@ -1,0 +1,39 @@
+scenario: "parallel direct answer worker failure"
+provider_responses:
+  - '{"mode":"DIRECT_ANSWER","answer":"fallback answer","reason":"parallel direct tasks","parallel_tasks":[{"id":"ok","goal":"可回答部分","prompt":"回答可成功的部分"},{"id":"failed","goal":"失败部分","prompt":"回答会失败的部分"}]}'
+  - "可回答部分正文。"
+  - raises: ProviderError
+    node: parse_intent
+    mode: parallel_direct_answer
+    message: "parallel worker failed"
+inputs:
+  - role: human
+    content: "并发处理两个咨询问题"
+expected:
+  command_executed: false
+  response_contains:
+    - "**可回答部分**"
+    - "可回答部分正文。"
+  runtime_events:
+    - type: worker_group
+      phase: running
+      label_key: runtime.group.direct_answer_tasks
+      active: 2
+      total: 2
+      workers:
+        - id: ok
+          status: running
+        - id: failed
+          status: running
+    - type: worker_group
+      phase: finished
+      label_key: runtime.group.direct_answer_tasks
+      active: 0
+      total: 2
+      workers:
+        - id: ok
+          status: finished
+          summary: "可回答部分正文。"
+        - id: failed
+          status: failed
+          error: "parallel worker failed"
