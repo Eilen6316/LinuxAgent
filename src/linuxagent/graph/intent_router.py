@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
@@ -14,6 +15,24 @@ from ..telemetry import TelemetryRecorder
 from .llm_calls import complete_llm
 
 MAX_PARALLEL_DIRECT_TASKS = 4
+_PARALLEL_TASK_EXECUTION_KEYS = frozenset(
+    {
+        "command",
+        "commands",
+        "tool",
+        "tools",
+        "tool_call",
+        "target_hosts",
+        "host",
+        "hosts",
+        "path",
+        "paths",
+        "files",
+        "write",
+        "mutation",
+        "side_effects",
+    }
+)
 
 
 class IntentMode(StrEnum):
@@ -131,6 +150,8 @@ def _parse_parallel_tasks(
     for index, item in enumerate(raw_tasks):
         if not isinstance(item, dict):
             continue
+        if _has_execution_fields(item):
+            continue
         goal = str(item.get("goal") or "").strip()
         prompt = str(item.get("prompt") or "").strip()
         if not goal or not prompt:
@@ -139,3 +160,7 @@ def _parse_parallel_tasks(
         task_id = raw_id or f"task-{index + 1}"
         tasks.append(ParallelDirectTask(id=task_id, goal=goal, prompt=prompt))
     return tuple(tasks[:MAX_PARALLEL_DIRECT_TASKS])
+
+
+def _has_execution_fields(item: Mapping[str, Any]) -> bool:
+    return any(key in item for key in _PARALLEL_TASK_EXECUTION_KEYS)

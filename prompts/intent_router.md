@@ -104,6 +104,9 @@ that can be answered without reading/changing the machine and without HITL. Each
 task must have `id`, `goal`, and `prompt`. Use this for genuine independent
 subresults, not as a default style. Use at most four tasks. Leave it empty for `COMMAND_PLAN`,
 `CLARIFY`, `WIZARD_NEEDED`, and LinuxAgent self-manual answers.
+Never put commands, tool calls, file paths, hosts, writes, mutations, or other
+execution instructions inside `parallel_tasks`; operational work must route
+through `COMMAND_PLAN` and the normal safety/HITL path.
 
 For `DIRECT_ANSWER`, set `answer_context` to `self_manual` when the user is
 asking about LinuxAgent itself, including identity, capabilities, limits,

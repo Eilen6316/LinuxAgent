@@ -2578,6 +2578,44 @@ def test_intent_router_caps_parallel_direct_tasks() -> None:
     ]
 
 
+def test_intent_router_rejects_execution_fields_in_parallel_direct_tasks() -> None:
+    decision = _parse_intent_decision(
+        _router_response(
+            "DIRECT_ANSWER",
+            "fallback",
+            parallel_tasks=[
+                {
+                    "id": "unsafe",
+                    "goal": "inspect files",
+                    "prompt": "inspect files",
+                    "command": "ls",
+                },
+                {"id": "safe", "goal": "explain concept", "prompt": "explain concept"},
+            ],
+        )
+    )
+
+    assert [task.id for task in decision.parallel_tasks] == ["safe"]
+
+
+def test_intent_router_ignores_parallel_tasks_outside_plain_direct_answer() -> None:
+    tasks = [{"id": "task", "goal": "goal", "prompt": "prompt"}]
+
+    self_manual = _parse_intent_decision(
+        _router_response(
+            "DIRECT_ANSWER",
+            answer_context="self_manual",
+            parallel_tasks=tasks,
+        )
+    )
+    command_plan = _parse_intent_decision(
+        _router_response("COMMAND_PLAN", answer="", parallel_tasks=tasks)
+    )
+
+    assert self_manual.parallel_tasks == ()
+    assert command_plan.parallel_tasks == ()
+
+
 async def test_graph_falls_back_to_direct_answer_for_history_question_nochange(
     tmp_path,
 ) -> None:

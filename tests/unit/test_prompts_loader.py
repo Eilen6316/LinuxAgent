@@ -96,6 +96,8 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "independent conversational subtasks" in body
     assert "without reading/changing the machine" in body
     assert "Use at most four tasks" in body
+    assert "Never put commands, tool calls, file paths" in body
+    assert "normal safety/HITL path" in body
     assert "`self_manual`" in body
     assert "`WIZARD_NEEDED`" in body
     assert "automatic discovery" in body
