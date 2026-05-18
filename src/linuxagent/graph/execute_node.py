@@ -13,6 +13,7 @@ from ..interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResu
 from ..plans import PlannedCommand
 from ..policy.argv import any_command_permission_matches
 from ..policy.capabilities import UNSAFE_BATCH_CAPABILITY_PREFIXES
+from ..runtime_events import RuntimeWorker, WorkerStatus, worker_group_event
 from ..services import BackgroundJobController, ClusterService, CommandService, JobDaemonError
 from ..telemetry import TelemetryRecorder
 from .common import span, trace_id
@@ -230,7 +231,7 @@ async def _execute_parallel_read_only_batch(
     await _notify_parallel_agents(
         runtime_observer,
         current_trace_id,
-        "running",
+        WorkerStatus.RUNNING,
         commands,
     )
     with span(
@@ -310,29 +311,27 @@ async def _notify_batch(
 async def _notify_parallel_agents(
     observer: RuntimeEventObserver | None,
     trace_id: str,
-    status: str,
+    status: WorkerStatus,
     commands: tuple[str, ...],
 ) -> None:
     await notify_event(
         observer,
-        {
-            "type": "agent_group",
-            "phase": status,
-            "trace_id": trace_id,
-            "label_key": "runtime.group.read_only_batch",
-            "active": len(commands) if status == "running" else 0,
-            "total": len(commands),
-            "agents": [
-                {
-                    "id": f"cmd-{index}",
-                    "name_key": "runtime.agent.command_worker",
-                    "name_params": {"index": index + 1},
-                    "status_key": f"runtime.agent.status.{status}",
-                    "detail": command,
-                }
+        worker_group_event(
+            trace_id=trace_id,
+            phase=status,
+            label_key="runtime.group.read_only_batch",
+            active=len(commands) if status == WorkerStatus.RUNNING else 0,
+            workers=(
+                RuntimeWorker(
+                    id=f"cmd-{index}",
+                    name_key="runtime.agent.command_worker",
+                    name_params={"index": index + 1},
+                    status=status,
+                    detail=command,
+                )
                 for index, command in enumerate(commands)
-            ],
-        },
+            ),
+        ),
     )
 
 
@@ -343,25 +342,24 @@ async def _notify_parallel_agent_results(
 ) -> None:
     await notify_event(
         observer,
-        {
-            "type": "agent_group",
-            "phase": "finished",
-            "trace_id": trace_id,
-            "label_key": "runtime.group.read_only_batch",
-            "active": 0,
-            "total": len(results),
-            "agents": [
-                {
-                    "id": f"cmd-{index}",
-                    "name_key": "runtime.agent.command_worker",
-                    "name_params": {"index": index + 1},
-                    "status_key": "runtime.agent.status.exit",
-                    "status_params": {"exit_code": result.exit_code},
-                    "detail": result.command,
-                }
+        worker_group_event(
+            trace_id=trace_id,
+            phase=WorkerStatus.FINISHED,
+            label_key="runtime.group.read_only_batch",
+            active=0,
+            workers=(
+                RuntimeWorker(
+                    id=f"cmd-{index}",
+                    name_key="runtime.agent.command_worker",
+                    name_params={"index": index + 1},
+                    status=WorkerStatus.FINISHED if result.exit_code == 0 else WorkerStatus.FAILED,
+                    detail=result.command,
+                    summary_key="runtime.agent.status.exit",
+                    summary_params={"exit_code": result.exit_code},
+                )
                 for index, result in enumerate(results)
-            ],
-        },
+            ),
+        ),
     )
 
 

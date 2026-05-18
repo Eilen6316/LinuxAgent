@@ -28,6 +28,7 @@ from linuxagent.container import Container
 from linuxagent.i18n import Translator
 from linuxagent.policy.config_rules import PolicyConfigError
 from linuxagent.product_context import product_capability_context, slash_help
+from linuxagent.runtime_events import RuntimeWorker, WorkerStatus, worker_group_event
 from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner, SandboxProfile
 from linuxagent.services import MonitoringAlert
 from linuxagent.tools import (
@@ -939,22 +940,49 @@ def test_runtime_event_message_formats_agent_group_status() -> None:
 
     assert message is not None
     assert "LinuxAgent 正在并发处理 只读批次：2/2" in message
-    assert "agent A: running - 查 systemctl 状态" in message
+    assert "agent A: 运行中 - 查 systemctl 状态" in message
     assert "agent B: done - token=***redacted***" in message
 
 
-def test_runtime_event_message_localizes_agent_group_item_keys() -> None:
+def test_worker_group_event_contract_builds_lifecycle_payload() -> None:
+    event = worker_group_event(
+        trace_id="trace-1",
+        phase=WorkerStatus.RUNNING,
+        label_key="runtime.group.read_only_batch",
+        workers=[
+            RuntimeWorker(
+                id="worker-1",
+                status=WorkerStatus.QUEUED,
+                goal="inspect service",
+            ),
+            RuntimeWorker(
+                id="worker-2",
+                status=WorkerStatus.RUNNING,
+                goal="read logs",
+            ),
+        ],
+    )
+
+    assert event["type"] == "worker_group"
+    assert event["phase"] == "running"
+    assert event["active"] == 2
+    assert event["total"] == 2
+    assert event["workers"][0]["status"] == "queued"
+    assert event["workers"][1]["goal"] == "read logs"
+
+
+def test_runtime_event_message_localizes_worker_group_item_keys() -> None:
     message = runtime_event_message(
         {
-            "type": "agent_group",
+            "type": "worker_group",
             "phase": "running",
             "active": 1,
             "total": 1,
-            "agents": [
+            "workers": [
                 {
                     "name_key": "runtime.agent.command_worker",
                     "name_params": {"index": 2},
-                    "status_key": "runtime.agent.status.running",
+                    "status": "running",
                     "detail": "/bin/echo ok",
                 },
             ],
@@ -974,7 +1002,7 @@ def test_runtime_event_message_can_render_english() -> None:
     )
     assert (
         runtime_event_message(
-            {"type": "agent_group", "phase": "running", "active": 1, "total": 2},
+            {"type": "worker_group", "phase": "running", "active": 1, "total": 2},
             translator,
         )
         == "LinuxAgent is processing concurrently: 1/2"

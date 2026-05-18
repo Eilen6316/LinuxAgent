@@ -129,8 +129,11 @@ runtime:
   agent:
     command_worker: "command worker {index}"
     status:
+      queued: "queued"
       running: "running"
       finished: "finished"
+      failed: "failed"
+      cancelled: "cancelled"
       exit: "exit {exit_code}"
   background_start: "LinuxAgent background job started: {job_id}"
   background_finish: "LinuxAgent background job finished: {job_id} ({status})"
@@ -257,6 +260,10 @@ tool_catalog:
     filesystem_isolation: "filesystem isolation when the requested profile is enforceable"
     privileged_passthrough: "privileged passthrough; no sandbox isolation"
 ui:
+  hero:
+    tagline: "LLM-driven Linux operations  ·  Human-in-the-Loop safety"
+    meta_full: "v{version}  ·  {provider}/{model}  ·  /help  /resume  Esc"
+    meta_short: "v{version}  ·  /help  /resume  Esc"
   console:
     command_result_title: "Command result · exit {exit_code}"
   approval:

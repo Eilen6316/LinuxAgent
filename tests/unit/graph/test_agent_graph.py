@@ -1200,21 +1200,22 @@ async def test_graph_allow_all_parallelizes_read_only_plan_with_ordered_results(
     ]
     batch_events = [event for event in events if event.get("type") == "command_batch"]
     assert [event["phase"] for event in batch_events] == ["start", "finish"]
-    agent_events = [event for event in events if event.get("type") == "agent_group"]
-    assert [event["phase"] for event in agent_events] == ["running", "finished"]
-    assert agent_events[0]["active"] == 3
-    assert agent_events[0]["label_key"] == "runtime.group.read_only_batch"
-    assert agent_events[0]["agents"][0]["name_key"] == "runtime.agent.command_worker"
-    assert agent_events[0]["agents"][0]["status_key"] == "runtime.agent.status.running"
-    assert [agent["detail"] for agent in agent_events[0]["agents"]] == [
+    worker_events = [event for event in events if event.get("type") == "worker_group"]
+    assert [event["phase"] for event in worker_events] == ["running", "finished"]
+    assert worker_events[0]["active"] == 3
+    assert worker_events[0]["label_key"] == "runtime.group.read_only_batch"
+    assert worker_events[0]["workers"][0]["name_key"] == "runtime.agent.command_worker"
+    assert worker_events[0]["workers"][0]["status"] == "running"
+    assert [worker["detail"] for worker in worker_events[0]["workers"]] == [
         "/bin/echo os",
         "/bin/echo kernel",
         "/bin/echo nginx",
     ]
-    assert {agent["status_key"] for agent in agent_events[-1]["agents"]} == {
-        "runtime.agent.status.exit",
+    assert {worker["status"] for worker in worker_events[-1]["workers"]} == {"finished"}
+    assert {worker["summary_key"] for worker in worker_events[-1]["workers"]} == {
+        "runtime.agent.status.exit"
     }
-    assert [agent["status_params"]["exit_code"] for agent in agent_events[-1]["agents"]] == [
+    assert [worker["summary_params"]["exit_code"] for worker in worker_events[-1]["workers"]] == [
         0,
         0,
         0,

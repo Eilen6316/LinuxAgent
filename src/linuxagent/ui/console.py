@@ -18,6 +18,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.text import Text
 
+from .. import __version__
 from ..execution_display import execution_display_text
 from ..i18n import Translator, default_translator
 from ..interfaces import ExecutionResult, UserInterface
@@ -47,12 +48,16 @@ class ConsoleUI(UserInterface):
         history_path: Path | None = None,
         session_factory: Any | None = None,
         translator: Translator | None = None,
+        provider: str | None = None,
+        model: str | None = None,
     ) -> None:
         self._console = console or Console()
         self._theme = theme
         self._prompt_symbol = prompt_symbol
         self._history_path = history_path or (Path.home() / ".linuxagent" / "prompt_history")
         self._translator = translator or default_translator()
+        self._provider = provider
+        self._model = model
         self._activity_visible = True
         self._working_status: WorkingStatus | None = None
         self._prompt_session = PromptSessionManager(
@@ -166,19 +171,48 @@ class ConsoleUI(UserInterface):
     def _print_hero(self) -> None:
         self.clear_activity()
         self._console.print(self._hero_text())
+        if self._console.width < HERO_MIN_WIDTH:
+            return
+        tagline = self._translator.t("ui.hero.tagline")
+        self._console.print(Text(f"  {tagline}", style="dim"))
+        self._console.print(Text(f"  {self._hero_meta_line()}", style="dim"))
+        divider_width = max(20, min(80, self._console.width - 2))
+        self._console.print(Text(f"  {'─' * divider_width}", style="dim"))
 
     def _hero_text(self) -> Text:
         if self._console.width < HERO_MIN_WIDTH:
             return self._compact_hero_text()
+        if self._theme == "light":
+            hero = Text()
+            for line in HERO_WORD:
+                hero.append(f"{line}\n", style=f"bold {self._accent_style()}")
+            return hero
+        width = max(len(line) for line in HERO_WORD)
         hero = Text()
         for line in HERO_WORD:
-            hero.append(f"{line}\n", style=f"bold {self._accent_style()}")
+            for col, ch in enumerate(line):
+                if ch == " ":
+                    hero.append(ch)
+                else:
+                    hero.append(ch, style=f"bold {_hero_gradient_color(col, width)}")
+            hero.append("\n")
         return hero
 
     def _compact_hero_text(self) -> Text:
         hero = Text()
         hero.append("LINUXAGENT", style=f"bold {self._accent_style()}")
+        hero.append(f"  v{__version__}", style="dim")
         return hero
+
+    def _hero_meta_line(self) -> str:
+        if self._provider and self._model:
+            return self._translator.t(
+                "ui.hero.meta_full",
+                version=__version__,
+                provider=self._provider,
+                model=self._model,
+            )
+        return self._translator.t("ui.hero.meta_short", version=__version__)
 
     def _render_confirm(self, payload: dict[str, Any]) -> None:
         self.clear_activity()
@@ -231,6 +265,16 @@ HERO_WORD = (
     "  ██      ██ ██  ██ ██ ██    ██  ██ ██  ██   ██ ██    ██ ██      ██  ██ ██    ██",
     "  ███████ ██ ██   ████  ██████  ██   ██ ██   ██  ██████  ███████ ██   ████    ██",
 )
+_HERO_GRADIENT_START = (0, 212, 255)
+_HERO_GRADIENT_END = (255, 102, 217)
+
+
+def _hero_gradient_color(col: int, width: int) -> str:
+    t = col / max(1, width - 1)
+    r = int(_HERO_GRADIENT_START[0] + (_HERO_GRADIENT_END[0] - _HERO_GRADIENT_START[0]) * t)
+    g = int(_HERO_GRADIENT_START[1] + (_HERO_GRADIENT_END[1] - _HERO_GRADIENT_START[1]) * t)
+    b = int(_HERO_GRADIENT_START[2] + (_HERO_GRADIENT_END[2] - _HERO_GRADIENT_START[2]) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def _file_patch_approval_response(

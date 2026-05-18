@@ -10,6 +10,7 @@ from typing import Any
 from prompt_toolkit.document import Document
 from rich.console import Console
 
+from linuxagent import __version__
 from linuxagent.config.models import LanguageCode
 from linuxagent.i18n import Translator
 from linuxagent.interfaces import ExecutionResult
@@ -79,6 +80,27 @@ def test_console_ui_prints_linuxagent_wordmark() -> None:
     assert "HITL-safe" not in rendered
     assert "▟▙" not in rendered
     assert "╭" not in rendered
+    assert "LLM-driven Linux operations" in rendered
+    assert "Human-in-the-Loop safety" in rendered
+    assert f"v{__version__}" in rendered
+    assert "/help" in rendered
+    assert "─" in rendered
+
+
+def test_console_ui_hero_meta_includes_provider_and_model() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(
+        console=console,
+        translator=EN_TRANSLATOR,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+    )
+
+    ui._print_hero()
+
+    rendered = console.export_text()
+    assert "anthropic/claude-sonnet-4-6" in rendered
+    assert f"v{__version__}" in rendered
 
 
 def test_console_ui_uses_compact_wordmark_on_narrow_terminals() -> None:
@@ -88,7 +110,9 @@ def test_console_ui_uses_compact_wordmark_on_narrow_terminals() -> None:
     ui._print_hero()
 
     rendered = console.export_text()
-    assert rendered.strip() == "LINUXAGENT"
+    assert "LINUXAGENT" in rendered
+    assert f"v{__version__}" in rendered
+    assert "LLM-driven" not in rendered
 
 
 def test_console_ui_default_history_file_is_0600(tmp_path: Path) -> None:

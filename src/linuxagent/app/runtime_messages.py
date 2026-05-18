@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..i18n import Translator, default_translator
+from ..i18n import CatalogError, Translator, default_translator
 from ..security.redaction import redact_text
 
 _TOOL_EVIDENCE_ITEMS = 3
@@ -63,8 +63,8 @@ def runtime_event_message(
         return _command_event_message(phase, event, tr)
     if event_type == "command_batch":
         return _command_batch_event_message(phase, event, tr)
-    if event_type == "agent_group":
-        return _agent_group_event_message(event, tr)
+    if event_type in {"worker_group", "agent_group"}:
+        return _worker_group_event_message(event, tr)
     if event_type == "background_job":
         return _background_job_event_message(phase, event, tr)
     if event_type == "activity":
@@ -92,29 +92,28 @@ def _command_batch_event_message(
     return None
 
 
-def _agent_group_event_message(event: dict[str, Any], translator: Translator) -> str | None:
-    title = _agent_group_title(event, translator)
-    items = _agent_items(event.get("agents"))
+def _worker_group_event_message(event: dict[str, Any], translator: Translator) -> str | None:
+    title = _worker_group_title(event, translator)
+    items = _worker_items(event)
     if not items:
         return title
     lines = [title]
     for item in items[:_AGENT_ITEMS]:
         name = _trim_agent_detail(
-            _agent_text(item, translator, "name", str(item.get("id") or "agent"))
+            _localized_event_text(item, translator, "name").strip()
+            or str(item.get("id") or "worker")
         )
-        status = _trim_agent_detail(_agent_text(item, translator, "status", "running"))
-        detail = _agent_detail(item)
+        status = _trim_agent_detail(_worker_status_text(item, translator))
+        detail = _worker_detail(item, translator)
         suffix = f" - {detail}" if detail else ""
         lines.append(f"  - {name}: {status}{suffix}")
     return "\n".join(lines)
 
 
-def _agent_group_title(event: dict[str, Any], translator: Translator) -> str:
+def _worker_group_title(event: dict[str, Any], translator: Translator) -> str:
     label = _localized_event_text(event, translator, "label").strip()
     active = int(event.get("active") or 0)
-    total = int(
-        event.get("total") or event.get("count") or active or len(_agent_items(event.get("agents")))
-    )
+    total = int(event.get("total") or event.get("count") or active or len(_worker_items(event)))
     if label:
         return translator.t(
             "runtime.agent_group_status_named", label=label, active=active, total=total
@@ -122,31 +121,57 @@ def _agent_group_title(event: dict[str, Any], translator: Translator) -> str:
     return translator.t("runtime.agent_group_status", active=active, total=total)
 
 
-def _agent_items(value: Any) -> tuple[dict[str, Any], ...]:
+def _worker_items(event: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    workers = _event_items(event.get("workers"))
+    if workers:
+        return workers
+    return _event_items(event.get("agents"))
+
+
+def _event_items(value: Any) -> tuple[dict[str, Any], ...]:
     if not isinstance(value, list):
         return ()
     return tuple(item for item in value if isinstance(item, dict))
 
 
-def _agent_detail(item: dict[str, Any]) -> str:
-    raw = item.get("detail") or item.get("summary") or item.get("content") or ""
+def _worker_status_text(item: dict[str, Any], translator: Translator) -> str:
+    text = _localized_event_key_text(item, translator, "status").strip()
+    if text:
+        return text
+    status = str(item.get("status") or "running")
+    status_key = f"runtime.agent.status.{status}"
+    try:
+        return translator.t(status_key)
+    except CatalogError:
+        return status
+
+
+def _worker_detail(item: dict[str, Any], translator: Translator) -> str:
+    raw = (
+        _localized_event_text(item, translator, "detail").strip()
+        or _localized_event_text(item, translator, "summary").strip()
+        or _localized_event_text(item, translator, "error").strip()
+        or str(item.get("content") or "")
+    )
     text = redact_text(str(raw)).text.strip()
     return _trim_agent_detail(" ".join(text.split()))
 
 
-def _agent_text(item: dict[str, Any], translator: Translator, field: str, fallback: str) -> str:
-    text = _localized_event_text(item, translator, field).strip()
-    return text or fallback
-
-
 def _localized_event_text(item: dict[str, Any], translator: Translator, field: str) -> str:
+    text = _localized_event_key_text(item, translator, field)
+    if text:
+        return text
+    return str(item.get(field) or "")
+
+
+def _localized_event_key_text(item: dict[str, Any], translator: Translator, field: str) -> str:
     key = item.get(f"{field}_key")
     if isinstance(key, str) and key.strip():
         params = item.get(f"{field}_params")
         if isinstance(params, dict):
             return translator.t(key, **params)
         return translator.t(key)
-    return str(item.get(field) or "")
+    return ""
 
 
 def _trim_agent_detail(text: str) -> str:

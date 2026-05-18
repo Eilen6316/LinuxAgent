@@ -129,8 +129,11 @@ runtime:
   agent:
     command_worker: "命令 worker {index}"
     status:
+      queued: "排队中"
       running: "运行中"
       finished: "已完成"
+      failed: "失败"
+      cancelled: "已取消"
       exit: "exit {exit_code}"
   background_start: "LinuxAgent 后台任务已启动：{job_id}"
   background_finish: "LinuxAgent 后台任务结束：{job_id}（{status}）"
@@ -257,6 +260,10 @@ tool_catalog:
     filesystem_isolation: "请求的 profile 可执行时启用文件系统隔离"
     privileged_passthrough: "特权直通；无 sandbox 隔离"
 ui:
+  hero:
+    tagline: "面向 Linux 运维的 LLM 助手  ·  人机协同安全"
+    meta_full: "v{version}  ·  {provider}/{model}  ·  /help  /resume  Esc 中断"
+    meta_short: "v{version}  ·  /help  /resume  Esc 中断"
   console:
     command_result_title: "命令结果 · exit {exit_code}"
   approval:

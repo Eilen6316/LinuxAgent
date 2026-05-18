@@ -442,7 +442,12 @@ class Container:
     def ui(self) -> UserInterface:
         return self._cached(
             "ui",
-            lambda: build_ui(self._config.ui, self.translator()),
+            lambda: build_ui(
+                self._config.ui,
+                self.translator(),
+                provider=self._config.api.provider,
+                model=self._config.api.model,
+            ),
         )
 
     def embeddings(self) -> OpenAIEmbeddings:

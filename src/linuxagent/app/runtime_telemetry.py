@@ -16,6 +16,7 @@ def record_runtime_event(telemetry: TelemetryRecorder, event: dict[str, Any]) ->
             "activity",
             "command",
             "command_batch",
+            "worker_group",
             "agent_group",
             "background_job",
         }
@@ -31,6 +32,7 @@ def record_runtime_event(telemetry: TelemetryRecorder, event: dict[str, Any]) ->
         "job_status": event.get("status"),
         "goal": event.get("goal"),
         "label": event.get("label"),
+        "label_key": event.get("label_key"),
         "count": event.get("count"),
         "active": event.get("active"),
         "total": event.get("total"),
