@@ -258,6 +258,16 @@ async def _execute_parallel_read_only_batch(
         await notify_command_result(runtime_observer, current_trace_id, result)
     await _notify_parallel_agent_results(runtime_observer, current_trace_id, results)
     await _notify_batch(runtime_observer, current_trace_id, "finish", commands)
+    return _parallel_batch_update(state, batch_steps, results, runtime_observer, current_trace_id)
+
+
+def _parallel_batch_update(
+    state: AgentState,
+    batch_steps: tuple[BatchStep, ...],
+    results: tuple[ExecutionResult, ...],
+    runtime_observer: RuntimeEventObserver | None,
+    current_trace_id: str,
+) -> AgentState:
     update: AgentState = {
         "trace_id": current_trace_id,
         "execution_result": results[-1],
