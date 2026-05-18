@@ -7,8 +7,8 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage
 
-from linuxagent.graph.llm_calls import complete_llm
 from linuxagent.interfaces import LLM_CALL_METADATA_KEY
+from linuxagent.llm_calls import complete_llm
 from linuxagent.telemetry import TelemetryRecorder
 
 

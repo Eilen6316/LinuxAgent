@@ -1,7 +1,7 @@
 scenario: "automatic wizard checkpoint resumes to submit and follow-up planning"
 provider_responses:
   - '{"mode":"WIZARD_NEEDED","answer":"","reason":"structured inputs are needed","answer_context":"none"}'
-  - '{"user_intent":"collect deployment constraints","steps":[{"id":"service","title":"服务类型","kind":"single","options":[{"id":"web","label":"Web","description":"Web 服务"},{"id":"worker","label":"Worker","description":"后台任务"}]},{"id":"env","title":"目标环境","kind":"single","options":[{"id":"dev","label":"Dev","description":"开发环境"},{"id":"prod","label":"Prod","description":"生产环境"}]}]}'
+  - '{"user_intent":"collect deployment constraints","steps":[{"id":"service","title":"服务类型","kind":"single","options":[{"id":"web","label":"Web","description":"Web 服务"},{"id":"worker","label":"Worker","description":"后台任务"},{"id":"job","label":"Job","description":"定时任务"}]},{"id":"env","title":"目标环境","kind":"single","options":[{"id":"dev","label":"Dev","description":"开发环境"},{"id":"stage","label":"Stage","description":"预发环境"},{"id":"prod","label":"Prod","description":"生产环境"}]}]}'
   - '{"goal":"echo wizard result","commands":[{"command":"/bin/echo wizard-submitted","purpose":"confirm submitted wizard context","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
   - "wizard submitted analysis"
 setup:

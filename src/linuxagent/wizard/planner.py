@@ -8,8 +8,8 @@ from typing import Literal
 
 from langchain_core.messages import BaseMessage
 
-from ..graph.llm_calls import complete_llm
 from ..interfaces import LLMProvider
+from ..llm_calls import complete_llm
 from ..prompts_loader import build_wizard_planner_prompt
 from ..security import redact_record, redact_text
 from ..telemetry import TelemetryRecorder

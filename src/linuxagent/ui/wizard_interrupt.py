@@ -37,7 +37,10 @@ async def handle_wizard_interrupt(
         translator=translator,
     )
     if isinstance(result, WizardCheckpoint):
-        raise RuntimeError("wizard checkpoint exit is disabled for CLI interrupts")
+        return {
+            "status": result.status,
+            "stable_state": result.stable_state.model_dump(mode="json"),
+        }
     response = result.model_dump(mode="json")
     if latest_stable_state is not None:
         response["stable_state"] = latest_stable_state.model_dump(mode="json")
