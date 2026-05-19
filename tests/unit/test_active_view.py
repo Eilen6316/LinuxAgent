@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 from linuxagent.active_view import ActiveTurnView, apply_event, render_active_view_summary
+from linuxagent.pending_request import (
+    PendingRequestType,
+    build_pending_request,
+    request_resolved_event,
+    request_started_event,
+)
 from linuxagent.runtime_events import (
     RuntimeEvent,
     RuntimeEventKind,
@@ -120,6 +126,29 @@ def test_minimal_consumer_uses_public_view_contract() -> None:
         "item:running:tool:tool:reading",
         "request:requested:user_input:req-1",
     ]
+
+
+def test_active_view_reduces_pending_request_protocol_events() -> None:
+    request = build_pending_request(
+        turn_id="turn-1",
+        request_id="req-1",
+        request_type=PendingRequestType.REQUEST_USER_INPUT.value,
+    )
+    view = apply_event(
+        ActiveTurnView(), request_started_event(thread_id="thread-1", request=request)
+    )
+    view = apply_event(
+        view,
+        request_resolved_event(
+            thread_id="thread-1",
+            request=request,
+            result={"status": "submit"},
+        ),
+    )
+
+    snapshot = view.to_snapshot()
+    assert snapshot["status"] == "running"
+    assert "pending_request" not in snapshot
 
 
 def _work_item(

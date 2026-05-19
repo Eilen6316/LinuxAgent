@@ -118,6 +118,8 @@ def _apply_work_item_event(view: ActiveTurnView, event: RuntimeEvent) -> ActiveT
 
 def _apply_request_event(view: ActiveTurnView, event: RuntimeEvent) -> ActiveTurnView:
     request = _request_from_payload(event.payload, event.phase)
+    if request is not None and request.status in {"resolved", "cancelled"}:
+        return replace(_ensure_turn(view, event), pending_request=None)
     return replace(_ensure_turn(view, event), pending_request=request)
 
 
