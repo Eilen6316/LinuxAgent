@@ -1,0 +1,145 @@
+"""Tests for the active-turn view reducer."""
+
+from __future__ import annotations
+
+from linuxagent.active_view import ActiveTurnView, apply_event, render_active_view_summary
+from linuxagent.runtime_events import (
+    RuntimeEvent,
+    RuntimeEventKind,
+    RuntimeEventPhase,
+    RuntimeWorkItem,
+    WorkItemCategory,
+    WorkItemStatus,
+    runtime_event,
+    work_item_runtime_event,
+)
+
+
+def test_active_view_reduces_complete_turn_lifecycle() -> None:
+    view = ActiveTurnView()
+    started = runtime_event(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        kind=RuntimeEventKind.TURN,
+        phase=RuntimeEventPhase.STARTED,
+    )
+    completed = runtime_event(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        kind=RuntimeEventKind.TURN,
+        phase=RuntimeEventPhase.COMPLETED,
+    )
+
+    view = apply_event(view, started)
+    view = apply_event(view, completed)
+
+    assert view.to_snapshot() == {
+        "schema_version": 1,
+        "thread_id": "thread-1",
+        "turn_id": "turn-1",
+        "status": "completed",
+        "items": [],
+    }
+
+
+def test_active_view_keeps_work_item_order_stable_on_updates() -> None:
+    view = ActiveTurnView()
+    first = _work_item("first", WorkItemStatus.RUNNING)
+    second = _work_item("second", WorkItemStatus.RUNNING)
+    first_done = _work_item("first", WorkItemStatus.COMPLETED, summary="done")
+
+    for event in (first, second, first_done):
+        view = apply_event(view, event)
+
+    snapshot = view.to_snapshot()
+    assert [item["item_id"] for item in snapshot["items"]] == ["second", "first"]
+    assert snapshot["items"][1]["status"] == "completed"
+    assert snapshot["items"][1]["summary"] == "done"
+
+
+def test_active_view_tracks_failed_cancelled_and_pending_request() -> None:
+    view = ActiveTurnView()
+    failed_item = _work_item("cmd", WorkItemStatus.FAILED, reason="exit 1")
+    cancelled_turn = runtime_event(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        kind=RuntimeEventKind.TURN,
+        phase=RuntimeEventPhase.CANCELLED,
+    )
+    request = runtime_event(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        kind=RuntimeEventKind.REQUEST,
+        phase=RuntimeEventPhase.REQUESTED,
+        payload={"request_id": "req-1", "request_type": "confirm_command"},
+    )
+
+    for event in (failed_item, request, cancelled_turn):
+        view = apply_event(view, event)
+
+    snapshot = view.to_snapshot()
+    assert snapshot["status"] == "cancelled"
+    assert snapshot["items"][0]["status"] == "failed"
+    assert snapshot["items"][0]["reason"] == "exit 1"
+    assert snapshot["pending_request"] == {
+        "request_id": "req-1",
+        "request_type": "confirm_command",
+        "status": "requested",
+    }
+
+
+def test_active_view_ignores_invalid_and_repeated_events() -> None:
+    view = ActiveTurnView()
+    event = _work_item("tool", WorkItemStatus.RUNNING)
+
+    view = apply_event(view, {"not": "runtime-event"})
+    view = apply_event(view, event)
+    view = apply_event(view, event)
+
+    snapshot = view.to_snapshot()
+    assert len(snapshot["items"]) == 1
+    assert snapshot["items"][0]["item_id"] == "tool"
+
+
+def test_minimal_consumer_uses_public_view_contract() -> None:
+    view = ActiveTurnView()
+    view = apply_event(view, _work_item("tool", WorkItemStatus.RUNNING, summary="reading"))
+    view = apply_event(
+        view,
+        runtime_event(
+            thread_id="thread-1",
+            turn_id="turn-1",
+            kind=RuntimeEventKind.REQUEST,
+            phase=RuntimeEventPhase.REQUESTED,
+            payload={"request_id": "req-1", "request_type": "user_input"},
+        ),
+    )
+
+    assert render_active_view_summary(view) == [
+        "turn:running:turn-1",
+        "item:running:tool:tool:reading",
+        "request:requested:user_input:req-1",
+    ]
+
+
+def _work_item(
+    item_id: str,
+    status: WorkItemStatus,
+    *,
+    summary: str | None = None,
+    reason: str | None = None,
+) -> RuntimeEvent:
+    item = RuntimeWorkItem(
+        item_id=item_id,
+        category=WorkItemCategory.TOOL,
+        status=status,
+        label="tool",
+        summary=summary,
+        reason=reason,
+    )
+    return work_item_runtime_event(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        item=item,
+        phase=RuntimeEventPhase.UPDATED,
+    )
