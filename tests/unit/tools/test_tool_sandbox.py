@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import pytest
@@ -175,6 +176,33 @@ async def test_sync_tool_timeout_returns_structured_timeout() -> None:
     assert result.event["phase"] == "error"
     assert result.event["status"] == "timeout"
     assert "tool exceeded 0.05s" in result.content
+
+
+async def test_sync_tool_timeout_does_not_block_event_loop() -> None:
+    @tool
+    def slow_sync_tool() -> str:
+        """Sleep longer than the configured tool timeout."""
+        time.sleep(0.2)
+        return "late"
+
+    started = time.monotonic()
+    task = asyncio.create_task(
+        invoke_tool_with_sandbox(
+            attach_tool_sandbox(
+                slow_sync_tool,
+                ToolSandboxSpec(profile=SandboxProfile.READ_ONLY, timeout_seconds=0.03),
+            ),
+            {},
+            limits=ToolRuntimeLimits(timeout_seconds=0.03, max_output_chars=200),
+            remaining_total_chars=200,
+        )
+    )
+    await asyncio.sleep(0.01)
+
+    assert time.monotonic() - started < 0.08
+    assert not task.done()
+    result = await task
+    assert result.event["status"] == "timeout"
 
 
 async def test_tool_event_redacts_sensitive_args() -> None:

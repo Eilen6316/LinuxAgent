@@ -179,6 +179,29 @@ def work_item_runtime_event(
     )
 
 
+def tool_work_item_event(
+    event: Mapping[str, Any],
+    *,
+    thread_id: str,
+    turn_id: str,
+) -> RuntimeEvent:
+    """Adapt a tool runtime event into the typed work-item protocol."""
+
+    phase = _tool_runtime_phase(event)
+    item = RuntimeWorkItem(
+        item_id=_tool_item_id(event),
+        category=WorkItemCategory.TOOL,
+        status=_status_from_phase(phase),
+        label=_optional_str(event.get("tool_name")),
+        summary=_tool_summary(event),
+        result_preview=_preview(event.get("output_preview")),
+        reason=_preview(event.get("reason") or _tool_error_message(event)),
+        label_params=_tool_label_params(event),
+        summary_params=_tool_summary_params(event),
+    )
+    return work_item_runtime_event(thread_id=thread_id, turn_id=turn_id, item=item, phase=phase)
+
+
 def legacy_work_item_event(
     event: Mapping[str, Any],
     *,
@@ -360,6 +383,65 @@ def _legacy_event_kind(event_type: str) -> RuntimeEventKind:
     if event_type == "context":
         return RuntimeEventKind.CONTEXT
     return RuntimeEventKind.LEGACY
+
+
+def _tool_runtime_phase(event: Mapping[str, Any]) -> RuntimeEventPhase:
+    phase = str(event.get("phase") or "")
+    status = str(event.get("status") or "")
+    if phase in {"start", "started"}:
+        return RuntimeEventPhase.STARTED
+    if status == "cancelled" or phase == "cancelled":
+        return RuntimeEventPhase.CANCELLED
+    if status == "timeout" or phase == "timeout":
+        return RuntimeEventPhase.FAILED
+    if phase in {"error", "failed"} or status in {"denied", "error"}:
+        return RuntimeEventPhase.FAILED
+    if phase in {"end", "completed", "finish"}:
+        return RuntimeEventPhase.COMPLETED
+    if phase in {"delta", "running"}:
+        return RuntimeEventPhase.DELTA
+    return RuntimeEventPhase.UPDATED
+
+
+def _tool_item_id(event: Mapping[str, Any]) -> str:
+    trace_id = _optional_str(event.get("trace_id"))
+    tool_name = _optional_str(event.get("tool_name")) or "tool"
+    if trace_id:
+        return f"tool:{trace_id}:{tool_name}"
+    return f"tool:{tool_name}"
+
+
+def _tool_summary(event: Mapping[str, Any]) -> str | None:
+    status = _optional_str(event.get("status"))
+    duration = _optional_int(event.get("duration_ms"))
+    if status and duration is not None:
+        return f"{status} · {duration}ms"
+    return status
+
+
+def _tool_error_message(event: Mapping[str, Any]) -> str | None:
+    status = str(event.get("status") or "")
+    if status in {"allowed", "truncated", "started"}:
+        return None
+    return _optional_str(event.get("output_preview"))
+
+
+def _tool_label_params(event: Mapping[str, Any]) -> dict[str, object]:
+    params: dict[str, object] = {}
+    _maybe_set(params, "tool_name", _optional_str(event.get("tool_name")))
+    _maybe_set(params, "args", _dict_object(event.get("args")))
+    _maybe_set(params, "sandbox", _dict_object(event.get("sandbox")))
+    return params
+
+
+def _tool_summary_params(event: Mapping[str, Any]) -> dict[str, object]:
+    params: dict[str, object] = {}
+    _maybe_set(params, "status", _optional_str(event.get("status")))
+    _maybe_set(params, "duration_ms", _optional_int(event.get("duration_ms")))
+    _maybe_set(params, "output_chars", _optional_int(event.get("output_chars")))
+    truncated = event.get("truncated")
+    _maybe_set(params, "truncated", truncated if isinstance(truncated, bool) else None)
+    return params
 
 
 def _work_item_category(event_type: str) -> WorkItemCategory:

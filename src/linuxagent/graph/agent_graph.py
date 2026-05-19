@@ -120,6 +120,7 @@ def _add_file_patch_nodes(graph: Any, deps: GraphDependencies) -> None:
                 tools=deps.tools,
                 telemetry=deps.telemetry,
                 tool_observer=deps.tool_observer,
+                runtime_observer=deps.runtime_observer,
                 tool_runtime_limits=deps.tool_runtime_limits,
             )
         ),

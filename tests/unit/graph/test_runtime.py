@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command, Interrupt
 
 from linuxagent.graph.runtime import GraphRuntime
+from linuxagent.graph.turn_context import current_turn_context
 from linuxagent.runtime_control import CancellationToken, current_cancellation_token
 
 
@@ -62,6 +63,21 @@ class _TokenCheckingGraph(_FakeGraph):
     async def ainvoke(self, state: Any, config: Any) -> Any:
         del state, config
         self.seen_token = current_cancellation_token()
+        return self.result
+
+
+class _TurnContextCheckingGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__(result={"messages": []})
+        self.seen_thread_id: str | None = None
+        self.seen_turn_id: str | None = None
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del state, config
+        context = current_turn_context()
+        if context is not None:
+            self.seen_thread_id = context.thread_id
+            self.seen_turn_id = context.turn_id
         return self.result
 
 
@@ -222,3 +238,13 @@ async def test_run_exposes_cancellation_token_in_runtime_scope() -> None:
     )
 
     assert graph.seen_token is token
+
+
+async def test_run_exposes_turn_context_in_runtime_scope() -> None:
+    graph = _TurnContextCheckingGraph()
+    runtime = GraphRuntime(graph)  # type: ignore[arg-type]
+
+    await runtime.run({"messages": []}, thread_id="thread", turn_id="turn-1")  # type: ignore[arg-type]
+
+    assert graph.seen_thread_id == "thread"
+    assert graph.seen_turn_id == "turn-1"

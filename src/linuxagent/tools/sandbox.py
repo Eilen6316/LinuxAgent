@@ -378,6 +378,7 @@ def _tool_event(
 ) -> dict[str, Any]:
     redacted_args = redact_record({"args": args}).get("args", {})
     return {
+        "type": "tool",
         "phase": phase,
         "status": status,
         "tool_name": tool.name,

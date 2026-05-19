@@ -30,6 +30,7 @@ from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
 from .common import trace_id
+from .events import RuntimeEventObserver
 from .file_patch_common import (
     DEFAULT_FILE_PATCH_REPAIR_ATTEMPTS,
     MAX_PATCH_CONTEXT_CHARS,
@@ -63,6 +64,7 @@ def make_repair_file_patch_node(
     tools: tuple[BaseTool, ...] = (),
     telemetry: TelemetryRecorder | None = None,
     tool_observer: ToolEventObserver | None = None,
+    runtime_observer: RuntimeEventObserver | None = None,
     tool_runtime_limits: ToolRuntimeLimits | None = None,
     prompt_cache_key: str | None = None,
 ) -> Node:
@@ -71,8 +73,9 @@ def make_repair_file_patch_node(
 
     async def repair_file_patch_node(state: AgentState) -> Command[Any]:
         current_trace_id = trace_id(state)
-        cache_key = state.get("prompt_cache_key") or prompt_cache_key
-        await _notify_repair_start(state, telemetry, tool_observer, current_trace_id)
+        await _notify_repair_start(
+            state, telemetry, tool_observer, runtime_observer, current_trace_id
+        )
         prompt_messages = prompt.format_messages(
             original_request=_last_human_text(state.get("messages", [])),
             previous_plan=_previous_plan_json(state),
@@ -88,9 +91,10 @@ def make_repair_file_patch_node(
                 prompt_messages,
                 tools,
                 tool_observer,
+                runtime_observer,
                 telemetry,
                 runtime_limits,
-                cache_key,
+                state.get("prompt_cache_key") or prompt_cache_key,
             )
         except (
             CommandPlanParseError,
@@ -114,6 +118,7 @@ async def _complete_repair_candidate_plan(
     prompt_messages: list[BaseMessage],
     tools: tuple[BaseTool, ...],
     tool_observer: ToolEventObserver | None,
+    runtime_observer: RuntimeEventObserver | None,
     telemetry: TelemetryRecorder | None,
     runtime_limits: ToolRuntimeLimits,
     prompt_cache_key: str | None,
@@ -124,6 +129,7 @@ async def _complete_repair_candidate_plan(
         tools,
         telemetry,
         tool_observer,
+        runtime_observer,
         current_trace_id,
         runtime_limits,
         prompt_cache_key,
@@ -155,6 +161,7 @@ async def _complete_repair_plan_with_fallback(
     tools: tuple[BaseTool, ...],
     telemetry: TelemetryRecorder | None,
     observer: ToolEventObserver | None,
+    runtime_observer: RuntimeEventObserver | None,
     current_trace_id: str,
     tool_runtime_limits: ToolRuntimeLimits,
     prompt_cache_key: str | None,
@@ -166,6 +173,7 @@ async def _complete_repair_plan_with_fallback(
             tools,
             telemetry,
             observer,
+            runtime_observer,
             current_trace_id,
             tool_runtime_limits,
             prompt_cache_key,
@@ -179,6 +187,7 @@ async def _complete_repair_plan_with_fallback(
         (),
         telemetry,
         observer,
+        runtime_observer,
         current_trace_id,
         tool_runtime_limits,
         prompt_cache_key,
@@ -322,6 +331,7 @@ async def _complete_repair_plan(
     tools: tuple[BaseTool, ...],
     telemetry: TelemetryRecorder | None,
     observer: ToolEventObserver | None,
+    runtime_observer: RuntimeEventObserver | None,
     current_trace_id: str,
     tool_runtime_limits: ToolRuntimeLimits,
     prompt_cache_key: str | None,
@@ -349,7 +359,9 @@ async def _complete_repair_plan(
                 prompt_cache_key,
             ),
             tool_runtime_limits=tool_runtime_limits,
-            tool_observer=tool_event_observer(telemetry, observer, current_trace_id),
+            tool_observer=tool_event_observer(
+                telemetry, observer, current_trace_id, runtime_observer=runtime_observer
+            ),
         )
     ).strip()
 
@@ -358,11 +370,12 @@ async def _notify_repair_start(
     state: AgentState,
     telemetry: TelemetryRecorder | None,
     observer: ToolEventObserver | None,
+    runtime_observer: RuntimeEventObserver | None,
     current_trace_id: str,
 ) -> None:
-    notification = tool_event_observer(telemetry, observer, current_trace_id)(
-        _repair_tool_event(state)
-    )
+    notification = tool_event_observer(
+        telemetry, observer, current_trace_id, runtime_observer=runtime_observer
+    )(_repair_tool_event(state))
     if notification is not None:
         await notification
 

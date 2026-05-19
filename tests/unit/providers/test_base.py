@@ -421,6 +421,7 @@ async def test_complete_with_tools_rejects_unwrapped_tool_before_binding() -> No
     assert model.bound_tools == []
     assert events == [
         {
+            "type": "tool",
             "phase": "error",
             "status": "denied",
             "tool_name": "lookup_status",
@@ -467,6 +468,7 @@ async def test_complete_with_tools_emits_tool_observer_events() -> None:
     )
 
     assert [event["phase"] for event in events] == ["start", "end"]
+    assert [event["type"] for event in events] == ["tool", "tool"]
     assert events[0]["tool_name"] == "lookup_status"
     assert events[0]["args"] == {"service": "nginx"}
     assert events[0]["sandbox"]["profile"] == "read_only"

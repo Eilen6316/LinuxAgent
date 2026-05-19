@@ -22,6 +22,7 @@ from ..runtime_events import RuntimeEventKind, RuntimeEventPhase, runtime_event
 from .agent_graph import AgentGraph
 from .events import RuntimeEventObserver, notify_event
 from .state import AgentState
+from .turn_context import RuntimeTurnContext, turn_context_scope
 
 GRAPH_LIMIT = 100
 
@@ -148,7 +149,8 @@ class GraphRuntime:
         active_turn_id = _active_turn_id(turn_id, cancellation_token)
         await self._notify_turn(active_turn_id, thread_id, RuntimeEventPhase.STARTED)
         try:
-            with cancellation_scope(cancellation_token):
+            runtime_context = RuntimeTurnContext(thread_id=thread_id, turn_id=active_turn_id)
+            with cancellation_scope(cancellation_token), turn_context_scope(runtime_context):
                 result = await self._invoke_graph_with_interrupt_fallback(
                     graph_input,
                     thread_id=thread_id,

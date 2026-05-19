@@ -18,6 +18,7 @@ from ..plans import (
 from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
+from .events import RuntimeEventObserver
 from .llm_calls import LLMCallOptions, complete_llm, complete_llm_with_tools
 from .tool_loop import ToolEventObserver, tool_event_observer
 
@@ -43,6 +44,9 @@ class PlannerContext(Protocol):
 
     @property
     def tool_observer(self) -> ToolEventObserver | None: ...
+
+    @property
+    def runtime_observer(self) -> RuntimeEventObserver | None: ...
 
     @property
     def tool_runtime_limits(self) -> ToolRuntimeLimits: ...
@@ -91,6 +95,7 @@ async def _complete_plan_candidate(
                 context.tool_observer,
                 current_trace_id,
                 observed_tool_outputs,
+                context.runtime_observer,
             ),
         )
     except ProviderError as exc:

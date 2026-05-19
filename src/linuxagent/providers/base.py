@@ -484,6 +484,7 @@ async def _ensure_tool_sandbox_specs(tools: list[BaseTool], observer: ToolObserv
         await _notify_tool_observer(
             observer,
             {
+                "type": "tool",
                 "phase": "error",
                 "status": "denied",
                 "tool_name": item.name,
@@ -646,6 +647,7 @@ def _tool_event(
 ) -> dict[str, Any]:
     redacted_args = redact_record({"args": args}).get("args", {})
     event: dict[str, Any] = {
+        "type": "tool",
         "phase": phase,
         "status": "started",
         "tool_name": tool_name,
