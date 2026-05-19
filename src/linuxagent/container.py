@@ -47,6 +47,7 @@ from .services import (
 from .skills import load_skill_manifests
 from .telemetry import TelemetryRecorder
 from .tools import ToolCatalogReport, ToolRuntimeLimits, build_network_tools
+from .turn_history import TurnHistorySummary, consolidate_turn_history
 from .usage_insights import (
     CommandLearner,
     ContextManager,
@@ -87,6 +88,8 @@ class Container:
         self._streamed_outputs: set[tuple[str, str]] = set()
         self._last_activity_message = ""
         self._active_turn_view = ActiveTurnView()
+        self._turn_history_summaries: list[TurnHistorySummary] = []
+        self._last_turn_history_key: tuple[str, str, str] | None = None
 
     @property
     def config(self) -> AppConfig:
@@ -440,9 +443,21 @@ class Container:
         renderer = getattr(self.ui(), "print_active_view", None)
         if callable(renderer):
             await renderer(self._active_turn_view)
-        if self._active_turn_view.status in {"completed", "failed", "cancelled"}:
-            self._active_turn_view = ActiveTurnView()
+        self._consolidate_active_turn_if_ready()
         return True
+
+    def _consolidate_active_turn_if_ready(self) -> None:
+        summary = consolidate_turn_history(self._active_turn_view)
+        if summary is None:
+            return
+        key = (summary.thread_id, summary.turn_id, summary.status)
+        if key == self._last_turn_history_key:
+            return
+        self._turn_history_summaries.append(summary)
+        self._last_turn_history_key = key
+        if summary.status in {"completed", "failed", "cancelled"}:
+            self._active_turn_view = ActiveTurnView()
+            self._last_turn_history_key = None
 
     def ui(self) -> UserInterface:
         return self._cached(

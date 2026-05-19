@@ -1161,6 +1161,51 @@ async def test_runtime_observer_renders_typed_active_view(
     assert container._active_turn_view.status == "idle"
 
 
+async def test_runtime_observer_consolidates_active_history_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeUI:
+        async def print_active_view(self, view: object) -> None:
+            del view
+
+        async def print_activity(self, text: str) -> None:
+            del text
+
+    monkeypatch.setattr(container_module.Container, "ui", lambda self: _FakeUI())
+    container = Container(AppConfig.model_validate({"telemetry": {"enabled": False}}))
+    observer = container._runtime_event_observer()
+
+    pending_request = {
+        "schema_version": 1,
+        "kind": "request",
+        "phase": "requested",
+        "thread_id": "thread",
+        "turn_id": "turn",
+        "payload": {
+            "request_id": "request",
+            "request_type": "confirm_command",
+        },
+    }
+    completed_turn = {
+        "schema_version": 1,
+        "kind": "turn",
+        "phase": "completed",
+        "thread_id": "thread",
+        "turn_id": "turn",
+        "payload": {},
+    }
+
+    await observer(pending_request)
+    await observer(pending_request)
+    await observer(completed_turn)
+
+    assert [item.status for item in container._turn_history_summaries] == [
+        "pending",
+        "completed",
+    ]
+    assert container._active_turn_view.status == "idle"
+
+
 def test_container_disables_embedding_tools_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
