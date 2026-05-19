@@ -70,6 +70,7 @@ def make_execute_command_tool(
             timeout_seconds=limits.timeout_seconds,
             execute_commands=True,
             network_access=True,
+            resource_keys=("command",),
             hitl=ToolHITLMode.POLICY_GATED,
         ),
     )
@@ -88,20 +89,7 @@ def make_get_system_info_tool(
         Includes kernel, python version, CPU usage, memory, root-fs usage,
         and uptime. No arguments.
         """
-        vm = psutil.virtual_memory()
-        disk = psutil.disk_usage("/")
-        snapshot: dict[str, object] = {
-            "platform": platform.system(),
-            "release": platform.release(),
-            "python_version": sys.version.split()[0],
-            "cpu_percent": psutil.cpu_percent(interval=None),
-            "cpu_count": psutil.cpu_count(logical=True),
-            "memory_total": vm.total,
-            "memory_percent": vm.percent,
-            "disk_total": disk.total,
-            "disk_percent": disk.percent,
-            "boot_time": int(psutil.boot_time()),
-        }
+        snapshot = _system_snapshot()
         config = monitoring_config or MonitoringConfig()
         snapshot["alerts"] = [
             {
@@ -123,8 +111,26 @@ def make_get_system_info_tool(
             max_output_chars=limits.max_output_chars,
             timeout_seconds=limits.timeout_seconds,
             system_inspect=True,
+            parallel_safe=True,
         ),
     )
+
+
+def _system_snapshot() -> dict[str, object]:
+    vm = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+    return {
+        "platform": platform.system(),
+        "release": platform.release(),
+        "python_version": sys.version.split()[0],
+        "cpu_percent": psutil.cpu_percent(interval=None),
+        "cpu_count": psutil.cpu_count(logical=True),
+        "memory_total": vm.total,
+        "memory_percent": vm.percent,
+        "disk_total": disk.total,
+        "disk_percent": disk.percent,
+        "boot_time": int(psutil.boot_time()),
+    }
 
 
 class LogFileAccessError(ValueError):
@@ -227,6 +233,7 @@ def _log_tool_spec(
         timeout_seconds=limits.timeout_seconds,
         read_files=True,
         system_inspect=True,
+        parallel_safe=True,
     )
 
 

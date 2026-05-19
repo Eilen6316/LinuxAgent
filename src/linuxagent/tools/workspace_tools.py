@@ -76,6 +76,7 @@ def make_discover_project_guidance_tool(
             timeout_seconds=limits.timeout_seconds,
             read_files=True,
             system_inspect=True,
+            parallel_safe=True,
         ),
     )
 
@@ -338,4 +339,5 @@ def _workspace_spec(
         max_matches=max_matches,
         timeout_seconds=limits.timeout_seconds,
         read_files=True,
+        parallel_safe=True,
     )

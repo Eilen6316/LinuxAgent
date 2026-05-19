@@ -56,5 +56,6 @@ def make_fetch_url_tool(
             max_output_chars=min(config.max_response_bytes, limits.max_output_chars),
             timeout_seconds=config.timeout_seconds,
             network_access=True,
+            parallel_safe=True,
         ),
     )

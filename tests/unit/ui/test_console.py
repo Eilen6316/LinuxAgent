@@ -180,6 +180,15 @@ def test_console_ui_default_history_file_is_0600(tmp_path: Path) -> None:
     assert history_path.stat().st_mode & 0o777 == 0o600
 
 
+def test_console_ui_disables_prompt_toolkit_cpr(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("PROMPT_TOOLKIT_NO_CPR", raising=False)
+    ui = ConsoleUI(history_path=tmp_path / "prompt_history")
+
+    ui._default_session_factory()
+
+    assert console_module.os.environ["PROMPT_TOOLKIT_NO_CPR"] == "1"
+
+
 def test_console_prompt_turns_magenta_for_direct_shell_prefix() -> None:
     ui = ConsoleUI(prompt_symbol=">")
 

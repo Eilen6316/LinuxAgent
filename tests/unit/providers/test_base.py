@@ -61,6 +61,18 @@ def _sandboxed(tool_obj):
     )
 
 
+def _parallel_sandboxed(tool_obj, *, resource_keys: tuple[str, ...] = ()):
+    return attach_tool_sandbox(
+        tool_obj,
+        ToolSandboxSpec(
+            profile=SandboxProfile.READ_ONLY,
+            max_output_chars=20000,
+            parallel_safe=True,
+            resource_keys=resource_keys,
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # complete
 # ---------------------------------------------------------------------------
@@ -791,6 +803,144 @@ async def test_complete_with_tools_redacts_start_event_args() -> None:
     assert events[0]["phase"] == "start"
     assert events[0]["args"]["api_key"] == "***redacted***"
     assert events[0]["args"]["query"] == "token=***redacted***"
+
+
+async def test_complete_with_tools_runs_parallel_safe_tools_concurrently() -> None:
+    runtime_events: list[dict[str, Any]] = []
+    started: list[tuple[str, float]] = []
+
+    @tool
+    async def first_lookup() -> str:
+        """Return first concurrent result."""
+        started.append(("first", time.monotonic()))
+        await asyncio.sleep(0.05)
+        return "first"
+
+    @tool
+    async def second_lookup() -> str:
+        """Return second concurrent result."""
+        started.append(("second", time.monotonic()))
+        await asyncio.sleep(0.05)
+        return "second"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "first_lookup", "args": {}, "id": "1", "type": "tool_call"},
+                    {"name": "second_lookup", "args": {}, "id": "2", "type": "tool_call"},
+                ],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    before = time.monotonic()
+    await provider.complete_with_tools(
+        [HumanMessage(content="lookup")],
+        [_parallel_sandboxed(first_lookup), _parallel_sandboxed(second_lookup)],
+        runtime_observer=runtime_events.append,
+    )
+    elapsed = time.monotonic() - before
+
+    assert elapsed < 0.09
+    assert abs(started[0][1] - started[1][1]) < 0.03
+    worker_events = [event for event in runtime_events if event["type"] == "worker_group"]
+    assert [event["phase"] for event in worker_events] == ["running", "finished"]
+    assert worker_events[0]["total"] == 2
+    assert {worker["name"] for worker in worker_events[-1]["workers"]} == {
+        "first_lookup",
+        "second_lookup",
+    }
+
+
+async def test_complete_with_tools_keeps_conflicting_resources_serial() -> None:
+    active = 0
+    max_active = 0
+
+    @tool
+    async def first_write() -> str:
+        """Simulate a write-like resource user."""
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.02)
+        active -= 1
+        return "first"
+
+    @tool
+    async def second_write() -> str:
+        """Simulate another write-like resource user."""
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.02)
+        active -= 1
+        return "second"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "first_write", "args": {}, "id": "1", "type": "tool_call"},
+                    {"name": "second_write", "args": {}, "id": "2", "type": "tool_call"},
+                ],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="write")],
+        [
+            _parallel_sandboxed(first_write, resource_keys=("resource:file",)),
+            _parallel_sandboxed(second_write, resource_keys=("resource:file",)),
+        ],
+    )
+
+    assert max_active == 1
+
+
+async def test_complete_with_tools_preserves_partial_failure_in_parallel_batch() -> None:
+    runtime_events: list[dict[str, Any]] = []
+
+    @tool
+    async def good_lookup() -> str:
+        """Return successful result."""
+        return "good"
+
+    @tool
+    async def bad_lookup() -> str:
+        """Return a tool error."""
+        raise ValueError("bad lookup")
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "good_lookup", "args": {}, "id": "1", "type": "tool_call"},
+                    {"name": "bad_lookup", "args": {}, "id": "2", "type": "tool_call"},
+                ],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="lookup")],
+        [_parallel_sandboxed(good_lookup), _parallel_sandboxed(bad_lookup)],
+        runtime_observer=runtime_events.append,
+    )
+
+    finished = [event for event in runtime_events if event["phase"] == "finished"][-1]
+    statuses = {worker["name"]: worker["status"] for worker in finished["workers"]}
+    assert statuses == {"good_lookup": "finished", "bad_lookup": "failed"}
 
 
 async def test_complete_with_tools_uses_configured_max_rounds() -> None:

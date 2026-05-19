@@ -123,6 +123,14 @@ def _sandbox_errors(record: dict[str, object] | None) -> tuple[str, ...]:
         errors.append("sandbox permissions are missing")
     else:
         errors.extend(_permission_errors(permissions))
+    if "parallel_safe" in record and not isinstance(record.get("parallel_safe"), bool):
+        errors.append("sandbox parallel_safe must be boolean")
+    if "resource_keys" in record:
+        resource_keys = record.get("resource_keys")
+        if not isinstance(resource_keys, list) or not all(
+            isinstance(item, str) and item for item in resource_keys
+        ):
+            errors.append("sandbox resource_keys must be a list of non-empty strings")
     return tuple(errors)
 
 
@@ -145,7 +153,8 @@ def _format_tool_item(item: ToolCatalogItem, translator: Translator) -> str:
         f"  - name={item.name} status={status} profile={_profile(item)} "
         f"permissions={_permissions_summary(item, translator)} "
         f"network_access={_permission(item, 'network_access', translator)} "
-        f"hitl={_hitl(item)} allowed_roots={_allowed_roots(item)}"
+        f"hitl={_hitl(item)} parallel_safe={_parallel_safe(item)} "
+        f"resource_keys={_resource_keys(item)} allowed_roots={_allowed_roots(item)}"
         f"{_error_suffix(item)}"
     )
 
@@ -189,6 +198,22 @@ def _allowed_roots(item: ToolCatalogItem) -> str:
     if not isinstance(roots, list):
         return "[]"
     return "[" + ",".join(str(root) for root in roots) + "]"
+
+
+def _resource_keys(item: ToolCatalogItem) -> str:
+    if item.sandbox is None:
+        return "[]"
+    keys = item.sandbox.get("resource_keys")
+    if not isinstance(keys, list):
+        return "[]"
+    return "[" + ",".join(str(key) for key in keys if str(key)) + "]"
+
+
+def _parallel_safe(item: ToolCatalogItem) -> str:
+    value = item.sandbox.get("parallel_safe") if item.sandbox is not None else None
+    if isinstance(value, bool):
+        return str(value).lower()
+    return "unknown"
 
 
 def _error_suffix(item: ToolCatalogItem) -> str:

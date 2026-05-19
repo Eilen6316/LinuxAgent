@@ -27,6 +27,7 @@ import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any, cast
 
 from langchain_core.language_models import BaseChatModel
@@ -42,6 +43,7 @@ from tenacity import (
 from ..config.models import APIConfig
 from ..interfaces import LLM_CALL_METADATA_KEY, LLMProvider
 from ..runtime_control import CancellationToken
+from ..runtime_events import RuntimeWorker, WorkerStatus, worker_group_event
 from ..security import redact_record
 from ..tools.catalog import ToolCatalogReport, inspect_tool_catalog
 from ..tools.sandbox import (
@@ -62,6 +64,18 @@ logger = logging.getLogger(__name__)
 
 _RETRIABLE = (ProviderRateLimitError, ProviderConnectionError)
 ToolObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
+RuntimeEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
+
+
+@dataclass(frozen=True)
+class _PlannedToolCall:
+    index: int
+    tool_name: str
+    tool_call_id: str
+    tool: BaseTool | None
+    args: dict[str, Any]
+    parallel_safe: bool
+    resource_keys: tuple[str, ...]
 
 
 class BaseLLMProvider(LLMProvider):
@@ -134,6 +148,7 @@ class BaseLLMProvider(LLMProvider):
         **kwargs: Any,
     ) -> str:
         tool_observer = _pop_tool_observer(kwargs)
+        runtime_observer = _pop_runtime_observer(kwargs)
         tool_limits = _pop_tool_runtime(kwargs)
         cancellation_token = _pop_cancellation_token(kwargs)
         trace_id = _tool_trace_id(kwargs)
@@ -159,6 +174,7 @@ class BaseLLMProvider(LLMProvider):
                 ai_message,
                 tool_map,
                 tool_observer,
+                runtime_observer,
                 tool_limits,
                 total_tool_output_chars,
                 trace_id,
@@ -515,51 +531,269 @@ def _catalog_error_message(report: ToolCatalogReport) -> str:
     return "LLM tool catalog validation failed: " + "; ".join(report.errors)
 
 
+@dataclass
+class _ToolCallAccumulator:
+    outputs: list[ToolMessage]
+    output_chars: int = 0
+
+
 async def _execute_tool_calls(
     ai_message: AIMessage,
     tool_map: dict[str, BaseTool],
     observer: ToolObserver | None,
+    runtime_observer: RuntimeEventObserver | None,
     limits: ToolRuntimeLimits,
     prior_output_chars: int,
     trace_id: str | None,
     cancellation_token: CancellationToken | None,
 ) -> tuple[list[ToolMessage], int]:
-    outputs: list[ToolMessage] = []
-    total_output_chars = 0
-    for call in ai_message.tool_calls:
-        tool_name = call["name"]
-        tool_call_id = call["id"]
-        tool = tool_map.get(tool_name)
-        if tool is None:
-            outputs.append(
-                ToolMessage(
-                    content=f"unknown tool: {tool_name}",
-                    name=tool_name,
-                    tool_call_id=tool_call_id,
-                )
-            )
+    accumulator = _ToolCallAccumulator([])
+    planned_calls = tuple(
+        _planned_tool_call(cast(dict[str, Any], call), tool_map, index)
+        for index, call in enumerate(ai_message.tool_calls)
+    )
+    index = 0
+    while index < len(planned_calls):
+        planned = planned_calls[index]
+        if planned.tool is None:
+            _append_unknown_tool(accumulator, planned)
+            index += 1
             continue
-        remaining = limits.max_total_output_chars - prior_output_chars - total_output_chars
-        result = await _execute_one_tool_call(
-            tool=tool,
-            tool_name=tool_name,
-            args=dict(call.get("args", {})),
+        batch = _collect_tool_batch(planned_calls, index)
+        remaining = limits.max_total_output_chars - prior_output_chars - accumulator.output_chars
+        batch_results = await _execute_tool_batch(
+            batch,
             observer=observer,
+            runtime_observer=runtime_observer,
             limits=limits,
             remaining=remaining,
             trace_id=trace_id,
             cancellation_token=cancellation_token,
         )
-        content = result.content
-        total_output_chars += result.output_chars
-        outputs.append(
+        _append_tool_results(accumulator, batch_results)
+        index += len(batch)
+    return accumulator.outputs, prior_output_chars + accumulator.output_chars
+
+
+def _append_unknown_tool(accumulator: _ToolCallAccumulator, planned: _PlannedToolCall) -> None:
+    accumulator.outputs.append(
+        ToolMessage(
+            content=f"unknown tool: {planned.tool_name}",
+            name=planned.tool_name,
+            tool_call_id=planned.tool_call_id,
+        )
+    )
+
+
+def _append_tool_results(
+    accumulator: _ToolCallAccumulator,
+    batch_results: tuple[tuple[_PlannedToolCall, ToolRunResult], ...],
+) -> None:
+    for planned_call, result in batch_results:
+        accumulator.output_chars += result.output_chars
+        accumulator.outputs.append(
             ToolMessage(
-                content=content,
-                name=tool_name,
-                tool_call_id=tool_call_id,
+                content=result.content,
+                name=planned_call.tool_name,
+                tool_call_id=planned_call.tool_call_id,
             )
         )
-    return outputs, prior_output_chars + total_output_chars
+
+
+def _planned_tool_call(
+    call: dict[str, Any],
+    tool_map: dict[str, BaseTool],
+    index: int,
+) -> _PlannedToolCall:
+    tool_name = str(call.get("name") or "")
+    tool = tool_map.get(tool_name)
+    args = dict(call.get("args", {}))
+    record = tool_sandbox_record(tool) if tool is not None else None
+    parallel_safe = bool(record.get("parallel_safe")) if isinstance(record, dict) else False
+    return _PlannedToolCall(
+        index=index,
+        tool_name=tool_name,
+        tool_call_id=str(call.get("id") or f"tool-call-{index}"),
+        tool=tool,
+        args=args,
+        parallel_safe=parallel_safe,
+        resource_keys=_resource_keys(record),
+    )
+
+
+def _resource_keys(record: dict[str, object] | None) -> tuple[str, ...]:
+    if record is None:
+        return ()
+    raw = record.get("resource_keys")
+    if not isinstance(raw, list):
+        return ()
+    return tuple(str(key) for key in raw if isinstance(key, str) and key)
+
+
+def _collect_tool_batch(
+    planned_calls: tuple[_PlannedToolCall, ...],
+    start_index: int,
+) -> tuple[_PlannedToolCall, ...]:
+    batch: list[_PlannedToolCall] = []
+    locked_resources: set[str] = set()
+    for planned in planned_calls[start_index:]:
+        if planned.tool is None or not planned.parallel_safe:
+            break
+        if planned.resource_keys and locked_resources.intersection(planned.resource_keys):
+            break
+        batch.append(planned)
+        locked_resources.update(planned.resource_keys)
+    return tuple(batch or (planned_calls[start_index],))
+
+
+async def _execute_tool_batch(
+    batch: tuple[_PlannedToolCall, ...],
+    *,
+    observer: ToolObserver | None,
+    runtime_observer: RuntimeEventObserver | None,
+    limits: ToolRuntimeLimits,
+    remaining: int,
+    trace_id: str | None,
+    cancellation_token: CancellationToken | None,
+) -> tuple[tuple[_PlannedToolCall, ToolRunResult], ...]:
+    if len(batch) > 1:
+        await _notify_tool_batch(
+            runtime_observer,
+            batch,
+            trace_id=trace_id,
+            phase=WorkerStatus.RUNNING,
+        )
+    slices = _split_output_budget(max(remaining, 0), len(batch))
+    results = await asyncio.gather(
+        *(
+            _execute_one_tool_call(
+                tool=_resolved_tool(planned),
+                tool_name=planned.tool_name,
+                args=planned.args,
+                observer=observer,
+                limits=limits,
+                remaining=slices[index],
+                trace_id=trace_id,
+                cancellation_token=cancellation_token,
+            )
+            for index, planned in enumerate(batch)
+        )
+    )
+    result_tuple = tuple(results)
+    paired = tuple(zip(batch, result_tuple, strict=True))
+    if len(batch) > 1:
+        await _notify_tool_batch(
+            runtime_observer,
+            batch,
+            trace_id=trace_id,
+            phase=WorkerStatus.FINISHED,
+            results=result_tuple,
+        )
+    return paired
+
+
+def _resolved_tool(planned: _PlannedToolCall) -> BaseTool:
+    if planned.tool is None:
+        raise ProviderError(f"unknown tool: {planned.tool_name}")
+    return planned.tool
+
+
+async def _notify_tool_batch(
+    observer: RuntimeEventObserver | None,
+    batch: tuple[_PlannedToolCall, ...],
+    *,
+    trace_id: str | None,
+    phase: WorkerStatus,
+    results: tuple[ToolRunResult, ...] | None = None,
+) -> None:
+    if observer is None:
+        return
+    batch_trace_id = trace_id or batch[0].tool_call_id or "tool-batch"
+    workers = _tool_batch_workers(batch, phase=phase, results=results)
+    await _notify_tool_observer(
+        observer,
+        worker_group_event(
+            trace_id=batch_trace_id,
+            phase=phase,
+            label_key="runtime.group.read_only_batch",
+            workers=workers,
+        ),
+    )
+
+
+def _tool_batch_workers(
+    batch: tuple[_PlannedToolCall, ...],
+    *,
+    phase: WorkerStatus,
+    results: tuple[ToolRunResult, ...] | None = None,
+) -> tuple[RuntimeWorker, ...]:
+    if phase is WorkerStatus.RUNNING:
+        return tuple(
+            RuntimeWorker(
+                id=planned.tool_call_id,
+                name=planned.tool_name,
+                status=WorkerStatus.RUNNING,
+                detail=_tool_batch_detail(planned.tool_name, planned.args),
+            )
+            for planned in batch
+        )
+    result_tuple = results or ()
+    return tuple(
+        RuntimeWorker(
+            id=planned.tool_call_id,
+            name=planned.tool_name,
+            status=_tool_worker_status(result_tuple[index] if index < len(result_tuple) else None),
+            summary=_tool_batch_summary(result_tuple[index] if index < len(result_tuple) else None),
+            error=_tool_batch_error(result_tuple[index] if index < len(result_tuple) else None),
+        )
+        for index, planned in enumerate(batch)
+    )
+
+
+def _tool_worker_status(result: ToolRunResult | None) -> WorkerStatus:
+    if result is None:
+        return WorkerStatus.FAILED
+    phase = str(result.event.get("phase") or "")
+    status = str(result.event.get("status") or "")
+    if phase == "cancelled" or status == "cancelled":
+        return WorkerStatus.CANCELLED
+    if phase == "error" or status in {"denied", "timeout", "error"}:
+        return WorkerStatus.FAILED
+    return WorkerStatus.FINISHED
+
+
+def _tool_batch_detail(tool_name: str, args: dict[str, Any]) -> str | None:
+    del tool_name
+    if not args:
+        return None
+    redacted_args = redact_record({"args": args}).get("args", {})
+    compact = json.dumps(redacted_args, ensure_ascii=False, default=str, sort_keys=True)
+    return compact[:160]
+
+
+def _tool_batch_summary(result: ToolRunResult | None) -> str | None:
+    if result is None:
+        return None
+    preview = str(result.event.get("output_preview") or "").strip()
+    return preview or None
+
+
+def _tool_batch_error(result: ToolRunResult | None) -> str | None:
+    if result is None:
+        return None
+    if _tool_worker_status(result) is not WorkerStatus.FAILED:
+        return None
+    preview = str(result.event.get("output_preview") or "").strip()
+    return preview or None
+
+
+def _split_output_budget(total: int, count: int) -> tuple[int, ...]:
+    if count <= 0:
+        return ()
+    if total <= 0:
+        return tuple(0 for _ in range(count))
+    base, remainder = divmod(total, count)
+    return tuple(base + (1 if index < remainder else 0) for index in range(count))
 
 
 async def _execute_one_tool_call(
@@ -618,6 +852,15 @@ def _pop_cancellation_token(kwargs: dict[str, Any]) -> CancellationToken | None:
     if isinstance(raw, CancellationToken):
         return raw
     raise TypeError("cancellation_token must be CancellationToken")
+
+
+def _pop_runtime_observer(kwargs: dict[str, Any]) -> RuntimeEventObserver | None:
+    raw = kwargs.pop("runtime_observer", None)
+    if raw is None:
+        return None
+    if not callable(raw):
+        raise TypeError("runtime_observer must be callable")
+    return cast(RuntimeEventObserver, raw)
 
 
 def _tool_trace_id(kwargs: dict[str, Any]) -> str | None:

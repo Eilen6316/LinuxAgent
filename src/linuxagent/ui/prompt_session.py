@@ -62,6 +62,7 @@ class PromptSessionManager:
             fd = os.open(self._history_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             os.close(fd)
         os.chmod(self._history_path, 0o600)
+        os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
         return PromptSession(
             history=FileHistory(str(self._history_path)),
             completer=cast(Completer, SlashCommandCompleter(self._translator)),

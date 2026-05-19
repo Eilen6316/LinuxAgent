@@ -39,11 +39,15 @@ class ToolSandboxSpec:
     execute_commands: bool = False
     system_inspect: bool = False
     network_access: bool = False
+    parallel_safe: bool = False
+    resource_keys: tuple[str, ...] = ()
     hitl: ToolHITLMode = ToolHITLMode.NONE
 
     def to_record(self) -> dict[str, object]:
         return {
             "profile": self.profile.value,
+            "parallel_safe": self.parallel_safe,
+            "resource_keys": list(self.resource_keys),
             "permissions": {
                 "read_files": self.read_files,
                 "write_files": self.write_files,

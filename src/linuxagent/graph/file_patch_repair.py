@@ -353,10 +353,11 @@ async def _complete_repair_plan(
             prompt_messages,
             list(tools),
             options=LLMCallOptions(
-                telemetry,
-                current_trace_id,
-                {"node": "repair_file_patch", "mode": "repair"},
-                prompt_cache_key,
+                telemetry=telemetry,
+                trace_id=current_trace_id,
+                attributes={"node": "repair_file_patch", "mode": "repair"},
+                prompt_cache_key=prompt_cache_key,
+                runtime_observer=runtime_observer,
             ),
             tool_runtime_limits=tool_runtime_limits,
             tool_observer=tool_event_observer(

@@ -15,6 +15,7 @@ from .runtime_control import current_cancellation_token
 from .telemetry import TelemetryRecorder
 
 ToolObserver = Callable[[dict[str, Any]], Any]
+RuntimeEventObserver = Callable[[dict[str, Any]], Any]
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class LLMCallOptions:
     trace_id: str
     attributes: dict[str, Any]
     prompt_cache_key: str | None
+    runtime_observer: RuntimeEventObserver | None = None
 
 
 async def complete_llm(
@@ -54,6 +56,7 @@ async def complete_llm_with_tools(
         **tool_provider_kwargs(options),
         "tool_runtime_limits": tool_runtime_limits,
         "tool_observer": tool_observer,
+        "runtime_observer": options.runtime_observer,
     }
     with _llm_span(options):
         response = await provider.complete_with_tools(

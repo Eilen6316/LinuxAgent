@@ -87,5 +87,6 @@ def _attach_intelligence_sandbox(tool: BaseTool, *, network_access: bool = True)
             max_output_chars=INTELLIGENCE_TOOL_MAX_OUTPUT_CHARS,
             timeout_seconds=INTELLIGENCE_TOOL_TIMEOUT_SECONDS,
             network_access=network_access,
+            parallel_safe=True,
         ),
     )
