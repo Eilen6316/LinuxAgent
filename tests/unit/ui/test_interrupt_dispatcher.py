@@ -63,6 +63,33 @@ async def test_wizard_aware_ui_handles_pending_request_wizard_envelope(monkeypat
     assert result == {"status": "cancel", "answers": [], "partial": True}
 
 
+async def test_wizard_aware_ui_handles_model_user_input_request(monkeypatch) -> None:
+    async def fake_handler(payload: dict[str, object], **_: Any) -> Any:
+        assert payload["type"] == "request_user_input"
+        assert payload["request_type"] == "request_user_input"
+        return {
+            "status": "submit",
+            "answers": [{"question_id": "kind", "selected_ids": ["web"]}],
+            "partial": False,
+        }
+
+    import linuxagent.ui.interrupt_dispatcher as dispatcher
+
+    monkeypatch.setattr(dispatcher, "handle_user_input_interrupt", fake_handler)
+    ui = WizardAwareUserInterface(_WrappedUI())
+
+    result = await ui.handle_interrupt(
+        {
+            "type": "request_user_input",
+            "request_type": "request_user_input",
+            "request": {"questions": [{"id": "kind", "title": "Kind?", "kind": "text"}]},
+        }
+    )
+
+    assert result["status"] == "submit"
+    assert result["answers"][0]["question_id"] == "kind"
+
+
 async def test_wizard_aware_ui_forwards_common_methods() -> None:
     wrapped = _WrappedUI(inputs=["hello"])
     ui = WizardAwareUserInterface(wrapped)
@@ -204,6 +231,69 @@ async def test_handle_wizard_interrupt_returns_checkpoint_payload(monkeypatch) -
 async def test_handle_wizard_interrupt_rejects_non_wizard_payload() -> None:
     with pytest.raises(ValueError, match="wizard interrupt payload type required"):
         await handle_wizard_interrupt({"type": "confirm_command"})
+
+
+async def test_handle_user_input_interrupt_non_tty_refuses(monkeypatch) -> None:
+    from linuxagent.ui.user_input_interrupt import handle_user_input_interrupt
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+
+    result = await handle_user_input_interrupt(
+        {
+            "type": "request_user_input",
+            "request": {"questions": [{"id": "kind", "title": "Kind?", "kind": "text"}]},
+        }
+    )
+
+    assert result["status"] == "non_tty_refused"
+    assert result["partial"] is True
+
+
+async def test_handle_user_input_interrupt_runs_single_multi_question_tui(monkeypatch) -> None:
+    from linuxagent.ui.user_input_interrupt import handle_user_input_interrupt
+    from linuxagent.wizard import WizardResult
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    captured: dict[str, object] = {}
+
+    async def fake_run_wizard(plan: object, **kwargs: Any) -> WizardResult:
+        captured["plan"] = plan
+        captured.update(kwargs)
+        return WizardResult(
+            status="submit",
+            partial=False,
+            answers=(
+                WizardAnswer(step_id="kind", selected_ids=("web",)),
+                WizardAnswer(step_id="notes", text="fast prototype"),
+            ),
+        )
+
+    import linuxagent.ui.user_input_interrupt as user_input_interrupt
+
+    monkeypatch.setattr(user_input_interrupt, "run_wizard", fake_run_wizard)
+
+    result = await handle_user_input_interrupt(
+        {
+            "type": "request_user_input",
+            "user_intent": "build app",
+            "request": {
+                "questions": [
+                    {
+                        "id": "kind",
+                        "title": "Kind?",
+                        "kind": "single",
+                        "options": [{"id": "web", "label": "Web"}],
+                    },
+                    {"id": "notes", "title": "Notes?", "kind": "text"},
+                ]
+            },
+        }
+    )
+
+    plan = captured["plan"]
+    assert plan.steps[1].options == ()
+    assert result["status"] == "submit"
+    assert [answer["question_id"] for answer in result["answers"]] == ["kind", "notes"]
 
 
 class _WrappedUI:

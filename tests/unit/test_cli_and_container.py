@@ -844,6 +844,7 @@ def test_tool_activity_message_formats_project_guidance_tool() -> None:
 
 async def test_tool_observer_sends_tool_events_to_activity(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     class _FakeUI:
         def __init__(self) -> None:
@@ -858,7 +859,11 @@ async def test_tool_observer_sends_tool_events_to_activity(
 
     ui = _FakeUI()
     monkeypatch.setattr(container_module.Container, "ui", lambda self: ui)
-    container = Container(AppConfig.model_validate({"telemetry": {"enabled": False}}))
+    container = Container(
+        AppConfig.model_validate(
+            {"audit": {"path": tmp_path / "audit.log"}, "telemetry": {"enabled": False}}
+        )
+    )
     observer = container._tool_event_observer()
 
     await observer(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -240,7 +241,31 @@ async def _invoke_tool(tool: BaseTool, args: dict[str, Any], trace_id: str | Non
     if _has_async_tool_callable(tool):
         with tool_trace_context(trace_id):
             return await tool.ainvoke(args)
-    return await asyncio.to_thread(_invoke_sync_tool, tool, args, trace_id)
+    return await _invoke_sync_tool_off_loop(tool, args, trace_id)
+
+
+async def _invoke_sync_tool_off_loop(
+    tool: BaseTool, args: dict[str, Any], trace_id: str | None
+) -> Any:
+    done = threading.Event()
+    result: dict[str, Any] = {}
+
+    def run() -> None:
+        try:
+            result["value"] = _invoke_sync_tool(tool, args, trace_id)
+        except BaseException as exc:  # noqa: BLE001 - propagated to tool error handling
+            result["error"] = exc
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=run, name="linuxagent-tool-call", daemon=True)
+    thread.start()
+    while not done.is_set():  # noqa: ASYNC110
+        await asyncio.sleep(0.005)
+    error = result.get("error")
+    if isinstance(error, BaseException):
+        raise error
+    return result.get("value")
 
 
 def _invoke_sync_tool(tool: BaseTool, args: dict[str, Any], trace_id: str | None) -> Any:

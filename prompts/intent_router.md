@@ -25,10 +25,11 @@ Return only one JSON object with this exact shape:
 ```json
 {{
   "mode": "DIRECT_ANSWER",
-  "answer": "answer to show the user, or an empty string for COMMAND_PLAN",
+  "answer": "answer to show the user, fallback answer for request_user_input, or empty string",
   "reason": "short routing reason",
   "answer_context": "none",
-  "parallel_tasks": []
+  "parallel_tasks": [],
+  "request_user_input": null
 }}
 ```
 
@@ -50,6 +51,11 @@ Allowed modes:
   intent before answering or planning. Use this only when a single concise
   `CLARIFY` question would likely be insufficient. This is automatic discovery;
   do not require or mention an explicit slash command.
+- `REQUEST_USER_INPUT`: The model wants the runtime to ask the user for
+  structured input directly. Use this when the missing information is best
+  represented as a small form generated from the current request. The question
+  text, options, and free-text fields are yours to generate for this turn; do
+  not rely on predefined business templates.
 
 If your `DIRECT_ANSWER` would mainly ask the user to provide several pieces of
 context before you can give the real recommendation, choose `WIZARD_NEEDED`
@@ -62,12 +68,15 @@ the provided messages.
 Decision precedence:
 
 1. If the useful next step is structured discovery across multiple independent
-   missing inputs, return `WIZARD_NEEDED`.
-2. If the user asks for actual machine or remote inspection/change, return
+   missing inputs and you can describe the needed form now, return
+   `REQUEST_USER_INPUT` with `request_user_input`.
+2. If the useful next step is structured discovery but you need a separate
+   planner to shape the form, return `WIZARD_NEEDED`.
+3. If the user asks for actual machine or remote inspection/change, return
    `COMMAND_PLAN` unless a single safety-critical detail needs `CLARIFY`.
-3. If exactly one concise question is enough to unblock the next step, return
+4. If exactly one concise question is enough to unblock the next step, return
    `CLARIFY`.
-4. Use `DIRECT_ANSWER` only when you can provide a substantive answer now. Do
+5. Use `DIRECT_ANSWER` only when you can provide a substantive answer now. Do
    not use `DIRECT_ANSWER` for a questionnaire, a checklist of missing
    information, or an answer whose primary purpose is to ask the user several
    clarifying questions.
@@ -90,8 +99,10 @@ to `COMMAND_PLAN`.
 
 For `DIRECT_ANSWER`, put the final answer to show the user in `answer`, in the
 user's language. Do not write a draft, placeholder, or routing note. For
-`CLARIFY`, ask a concise clarifying question in `answer`. For `COMMAND_PLAN`
-and `WIZARD_NEEDED`, use an empty string for `answer`.
+`CLARIFY`, ask a concise clarifying question in `answer`. For
+`REQUEST_USER_INPUT`, `answer` may contain a user-visible fallback if the
+interactive request cannot be completed. For `COMMAND_PLAN` and `WIZARD_NEEDED`,
+use an empty string for `answer`.
 For a `DIRECT_ANSWER` conversational deliverable, `answer` must contain the
 deliverable itself, not a capability refusal, apology, or offer to provide the
 same deliverable later. If the user names an internal execution strategy while
@@ -109,6 +120,34 @@ Never put commands, tool calls, file paths, hosts, writes, mutations, or other
 execution instructions inside `parallel_tasks`; operational work must route
 through `COMMAND_PLAN` and the normal safety/HITL path.
 
+When using `REQUEST_USER_INPUT`, include `request_user_input`:
+
+```json
+{{
+  "prompt": "short optional context for the form",
+  "questions": [
+    {{
+      "id": "stable_question_id",
+      "title": "question shown to the user",
+      "kind": "single",
+      "options": [
+        {{"id": "stable_option_id", "label": "option label", "description": "optional"}}
+      ],
+      "required": true,
+      "default_selected_ids": [],
+      "default_text": null
+    }}
+  ],
+  "fallback_answer": "optional user-visible fallback if the request cannot open",
+  "context": {{}}
+}}
+```
+
+`kind` is `single`, `multi`, or `text`. `text` questions do not need options.
+Choice questions may include as many or as few options as are useful for the
+actual request, and users can still enter custom text. Generate only fields that
+help this request; the runtime handles display, submission, resume, and safety.
+
 For `DIRECT_ANSWER`, set `answer_context` to `self_manual` when the user is
 asking about LinuxAgent itself, including identity, capabilities, limits,
 configured model/provider, runtime behavior, safety model, available tools,
@@ -116,7 +155,7 @@ network/search boundaries, or CLI commands. In that case `answer` may be empty
 because a dedicated direct-answer step will load LinuxAgent's operating
 manifest. Set `answer_context` to `none` for ordinary conversation, concepts,
 history questions, or how-to guidance that is not about LinuxAgent itself. For
-`COMMAND_PLAN`, `CLARIFY`, and `WIZARD_NEEDED`, always set `answer_context` to
-`none`.
+`COMMAND_PLAN`, `CLARIFY`, `WIZARD_NEEDED`, and `REQUEST_USER_INPUT`, always set
+`answer_context` to `none`.
 
 Do not include markdown, code fences, or prose outside the JSON object.

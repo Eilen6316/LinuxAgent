@@ -81,8 +81,12 @@ async def route_after_parse(state: AgentState) -> str:
         return "PATCH_CONFIRM"
     if state.get("wizard_completed"):
         return "SAFETY"
+    if state.get("user_input_completed"):
+        return "SAFETY"
     if state.get("wizard_context") and state.get("wizard_result") is None:
         return "WIZARD"
+    if state.get("user_input_request") and state.get("user_input_result") is None:
+        return "USER_INPUT_REQUEST"
     return "SAFETY"
 
 

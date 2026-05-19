@@ -42,3 +42,51 @@ def test_parse_intent_decision_allows_self_manual_without_answer() -> None:
 
     assert decision.mode is IntentMode.DIRECT_ANSWER
     assert decision.answer_context is AnswerContext.SELF_MANUAL
+
+
+def test_parse_intent_decision_accepts_user_input_request() -> None:
+    decision = _parse_intent_decision(
+        json.dumps(
+            {
+                "mode": "REQUEST_USER_INPUT",
+                "answer": "fallback",
+                "reason": "needs structured input",
+                "request_user_input": {
+                    "prompt": "choose details",
+                    "questions": [
+                        {
+                            "id": "kind",
+                            "title": "Kind?",
+                            "kind": "single",
+                            "options": [{"id": "web", "label": "Web"}],
+                        },
+                        {"id": "notes", "title": "Notes?", "kind": "text"},
+                    ],
+                },
+            }
+        )
+    )
+
+    assert decision.mode is IntentMode.REQUEST_USER_INPUT
+    assert decision.user_input_request is not None
+    assert decision.user_input_request.fallback_answer == "fallback"
+    assert [question.id for question in decision.user_input_request.questions] == [
+        "kind",
+        "notes",
+    ]
+
+
+def test_parse_intent_decision_invalid_user_input_request_falls_back_to_clarify() -> None:
+    decision = _parse_intent_decision(
+        json.dumps(
+            {
+                "mode": "REQUEST_USER_INPUT",
+                "answer": "请补充必要信息。",
+                "reason": "bad shape",
+                "request_user_input": {"questions": []},
+            }
+        )
+    )
+
+    assert decision.mode is IntentMode.CLARIFY
+    assert decision.answer == "请补充必要信息。"

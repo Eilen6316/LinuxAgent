@@ -33,6 +33,7 @@ from .routing import (
     route_by_safety,
 )
 from .state import AgentState
+from .user_input_nodes import make_user_input_request_node
 from .wizard_nodes import make_wizard_node
 
 AgentGraph: TypeAlias = Any
@@ -86,6 +87,7 @@ def _add_planning_nodes(graph: Any, deps: GraphDependencies) -> None:
         "wizard",
         _langgraph_node(make_wizard_node(deps.provider, deps.audit, telemetry=deps.telemetry)),
     )
+    graph.add_node("user_input", _langgraph_node(make_user_input_request_node()))
     graph.add_node(
         "confirm",
         _langgraph_node(
@@ -209,6 +211,7 @@ def _add_parse_edges(graph: Any) -> None:
         "PATCH_CONFIRM": "file_patch_confirm",
         "RESPOND": "respond",
         "SAFETY": "safety_check",
+        "USER_INPUT_REQUEST": "user_input",
         "WIZARD": "wizard",
     }
     graph.add_conditional_edges("parse_intent", route_after_parse, edges)

@@ -331,7 +331,13 @@ def fail_closed_request_result(
     if mapping is not None and mapping.fallback == "wizard_refused":
         return {"status": "non_tty_refused", "answers": [], "partial": True, "reason": reason}
     if mapping is not None and mapping.fallback == "cancel_request":
-        return {"status": "cancelled", "request_type": request_type, "reason": reason}
+        return {
+            "status": "non_tty_refused",
+            "answers": [],
+            "partial": True,
+            "request_type": request_type,
+            "reason": reason,
+        }
     return {
         "decision": "non_tty_auto_deny",
         "latency_ms": 0,

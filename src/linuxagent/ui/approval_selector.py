@@ -16,6 +16,7 @@ from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from prompt_toolkit.styles import Style
 
 from ..i18n import Translator, default_translator
+from .terminal_restore import run_sync_with_terminal_restore
 
 
 @dataclass(frozen=True)
@@ -48,7 +49,7 @@ class ApprovalSelector:
             erase_when_done=True,
             style=_style(),
         )
-        result = app.run(in_thread=True)
+        result = run_sync_with_terminal_restore(lambda: app.run(in_thread=True))
         return result if isinstance(result, str) else "no"
 
     def move(self, delta: int) -> None:

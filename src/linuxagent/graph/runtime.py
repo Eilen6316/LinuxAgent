@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -148,7 +149,12 @@ class GraphRuntime:
         await self._notify_turn(active_turn_id, thread_id, RuntimeEventPhase.STARTED)
         try:
             with cancellation_scope(cancellation_token):
-                result = await self._graph.ainvoke(graph_input, config=graph_config(thread_id))
+                result = await self._invoke_graph_with_interrupt_fallback(
+                    graph_input,
+                    thread_id=thread_id,
+                    turn_id=active_turn_id,
+                    cancellation_token=cancellation_token,
+                )
             run_result = await self._run_result(
                 result,
                 thread_id=thread_id,
@@ -187,6 +193,29 @@ class GraphRuntime:
         if not interrupts:
             interrupts = await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
         return GraphRunResult(state=state, interrupts=interrupts)
+
+    async def _invoke_graph_with_interrupt_fallback(
+        self,
+        graph_input: Any,
+        *,
+        thread_id: str,
+        turn_id: str,
+        cancellation_token: CancellationToken | None,
+    ) -> Any:
+        baseline = _interrupt_signature(
+            await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
+        )
+        task = asyncio.create_task(self._graph.ainvoke(graph_input, config=graph_config(thread_id)))
+        while not task.done():
+            if _is_cancelled(cancellation_token):
+                return await task
+            interrupts = await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
+            if interrupts and _interrupt_signature(interrupts) != baseline:
+                task.cancel()
+                task.add_done_callback(_consume_task_exception)
+                return {}
+            await asyncio.sleep(0.01)
+        return await task
 
     async def _snapshot(self, thread_id: str) -> Any:
         return await self._graph.aget_state(graph_config(thread_id))
@@ -259,6 +288,19 @@ def _active_turn_id(turn_id: str | None, cancellation_token: CancellationToken |
 
 def _is_cancelled(cancellation_token: CancellationToken | None) -> bool:
     return bool(cancellation_token and cancellation_token.cancelled)
+
+
+def _interrupt_signature(interrupts: tuple[GraphInterrupt, ...]) -> tuple[str, ...]:
+    return tuple(repr(interrupt.payload) for interrupt in interrupts)
+
+
+def _consume_task_exception(task: asyncio.Task[Any]) -> None:
+    if task.cancelled():
+        return
+    try:
+        task.exception()
+    except asyncio.CancelledError:
+        return
 
 
 def _interrupts_from_result(

@@ -53,7 +53,7 @@ STATE_SECTIONS: tuple[StateSection, ...] = (
         ),
     ),
     StateSection(
-        name="wizard",
+        name="interactive request",
         fields=(
             "wizard_plan",
             "wizard_result",
@@ -63,9 +63,15 @@ STATE_SECTIONS: tuple[StateSection, ...] = (
             "wizard_attempted",
             "wizard_failed_reason",
             "ui_interactive",
+            "user_input_request",
+            "user_input_result",
+            "user_input_context",
+            "user_input_stable_state",
+            "user_input_completed",
+            "user_input_attempted",
         ),
-        producers=("app", "parse_intent", "wizard"),
-        consumers=("parse_intent", "wizard", "routing"),
+        producers=("app", "parse_intent", "wizard", "user_input_request"),
+        consumers=("parse_intent", "wizard", "user_input_request", "routing"),
     ),
     StateSection(
         name="safety",

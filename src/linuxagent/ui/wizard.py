@@ -17,6 +17,7 @@ from prompt_toolkit.styles import Style
 from ..i18n import Translator, default_translator
 from ..wizard import WizardController, WizardPlan, WizardResult, WizardStableState
 from ..wizard.render_model import WizardOptionRow, WizardRenderModel, build_render_model
+from .terminal_restore import run_with_terminal_restore
 
 _USER_INTENT_LIMIT = 120
 _TAB_LABEL_LIMIT = 24
@@ -64,7 +65,7 @@ class WizardTUI:
         )
 
     async def run_async(self) -> WizardExit:
-        result = await self._application.run_async()
+        result = await run_with_terminal_restore(self._application.run_async)
         if isinstance(result, WizardResult | WizardCheckpoint):
             return result
         raise RuntimeError("wizard TUI exited without a wizard result")

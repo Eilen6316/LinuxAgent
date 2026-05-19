@@ -181,6 +181,8 @@ class WizardController:
 
     def _select_focused_option(self) -> None:
         step = self.current_step
+        if self.option_focus_index >= len(step.options):
+            return
         option = step.options[self.option_focus_index]
         if step.kind == "single":
             self.answers[step.id] = WizardAnswer(step_id=step.id, selected_ids=(option.id,))

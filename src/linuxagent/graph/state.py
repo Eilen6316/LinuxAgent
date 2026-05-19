@@ -64,6 +64,14 @@ class AgentState(TypedDict, total=False):
     wizard_failed_reason: WizardFailedReason | None
     ui_interactive: bool
 
+    # Populated by model-initiated user input requests.
+    user_input_request: dict[str, object] | None
+    user_input_result: dict[str, object] | None
+    user_input_context: str | None
+    user_input_stable_state: dict[str, object] | None
+    user_input_completed: bool
+    user_input_attempted: bool
+
     # Populated by safety_check; consumed by HITL router + confirm_node.
     safety_level: SafetyLevel | None
     matched_rule: str | None
@@ -108,6 +116,7 @@ def initial_state(
         prompt_cache_key=_prompt_cache_key(thread_id),
         **_initial_planning_state(source),
         **_initial_wizard_state(ui_interactive),
+        **_initial_user_input_state(),
         **_initial_safety_state(command_permissions),
         **_initial_execution_state(),
     )
@@ -248,6 +257,17 @@ def _initial_wizard_state(ui_interactive: bool) -> AgentState:
         "wizard_attempted": False,
         "wizard_failed_reason": None,
         "ui_interactive": ui_interactive,
+    }
+
+
+def _initial_user_input_state() -> AgentState:
+    return {
+        "user_input_request": None,
+        "user_input_result": None,
+        "user_input_context": None,
+        "user_input_stable_state": None,
+        "user_input_completed": False,
+        "user_input_attempted": False,
     }
 
 

@@ -24,6 +24,7 @@ import asyncio
 import inspect
 import json
 import logging
+import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, cast
@@ -132,12 +133,12 @@ class BaseLLMProvider(LLMProvider):
         tools: list[BaseTool],
         **kwargs: Any,
     ) -> str:
-        if not tools:
-            return await self.complete(messages, **kwargs)
         tool_observer = _pop_tool_observer(kwargs)
         tool_limits = _pop_tool_runtime(kwargs)
         cancellation_token = _pop_cancellation_token(kwargs)
         trace_id = _tool_trace_id(kwargs)
+        if not tools:
+            return await self.complete(messages, **kwargs)
         await _ensure_tool_sandbox_specs(tools, tool_observer)
 
         bound_model = self._model.bind_tools(tools)
@@ -295,7 +296,24 @@ async def _invoke_model_off_loop(
     messages: list[BaseMessage],
     kwargs: dict[str, Any],
 ) -> BaseMessage:
-    return await asyncio.to_thread(_invoke_model_sync, model, messages, kwargs)
+    result: list[BaseMessage] = []
+    errors: list[BaseException] = []
+    done = threading.Event()
+
+    def run() -> None:
+        try:
+            result.append(_invoke_model_sync(model, messages, kwargs))
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            done.set()
+
+    threading.Thread(target=run, name="linuxagent-llm-provider", daemon=True).start()
+    while not done.is_set():  # noqa: ASYNC110
+        await asyncio.sleep(0.005)
+    if errors:
+        raise errors[0]
+    return result[0]
 
 
 def _invoke_model_sync(

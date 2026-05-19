@@ -110,7 +110,7 @@ async def test_generate_plan_rejects_non_object() -> None:
 
 async def test_generate_plan_rejects_invalid_schema() -> None:
     payload = _payload()
-    payload["steps"][0]["options"] = payload["steps"][0]["options"][:2]
+    payload["steps"][0]["id"] = ""
 
     outcome = await WizardPlanner(_Provider(json.dumps(payload))).generate_plan(
         "query",

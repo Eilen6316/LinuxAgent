@@ -16,6 +16,7 @@ from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from prompt_toolkit.styles import Style
 
 from ..i18n import Translator, default_translator
+from .terminal_restore import run_with_terminal_restore
 
 MAX_VISIBLE_RESUME_ITEMS = 12
 
@@ -41,7 +42,7 @@ class ResumeSelector:
             erase_when_done=True,
             style=_style(),
         )
-        result = await app.run_async()
+        result = await run_with_terminal_restore(app.run_async)
         return result if isinstance(result, str) or result is None else str(result)
 
     def move(self, delta: int) -> None:

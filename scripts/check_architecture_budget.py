@@ -70,6 +70,10 @@ GRAPH_NODE_COVERAGE = {
         Path("tests/unit/graph/test_routing.py"),
         Path("tests/harness/scenarios/dangerous_commands.yaml"),
     ),
+    Path("src/linuxagent/graph/user_input_nodes.py"): (
+        Path("tests/unit/graph/test_agent_graph.py"),
+        Path("tests/unit/ui/test_interrupt_dispatcher.py"),
+    ),
     Path("src/linuxagent/graph/plan_step_node.py"): (
         Path("tests/unit/graph/test_agent_graph.py"),
         Path("tests/harness/scenarios/hitl_batch_confirm.yaml"),

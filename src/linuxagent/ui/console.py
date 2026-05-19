@@ -236,7 +236,9 @@ class ConsoleUI(UserInterface):
         if owner_loop is loop:
             return False
         future: ConcurrentFuture[None] = asyncio.run_coroutine_threadsafe(action(), owner_loop)
-        await asyncio.wrap_future(future)
+        while not future.done():  # noqa: ASYNC110
+            await asyncio.sleep(0.005)
+        future.result()
         return True
 
     def _print_hero(self) -> None:

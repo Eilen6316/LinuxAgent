@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -639,11 +640,34 @@ async def test_console_activity_from_worker_loop_runs_on_owner_loop() -> None:
     ui = ConsoleUI(console=console)
     await ui.print_activity("owner-ready")
 
-    await asyncio.to_thread(lambda: asyncio.run(ui.print_activity("from-worker")))
+    done = threading.Event()
+    worker_error: list[BaseException] = []
+
+    def run_worker() -> None:
+        try:
+            asyncio.run(ui.print_activity("from-worker"))
+        except BaseException as exc:
+            worker_error.append(exc)
+        finally:
+            done.set()
+
+    threading.Thread(target=run_worker, daemon=True).start()
+    assert await _wait_for_event(done, deadline_seconds=1.0)
+    if worker_error:
+        raise worker_error[0]
 
     rendered = console.export_text()
     assert "owner-ready" in rendered
     assert "from-worker" in rendered
+
+
+async def _wait_for_event(event: threading.Event, *, deadline_seconds: float) -> bool:
+    deadline = asyncio.get_running_loop().time() + deadline_seconds
+    while asyncio.get_running_loop().time() < deadline:
+        if event.is_set():
+            return True
+        await asyncio.sleep(0.005)
+    return event.is_set()
 
 
 async def test_console_print_markdown_renders_model_output() -> None:

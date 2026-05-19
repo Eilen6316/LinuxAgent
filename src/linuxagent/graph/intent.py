@@ -35,6 +35,7 @@ from .direct_answer import (
     _review_direct_answer,
 )
 from .events import RuntimeEventObserver, notify_event
+from .host_selection import selected_hosts_for_plan
 from .intent_router import (
     AnswerContext,
     IntentDecision,
@@ -56,6 +57,7 @@ from .state import (
     reset_planning_for_wizard,
 )
 from .tool_loop import ToolEventObserver, tool_event_observer
+from .user_input_routing import clear_user_input_routing_flags, user_input_request_update
 from .wizard_gate import _apply_wizard_hard_gates
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -151,13 +153,9 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     current_trace_id = trace_id(state)
     messages = list(state.get("messages", []))
     user_text = _last_message_text(messages)
-    if state.get("wizard_completed"):
+    if state.get("wizard_completed") or state.get("user_input_completed"):
         return await _command_planning_update(
-            context,
-            messages,
-            user_text,
-            current_trace_id,
-            observed_tool_outputs,
+            context, messages, user_text, current_trace_id, observed_tool_outputs
         )
     await notify_event(context.runtime_observer, {"type": "activity", "phase": "classify"})
     intent = await _route_intent(
@@ -187,6 +185,10 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
         )
     if intent.mode is IntentMode.WIZARD_NEEDED:
         return _wizard_needed_update(current_trace_id, user_text)
+    if intent.mode is IntentMode.REQUEST_USER_INPUT:
+        if update := user_input_request_update(current_trace_id, intent, state):
+            return update
+        return _direct_response_update(current_trace_id, intent.answer)
     return await _plan_after_intent(context, messages, user_text, current_trace_id)
 
 
@@ -356,6 +358,7 @@ def _direct_response_update(current_trace_id: str, response: str) -> AgentState:
         "wizard_result": None,
         "wizard_failed_reason": None,
         "wizard_attempted": False,
+        **clear_user_input_routing_flags(),
     }
 
 
@@ -371,6 +374,7 @@ def _parse_error_update(current_trace_id: str, message: str) -> AgentState:
     return {
         "trace_id": current_trace_id,
         **reset_planning_for_parse_error(message, source=CommandSource.LLM),
+        **clear_user_input_routing_flags(),
     }
 
 
@@ -383,43 +387,21 @@ def _plan_update(
         "trace_id": current_trace_id,
         **reset_planning_for_command_plan(
             plan,
-            selected_hosts=_selected_hosts_for_plan(plan, cluster_service),
+            selected_hosts=selected_hosts_for_plan(plan, cluster_service),
         ),
+        **clear_user_input_routing_flags(),
     }
 
 
 def _file_patch_update(current_trace_id: str, plan: FilePatchPlan) -> AgentState:
-    return {"trace_id": current_trace_id, **reset_planning_for_file_patch(plan)}
+    return {
+        "trace_id": current_trace_id,
+        **reset_planning_for_file_patch(plan),
+        **clear_user_input_routing_flags(),
+    }
 
 
 def _last_message_text(messages: list[BaseMessage]) -> str:
     if not messages:
         return ""
     return str(messages[-1].content)
-
-
-def _selected_hosts_for_plan(
-    plan: CommandPlan,
-    cluster_service: ClusterService | None,
-) -> tuple[str, ...]:
-    if cluster_service is None:
-        return ()
-    requested_hosts = tuple(host.strip() for host in plan.primary.target_hosts if host.strip())
-    if not requested_hosts:
-        return ()
-    if "*" in requested_hosts:
-        return tuple(host.name for host in cluster_service.hosts)
-    remote_hosts = tuple(host for host in requested_hosts if not _is_local_identifier(host))
-    if not remote_hosts:
-        return ()
-    resolved = cluster_service.resolve_host_names(remote_hosts)
-    return tuple(host.name for host in resolved)
-
-
-def _is_local_identifier(host: str) -> bool:
-    normalized = host.strip().casefold().replace("_", "-")
-    return normalized in {
-        "localhost",
-        "127.0.0.1",
-        "::1",
-    }

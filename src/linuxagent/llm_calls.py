@@ -51,7 +51,7 @@ async def complete_llm_with_tools(
     tool_observer: ToolObserver,
 ) -> str:
     call_kwargs = {
-        **_provider_kwargs(options),
+        **tool_provider_kwargs(options),
         "tool_runtime_limits": tool_runtime_limits,
         "tool_observer": tool_observer,
     }
@@ -79,6 +79,11 @@ def _provider_kwargs(options: LLMCallOptions) -> dict[str, Any]:
             "attributes": dict(options.attributes),
         },
     }
+    return kwargs
+
+
+def tool_provider_kwargs(options: LLMCallOptions) -> dict[str, Any]:
+    kwargs = _provider_kwargs(options)
     token = current_cancellation_token()
     if token is not None:
         kwargs["cancellation_token"] = token

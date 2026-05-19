@@ -12,6 +12,7 @@ from ..pending_request import (
     legacy_interrupt_payload,
     pending_request_from_interrupt,
 )
+from .user_input_interrupt import handle_user_input_interrupt
 from .wizard_interrupt import handle_wizard_interrupt
 
 
@@ -26,12 +27,16 @@ class WizardAwareUserInterface(UserInterface):
 
     async def handle_interrupt(self, payload: dict[str, Any]) -> dict[str, Any]:
         request = pending_request_from_interrupt(payload, turn_id="ui")
+        legacy_payload = legacy_interrupt_payload(payload)
+        if request.request_type == PendingRequestType.WIZARD.value:
+            return await handle_wizard_interrupt(legacy_payload, translator=self._translator)
+        if request.request_type == PendingRequestType.REQUEST_USER_INPUT.value:
+            return await handle_user_input_interrupt(legacy_payload, translator=self._translator)
+        if legacy_payload.get("type") == PendingRequestType.REQUEST_USER_INPUT.value:
+            return await handle_user_input_interrupt(legacy_payload, translator=self._translator)
         if request.request_type != PendingRequestType.WIZARD.value:
             return await self._wrapped.handle_interrupt(legacy_interrupt_payload(payload))
-        return await handle_wizard_interrupt(
-            legacy_interrupt_payload(payload),
-            translator=self._translator,
-        )
+        return await handle_wizard_interrupt(legacy_payload, translator=self._translator)
 
     async def print(self, text: str) -> None:
         await self._wrapped.print(text)

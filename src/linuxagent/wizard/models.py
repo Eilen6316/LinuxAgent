@@ -7,10 +7,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
-_MIN_OPTIONS = 3
-_MAX_OPTIONS = 5
-_MAX_DESCRIPTION_ASCII = 60
-_MAX_DESCRIPTION_CJK = 30
 _RESERVED_OPTION_LABELS = frozenset({"Type something", "Chat about this"})
 
 
@@ -23,9 +19,9 @@ class WizardOption(BaseModel):
 
     id: str = Field(min_length=1)
     label: str = Field(min_length=1)
-    description: str = Field(min_length=1)
+    description: str = ""
 
-    @field_validator("id", "label", "description")
+    @field_validator("id", "label")
     @classmethod
     def _strip_non_empty(cls, value: str) -> str:
         stripped = value.strip()
@@ -33,18 +29,16 @@ class WizardOption(BaseModel):
             raise ValueError("value cannot be blank")
         return stripped
 
+    @field_validator("description")
+    @classmethod
+    def _strip_description(cls, value: str) -> str:
+        return value.strip()
+
     @field_validator("label")
     @classmethod
     def _reject_reserved_labels(cls, value: str) -> str:
         if value in _RESERVED_OPTION_LABELS:
             raise ValueError("reserved wizard option label")
-        return value
-
-    @field_validator("description")
-    @classmethod
-    def _description_is_compact(cls, value: str) -> str:
-        if _weighted_description_length(value) > _MAX_DESCRIPTION_ASCII:
-            raise ValueError("description must be <=30 CJK chars or <=60 ASCII chars")
         return value
 
 
@@ -54,7 +48,7 @@ class WizardStep(BaseModel):
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     kind: Literal["single", "multi"]
-    options: tuple[WizardOption, ...] = Field(min_length=_MIN_OPTIONS, max_length=_MAX_OPTIONS)
+    options: tuple[WizardOption, ...] = ()
 
     @field_validator("id", "title")
     @classmethod
@@ -207,10 +201,6 @@ def parse_wizard_plan_payload(payload: Any) -> WizardPlan:
         return WizardPlan.model_validate(payload)
     except ValidationError as exc:
         raise WizardPlanParseError(_format_validation_error(exc)) from exc
-
-
-def _weighted_description_length(value: str) -> int:
-    return sum(2 if ord(char) > 127 else 1 for char in value)
 
 
 def _format_validation_error(exc: ValidationError) -> str:

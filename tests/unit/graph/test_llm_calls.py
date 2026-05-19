@@ -8,7 +8,8 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 
 from linuxagent.interfaces import LLM_CALL_METADATA_KEY
-from linuxagent.llm_calls import complete_llm
+from linuxagent.llm_calls import LLMCallOptions, complete_llm, tool_provider_kwargs
+from linuxagent.runtime_control import CancellationToken, cancellation_scope
 from linuxagent.telemetry import TelemetryRecorder
 
 
@@ -82,3 +83,30 @@ async def test_complete_llm_omits_empty_prompt_cache_key(tmp_path) -> None:
     assert result == "ok"
     assert "prompt_cache_key" not in provider.kwargs
     assert provider.kwargs[LLM_CALL_METADATA_KEY]["trace_id"] == "trace-1"
+
+
+async def test_complete_llm_does_not_pass_cancellation_token_to_plain_completion() -> None:
+    provider = _Provider()
+    token = CancellationToken.create()
+
+    with cancellation_scope(token):
+        await complete_llm(
+            provider,  # type: ignore[arg-type]
+            [],
+            telemetry=None,
+            trace_id="trace-1",
+            attributes={"node": "parse_intent"},
+            prompt_cache_key=None,
+        )
+
+    assert "cancellation_token" not in provider.kwargs
+
+
+def test_tool_provider_kwargs_include_cancellation_token() -> None:
+    token = CancellationToken.create()
+    options = LLMCallOptions(None, "trace-1", {"node": "parse_intent"}, None)
+
+    with cancellation_scope(token):
+        kwargs = tool_provider_kwargs(options)
+
+    assert kwargs["cancellation_token"] is token

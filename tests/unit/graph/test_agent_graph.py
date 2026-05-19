@@ -26,6 +26,7 @@ from linuxagent.executors import LinuxCommandExecutor, SessionWhitelist
 from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.graph.checkpoint import PersistentMemorySaver
 from linuxagent.graph.intent_router import _parse_intent_decision
+from linuxagent.graph.runtime import GraphRuntime
 from linuxagent.i18n import Translator
 from linuxagent.interfaces import LLM_CALL_METADATA_KEY, CommandSource, ExecutionResult
 from linuxagent.operating_manifest import operating_manifest_context
@@ -304,6 +305,31 @@ def _router_response(
     )
 
 
+def _user_input_router_response() -> str:
+    return json.dumps(
+        {
+            "mode": "REQUEST_USER_INPUT",
+            "answer": "请直接补充必要信息。",
+            "reason": "needs structured input",
+            "answer_context": "none",
+            "parallel_tasks": [],
+            "request_user_input": {
+                "prompt": "collect app constraints",
+                "questions": [
+                    {
+                        "id": "kind",
+                        "title": "应用类型",
+                        "kind": "single",
+                        "options": [{"id": "web", "label": "Web"}],
+                    },
+                    {"id": "notes", "title": "补充要求", "kind": "text"},
+                ],
+            },
+        },
+        ensure_ascii=False,
+    )
+
+
 def _direct_answer_review_response(
     mode: str = "KEEP_DIRECT_ANSWER",
     reason: str = "test review",
@@ -360,6 +386,7 @@ def _is_intent_router_response(text: str) -> bool:
         "DIRECT_ANSWER",
         "COMMAND_PLAN",
         "CLARIFY",
+        "REQUEST_USER_INPUT",
         "WIZARD_NEEDED",
     }
 
@@ -640,7 +667,7 @@ async def test_graph_wizard_submit_resume_records_result_without_command(tmp_pat
             "current_step_id": "target",
         },
     }
-    await graph.ainvoke(Command(resume=resume_payload), config=config)
+    await GraphRuntime(graph).resume(resume_payload, thread_id="wizard-submit")
 
     snapshot = await graph.aget_state(config)
     assert snapshot.values["wizard_completed"] is True
@@ -684,6 +711,68 @@ async def test_graph_wizard_completed_bypasses_router_direct_answer(tmp_path) ->
     assert snapshot.values["pending_command"] == "/bin/echo hi"
     assert snapshot.values["direct_response"] is False
     assert not _has_llm_call(provider, node="parse_intent", mode="intent_router")
+
+
+async def test_graph_model_user_input_request_emits_pending_request(tmp_path) -> None:
+    graph, _provider = _graph(tmp_path, [_user_input_router_response()])
+    config = {"configurable": {"thread_id": "user-input-request"}}
+
+    await graph.ainvoke(
+        initial_state("我要设计一个应用", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+    assert payload["type"] == "request_user_input"
+    assert payload["request_type"] == "request_user_input"
+    assert [item["id"] for item in payload["request"]["questions"]] == ["kind", "notes"]
+    assert snapshot.values["user_input_attempted"] is True
+
+
+async def test_graph_model_user_input_submit_returns_to_planner(tmp_path) -> None:
+    graph, _provider = _graph(
+        tmp_path,
+        [_user_input_router_response(), command_plan_json("/bin/echo app")],
+    )
+    config = {"configurable": {"thread_id": "user-input-submit"}}
+
+    await graph.ainvoke(
+        initial_state("我要设计一个应用", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+    await GraphRuntime(graph).resume(
+        {
+            "status": "submit",
+            "partial": False,
+            "answers": [
+                {"question_id": "kind", "selected_ids": ["web"]},
+                {"question_id": "notes", "text": "fast prototype"},
+            ],
+        },
+        thread_id="user-input-submit",
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["user_input_completed"] is False
+    assert snapshot.values["pending_command"] == "/bin/echo app"
+    assert "user_input_context" in snapshot.values["user_input_context"]
+    assert snapshot.tasks[0].interrupts[0].value["type"] == "confirm_command"
+
+
+async def test_graph_model_user_input_request_non_interactive_falls_back(tmp_path) -> None:
+    graph, _provider = _graph(tmp_path, [_user_input_router_response()])
+    config = {"configurable": {"thread_id": "user-input-non-tty"}}
+
+    result = await graph.ainvoke(
+        initial_state("我要设计一个应用", source=CommandSource.USER, ui_interactive=False),
+        config=config,
+    )
+
+    assert "请直接补充必要信息。" in str(result["messages"][-1].content)
+    snapshot = await graph.aget_state(config)
+    assert not snapshot.tasks
+    assert snapshot.values.get("user_input_request") is None
 
 
 async def test_graph_wizard_payload_includes_stable_state_on_resume(tmp_path) -> None:
@@ -2731,12 +2820,12 @@ async def test_graph_includes_workspace_evidence_in_no_change_answer(tmp_path) -
             file_patch_config=FilePatchConfig(allow_roots=(tmp_path,)),
         )
     )
-    config = {"configurable": {"thread_id": "no-change-evidence-answer"}}
-
-    result = await graph.ainvoke(
-        initial_state("在 /tmp/disk_info.sh 里面再加执行开始时间功能"),
-        config=config,
-    )
+    result = (
+        await GraphRuntime(graph).run(
+            initial_state("在 /tmp/disk_info.sh 里面再加执行开始时间功能"),  # type: ignore[arg-type]
+            thread_id="no-change-evidence-answer",
+        )
+    ).state
     content = str(result["messages"][-1].content)
     assert answer in content
     assert "依据：" in content
@@ -2773,10 +2862,12 @@ async def test_graph_can_render_no_change_evidence_in_english(tmp_path) -> None:
         )
     )
 
-    result = await graph.ainvoke(
-        initial_state("check whether the script records start time"),
-        config={"configurable": {"thread_id": "no-change-evidence-answer-en"}},
-    )
+    result = (
+        await GraphRuntime(graph).run(
+            initial_state("check whether the script records start time"),  # type: ignore[arg-type]
+            thread_id="no-change-evidence-answer-en",
+        )
+    ).state
 
     content = str(result["messages"][-1].content)
     assert answer in content
@@ -2866,12 +2957,12 @@ async def test_graph_rejects_no_change_with_fake_workspace_evidence(tmp_path) ->
             file_patch_config=FilePatchConfig(allow_roots=(tmp_path,)),
         )
     )
-    config = {"configurable": {"thread_id": "no-change-fake-evidence"}}
-
-    result = await graph.ainvoke(
-        initial_state("在 /tmp/disk_info.sh 里面再加执行时间和执行结束时间功能"),
-        config=config,
-    )
+    result = (
+        await GraphRuntime(graph).run(
+            initial_state("在 /tmp/disk_info.sh 里面再加执行时间和执行结束时间功能"),  # type: ignore[arg-type]
+            thread_id="no-change-fake-evidence",
+        )
+    ).state
     content = str(result["messages"][-1].content)
 
     assert "已阻止执行" in content

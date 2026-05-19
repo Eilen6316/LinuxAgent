@@ -293,6 +293,24 @@ async def test_complete_with_tools_resolves_tool_calls() -> None:
     assert [tool.name for tool in model.bound_tools] == ["lookup_status"]
 
 
+async def test_complete_with_tools_without_tools_strips_runtime_kwargs() -> None:
+    model = _ToolCallingModel([AIMessage(content="done")])
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    out = await provider.complete_with_tools(
+        [HumanMessage(content="hi")],
+        [],
+        tool_observer=lambda event: None,
+        tool_runtime_limits=ToolRuntimeLimits(),
+        cancellation_token=CancellationToken.create(),
+    )
+
+    assert out == "done"
+    assert "tool_observer" not in model.invoke_kwargs[0]
+    assert "tool_runtime_limits" not in model.invoke_kwargs[0]
+    assert "cancellation_token" not in model.invoke_kwargs[0]
+
+
 async def test_complete_with_tools_repairs_dangling_history_before_binding() -> None:
     @tool
     async def lookup_status(service: str) -> str:

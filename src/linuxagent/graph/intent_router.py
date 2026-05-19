@@ -12,6 +12,11 @@ from langchain_core.messages import BaseMessage
 
 from ..interfaces import LLMProvider
 from ..telemetry import TelemetryRecorder
+from ..user_input import (
+    UserInputRequest,
+    UserInputRequestParseError,
+    parse_user_input_request_payload,
+)
 from .llm_calls import complete_llm
 
 _PARALLEL_TASK_EXECUTION_KEYS = frozenset(
@@ -39,6 +44,7 @@ class IntentMode(StrEnum):
     COMMAND_PLAN = "COMMAND_PLAN"
     CLARIFY = "CLARIFY"
     WIZARD_NEEDED = "WIZARD_NEEDED"
+    REQUEST_USER_INPUT = "REQUEST_USER_INPUT"
 
 
 class AnswerContext(StrEnum):
@@ -60,6 +66,7 @@ class IntentDecision:
     reason: str
     answer_context: AnswerContext = AnswerContext.NONE
     parallel_tasks: tuple[ParallelDirectTask, ...] = ()
+    user_input_request: UserInputRequest | None = None
 
 
 class IntentRouterContext(Protocol):
@@ -126,11 +133,14 @@ def _parse_intent_decision(raw: str, *, max_parallel_tasks: int | None = None) -
         answer_context,
         max_parallel_tasks=max_parallel_tasks,
     )
+    user_input_request = _parse_user_input_request(payload, mode)
+    if mode is IntentMode.REQUEST_USER_INPUT and user_input_request is None:
+        return IntentDecision(IntentMode.CLARIFY, answer, reason or "invalid user input request")
     if mode is IntentMode.CLARIFY and not answer:
         return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
     if mode is IntentMode.DIRECT_ANSWER and answer_context is AnswerContext.NONE and not answer:
         return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
-    return IntentDecision(mode, answer, reason, answer_context, parallel_tasks)
+    return IntentDecision(mode, answer, reason, answer_context, parallel_tasks, user_input_request)
 
 
 def _parse_answer_context(payload: dict[str, Any], mode: IntentMode) -> AnswerContext:
@@ -171,6 +181,24 @@ def _parse_parallel_tasks(
     if max_parallel_tasks is None:
         return tuple(tasks)
     return tuple(tasks[: max(max_parallel_tasks, 0)])
+
+
+def _parse_user_input_request(
+    payload: dict[str, Any],
+    mode: IntentMode,
+) -> UserInputRequest | None:
+    if mode is not IntentMode.REQUEST_USER_INPUT:
+        return None
+    raw_request = payload.get("request_user_input") or payload.get("user_input_request")
+    if not isinstance(raw_request, dict):
+        return None
+    try:
+        request = parse_user_input_request_payload(raw_request)
+    except UserInputRequestParseError:
+        return None
+    if request.fallback_answer is None and (answer := str(payload.get("answer") or "").strip()):
+        return request.model_copy(update={"fallback_answer": answer})
+    return request
 
 
 def _has_execution_fields(item: Mapping[str, Any]) -> bool:

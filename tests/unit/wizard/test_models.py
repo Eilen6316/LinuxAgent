@@ -36,17 +36,17 @@ def test_wizard_plan_rejects_empty_steps() -> None:
         WizardPlan(user_intent="deploy", steps=())
 
 
-def test_wizard_step_rejects_empty_options() -> None:
-    with pytest.raises(ValidationError, match="at least 3 items"):
-        WizardStep(id="database", title="选择数据库?", kind="single", options=())
+def test_wizard_step_allows_text_only_question() -> None:
+    value = WizardStep(id="database", title="选择数据库?", kind="single", options=())
+
+    assert value.options == ()
 
 
-@pytest.mark.parametrize("count", [2, 6])
-def test_wizard_step_rejects_option_count_outside_bounds(count: int) -> None:
-    options = tuple(option(f"opt-{index}") for index in range(count))
+def test_wizard_step_does_not_limit_model_option_count() -> None:
+    options = tuple(option(f"opt-{index}") for index in range(2))
+    value = WizardStep(id="database", title="选择数据库?", kind="single", options=options)
 
-    with pytest.raises(ValidationError):
-        WizardStep(id="database", title="选择数据库?", kind="single", options=options)
+    assert len(value.options) == 2
 
 
 def test_wizard_plan_rejects_duplicate_step_ids() -> None:
@@ -96,9 +96,10 @@ def test_reserved_options_are_rejected(label: str) -> None:
         WizardOption(id="reserved", label=label, description="系统保留")
 
 
-def test_overlong_description_is_rejected() -> None:
-    with pytest.raises(ValidationError, match="description"):
-        WizardOption(id="too-long", label="Too long", description="x" * 61)
+def test_description_is_not_a_runtime_ability_constraint() -> None:
+    value = WizardOption(id="long", label="Long", description="x" * 61)
+
+    assert value.description == "x" * 61
 
 
 def test_submit_result_must_answer_every_step() -> None:

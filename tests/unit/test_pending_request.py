@@ -136,7 +136,8 @@ def test_non_tty_fallbacks_fail_closed_without_default_allow() -> None:
     assert command_result["latency_ms"] == 0
     assert wizard_result["status"] == "non_tty_refused"
     assert wizard_result["partial"] is True
-    assert input_result["status"] == "cancelled"
+    assert input_result["status"] == "non_tty_refused"
+    assert input_result["partial"] is True
 
 
 def test_reserved_model_input_request_type_is_known() -> None:

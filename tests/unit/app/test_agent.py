@@ -199,7 +199,7 @@ class _CancelsAfterEventUI(_FakeUI):
         self._event = event
 
     async def wait_for_cancel(self) -> str:
-        await asyncio.to_thread(self._event.wait)
+        await _wait_for_event(self._event, deadline_seconds=1.0)
         return "escape"
 
 
@@ -249,7 +249,7 @@ class _GateGraph(_FakeGraph):
         del config
         self.calls.append(state)
         self.started.set()
-        await asyncio.to_thread(self.release.wait)
+        await _wait_for_event(self.release, deadline_seconds=1.0)
         return {"messages": [*state["messages"], AIMessage(content="done")]}
 
 
@@ -284,7 +284,7 @@ class _SlowCancelGraph(_FakeGraph):
             await asyncio.Future()
         except asyncio.CancelledError:
             self.cancel_cleanup_started.set()
-            await asyncio.to_thread(self.finish_cancel_cleanup.wait)
+            await _wait_for_event(self.finish_cancel_cleanup, deadline_seconds=1.0)
             self.cancel_cleanup_done.set()
             raise
 
@@ -472,10 +472,19 @@ async def test_run_turn_escape_does_not_wait_for_slow_graph_cleanup(tmp_path) ->
     assert result == {}
     assert ui.printed == []
     assert ui.cancelled == ["escape"]
-    await asyncio.wait_for(asyncio.to_thread(graph.cancel_cleanup_started.wait), timeout=0.2)
+    assert await _wait_for_event(graph.cancel_cleanup_started, deadline_seconds=0.2)
     assert not graph.cancel_cleanup_done.is_set()
     graph.finish_cancel_cleanup.set()
-    await asyncio.wait_for(asyncio.to_thread(graph.cancel_cleanup_done.wait), timeout=0.2)
+    assert await _wait_for_event(graph.cancel_cleanup_done, deadline_seconds=0.2)
+
+
+async def _wait_for_event(event: threading.Event, *, deadline_seconds: float) -> bool:
+    deadline = time.monotonic() + deadline_seconds
+    while time.monotonic() < deadline:
+        if event.is_set():
+            return True
+        await asyncio.sleep(0.005)
+    return event.is_set()
 
 
 async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
@@ -637,7 +646,7 @@ async def test_run_queues_input_while_turn_is_busy(tmp_path) -> None:
     agent = _agent(tmp_path, graph=graph, ui=ui)
 
     run_task = asyncio.create_task(agent.run(thread_id="cli"))
-    await asyncio.wait_for(asyncio.to_thread(graph.started.wait), timeout=0.2)
+    assert await _wait_for_event(graph.started, deadline_seconds=0.2)
 
     assert len(graph.calls) == 1
     graph.release.set()
