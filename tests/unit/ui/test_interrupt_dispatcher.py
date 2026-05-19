@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from linuxagent.pending_request import build_pending_request, pending_request_envelope
 from linuxagent.ui.interrupt_dispatcher import WizardAwareUserInterface
 from linuxagent.ui.wizard import WizardCheckpoint
 from linuxagent.ui.wizard_interrupt import handle_wizard_interrupt
@@ -35,6 +36,29 @@ async def test_wizard_aware_ui_handles_wizard_interrupt(monkeypatch) -> None:
     ui = WizardAwareUserInterface(_WrappedUI())
 
     result = await ui.handle_interrupt({"type": "wizard", "plan": {}})
+
+    assert result == {"status": "cancel", "answers": [], "partial": True}
+
+
+async def test_wizard_aware_ui_handles_pending_request_wizard_envelope(monkeypatch) -> None:
+    async def fake_handler(payload: dict[str, object], **_: Any) -> Any:
+        assert payload == {"type": "wizard", "plan": {}}
+        return {"status": "cancel", "answers": [], "partial": True}
+
+    import linuxagent.ui.interrupt_dispatcher as dispatcher
+
+    request = build_pending_request(
+        turn_id="turn-1",
+        request_id="wizard-1",
+        request_type="wizard",
+        payload={"type": "wizard", "plan": {}},
+    )
+    monkeypatch.setattr(dispatcher, "handle_wizard_interrupt", fake_handler)
+    ui = WizardAwareUserInterface(_WrappedUI())
+
+    result = await ui.handle_interrupt(
+        pending_request_envelope(request=request, payload={"type": "wizard", "plan": {}})
+    )
 
     assert result == {"status": "cancel", "answers": [], "partial": True}
 

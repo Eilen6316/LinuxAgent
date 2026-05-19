@@ -16,6 +16,9 @@ from .security.redaction import redact_record
 
 PENDING_REQUEST_SCHEMA_VERSION: Literal[1] = 1
 UNKNOWN_REQUEST_TYPE = "unknown"
+PENDING_REQUEST_ENVELOPE_TYPE = "pending_request"
+PENDING_REQUEST_KEY = "pending_request"
+PENDING_REQUEST_PAYLOAD_KEY = "payload"
 
 
 class PendingRequestStatus(StrEnum):
@@ -184,16 +187,31 @@ def pending_request_from_interrupt(
     turn_id: str,
     request_id: str | None = None,
 ) -> PendingRequest:
-    mapping = request_mapping_for_legacy_payload(payload)
+    snapshot = _request_snapshot(payload)
+    if snapshot is not None:
+        return PendingRequest.from_snapshot(snapshot)
+    mapping = request_mapping_for_interrupt(payload)
     request_type = mapping.request_type if mapping is not None else UNKNOWN_REQUEST_TYPE
     return build_pending_request(
         turn_id=turn_id,
-        request_id=request_id,
+        request_id=request_id or request_id_from_interrupt(payload),
         request_type=request_type,
-        payload=payload,
+        payload=legacy_interrupt_payload(payload),
         resumable=mapping.resumable if mapping is not None else False,
         legacy_payload_type=_payload_type(payload),
     )
+
+
+def pending_request_envelope(
+    *,
+    request: PendingRequest,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "type": PENDING_REQUEST_ENVELOPE_TYPE,
+        PENDING_REQUEST_KEY: request.to_snapshot(),
+        PENDING_REQUEST_PAYLOAD_KEY: dict(payload),
+    }
 
 
 def request_started_event(*, thread_id: str, request: PendingRequest) -> RuntimeEvent:
@@ -274,12 +292,34 @@ def request_mapping_for_legacy_payload(payload: Mapping[str, Any]) -> PendingReq
     )
 
 
+def request_mapping_for_interrupt(payload: Mapping[str, Any]) -> PendingRequestMapping | None:
+    request_type = _request_type(payload)
+    if request_type is not None:
+        return request_mapping_for_type(request_type)
+    return request_mapping_for_legacy_payload(payload)
+
+
 def legacy_request_mappings() -> tuple[PendingRequestMapping, ...]:
     return tuple(mapping for mapping in PENDING_REQUEST_MAPPINGS if mapping.legacy_payload_type)
 
 
 def is_known_request_type(request_type: str) -> bool:
     return request_mapping_for_type(request_type) is not None
+
+
+def legacy_interrupt_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    nested = payload.get(PENDING_REQUEST_PAYLOAD_KEY)
+    if _is_request_envelope(payload) and isinstance(nested, Mapping):
+        return dict(nested)
+    return dict(payload)
+
+
+def request_id_from_interrupt(payload: Mapping[str, Any]) -> str | None:
+    for key in ("request_id", "audit_id", "trace_id"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def fail_closed_request_result(
@@ -306,6 +346,22 @@ def _payload_type(payload: Mapping[str, Any]) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _request_type(payload: Mapping[str, Any]) -> str | None:
+    value = payload.get("request_type")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _request_snapshot(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    value = payload.get(PENDING_REQUEST_KEY)
+    return dict(value) if isinstance(value, Mapping) else None
+
+
+def _is_request_envelope(payload: Mapping[str, Any]) -> bool:
+    return payload.get("type") == PENDING_REQUEST_ENVELOPE_TYPE or PENDING_REQUEST_KEY in payload
 
 
 def _redacted_mapping(value: Any) -> dict[str, Any]:

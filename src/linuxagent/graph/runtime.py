@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,6 +10,12 @@ from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
+from ..pending_request import (
+    PendingRequest,
+    pending_request_from_interrupt,
+    request_resolved_event,
+    request_started_event,
+)
 from ..runtime_control import CancellationToken, cancellation_scope, new_turn_id
 from ..runtime_events import RuntimeEventKind, RuntimeEventPhase, runtime_event
 from .agent_graph import AgentGraph
@@ -22,6 +28,14 @@ GRAPH_LIMIT = 100
 @dataclass(frozen=True)
 class GraphInterrupt:
     payload: dict[str, Any]
+    request: PendingRequest | None = None
+
+    @property
+    def legacy_payload(self) -> dict[str, Any]:
+        nested = self.payload.get("payload")
+        if isinstance(nested, Mapping):
+            return dict(nested)
+        return self.payload
 
 
 @dataclass(frozen=True)
@@ -62,15 +76,35 @@ class GraphRuntime:
         turn_id: str | None = None,
         cancellation_token: CancellationToken | None = None,
     ) -> GraphRunResult:
-        return await self._invoke(
+        active_turn_id = _active_turn_id(turn_id, cancellation_token)
+        pending_request = await self._first_pending_request(
+            thread_id=thread_id,
+            turn_id=active_turn_id,
+        )
+        if pending_request is not None:
+            await self._notify_pending_request_resolved(
+                thread_id=thread_id,
+                request=pending_request,
+                result=response,
+            )
+        result = await self._invoke(
             Command(resume=response),
             thread_id=thread_id,
-            turn_id=turn_id,
+            turn_id=active_turn_id,
             cancellation_token=cancellation_token,
         )
+        return result
 
-    async def pending_interrupts(self, *, thread_id: str) -> tuple[GraphInterrupt, ...]:
-        return _interrupts_from_snapshot(await self._snapshot(thread_id))
+    async def pending_interrupts(
+        self,
+        *,
+        thread_id: str,
+        turn_id: str | None = None,
+    ) -> tuple[GraphInterrupt, ...]:
+        return _interrupts_from_snapshot(
+            await self._snapshot(thread_id),
+            turn_id=turn_id or thread_id,
+        )
 
     async def history(self, *, thread_id: str) -> list[BaseMessage]:
         values = await self.values(thread_id=thread_id)
@@ -115,6 +149,11 @@ class GraphRuntime:
         try:
             with cancellation_scope(cancellation_token):
                 result = await self._graph.ainvoke(graph_input, config=graph_config(thread_id))
+            run_result = await self._run_result(
+                result,
+                thread_id=thread_id,
+                turn_id=active_turn_id,
+            )
             if _is_cancelled(cancellation_token) and cancellation_token is not None:
                 await self._notify_turn(
                     active_turn_id,
@@ -122,9 +161,11 @@ class GraphRuntime:
                     RuntimeEventPhase.CANCELLED,
                     reason=cancellation_token.reason,
                 )
+            elif run_result.interrupts:
+                await self._notify_pending_requests(thread_id, run_result.interrupts)
             else:
                 await self._notify_turn(active_turn_id, thread_id, RuntimeEventPhase.COMPLETED)
-            return await self._run_result(result, thread_id=thread_id)
+            return run_result
         except Exception as exc:
             phase = (
                 RuntimeEventPhase.CANCELLED
@@ -134,11 +175,17 @@ class GraphRuntime:
             await self._notify_turn(active_turn_id, thread_id, phase, reason=str(exc))
             raise
 
-    async def _run_result(self, result: Any, *, thread_id: str) -> GraphRunResult:
+    async def _run_result(
+        self,
+        result: Any,
+        *,
+        thread_id: str,
+        turn_id: str,
+    ) -> GraphRunResult:
         state = result if isinstance(result, dict) else {}
-        interrupts = _interrupts_from_result(state)
+        interrupts = _interrupts_from_result(state, turn_id=turn_id)
         if not interrupts:
-            interrupts = await self.pending_interrupts(thread_id=thread_id)
+            interrupts = await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
         return GraphRunResult(state=state, interrupts=interrupts)
 
     async def _snapshot(self, thread_id: str) -> Any:
@@ -164,6 +211,39 @@ class GraphRuntime:
         )
         await notify_event(self._runtime_observer, event.to_event())
 
+    async def _notify_pending_requests(
+        self, thread_id: str, interrupts: tuple[GraphInterrupt, ...]
+    ) -> None:
+        for item in interrupts:
+            if item.request is not None:
+                await notify_event(
+                    self._runtime_observer,
+                    request_started_event(thread_id=thread_id, request=item.request).to_event(),
+                )
+
+    async def _notify_pending_request_resolved(
+        self,
+        *,
+        thread_id: str,
+        request: PendingRequest,
+        result: dict[str, Any],
+    ) -> None:
+        await notify_event(
+            self._runtime_observer,
+            request_resolved_event(thread_id=thread_id, request=request, result=result).to_event(),
+        )
+
+    async def _first_pending_request(
+        self,
+        *,
+        thread_id: str,
+        turn_id: str,
+    ) -> PendingRequest | None:
+        interrupts = await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
+        if not interrupts:
+            return None
+        return interrupts[0].request
+
 
 def graph_config(thread_id: str) -> RunnableConfig:
     return {"configurable": {"thread_id": thread_id}, "recursion_limit": GRAPH_LIMIT}
@@ -181,21 +261,27 @@ def _is_cancelled(cancellation_token: CancellationToken | None) -> bool:
     return bool(cancellation_token and cancellation_token.cancelled)
 
 
-def _interrupts_from_result(result: dict[str, Any]) -> tuple[GraphInterrupt, ...]:
+def _interrupts_from_result(
+    result: dict[str, Any],
+    *,
+    turn_id: str,
+) -> tuple[GraphInterrupt, ...]:
     raw_interrupts = result.get("__interrupt__")
     if not isinstance(raw_interrupts, Sequence):
         return ()
-    return tuple(_graph_interrupt(interrupt) for interrupt in raw_interrupts)
+    return tuple(_graph_interrupt(interrupt, turn_id=turn_id) for interrupt in raw_interrupts)
 
 
-def _interrupts_from_snapshot(snapshot: Any) -> tuple[GraphInterrupt, ...]:
+def _interrupts_from_snapshot(snapshot: Any, *, turn_id: str) -> tuple[GraphInterrupt, ...]:
     interrupts: list[GraphInterrupt] = []
     for task in getattr(snapshot, "tasks", ()):
         for interrupt in getattr(task, "interrupts", ()):
-            interrupts.append(_graph_interrupt(interrupt))
+            interrupts.append(_graph_interrupt(interrupt, turn_id=turn_id))
     return tuple(interrupts)
 
 
-def _graph_interrupt(interrupt: Any) -> GraphInterrupt:
+def _graph_interrupt(interrupt: Any, *, turn_id: str) -> GraphInterrupt:
     payload = getattr(interrupt, "value", interrupt)
-    return GraphInterrupt(payload=payload if isinstance(payload, dict) else {"value": payload})
+    legacy_payload = payload if isinstance(payload, dict) else {"value": payload}
+    request = pending_request_from_interrupt(legacy_payload, turn_id=turn_id)
+    return GraphInterrupt(payload=legacy_payload, request=request)

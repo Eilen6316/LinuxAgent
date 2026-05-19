@@ -46,6 +46,14 @@ class _FailingGraph(_FakeGraph):
         raise RuntimeError("boom")
 
 
+class _ResumeClearsInterruptGraph(_FakeGraph):
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        result = await super().ainvoke(state, config)
+        if isinstance(state, Command):
+            self.interrupts = []
+        return result
+
+
 class _TokenCheckingGraph(_FakeGraph):
     def __init__(self) -> None:
         super().__init__(result={"messages": []})
@@ -70,6 +78,9 @@ async def test_run_returns_inline_interrupts_without_app_langgraph_access() -> N
 
     assert result.state["__interrupt__"]
     assert result.interrupts[0].payload == {"type": "confirm_command"}
+    assert result.interrupts[0].legacy_payload == {"type": "confirm_command"}
+    assert result.interrupts[0].request is not None
+    assert result.interrupts[0].request.request_type == "confirm_command"
     assert graph.configs[0]["configurable"]["thread_id"] == "thread"
 
 
@@ -82,6 +93,33 @@ async def test_run_falls_back_to_checkpoint_interrupts() -> None:
     result = await GraphRuntime(graph).run({"messages": []}, thread_id="thread")  # type: ignore[arg-type]
 
     assert result.interrupts[0].payload == {"type": "wizard"}
+    assert result.interrupts[0].request is not None
+    assert result.interrupts[0].request.request_type == "wizard"
+
+
+async def test_run_emits_pending_request_event_for_interrupt() -> None:
+    events: list[dict[str, Any]] = []
+    graph = _FakeGraph(
+        result={
+            "__interrupt__": [
+                Interrupt(
+                    value={"type": "confirm_file_patch", "audit_id": "audit-1"},
+                    resumable=True,
+                    ns=["n"],
+                )
+            ]
+        }
+    )
+    runtime = GraphRuntime(graph, runtime_observer=events.append)  # type: ignore[arg-type]
+
+    await runtime.run({"messages": []}, thread_id="thread", turn_id="turn-1")  # type: ignore[arg-type]
+
+    assert [(event["kind"], event["phase"]) for event in events] == [
+        ("turn", "started"),
+        ("request", "requested"),
+    ]
+    assert events[1]["payload"]["request_id"] == "audit-1"
+    assert events[1]["payload"]["request_type"] == "confirm_file_patch"
 
 
 async def test_resume_wraps_response_in_langgraph_command() -> None:
@@ -92,6 +130,25 @@ async def test_resume_wraps_response_in_langgraph_command() -> None:
     assert isinstance(graph.calls[0], Command)
     assert graph.calls[0].resume == {"decision": "yes"}
     assert str(result.state["messages"][0].content) == "ok"
+
+
+async def test_resume_emits_pending_request_resolved_event() -> None:
+    events: list[dict[str, Any]] = []
+    graph = _ResumeClearsInterruptGraph(
+        result={"messages": [AIMessage(content="ok")]},
+        interrupts=[Interrupt(value={"type": "confirm_command", "audit_id": "audit-1"})],
+    )
+    runtime = GraphRuntime(graph, runtime_observer=events.append)  # type: ignore[arg-type]
+
+    await runtime.resume({"decision": "yes"}, thread_id="thread", turn_id="turn-1")
+
+    assert [(event["kind"], event["phase"]) for event in events] == [
+        ("request", "resolved"),
+        ("turn", "started"),
+        ("turn", "completed"),
+    ]
+    assert events[0]["payload"]["request_id"] == "audit-1"
+    assert events[0]["payload"]["result"] == {"decision": "yes"}
 
 
 async def test_history_and_permissions_read_checkpoint_values() -> None:

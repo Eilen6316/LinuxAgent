@@ -12,8 +12,11 @@ from linuxagent.pending_request import (
     build_pending_request,
     fail_closed_request_result,
     is_known_request_type,
+    legacy_interrupt_payload,
     legacy_request_mappings,
+    pending_request_envelope,
     pending_request_from_interrupt,
+    request_id_from_interrupt,
     request_mapping_for_type,
     request_resolved_event,
     request_started_event,
@@ -68,6 +71,27 @@ def test_pending_request_events_use_request_lifecycle_phases() -> None:
     assert resolved.payload["result"] == {"decision": "yes"}
 
 
+def test_pending_request_envelope_restores_snapshot_and_legacy_payload() -> None:
+    request = build_pending_request(
+        turn_id="turn-1",
+        request_type=PendingRequestType.CONFIRM_FILE_PATCH.value,
+        request_id="req-1",
+        payload={"type": "confirm_file_patch", "audit_id": "audit-1"},
+    )
+    envelope = pending_request_envelope(
+        request=request,
+        payload={"type": "confirm_file_patch", "audit_id": "audit-1"},
+    )
+
+    restored = pending_request_from_interrupt(envelope, turn_id="ignored")
+
+    assert restored == request
+    assert legacy_interrupt_payload(envelope) == {
+        "type": "confirm_file_patch",
+        "audit_id": "audit-1",
+    }
+
+
 @pytest.mark.parametrize("mapping", legacy_request_mappings())
 def test_every_legacy_payload_type_maps_to_pending_request(mapping) -> None:
     assert mapping.legacy_payload_type is not None
@@ -80,6 +104,13 @@ def test_every_legacy_payload_type_maps_to_pending_request(mapping) -> None:
     assert request.request_type == mapping.request_type
     assert request.legacy_payload_type == mapping.legacy_payload_type
     assert request.payload["api_key"] == REDACTED
+
+
+def test_interrupt_request_id_prefers_existing_stable_ids() -> None:
+    assert request_id_from_interrupt({"request_id": "req"}) == "req"
+    assert request_id_from_interrupt({"audit_id": "audit"}) == "audit"
+    assert request_id_from_interrupt({"trace_id": "trace"}) == "trace"
+    assert request_id_from_interrupt({"type": "wizard"}) is None
 
 
 def test_unknown_legacy_payload_falls_back_to_non_resumable_unknown_request() -> None:

@@ -7,6 +7,11 @@ from typing import Any
 
 from ..i18n import Translator, default_translator
 from ..interfaces import ExecutionResult, UserInterface
+from ..pending_request import (
+    PendingRequestType,
+    legacy_interrupt_payload,
+    pending_request_from_interrupt,
+)
 from .wizard_interrupt import handle_wizard_interrupt
 
 
@@ -20,9 +25,13 @@ class WizardAwareUserInterface(UserInterface):
             yield item
 
     async def handle_interrupt(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if payload.get("type") != "wizard":
-            return await self._wrapped.handle_interrupt(payload)
-        return await handle_wizard_interrupt(payload, translator=self._translator)
+        request = pending_request_from_interrupt(payload, turn_id="ui")
+        if request.request_type != PendingRequestType.WIZARD.value:
+            return await self._wrapped.handle_interrupt(legacy_interrupt_payload(payload))
+        return await handle_wizard_interrupt(
+            legacy_interrupt_payload(payload),
+            translator=self._translator,
+        )
 
     async def print(self, text: str) -> None:
         await self._wrapped.print(text)

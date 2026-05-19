@@ -17,6 +17,7 @@ from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
 from .output import print_assistant_response, start_working
 from .pending_loop import run_pending_input_loop
+from .pending_requests import interrupt_request, resume_status_for_request
 from .resume import (
     ResumeSessionItem,
     render_resumed_session,
@@ -119,7 +120,8 @@ class LinuxAgent:
         result = await self._run_with_cancel(state, thread_id)
         while result is not None and result.interrupts:
             await self._persist_pending_history(thread_id)
-            response = await self.ui.handle_interrupt(result.interrupts[0].payload)
+            interrupt = result.interrupts[0]
+            response = await self.ui.handle_interrupt(interrupt.legacy_payload)
             result = await self._resume_with_cancel(response, thread_id)
         if result is None:
             return {}
@@ -252,12 +254,8 @@ class LinuxAgent:
         interrupts = await self.graph_runtime.pending_interrupts(thread_id=thread_id)
         if not interrupts:
             return ""
-        payload = interrupts[0].payload
-        if isinstance(payload, dict) and payload.get("type") == "wizard":
-            return self.translator.t("resume.status.pending_wizard")
-        if isinstance(payload, dict) and payload.get("type") == "confirm_file_patch":
-            return self.translator.t("resume.status.pending_patch")
-        return self.translator.t("resume.status.pending_confirm")
+        request = interrupt_request(interrupts[0], turn_id=thread_id)
+        return resume_status_for_request(request, translator=self.translator)
 
     async def _resume_pending_work(self, thread_id: str) -> None:
         while True:
@@ -265,7 +263,7 @@ class LinuxAgent:
             if not interrupts:
                 return
             await self._persist_pending_history(thread_id)
-            response = await self.ui.handle_interrupt(interrupts[0].payload)
+            response = await self.ui.handle_interrupt(interrupts[0].legacy_payload)
             result = await self._resume_with_cancel(response, thread_id)
             if result is None:
                 return

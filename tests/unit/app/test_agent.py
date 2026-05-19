@@ -13,9 +13,11 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command, Interrupt
 
 from linuxagent.app import LinuxAgent
+from linuxagent.app.pending_requests import interrupt_request, resume_status_for_request
 from linuxagent.audit import AuditLog
-from linuxagent.graph.runtime import GraphRuntime
+from linuxagent.graph.runtime import GraphInterrupt, GraphRuntime
 from linuxagent.interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
+from linuxagent.pending_request import PendingRequestType, build_pending_request
 from linuxagent.services import (
     BackgroundJobRuntimeStatus,
     BackgroundJobSnapshot,
@@ -334,6 +336,12 @@ def _command_service(
     return CommandService(_FakeExecutor(safety=safety, result=result))  # type: ignore[arg-type]
 
 
+class _FakeTranslator:
+    def t(self, key: str, **kwargs: Any) -> str:
+        del kwargs
+        return key
+
+
 def _agent(
     tmp_path,
     *,
@@ -499,6 +507,34 @@ async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
     assert ui.interrupts == [{"type": "confirm_command"}]
     assert ui.printed == []
     assert ui.markdown_printed == ["ok"]
+
+
+def test_interrupt_request_accepts_pending_request_metadata() -> None:
+    request = build_pending_request(
+        turn_id="turn-1",
+        request_id="req-1",
+        request_type=PendingRequestType.CONFIRM_COMMAND.value,
+        payload={"type": "confirm_command", "command": "id"},
+    )
+    interrupt = GraphInterrupt(
+        payload={"type": "confirm_command", "command": "id"}, request=request
+    )
+
+    restored = interrupt_request(interrupt, turn_id="fallback")
+
+    assert restored == request
+    assert interrupt.legacy_payload == {"type": "confirm_command", "command": "id"}
+
+
+def test_resume_status_uses_pending_request_type() -> None:
+    request = build_pending_request(
+        turn_id="turn-1",
+        request_type=PendingRequestType.CONFIRM_FILE_PATCH.value,
+    )
+
+    label = resume_status_for_request(request, translator=_FakeTranslator())
+
+    assert label == "resume.status.pending_patch"
 
 
 async def test_run_turn_persists_pending_interrupt_history(tmp_path) -> None:
