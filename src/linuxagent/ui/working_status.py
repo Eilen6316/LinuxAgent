@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
+from ..active_view import ActiveTurnView, ActiveWorkItemView
 from ..i18n import Translator, default_translator
 
 WORKING_REFRESH_PER_SECOND = 4
@@ -31,11 +32,40 @@ class WorkingStatus:
         self._message = self._working_title()
         self._items: list[str] = []
         self._omitted_count = 0
+        self._active_view: ActiveTurnView | None = None
 
     def update(self, message: str) -> None:
+        self._active_view = None
         self._message = _working_label(message, self._translator)
         if self._message != self._working_title():
             self._append_item(self._message)
+        self._refresh()
+
+    def update_view(self, view: ActiveTurnView) -> None:
+        self._active_view = view
+        self._refresh()
+
+    def stop(self) -> None:
+        if self._live is None:
+            return
+        self._live.stop()
+        self._live = None
+        self._active_view = None
+
+    def cancel(self) -> None:
+        if self._live is None:
+            return
+        live = self._live
+        self._live = None
+        self._active_view = None
+        _cancel_live_without_final_refresh(live)
+
+    def _render(self) -> Text:
+        if self._active_view is not None:
+            return self._render_active_view(self._active_view)
+        return self._render_legacy_items()
+
+    def _refresh(self) -> None:
         if self._live is None or not self._live.is_started:
             self._started_at = time.monotonic()
             self._live = Live(
@@ -51,20 +81,7 @@ class WorkingStatus:
             return
         self._live.refresh()
 
-    def stop(self) -> None:
-        if self._live is None:
-            return
-        self._live.stop()
-        self._live = None
-
-    def cancel(self) -> None:
-        if self._live is None:
-            return
-        live = self._live
-        self._live = None
-        _cancel_live_without_final_refresh(live)
-
-    def _render(self) -> Text:
+    def _render_legacy_items(self) -> Text:
         elapsed = max(0, int(time.monotonic() - self._started_at))
         suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
         title = self._working_title()
@@ -94,6 +111,24 @@ class WorkingStatus:
             text.append("\n")
             _append_render_item(text, item, current=index == len(visible_items) - 1)
         return text
+
+    def _render_active_view(self, view: ActiveTurnView) -> Text:
+        text = self._render_title()
+        items = _active_view_items(view)
+        for item in items:
+            text.append("\n")
+            _append_render_item(text, _active_item_label(item), current=_active_item_current(item))
+        return text
+
+    def _render_title(self) -> Text:
+        elapsed = max(0, int(time.monotonic() - self._started_at))
+        suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
+        return Text.assemble(
+            (_activity_indicator(), self._accent_style()),
+            " ",
+            (self._working_title(), "bold"),
+            (suffix, "dim"),
+        )
 
     def _accent_style(self) -> str:
         if self._theme == "light":
@@ -145,6 +180,22 @@ def _append_render_item(text: Text, item: str, *, current: bool) -> None:
     for line in lines[1:]:
         text.append("\n")
         text.append(f"    {line.strip()}", style=style)
+
+
+def _active_view_items(view: ActiveTurnView) -> list[ActiveWorkItemView]:
+    return list(view.items[-MAX_ACTIVITY_ITEMS:])
+
+
+def _active_item_current(item: ActiveWorkItemView) -> bool:
+    return item.status in {"queued", "running"}
+
+
+def _active_item_label(item: ActiveWorkItemView) -> str:
+    label = item.label or item.category
+    detail = item.summary or item.result_preview or item.reason
+    if not detail:
+        return label
+    return f"{label}\n  {detail}"
 
 
 def _cancel_live_without_final_refresh(live: Live) -> None:

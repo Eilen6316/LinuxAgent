@@ -13,6 +13,7 @@ from rich.console import Console
 
 import linuxagent.ui.console as console_module
 from linuxagent import __version__
+from linuxagent.active_view import ActiveTurnView, ActiveWorkItemView
 from linuxagent.config.models import LanguageCode
 from linuxagent.i18n import Translator
 from linuxagent.interfaces import ExecutionResult
@@ -768,6 +769,74 @@ async def test_console_print_activity_shows_parallel_agent_group(monkeypatch) ->
     assert "agent B: done - 读取日志摘要" in rendered
 
     await ui.print("done")
+
+    assert ui._working_status is None
+
+
+async def test_console_print_active_view_renders_work_items(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread",
+            turn_id="turn",
+            status="running",
+            items=(
+                ActiveWorkItemView(
+                    item_id="intent",
+                    category="graph",
+                    status="completed",
+                    label="分类意图",
+                    summary="已完成",
+                ),
+                ActiveWorkItemView(
+                    item_id="read",
+                    category="tool",
+                    status="running",
+                    label="读取文件",
+                    summary="/LinuxAgent/.work/plan/PlanC.md",
+                ),
+            ),
+        )
+    )
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "处理中（" in rendered
+    assert "分类意图" in rendered
+    assert "读取文件" in rendered
+    assert "/LinuxAgent/.work/plan/PlanC.md" in rendered
+
+
+async def test_console_print_active_view_clears_on_terminal_status(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread",
+            turn_id="turn",
+            status="running",
+            items=(
+                ActiveWorkItemView(
+                    item_id="intent",
+                    category="graph",
+                    status="running",
+                    label="分类意图",
+                ),
+            ),
+        )
+    )
+    assert ui._working_status is not None
+
+    await ui.print_active_view(
+        ActiveTurnView(thread_id="thread", turn_id="turn", status="completed")
+    )
 
     assert ui._working_status is None
 

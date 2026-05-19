@@ -1096,6 +1096,71 @@ async def test_runtime_observer_deduplicates_repeated_activity(
     assert ui.raw == [("ok", False)]
 
 
+async def test_runtime_observer_renders_typed_active_view(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeUI:
+        def __init__(self) -> None:
+            self.views: list[dict[str, object]] = []
+            self.activities: list[str] = []
+
+        async def print_active_view(self, view: object) -> None:
+            snapshot = view.to_snapshot()
+            self.views.append(snapshot)
+
+        async def print_activity(self, text: str) -> None:
+            self.activities.append(text)
+
+    ui = _FakeUI()
+    monkeypatch.setattr(container_module.Container, "ui", lambda self: ui)
+    container = Container(AppConfig.model_validate({"telemetry": {"enabled": False}}))
+    observer = container._runtime_event_observer()
+
+    await observer(
+        {
+            "schema_version": 1,
+            "kind": "turn",
+            "phase": "started",
+            "thread_id": "thread",
+            "turn_id": "turn",
+            "payload": {},
+        }
+    )
+    await observer(
+        {
+            "schema_version": 1,
+            "kind": "work_item",
+            "phase": "started",
+            "thread_id": "thread",
+            "turn_id": "turn",
+            "payload": {
+                "item_id": "intent",
+                "category": "graph",
+                "status": "running",
+                "label": "分类意图",
+            },
+        }
+    )
+    await observer(
+        {
+            "schema_version": 1,
+            "kind": "turn",
+            "phase": "completed",
+            "thread_id": "thread",
+            "turn_id": "turn",
+            "payload": {},
+        }
+    )
+
+    assert ui.activities == []
+    assert ui.views[0]["status"] == "running"
+    assert ui.views[1]["items"] == [
+        {"item_id": "intent", "category": "graph", "status": "running", "label": "分类意图"}
+    ]
+    assert ui.views[2]["status"] == "completed"
+    assert container._active_turn_view.status == "idle"
+
+
 def test_container_disables_embedding_tools_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

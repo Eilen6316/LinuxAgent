@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from langchain_core.tools import BaseTool
 
+from .active_view import ActiveTurnView, apply_event
 from .app import LinuxAgent
 from .app.runtime_messages import command_event_key, runtime_event_message, tool_activity_message
 from .app.runtime_telemetry import record_runtime_event
@@ -85,6 +86,7 @@ class Container:
         self._singletons: dict[str, object] = {}
         self._streamed_outputs: set[tuple[str, str]] = set()
         self._last_activity_message = ""
+        self._active_turn_view = ActiveTurnView()
 
     @property
     def config(self) -> AppConfig:
@@ -404,6 +406,8 @@ class Container:
     def _runtime_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
             record_runtime_event(self.telemetry(), event)
+            if await self._render_active_runtime_event(event):
+                return
             message = runtime_event_message(event, self.translator())
             if message:
                 if message != self._last_activity_message:
@@ -428,6 +432,18 @@ class Container:
 
         return observe
 
+    async def _render_active_runtime_event(self, event: dict[str, Any]) -> bool:
+        if not _active_runtime_event(event):
+            return False
+        self._last_activity_message = ""
+        self._active_turn_view = apply_event(self._active_turn_view, event)
+        renderer = getattr(self.ui(), "print_active_view", None)
+        if callable(renderer):
+            await renderer(self._active_turn_view)
+        if self._active_turn_view.status in {"completed", "failed", "cancelled"}:
+            self._active_turn_view = ActiveTurnView()
+        return True
+
     def ui(self) -> UserInterface:
         return self._cached(
             "ui",
@@ -451,3 +467,9 @@ class Container:
             value = factory()
             self._singletons[key] = value
         return cast(_T, value)
+
+
+def _active_runtime_event(event: dict[str, Any]) -> bool:
+    if event.get("schema_version") != 1:
+        return False
+    return event.get("kind") in {"turn", "work_item", "request"}

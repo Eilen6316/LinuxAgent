@@ -22,6 +22,7 @@ from rich.prompt import Confirm
 from rich.text import Text
 
 from .. import __version__
+from ..active_view import ActiveTurnView
 from ..execution_display import execution_display_text, execution_summary_text
 from ..i18n import Translator, default_translator
 from ..interfaces import ExecutionResult, UserInterface
@@ -150,6 +151,14 @@ class ConsoleUI(UserInterface):
         self.clear_activity()
         self._console.print(Text(text, style="dim"))
 
+    async def print_active_view(self, view: ActiveTurnView) -> None:
+        if await self._run_on_owner_loop(lambda: self.print_active_view(view)):
+            return
+        if _terminal_active_view(view):
+            self.clear_activity()
+            return
+        self._render_active_view(view)
+
     def start_working(self, text: str = "Working") -> None:
         self._bind_owner_loop()
         if not self._activity_visible:
@@ -163,6 +172,19 @@ class ConsoleUI(UserInterface):
                 translator=self._translator,
             )
         self._working_status.update(text)
+
+    def _render_active_view(self, view: ActiveTurnView) -> None:
+        if not self._activity_visible:
+            return
+        if not sys.stdin.isatty() or not self._console.is_terminal:
+            return
+        if self._working_status is None:
+            self._working_status = WorkingStatus(
+                self._console,
+                theme=self._theme,
+                translator=self._translator,
+            )
+        self._working_status.update_view(view)
 
     def clear_activity(self) -> None:
         if self._working_status is not None:
@@ -422,6 +444,10 @@ def _execution_result_display(result: ExecutionResult, *, include_output: bool) 
     if include_output:
         return execution_display_text(result)
     return execution_summary_text(result)
+
+
+def _terminal_active_view(view: ActiveTurnView) -> bool:
+    return view.status in {"completed", "failed", "cancelled"}
 
 
 def _approval_summary(
