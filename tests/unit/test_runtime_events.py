@@ -5,12 +5,18 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from linuxagent.runtime_events import (
+    MAX_RESULT_PREVIEW_CHARS,
     RuntimeEvent,
     RuntimeEventKind,
     RuntimeEventPhase,
+    RuntimeWorkItem,
+    WorkItemCategory,
+    WorkItemStatus,
     context_runtime_event,
     legacy_runtime_event,
+    legacy_work_item_event,
     runtime_event,
+    work_item_runtime_event,
 )
 
 
@@ -105,3 +111,87 @@ def test_context_runtime_event_reserves_context_payload_shape() -> None:
         "budget": {"tokens": 800},
         "summary": "Loaded capability summary.",
     }
+
+
+def test_work_item_runtime_event_builds_parent_child_payload() -> None:
+    item = RuntimeWorkItem(
+        item_id="tool:read",
+        category=WorkItemCategory.TOOL,
+        status=WorkItemStatus.RUNNING,
+        label="read_file",
+        summary="Reading README.md",
+    )
+
+    event = work_item_runtime_event(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        parent_id="batch-1",
+        item=item,
+        phase=RuntimeEventPhase.STARTED,
+    )
+
+    payload = event.to_event()
+    assert payload["kind"] == "work_item"
+    assert payload["phase"] == "started"
+    assert payload["parent_id"] == "batch-1"
+    assert payload["payload"]["item_id"] == "tool:read"
+    assert payload["payload"]["category"] == "tool"
+    assert payload["payload"]["status"] == "running"
+
+
+def test_legacy_work_item_event_maps_worker_group_progress() -> None:
+    event = legacy_work_item_event(
+        {
+            "type": "worker_group",
+            "phase": "running",
+            "trace_id": "trace-1",
+            "label_key": "runtime.group.read_only_batch",
+            "active": 1,
+            "total": 2,
+        },
+        thread_id="thread-1",
+        turn_id="turn-1",
+    )
+
+    payload = event.payload
+    assert event.kind is RuntimeEventKind.WORK_ITEM
+    assert event.phase == "delta"
+    assert payload["item_id"] == "worker_group:trace-1"
+    assert payload["category"] == "worker_group"
+    assert payload["status"] == "running"
+    assert payload["progress"] == {"active": 1, "total": 2}
+
+
+def test_legacy_work_item_event_maps_failed_and_cancelled_statuses() -> None:
+    failed = legacy_work_item_event(
+        {"type": "command", "phase": "error", "command": "false", "reason": "exit 1"},
+        thread_id="thread-1",
+        turn_id="turn-1",
+    )
+    cancelled = legacy_work_item_event(
+        {"type": "background_job", "phase": "cancelled", "job_id": "job-1", "error": "escape"},
+        thread_id="thread-1",
+        turn_id="turn-1",
+    )
+
+    assert failed.phase == "failed"
+    assert failed.payload["status"] == "failed"
+    assert failed.payload["reason"] == "exit 1"
+    assert cancelled.phase == "cancelled"
+    assert cancelled.payload["status"] == "cancelled"
+    assert cancelled.payload["reason"] == "escape"
+
+
+def test_legacy_work_item_event_redacts_and_truncates_preview() -> None:
+    text = f"token=secret-value {'x' * MAX_RESULT_PREVIEW_CHARS}"
+
+    event = legacy_work_item_event(
+        {"type": "command", "phase": "stdout", "command": "cat file", "text": text},
+        thread_id="thread-1",
+        turn_id="turn-1",
+    )
+
+    preview = event.payload["result_preview"]
+    assert "secret-value" not in preview
+    assert "***redacted***" in preview
+    assert len(preview) <= MAX_RESULT_PREVIEW_CHARS

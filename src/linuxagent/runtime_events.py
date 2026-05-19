@@ -10,9 +10,10 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .security.redaction import redact_record
+from .security.redaction import redact_record, redact_text
 
 RUNTIME_EVENT_SCHEMA_VERSION: Literal[1] = 1
+MAX_RESULT_PREVIEW_CHARS = 240
 
 
 def _event_id() -> str:
@@ -49,6 +50,29 @@ class RuntimeEventPhase(StrEnum):
     INJECTED = "injected"
     SKIPPED = "skipped"
     RESOLVED = "resolved"
+
+
+class WorkItemCategory(StrEnum):
+    """Visible runtime work item categories."""
+
+    ACTIVITY = "activity"
+    COMMAND = "command"
+    COMMAND_BATCH = "command_batch"
+    TOOL = "tool"
+    WORKER_GROUP = "worker_group"
+    AGENT_GROUP = "agent_group"
+    BACKGROUND_JOB = "background_job"
+    GENERIC = "generic"
+
+
+class WorkItemStatus(StrEnum):
+    """Stable UI/replay status for one work item."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class RuntimeEvent(BaseModel):
@@ -102,6 +126,82 @@ def runtime_event(
     _maybe_set(data, "parent_id", parent_id)
     _maybe_set(data, "timestamp", timestamp)
     return RuntimeEvent.model_validate(data)
+
+
+class WorkItemProgress(BaseModel):
+    """Optional progress counters for a visible work item."""
+
+    model_config = ConfigDict(frozen=True)
+
+    current: int | None = Field(default=None, ge=0)
+    total: int | None = Field(default=None, ge=0)
+    active: int | None = Field(default=None, ge=0)
+    unit: str | None = None
+
+
+class RuntimeWorkItem(BaseModel):
+    """Protocol payload for one visible runtime work unit."""
+
+    model_config = ConfigDict(frozen=True)
+
+    item_id: str = Field(min_length=1)
+    category: WorkItemCategory
+    status: WorkItemStatus
+    label: str | None = None
+    label_key: str | None = None
+    label_params: dict[str, object] = Field(default_factory=dict)
+    summary: str | None = None
+    summary_key: str | None = None
+    summary_params: dict[str, object] = Field(default_factory=dict)
+    progress: WorkItemProgress | None = None
+    result_preview: str | None = None
+    reason: str | None = None
+
+    def to_payload(self) -> dict[str, Any]:
+        return self.model_dump(mode="json", exclude_none=True)
+
+
+def work_item_runtime_event(
+    *,
+    thread_id: str,
+    turn_id: str,
+    item: RuntimeWorkItem,
+    phase: RuntimeEventPhase | str,
+    parent_id: str | None = None,
+) -> RuntimeEvent:
+    return runtime_event(
+        thread_id=thread_id,
+        turn_id=turn_id,
+        kind=RuntimeEventKind.WORK_ITEM,
+        phase=phase,
+        parent_id=parent_id,
+        payload=item.to_payload(),
+    )
+
+
+def legacy_work_item_event(
+    event: Mapping[str, Any],
+    *,
+    thread_id: str,
+    turn_id: str,
+) -> RuntimeEvent:
+    """Adapt supported legacy runtime event dicts into a work item event."""
+
+    event_type = str(event.get("type") or "generic")
+    phase = _phase_from_legacy(str(event.get("phase") or "updated"))
+    item = RuntimeWorkItem(
+        item_id=_legacy_item_id(event_type, event),
+        category=_work_item_category(event_type),
+        status=_status_from_phase(phase),
+        label=_optional_str(event.get("label")),
+        label_key=_optional_str(event.get("label_key")),
+        label_params=_dict_object(event.get("label_params")),
+        summary=_legacy_summary(event),
+        progress=_legacy_progress(event),
+        result_preview=_preview(event.get("output_preview") or event.get("text")),
+        reason=_preview(event.get("reason") or event.get("error")),
+    )
+    return work_item_runtime_event(thread_id=thread_id, turn_id=turn_id, item=item, phase=phase)
 
 
 def legacy_runtime_event(
@@ -260,6 +360,101 @@ def _legacy_event_kind(event_type: str) -> RuntimeEventKind:
     if event_type == "context":
         return RuntimeEventKind.CONTEXT
     return RuntimeEventKind.LEGACY
+
+
+def _work_item_category(event_type: str) -> WorkItemCategory:
+    categories = {
+        "activity": WorkItemCategory.ACTIVITY,
+        "command": WorkItemCategory.COMMAND,
+        "command_batch": WorkItemCategory.COMMAND_BATCH,
+        "tool": WorkItemCategory.TOOL,
+        "worker_group": WorkItemCategory.WORKER_GROUP,
+        "agent_group": WorkItemCategory.AGENT_GROUP,
+        "background_job": WorkItemCategory.BACKGROUND_JOB,
+    }
+    return categories.get(event_type, WorkItemCategory.GENERIC)
+
+
+def _phase_from_legacy(phase: str) -> RuntimeEventPhase:
+    phases = {
+        "start": RuntimeEventPhase.STARTED,
+        "started": RuntimeEventPhase.STARTED,
+        "running": RuntimeEventPhase.DELTA,
+        "stdout": RuntimeEventPhase.DELTA,
+        "stderr": RuntimeEventPhase.DELTA,
+        "result": RuntimeEventPhase.COMPLETED,
+        "finish": RuntimeEventPhase.COMPLETED,
+        "end": RuntimeEventPhase.COMPLETED,
+        "completed": RuntimeEventPhase.COMPLETED,
+        "error": RuntimeEventPhase.FAILED,
+        "failed": RuntimeEventPhase.FAILED,
+        "cancelled": RuntimeEventPhase.CANCELLED,
+    }
+    return phases.get(phase, RuntimeEventPhase.UPDATED)
+
+
+def _status_from_phase(phase: RuntimeEventPhase) -> WorkItemStatus:
+    statuses = {
+        RuntimeEventPhase.COMPLETED: WorkItemStatus.COMPLETED,
+        RuntimeEventPhase.FAILED: WorkItemStatus.FAILED,
+        RuntimeEventPhase.CANCELLED: WorkItemStatus.CANCELLED,
+    }
+    return statuses.get(phase, WorkItemStatus.RUNNING)
+
+
+def _legacy_item_id(event_type: str, event: Mapping[str, Any]) -> str:
+    for key in ("item_id", "job_id", "trace_id", "command", "phase"):
+        value = event.get(key)
+        if isinstance(value, str) and value.strip():
+            return f"{event_type}:{value.strip()}"
+    return event_type
+
+
+def _legacy_summary(event: Mapping[str, Any]) -> str | None:
+    for key in ("summary", "goal", "command", "status"):
+        value = _optional_str(event.get(key))
+        if value:
+            return _preview(value)
+    return None
+
+
+def _legacy_progress(event: Mapping[str, Any]) -> WorkItemProgress | None:
+    active = _optional_int(event.get("active"))
+    total = _optional_int(event.get("total") or event.get("count"))
+    if active is None and total is None:
+        return None
+    return WorkItemProgress(active=active, total=total)
+
+
+def _preview(value: Any) -> str | None:
+    text = _optional_str(value)
+    if not text:
+        return None
+    redacted = redact_text(text).text
+    if len(redacted) <= MAX_RESULT_PREVIEW_CHARS:
+        return redacted
+    return redacted[: MAX_RESULT_PREVIEW_CHARS - 1].rstrip() + "…"
+
+
+def _optional_str(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    return None
+
+
+def _dict_object(value: Any) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
 
 
 def _redacted_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
