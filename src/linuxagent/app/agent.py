@@ -9,12 +9,14 @@ from ..audit import AuditLog
 from ..graph.runtime import GraphRunResult, GraphRuntime
 from ..i18n import Translator, default_translator
 from ..interfaces import UserInterface
+from ..pending_input import PendingInput, PendingInputQueue
 from ..runtime_control import CancellationController
 from ..telemetry import TelemetryRecorder
 from ..usage_insights import ContextManager
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
 from .output import print_assistant_response, start_working
+from .pending_loop import run_pending_input_loop
 from .resume import (
     ResumeSessionItem,
     render_resumed_session,
@@ -64,29 +66,44 @@ class LinuxAgent:
     async def run(self, *, thread_id: str = "default") -> None:
         await self.monitoring_service.start()
         try:
-            active_thread_id = thread_id
-            async for user_input in self.ui.input_stream():
-                line = user_input.strip()
-                resume_result = await self._handle_pending_resume_selection(line)
-                if resume_result:
-                    active_thread_id = resume_result
-                    continue
-                if line.startswith("!"):
-                    await self._direct_commands.run(line[1:].strip(), active_thread_id)
-                    continue
-                slash_result = await self._handle_slash(line, active_thread_id)
-                if slash_result == "exit":
-                    return
-                if slash_result:
-                    active_thread_id = slash_result
-                    continue
-                await self.run_turn(user_input, thread_id=active_thread_id)
+            await run_pending_input_loop(
+                initial_thread_id=thread_id,
+                read_inputs=self._read_inputs,
+                handle_input=self._handle_pending_input,
+            )
         finally:
             if self.background_jobs is not None:
                 await self.background_jobs.stop_all()
             await self.monitoring_service.stop()
             if self.cluster_service is not None:
                 await self.cluster_service.close()
+
+    async def _read_inputs(self, queue: PendingInputQueue) -> None:
+        try:
+            async for user_input in self.ui.input_stream():
+                queue.enqueue(user_input)
+        finally:
+            queue.close()
+
+    async def _handle_pending_input(
+        self,
+        pending: PendingInput,
+        active_thread_id: str,
+    ) -> tuple[str, bool]:
+        line = pending.content.strip()
+        resume_result = await self._handle_pending_resume_selection(line)
+        if resume_result:
+            return resume_result, False
+        if line.startswith("!"):
+            await self._direct_commands.run(line[1:].strip(), active_thread_id)
+            return active_thread_id, False
+        slash_result = await self._handle_slash(line, active_thread_id)
+        if slash_result == "exit":
+            return active_thread_id, True
+        if slash_result:
+            return slash_result, False
+        await self.run_turn(pending.content, thread_id=active_thread_id)
+        return active_thread_id, False
 
     async def run_turn(self, user_input: str, *, thread_id: str) -> dict[str, Any]:
         start_working(self.ui)

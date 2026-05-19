@@ -177,6 +177,20 @@ class _FakeUI:
         return self.resume_choice
 
 
+class _QueuedInputUI(_FakeUI):
+    def __init__(self, first: str, *later: str, release: asyncio.Event) -> None:
+        super().__init__(inputs=[])
+        self._first = first
+        self._later = list(later)
+        self._release = release
+
+    async def input_stream(self):
+        yield self._first
+        for item in self._later:
+            yield item
+        await self._release.wait()
+
+
 class _CancelsAfterEventUI(_FakeUI):
     def __init__(self, event: threading.Event) -> None:
         super().__init__()
@@ -221,6 +235,20 @@ class _SlowGraph(_FakeGraph):
         del state, config
         await asyncio.sleep(10)
         return {}
+
+
+class _GateGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del config
+        self.calls.append(state)
+        self.started.set()
+        await asyncio.to_thread(self.release.wait)
+        return {"messages": [*state["messages"], AIMessage(content="done")]}
 
 
 class _BlockingGraph(_FakeGraph):
@@ -564,6 +592,51 @@ async def test_trace_slash_command_toggles_activity_output(tmp_path) -> None:
 
     assert ui.activity_visible is False
     assert ui.printed == ["Trace/activity 输出现在已隐藏。"]
+
+
+async def test_run_queues_input_while_turn_is_busy(tmp_path) -> None:
+    graph = _GateGraph()
+    release_input = asyncio.Event()
+    ui = _QueuedInputUI("first", "second", "/exit", release=release_input)
+    agent = _agent(tmp_path, graph=graph, ui=ui)
+
+    run_task = asyncio.create_task(agent.run(thread_id="cli"))
+    await asyncio.wait_for(asyncio.to_thread(graph.started.wait), timeout=0.2)
+
+    assert len(graph.calls) == 1
+    graph.release.set()
+    await asyncio.wait_for(run_task, timeout=0.5)
+    release_input.set()
+
+    assert [call["messages"][-1].content for call in graph.calls] == ["first", "second"]
+
+
+async def test_pending_interrupt_does_not_consume_queued_input_as_approval(tmp_path) -> None:
+    release_input = asyncio.Event()
+    ui = _QueuedInputUI(
+        "needs approval",
+        "ordinary followup",
+        "/exit",
+        release=release_input,
+    )
+    ui._interrupt_response = {"decision": "no", "latency_ms": 1}
+    graph = _ResumeGraph(
+        [
+            {"__interrupt__": [Interrupt(value={"type": "confirm_command"}, resumable=True)]},
+            {"messages": [HumanMessage(content="needs approval"), AIMessage(content="denied")]},
+            {"messages": [HumanMessage(content="ordinary followup"), AIMessage(content="done")]},
+        ],
+        snapshot_values={"messages": [HumanMessage(content="needs approval")]},
+    )
+    agent = _agent(tmp_path, graph=graph, ui=ui)
+
+    await asyncio.wait_for(agent.run(thread_id="cli"), timeout=0.5)
+    release_input.set()
+
+    assert ui.interrupts == [{"type": "confirm_command"}]
+    assert len(graph.calls) == 3
+    assert isinstance(graph.calls[1], Command)
+    assert graph.calls[2]["messages"][-1].content == "ordinary followup"
 
 
 async def test_tools_slash_command_shows_prompt_cache_usage(tmp_path) -> None:
