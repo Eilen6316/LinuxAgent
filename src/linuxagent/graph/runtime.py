@@ -10,7 +10,10 @@ from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
+from ..runtime_control import CancellationToken, new_turn_id
+from ..runtime_events import RuntimeEventKind, RuntimeEventPhase, runtime_event
 from .agent_graph import AgentGraph
+from .events import RuntimeEventObserver, notify_event
 from .state import AgentState
 
 GRAPH_LIMIT = 100
@@ -30,19 +33,41 @@ class GraphRunResult:
 class GraphRuntime:
     """Wrap raw LangGraph APIs behind stable methods for the app layer."""
 
-    def __init__(self, graph: AgentGraph) -> None:
+    def __init__(
+        self, graph: AgentGraph, *, runtime_observer: RuntimeEventObserver | None = None
+    ) -> None:
         self._graph = graph
+        self._runtime_observer = runtime_observer
 
-    async def run(self, state: AgentState, *, thread_id: str) -> GraphRunResult:
-        result = await self._graph.ainvoke(state, config=graph_config(thread_id))
-        return await self._run_result(result, thread_id=thread_id)
-
-    async def resume(self, response: dict[str, Any], *, thread_id: str) -> GraphRunResult:
-        result = await self._graph.ainvoke(
-            Command(resume=response),
-            config=graph_config(thread_id),
+    async def run(
+        self,
+        state: AgentState,
+        *,
+        thread_id: str,
+        turn_id: str | None = None,
+        cancellation_token: CancellationToken | None = None,
+    ) -> GraphRunResult:
+        return await self._invoke(
+            state,
+            thread_id=thread_id,
+            turn_id=turn_id,
+            cancellation_token=cancellation_token,
         )
-        return await self._run_result(result, thread_id=thread_id)
+
+    async def resume(
+        self,
+        response: dict[str, Any],
+        *,
+        thread_id: str,
+        turn_id: str | None = None,
+        cancellation_token: CancellationToken | None = None,
+    ) -> GraphRunResult:
+        return await self._invoke(
+            Command(resume=response),
+            thread_id=thread_id,
+            turn_id=turn_id,
+            cancellation_token=cancellation_token,
+        )
 
     async def pending_interrupts(self, *, thread_id: str) -> tuple[GraphInterrupt, ...]:
         return _interrupts_from_snapshot(await self._snapshot(thread_id))
@@ -68,6 +93,37 @@ class GraphRuntime:
         values = getattr(snapshot, "values", {})
         return dict(values) if isinstance(values, dict) else {}
 
+    async def _invoke(
+        self,
+        graph_input: Any,
+        *,
+        thread_id: str,
+        turn_id: str | None,
+        cancellation_token: CancellationToken | None,
+    ) -> GraphRunResult:
+        active_turn_id = _active_turn_id(turn_id, cancellation_token)
+        await self._notify_turn(active_turn_id, thread_id, RuntimeEventPhase.STARTED)
+        try:
+            result = await self._graph.ainvoke(graph_input, config=graph_config(thread_id))
+            if _is_cancelled(cancellation_token) and cancellation_token is not None:
+                await self._notify_turn(
+                    active_turn_id,
+                    thread_id,
+                    RuntimeEventPhase.CANCELLED,
+                    reason=cancellation_token.reason,
+                )
+            else:
+                await self._notify_turn(active_turn_id, thread_id, RuntimeEventPhase.COMPLETED)
+            return await self._run_result(result, thread_id=thread_id)
+        except Exception as exc:
+            phase = (
+                RuntimeEventPhase.CANCELLED
+                if _is_cancelled(cancellation_token)
+                else RuntimeEventPhase.ABORTED
+            )
+            await self._notify_turn(active_turn_id, thread_id, phase, reason=str(exc))
+            raise
+
     async def _run_result(self, result: Any, *, thread_id: str) -> GraphRunResult:
         state = result if isinstance(result, dict) else {}
         interrupts = _interrupts_from_result(state)
@@ -78,9 +134,41 @@ class GraphRuntime:
     async def _snapshot(self, thread_id: str) -> Any:
         return await self._graph.aget_state(graph_config(thread_id))
 
+    async def _notify_turn(
+        self,
+        turn_id: str,
+        thread_id: str,
+        phase: RuntimeEventPhase,
+        *,
+        reason: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {}
+        if reason:
+            payload["reason"] = reason
+        event = runtime_event(
+            thread_id=thread_id,
+            turn_id=turn_id,
+            kind=RuntimeEventKind.TURN,
+            phase=phase,
+            payload=payload,
+        )
+        await notify_event(self._runtime_observer, event.to_event())
+
 
 def graph_config(thread_id: str) -> RunnableConfig:
     return {"configurable": {"thread_id": thread_id}, "recursion_limit": GRAPH_LIMIT}
+
+
+def _active_turn_id(turn_id: str | None, cancellation_token: CancellationToken | None) -> str:
+    if turn_id is not None:
+        return turn_id
+    if cancellation_token is not None:
+        return cancellation_token.turn_id
+    return new_turn_id()
+
+
+def _is_cancelled(cancellation_token: CancellationToken | None) -> bool:
+    return bool(cancellation_token and cancellation_token.cancelled)
 
 
 def _interrupts_from_result(result: dict[str, Any]) -> tuple[GraphInterrupt, ...]:

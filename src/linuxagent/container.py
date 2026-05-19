@@ -245,7 +245,10 @@ class Container:
         )
 
     def graph_runtime(self) -> GraphRuntime:
-        return self._cached("graph_runtime", lambda: build_graph_runtime(self.graph()))
+        return self._cached(
+            "graph_runtime",
+            lambda: build_graph_runtime(self.graph(), self._runtime_event_observer()),
+        )
 
     def checkpointer(self) -> PersistentMemorySaver:
         return self._cached(

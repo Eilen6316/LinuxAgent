@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -11,11 +9,11 @@ from ..audit import AuditLog
 from ..graph.runtime import GraphRunResult, GraphRuntime
 from ..i18n import Translator, default_translator
 from ..interfaces import UserInterface
+from ..runtime_control import CancellationToken
 from ..telemetry import TelemetryRecorder
 from ..usage_insights import ContextManager
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
-from .graph_invocation import GraphInvocation, start_graph_invocation
 from .output import print_assistant_response, start_working
 from .resume import (
     ResumeSessionItem,
@@ -25,6 +23,7 @@ from .resume import (
     session_title,
 )
 from .slash_router import handle_slash
+from .turn_runtime import invoke_with_cancel
 from .turn_state import new_turn_state
 
 if TYPE_CHECKING:
@@ -61,7 +60,6 @@ class LinuxAgent:
             telemetry=self.telemetry,
             translator=self.translator,
         )
-        self._cancel_sequence = 0
 
     async def run(self, *, thread_id: str = "default") -> None:
         await self.monitoring_service.start()
@@ -118,57 +116,34 @@ class LinuxAgent:
         return result.state
 
     async def _run_with_cancel(self, state: Any, thread_id: str) -> GraphRunResult | None:
-        cancel_task = asyncio.create_task(self._wait_for_cancel())
-        await asyncio.sleep(0)
-        invocation = start_graph_invocation(
-            lambda: self.graph_runtime.run(state, thread_id=thread_id)
+        token = CancellationToken.create()
+        return await invoke_with_cancel(
+            lambda: self.graph_runtime.run(
+                state,
+                thread_id=thread_id,
+                turn_id=token.turn_id,
+                cancellation_token=token,
+            ),
+            ui=self.ui,
+            translator=self.translator,
+            token=token,
         )
-        return await self._await_graph_invocation(invocation, cancel_task)
 
     async def _resume_with_cancel(
         self, response: dict[str, Any], thread_id: str
     ) -> GraphRunResult | None:
-        cancel_task = asyncio.create_task(self._wait_for_cancel())
-        await asyncio.sleep(0)
-        invocation = start_graph_invocation(
-            lambda: self.graph_runtime.resume(response, thread_id=thread_id)
+        token = CancellationToken.create()
+        return await invoke_with_cancel(
+            lambda: self.graph_runtime.resume(
+                response,
+                thread_id=thread_id,
+                turn_id=token.turn_id,
+                cancellation_token=token,
+            ),
+            ui=self.ui,
+            translator=self.translator,
+            token=token,
         )
-        return await self._await_graph_invocation(invocation, cancel_task)
-
-    async def _await_graph_invocation(
-        self,
-        invocation: GraphInvocation[GraphRunResult],
-        cancel_task: asyncio.Task[str],
-    ) -> GraphRunResult | None:
-        graph_future: asyncio.Future[Any] = invocation.future
-        cancel_future: asyncio.Future[Any] = cancel_task
-        done, _pending = await asyncio.wait(
-            {graph_future, cancel_future}, return_when=asyncio.FIRST_COMPLETED
-        )
-        if graph_future in done:
-            cancel_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await cancel_task
-            return await invocation.future
-        cancel_reason = await cancel_task
-        invocation.cancel()
-        invocation.future.add_done_callback(_consume_cancelled_task)
-        await self._publish_cancelled(cancel_reason)
-        return None
-
-    async def _wait_for_cancel(self) -> str:
-        wait_for_cancel = getattr(self.ui, "wait_for_cancel", None)
-        if wait_for_cancel is None:
-            future: asyncio.Future[str] = asyncio.Future()
-            return await future
-        return str(await wait_for_cancel())
-
-    async def _publish_cancelled(self, reason: str) -> None:
-        cancel_activity = getattr(self.ui, "cancel_activity", None)
-        if callable(cancel_activity):
-            await cancel_activity(reason)
-            return
-        await self.ui.print(self.translator.t("app.cancelled"))
 
     async def _history(self, thread_id: str) -> list[Any]:
         history = await self.graph_runtime.history(thread_id=thread_id)
@@ -289,8 +264,3 @@ class LinuxAgent:
         self.context_manager.replace(history)
         self._persist_active_history(thread_id)
         self.chat_service.save()
-
-
-def _consume_cancelled_task(task: asyncio.Future[Any]) -> None:
-    with suppress(asyncio.CancelledError):
-        task.exception()

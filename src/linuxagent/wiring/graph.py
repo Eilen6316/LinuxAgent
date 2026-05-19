@@ -60,5 +60,8 @@ def build_graph(
     )
 
 
-def build_graph_runtime(graph: AgentGraph) -> GraphRuntime:
-    return GraphRuntime(graph)
+def build_graph_runtime(
+    graph: AgentGraph,
+    runtime_observer: Callable[[dict[str, Any]], Any] | None = None,
+) -> GraphRuntime:
+    return GraphRuntime(graph, runtime_observer=runtime_observer)
