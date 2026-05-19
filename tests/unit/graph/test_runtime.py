@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command, Interrupt
 
 from linuxagent.graph.runtime import GraphRuntime
-from linuxagent.runtime_control import CancellationToken
+from linuxagent.runtime_control import CancellationToken, current_cancellation_token
 
 
 class _FakeGraph:
@@ -44,6 +44,17 @@ class _FailingGraph(_FakeGraph):
     async def ainvoke(self, state: Any, config: Any) -> Any:
         del state, config
         raise RuntimeError("boom")
+
+
+class _TokenCheckingGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__(result={"messages": []})
+        self.seen_token: CancellationToken | None = None
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del state, config
+        self.seen_token = current_cancellation_token()
+        return self.result
 
 
 async def test_run_returns_inline_interrupts_without_app_langgraph_access() -> None:
@@ -140,3 +151,17 @@ async def test_run_emits_cancelled_when_token_is_cancelled() -> None:
     ]
     assert {event["turn_id"] for event in events} == {token.turn_id}
     assert events[-1]["payload"]["reason"] == "escape"
+
+
+async def test_run_exposes_cancellation_token_in_runtime_scope() -> None:
+    token = CancellationToken.create()
+    graph = _TokenCheckingGraph()
+    runtime = GraphRuntime(graph)
+
+    await runtime.run(
+        {"messages": []},  # type: ignore[arg-type]
+        thread_id="thread",
+        cancellation_token=token,
+    )
+
+    assert graph.seen_token is token

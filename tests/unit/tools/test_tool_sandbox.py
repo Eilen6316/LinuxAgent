@@ -7,6 +7,7 @@ import time
 import pytest
 from langchain_core.tools import tool
 
+from linuxagent.runtime_control import CancellationToken
 from linuxagent.sandbox import SandboxProfile, SandboxRunnerKind
 from linuxagent.tools import (
     ToolCatalogError,
@@ -40,6 +41,32 @@ async def test_unwrapped_tool_is_denied_before_execution() -> None:
     assert result.event["sandbox"] is None
     assert "missing ToolSandboxSpec metadata" in result.content
     assert "Do not infer facts" in result.content
+
+
+async def test_cancelled_tool_returns_structured_cancelled_result() -> None:
+    called = False
+    token = CancellationToken.create()
+    token.cancel("escape")
+
+    @tool
+    async def read_file() -> str:
+        """Read a fake file."""
+        nonlocal called
+        called = True
+        return "should not run"
+
+    result = await invoke_tool_with_sandbox(
+        attach_tool_sandbox(read_file, ToolSandboxSpec(profile=SandboxProfile.READ_ONLY)),
+        {},
+        limits=ToolRuntimeLimits(max_output_chars=200, max_total_output_chars=200),
+        remaining_total_chars=200,
+        cancellation_token=token,
+    )
+
+    assert called is False
+    assert result.event["phase"] == "error"
+    assert result.event["status"] == "cancelled"
+    assert "escape" in result.content
 
 
 def test_tool_catalog_reports_missing_metadata() -> None:

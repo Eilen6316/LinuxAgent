@@ -32,6 +32,7 @@ from linuxagent.providers.errors import (
     ProviderRateLimitError,
     ProviderTimeoutError,
 )
+from linuxagent.runtime_control import CancellationToken
 from linuxagent.sandbox import SandboxProfile
 from linuxagent.tools import ToolRuntimeLimits
 from linuxagent.tools.sandbox import ToolSandboxSpec, attach_tool_sandbox
@@ -693,6 +694,42 @@ async def test_complete_with_tools_times_out_tool_call() -> None:
 
     assert events[1]["phase"] == "error"
     assert events[1]["status"] == "timeout"
+
+
+async def test_complete_with_tools_passes_cancellation_token_to_tool_runtime() -> None:
+    events: list[dict[str, Any]] = []
+    token = CancellationToken.create()
+    token.cancel("escape")
+    called = False
+
+    @tool
+    async def lookup() -> str:
+        """Return a fake lookup result."""
+        nonlocal called
+        called = True
+        return "ok"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "lookup", "args": {}, "id": "1", "type": "tool_call"}],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    await provider.complete_with_tools(
+        [HumanMessage(content="lookup")],
+        [_sandboxed(lookup)],
+        tool_observer=events.append,
+        cancellation_token=token,
+    )
+
+    assert called is False
+    assert events[1]["phase"] == "error"
+    assert events[1]["status"] == "cancelled"
 
 
 async def test_complete_with_tools_redacts_start_event_args() -> None:

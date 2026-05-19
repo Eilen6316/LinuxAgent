@@ -11,6 +11,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from ..runtime_control import CancellationToken
 from ..sandbox import SandboxProfile
 from ..security import redact_record, redact_text
 from .runtime_context import tool_trace_context
@@ -87,15 +88,18 @@ async def invoke_tool_with_sandbox(
     limits: ToolRuntimeLimits,
     remaining_total_chars: int,
     trace_id: str | None = None,
+    cancellation_token: CancellationToken | None = None,
 ) -> ToolRunResult:
-    if tool_sandbox_record(tool) is None:
-        return _tool_denied_missing_metadata(
-            tool,
-            args,
-            limits,
-            remaining_total_chars,
-            trace_id,
-        )
+    preflight = _tool_preflight_result(
+        tool,
+        args,
+        limits,
+        remaining_total_chars,
+        trace_id,
+        cancellation_token,
+    )
+    if preflight is not None:
+        return preflight
     timeout = _tool_timeout(tool, limits)
     try:
         raw_result = await asyncio.wait_for(_invoke_tool(tool, args, trace_id), timeout=timeout)
@@ -147,6 +151,34 @@ def _tool_exception_result(
     )
 
 
+def _tool_preflight_result(
+    tool: BaseTool,
+    args: dict[str, Any],
+    limits: ToolRuntimeLimits,
+    remaining_total_chars: int,
+    trace_id: str | None,
+    cancellation_token: CancellationToken | None,
+) -> ToolRunResult | None:
+    if tool_sandbox_record(tool) is None:
+        return _tool_denied_missing_metadata(
+            tool,
+            args,
+            limits,
+            remaining_total_chars,
+            trace_id,
+        )
+    if not _tool_cancelled(cancellation_token):
+        return None
+    return _tool_cancelled_result(
+        tool,
+        args,
+        limits,
+        remaining_total_chars,
+        cancellation_token,
+        trace_id,
+    )
+
+
 def _tool_denied_missing_metadata(
     tool: BaseTool,
     args: dict[str, Any],
@@ -178,6 +210,26 @@ def _tool_timeout_result(
         args,
         "timeout",
         f"tool exceeded {timeout}s",
+        limits,
+        remaining_total_chars,
+        trace_id,
+    )
+
+
+def _tool_cancelled_result(
+    tool: BaseTool,
+    args: dict[str, Any],
+    limits: ToolRuntimeLimits,
+    remaining_total_chars: int,
+    cancellation_token: CancellationToken | None,
+    trace_id: str | None,
+) -> ToolRunResult:
+    reason = cancellation_token.reason if cancellation_token is not None else None
+    return _tool_error_result(
+        tool,
+        args,
+        "cancelled",
+        reason or "tool call cancelled",
         limits,
         remaining_total_chars,
         trace_id,
@@ -241,6 +293,10 @@ def _tool_timeout(tool: BaseTool, limits: ToolRuntimeLimits) -> float:
     if isinstance(raw, int | float) and raw > 0:
         return min(float(raw), limits.timeout_seconds)
     return limits.timeout_seconds
+
+
+def _tool_cancelled(cancellation_token: CancellationToken | None) -> bool:
+    return bool(cancellation_token and cancellation_token.is_cancelled())
 
 
 def _tool_output_to_str(result: Any) -> str:

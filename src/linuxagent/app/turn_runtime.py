@@ -9,7 +9,7 @@ from typing import Any, TypeVar, cast
 
 from ..i18n import Translator
 from ..interfaces import UserInterface
-from ..runtime_control import CancellationToken
+from ..runtime_control import CancellationController
 from .graph_invocation import GraphInvocation, start_graph_invocation
 
 T = TypeVar("T")
@@ -20,12 +20,22 @@ async def invoke_with_cancel(
     *,
     ui: UserInterface,
     translator: Translator,
-    token: CancellationToken,
+    controller: CancellationController,
+    thread_id: str,
+    publish_cancelled: Callable[[str], Awaitable[None]] | None = None,
 ) -> T | None:
     cancel_task = asyncio.create_task(_wait_for_cancel(ui))
     await asyncio.sleep(0)
     invocation = start_graph_invocation(coro_factory)
-    result = await _await_invocation(invocation, cancel_task, ui, translator, token)
+    result = await _await_invocation(
+        invocation,
+        cancel_task,
+        ui,
+        translator,
+        controller,
+        thread_id,
+        publish_cancelled,
+    )
     return cast("T | None", result)
 
 
@@ -34,7 +44,9 @@ async def _await_invocation(
     cancel_task: asyncio.Task[str],
     ui: UserInterface,
     translator: Translator,
-    token: CancellationToken,
+    controller: CancellationController,
+    thread_id: str,
+    publish_cancelled: Callable[[str], Awaitable[None]] | None,
 ) -> Any | None:
     futures: set[asyncio.Future[Any]] = {invocation.future, cancel_task}
     done, _pending = await asyncio.wait(futures, return_when=asyncio.FIRST_COMPLETED)
@@ -42,9 +54,10 @@ async def _await_invocation(
         await _stop_cancel_task(cancel_task)
         return await invocation.future
     reason = await cancel_task
-    token.cancel(reason)
+    await controller.cancel(reason)
     invocation.cancel()
     invocation.future.add_done_callback(_consume_cancelled_task)
+    await _publish_cancel_event(publish_cancelled, reason)
     await _publish_cancelled(ui, translator, reason)
     return None
 
@@ -69,6 +82,14 @@ async def _publish_cancelled(ui: UserInterface, translator: Translator, reason: 
         await cancel_activity(reason)
         return
     await ui.print(translator.t("app.cancelled"))
+
+
+async def _publish_cancel_event(
+    publish_cancelled: Callable[[str], Awaitable[None]] | None,
+    reason: str,
+) -> None:
+    if publish_cancelled is not None:
+        await publish_cancelled(reason)
 
 
 def _consume_cancelled_task(task: asyncio.Future[Any]) -> None:

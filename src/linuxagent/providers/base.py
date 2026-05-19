@@ -40,9 +40,15 @@ from tenacity import (
 
 from ..config.models import APIConfig
 from ..interfaces import LLM_CALL_METADATA_KEY, LLMProvider
+from ..runtime_control import CancellationToken
 from ..security import redact_record
 from ..tools.catalog import ToolCatalogReport, inspect_tool_catalog
-from ..tools.sandbox import ToolRuntimeLimits, invoke_tool_with_sandbox, tool_sandbox_record
+from ..tools.sandbox import (
+    ToolRunResult,
+    ToolRuntimeLimits,
+    invoke_tool_with_sandbox,
+    tool_sandbox_record,
+)
 from .errors import (
     ProviderConnectionError,
     ProviderError,
@@ -130,6 +136,7 @@ class BaseLLMProvider(LLMProvider):
             return await self.complete(messages, **kwargs)
         tool_observer = _pop_tool_observer(kwargs)
         tool_limits = _pop_tool_runtime(kwargs)
+        cancellation_token = _pop_cancellation_token(kwargs)
         trace_id = _tool_trace_id(kwargs)
         await _ensure_tool_sandbox_specs(tools, tool_observer)
 
@@ -154,6 +161,7 @@ class BaseLLMProvider(LLMProvider):
                 tool_limits,
                 total_tool_output_chars,
                 trace_id,
+                cancellation_token,
             )
             history.extend(tool_messages)
 
@@ -495,6 +503,7 @@ async def _execute_tool_calls(
     limits: ToolRuntimeLimits,
     prior_output_chars: int,
     trace_id: str | None,
+    cancellation_token: CancellationToken | None,
 ) -> tuple[list[ToolMessage], int]:
     outputs: list[ToolMessage] = []
     total_output_chars = 0
@@ -511,24 +520,19 @@ async def _execute_tool_calls(
                 )
             )
             continue
-        started = time.monotonic()
-        args = dict(call.get("args", {}))
-        await _notify_tool_observer(observer, _tool_event("start", tool_name, args, tool=tool))
         remaining = limits.max_total_output_chars - prior_output_chars - total_output_chars
-        result = await invoke_tool_with_sandbox(
-            tool,
-            args,
+        result = await _execute_one_tool_call(
+            tool=tool,
+            tool_name=tool_name,
+            args=dict(call.get("args", {})),
+            observer=observer,
             limits=limits,
-            remaining_total_chars=remaining,
+            remaining=remaining,
             trace_id=trace_id,
+            cancellation_token=cancellation_token,
         )
         content = result.content
         total_output_chars += result.output_chars
-        event = dict(result.event)
-        event["duration_ms"] = int((time.monotonic() - started) * 1000)
-        if event.get("phase") == "error":
-            logger.debug("tool call failed for %s: %s", tool_name, event.get("output_preview"))
-        await _notify_tool_observer(observer, event)
         outputs.append(
             ToolMessage(
                 content=content,
@@ -537,6 +541,35 @@ async def _execute_tool_calls(
             )
         )
     return outputs, prior_output_chars + total_output_chars
+
+
+async def _execute_one_tool_call(
+    *,
+    tool: BaseTool,
+    tool_name: str,
+    args: dict[str, Any],
+    observer: ToolObserver | None,
+    limits: ToolRuntimeLimits,
+    remaining: int,
+    trace_id: str | None,
+    cancellation_token: CancellationToken | None,
+) -> ToolRunResult:
+    started = time.monotonic()
+    await _notify_tool_observer(observer, _tool_event("start", tool_name, args, tool=tool))
+    result = await invoke_tool_with_sandbox(
+        tool,
+        args,
+        limits=limits,
+        remaining_total_chars=remaining,
+        trace_id=trace_id,
+        cancellation_token=cancellation_token,
+    )
+    event = dict(result.event)
+    event["duration_ms"] = int((time.monotonic() - started) * 1000)
+    if event.get("phase") == "error":
+        logger.debug("tool call failed for %s: %s", tool_name, event.get("output_preview"))
+    await _notify_tool_observer(observer, event)
+    return result
 
 
 def _pop_tool_observer(kwargs: dict[str, Any]) -> ToolObserver | None:
@@ -557,6 +590,15 @@ def _pop_tool_runtime(kwargs: dict[str, Any]) -> ToolRuntimeLimits:
     if isinstance(raw, dict):
         return ToolRuntimeLimits(**raw)
     raise TypeError("tool_runtime_limits must be ToolRuntimeLimits or dict")
+
+
+def _pop_cancellation_token(kwargs: dict[str, Any]) -> CancellationToken | None:
+    raw = kwargs.pop("cancellation_token", None)
+    if raw is None:
+        return None
+    if isinstance(raw, CancellationToken):
+        return raw
+    raise TypeError("cancellation_token must be CancellationToken")
 
 
 def _tool_trace_id(kwargs: dict[str, Any]) -> str | None:

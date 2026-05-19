@@ -9,7 +9,7 @@ from ..audit import AuditLog
 from ..graph.runtime import GraphRunResult, GraphRuntime
 from ..i18n import Translator, default_translator
 from ..interfaces import UserInterface
-from ..runtime_control import CancellationToken
+from ..runtime_control import CancellationController
 from ..telemetry import TelemetryRecorder
 from ..usage_insights import ContextManager
 from .direct_command import DirectCommandRunner
@@ -116,33 +116,45 @@ class LinuxAgent:
         return result.state
 
     async def _run_with_cancel(self, state: Any, thread_id: str) -> GraphRunResult | None:
-        token = CancellationToken.create()
+        controller = CancellationController.create()
         return await invoke_with_cancel(
             lambda: self.graph_runtime.run(
                 state,
                 thread_id=thread_id,
-                turn_id=token.turn_id,
-                cancellation_token=token,
+                turn_id=controller.turn_id,
+                cancellation_token=controller.token,
             ),
             ui=self.ui,
             translator=self.translator,
-            token=token,
+            controller=controller,
+            thread_id=thread_id,
+            publish_cancelled=lambda reason: self.graph_runtime.notify_turn_cancelled(
+                thread_id=thread_id,
+                turn_id=controller.turn_id,
+                reason=reason,
+            ),
         )
 
     async def _resume_with_cancel(
         self, response: dict[str, Any], thread_id: str
     ) -> GraphRunResult | None:
-        token = CancellationToken.create()
+        controller = CancellationController.create()
         return await invoke_with_cancel(
             lambda: self.graph_runtime.resume(
                 response,
                 thread_id=thread_id,
-                turn_id=token.turn_id,
-                cancellation_token=token,
+                turn_id=controller.turn_id,
+                cancellation_token=controller.token,
             ),
             ui=self.ui,
             translator=self.translator,
-            token=token,
+            controller=controller,
+            thread_id=thread_id,
+            publish_cancelled=lambda reason: self.graph_runtime.notify_turn_cancelled(
+                thread_id=thread_id,
+                turn_id=controller.turn_id,
+                reason=reason,
+            ),
         )
 
     async def _history(self, thread_id: str) -> list[Any]:

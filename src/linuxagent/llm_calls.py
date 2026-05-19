@@ -11,6 +11,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.tools import BaseTool
 
 from .interfaces import LLM_CALL_METADATA_KEY, LLMProvider
+from .runtime_control import current_cancellation_token
 from .telemetry import TelemetryRecorder
 
 ToolObserver = Callable[[dict[str, Any]], Any]
@@ -71,13 +72,17 @@ def _cache_kwargs(options: LLMCallOptions) -> dict[str, str]:
 
 
 def _provider_kwargs(options: LLMCallOptions) -> dict[str, Any]:
-    return {
+    kwargs: dict[str, Any] = {
         **_cache_kwargs(options),
         LLM_CALL_METADATA_KEY: {
             "trace_id": options.trace_id,
             "attributes": dict(options.attributes),
         },
     }
+    token = current_cancellation_token()
+    if token is not None:
+        kwargs["cancellation_token"] = token
+    return kwargs
 
 
 def _llm_span(options: LLMCallOptions) -> Any:

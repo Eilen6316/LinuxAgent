@@ -10,7 +10,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
-from ..runtime_control import CancellationToken, new_turn_id
+from ..runtime_control import CancellationToken, cancellation_scope, new_turn_id
 from ..runtime_events import RuntimeEventKind, RuntimeEventPhase, runtime_event
 from .agent_graph import AgentGraph
 from .events import RuntimeEventObserver, notify_event
@@ -88,6 +88,15 @@ class GraphRuntime:
             return tuple(permissions)
         return ()
 
+    async def notify_turn_cancelled(
+        self,
+        *,
+        thread_id: str,
+        turn_id: str,
+        reason: str | None = None,
+    ) -> None:
+        await self._notify_turn(turn_id, thread_id, RuntimeEventPhase.CANCELLED, reason=reason)
+
     async def values(self, *, thread_id: str) -> dict[str, Any]:
         snapshot = await self._snapshot(thread_id)
         values = getattr(snapshot, "values", {})
@@ -104,7 +113,8 @@ class GraphRuntime:
         active_turn_id = _active_turn_id(turn_id, cancellation_token)
         await self._notify_turn(active_turn_id, thread_id, RuntimeEventPhase.STARTED)
         try:
-            result = await self._graph.ainvoke(graph_input, config=graph_config(thread_id))
+            with cancellation_scope(cancellation_token):
+                result = await self._graph.ainvoke(graph_input, config=graph_config(thread_id))
             if _is_cancelled(cancellation_token) and cancellation_token is not None:
                 await self._notify_turn(
                     active_turn_id,

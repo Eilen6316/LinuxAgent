@@ -392,7 +392,16 @@ async def test_run_turn_adds_prompt_cache_key_when_enabled(tmp_path) -> None:
 async def test_run_turn_escape_cancels_inflight_graph(tmp_path) -> None:
     ui = _FakeUI()
     ui.cancel_immediately = True
-    agent = _agent(tmp_path, graph=_SlowGraph([]), ui=ui)
+    events: list[dict[str, Any]] = []
+    agent = LinuxAgent(
+        graph_runtime=GraphRuntime(_SlowGraph([]), runtime_observer=events.append),  # type: ignore[arg-type]
+        ui=ui,
+        chat_service=ChatService(tmp_path / "history.json", max_messages=10),
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
+        context_manager=ContextManager(10),
+        monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
+    )
 
     result = await agent.run_turn("slow task", thread_id="cancel")
 
@@ -400,6 +409,7 @@ async def test_run_turn_escape_cancels_inflight_graph(tmp_path) -> None:
     assert ui.printed == []
     assert ui.activities == []
     assert ui.cancelled == ["escape"]
+    assert ("turn", "cancelled") in [(event["kind"], event["phase"]) for event in events]
 
 
 async def test_run_turn_escape_cancels_when_graph_blocks_event_loop(tmp_path) -> None:
