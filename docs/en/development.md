@@ -59,6 +59,64 @@ display-only metadata. New user-visible fixed strings should use a locale key;
 new model-visible instructions belong in `prompts/`, policy YAML, Skill
 manifests, or the relevant structured data source.
 
+## Runtime Lifecycle Vocabulary
+
+LinuxAgent runtime UX work uses these terms consistently:
+
+| Term | Meaning | Current owner |
+|---|---|---|
+| turn | One user request handled against one graph thread/checkpoint | `src/linuxagent/app/agent.py`, `src/linuxagent/graph/runtime.py` |
+| runtime event | A structured, non-audit status signal emitted while a turn or tool is running | `src/linuxagent/graph/events.py`, `src/linuxagent/runtime_events.py` |
+| tool event | A tool-runtime event emitted by LLM-visible tools and the provider tool loop | `src/linuxagent/providers/base.py`, `src/linuxagent/tools/sandbox.py` |
+| work item | One visible unit of runtime work such as command execution, a tool call, a worker, or a background job | current dict events; typed model pending |
+| pending request | A resumable human decision or input request, currently represented by LangGraph interrupts | `src/linuxagent/graph/*confirm*.py`, `src/linuxagent/ui/interrupt_dispatcher.py` |
+| active view | Transient in-terminal state shown while a turn is running | `src/linuxagent/ui/working_status.py` |
+| history | Durable conversation output after the active view is cleared or consolidated | chat history and graph messages |
+| steer input | User input entered while a turn is still running | not yet first-class |
+| cancellation token | Shared cancellation state for a running turn and its child work | not yet first-class |
+
+Current runtime events are legacy dictionaries. Graph nodes emit high-level
+`activity` events through `notify_event()`. Read-only batches and direct-answer
+workers emit `worker_group` events through `src/linuxagent/runtime_events.py`.
+Command batches, background jobs, and streaming command output use related dict
+events consumed by the app runtime observer.
+
+Runtime events have three separate consumers:
+
+- telemetry: `src/linuxagent/app/runtime_telemetry.py` records selected event
+  types as local telemetry spans.
+- UI activity: `src/linuxagent/app/runtime_messages.py`,
+  `src/linuxagent/container.py`, and `src/linuxagent/ui/working_status.py`
+  turn events into transient terminal status.
+- harness: `tests/harness/runner.py` collects `runtime_events` and `tool_events`
+  for scenario assertions.
+
+Tool events are separate from runtime events today. The container records tool
+audit metadata through `AuditLog.record_tool_event()` and also renders a
+transient UI activity message. Tool-event arguments and output previews must
+stay redacted before they reach telemetry, UI, or model context.
+
+Audit records are not runtime events. HITL decisions, command execution audit,
+file patch audit, and tool audit entries remain durable security records with
+their own schema and retention behavior. Runtime events are UI/telemetry/replay
+signals and must not replace audit records.
+
+Known gaps before the typed lifecycle work:
+
+- there is no typed `turn_started` / `turn_completed` / `turn_aborted` envelope.
+- active terminal state is rendered directly from messages rather than a pure
+  active-view reducer.
+- cancellation exists at graph-invocation/UI edges but is not a shared runtime
+  token.
+- busy user input and pending human requests are not represented by one queue
+  or request protocol.
+- harness event assertions still observe legacy dict events rather than a
+  stable typed event contract.
+
+Phase 1 lifecycle acceptance should use this vocabulary when naming harness
+scenarios and event assertions, so tests check protocol states rather than
+English or Chinese UI prose.
+
 ## Architecture Stabilization Track
 
 The current stabilization track is focused on reducing orchestration complexity
