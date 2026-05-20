@@ -318,7 +318,6 @@ class ConsoleUI(UserInterface):
         if owner_loop is loop:
             return False
         future: ConcurrentFuture[None] = asyncio.run_coroutine_threadsafe(action(), owner_loop)
-        await asyncio.wrap_future(future)
         future.result()
         return True
 

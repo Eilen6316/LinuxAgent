@@ -967,6 +967,48 @@ def test_working_status_does_not_render_prompt_line() -> None:
     status.cancel()
 
 
+def test_working_status_skips_periodic_refresh_for_multiline_view(monkeypatch) -> None:
+    console = Console(record=True, width=120, force_terminal=True)
+    status = WorkingStatus(console)
+    status.update("LinuxAgent 正在整理目录 /root/.linuxagent\n  list_dir · 17 items")
+    live = status._live
+    assert live is not None
+
+    refreshes = 0
+
+    def fake_refresh() -> None:
+        nonlocal refreshes
+        refreshes += 1
+
+    monkeypatch.setattr(live, "refresh", fake_refresh)
+
+    status.refresh()
+
+    assert refreshes == 0
+    status.cancel()
+
+
+def test_working_status_keeps_periodic_refresh_for_single_line(monkeypatch) -> None:
+    console = Console(record=True, width=120, force_terminal=True)
+    status = WorkingStatus(console)
+    status.update("LinuxAgent 正在分类意图")
+    live = status._live
+    assert live is not None
+
+    refreshes = 0
+
+    def fake_refresh() -> None:
+        nonlocal refreshes
+        refreshes += 1
+
+    monkeypatch.setattr(live, "refresh", fake_refresh)
+
+    status.refresh()
+
+    assert refreshes == 1
+    status.cancel()
+
+
 async def test_console_print_activity_keeps_non_working_messages_plain(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     console = Console(record=True, width=120, force_terminal=True)

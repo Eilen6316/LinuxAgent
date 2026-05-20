@@ -51,9 +51,13 @@ class WorkingStatus:
         self._refresh()
 
     def refresh(self) -> None:
+        if not self._periodic_refresh_allowed():
+            return
         self._refresh()
 
     def update_pending_inputs(self, inputs: tuple[str, ...]) -> None:
+        if inputs == self._pending_inputs:
+            return
         self._pending_inputs = inputs
         if self._live is not None:
             self._refresh()
@@ -172,6 +176,13 @@ class WorkingStatus:
             return list(self._items)
         omitted = self._translator.t("ui.working.omitted", count=self._omitted_count)
         return [omitted, *self._items]
+
+    def _periodic_refresh_allowed(self) -> bool:
+        if self._pending_inputs:
+            return False
+        if self._active_view is not None:
+            return not _active_view_items(self._active_view)
+        return len(self._items) <= 1 and "\n" not in self._message
 
 
 def _working_label(message: str, translator: Translator) -> str:
