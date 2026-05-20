@@ -31,5 +31,6 @@ Each scenario file may contain one or more YAML documents. The runner supports:
 - `expected_interrupts`: fields to assert on the first interrupt payload
 - `resume`: payload passed to `Command(resume=...)`
 - `expected`: outcome checks including `command_executed`, `exit_code`,
-  `response_contains`, `audit_log_contains`, `tool_events`, `background_jobs`,
-  and `files`
+  `response_contains`, `audit_log_contains`, `tool_events`,
+  `tool_event_sequence`, `runtime_events`, `runtime_event_sequence`,
+  `background_jobs`, and `files`

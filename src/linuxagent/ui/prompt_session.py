@@ -78,7 +78,7 @@ class PromptSessionManager:
         return PromptSession(
             history=FileHistory(str(self._history_path)),
             completer=cast(Completer, SlashCommandCompleter(self._translator)),
-            validator=_NonEmptyInputValidator(),
+            validator=cast(Validator, _NonEmptyInputValidator()),
             validate_while_typing=False,
             complete_while_typing=True,
             erase_when_done=True,
@@ -89,13 +89,13 @@ class PromptSessionManager:
     def _key_bindings(self) -> KeyBindings:
         bindings = KeyBindings()
 
-        @bindings.add("escape", eager=True)  # type: ignore[misc]
         def _cancel_turn(_event: KeyPressEvent) -> None:
             if self._cancel_event is not None:
                 if self._cancel_reason_setter is not None:
                     self._cancel_reason_setter("escape")
                 self._cancel_event.set()
 
+        bindings.add("escape", eager=True)(_cancel_turn)
         return bindings
 
 
@@ -130,7 +130,7 @@ class SlashCommandCompleter:
             yield completion
 
 
-class _NonEmptyInputValidator(Validator):  # type: ignore[misc]
+class _NonEmptyInputValidator:
     def validate(self, document: Document) -> None:
         if document.text.strip():
             return

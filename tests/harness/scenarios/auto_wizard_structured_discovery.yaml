@@ -11,3 +11,8 @@ expected_interrupts:
   - type: wizard
 expected:
   command_executed: false
+  runtime_events:
+    - kind: request
+      phase: requested
+      payload:
+        request_type: wizard

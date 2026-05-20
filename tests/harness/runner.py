@@ -36,6 +36,12 @@ from linuxagent.graph import GraphDependencies, build_agent_graph, initial_state
 from linuxagent.graph.state import AgentState
 from linuxagent.i18n import Translator
 from linuxagent.interfaces import LLM_CALL_METADATA_KEY, ExecutionResult, LLMProvider
+from linuxagent.plans import (
+    ContinuePlanningPlanParseError,
+    DirectAnswerPlanParseError,
+    parse_continue_planning_plan,
+    parse_direct_answer_plan,
+)
 from linuxagent.providers.errors import ProviderError
 from linuxagent.sandbox import (
     BubblewrapSandboxRunner,
@@ -89,6 +95,10 @@ class _FakeProvider(LLMProvider):
             if self._responses and _is_direct_answer_review_response(self._responses[0]):
                 return str(self._responses.pop(0))
             return _direct_answer_review_response()
+        if _is_llm_call(kwargs, node="parse_intent", mode="planner_gate"):
+            if self._responses and _is_planner_gate_response(self._responses[0]):
+                return str(self._responses.pop(0))
+            return _continue_planning_response()
         return str(self._responses.pop(0)) if self._responses else "analysis ok"
 
     async def complete_with_tools(
@@ -146,6 +156,10 @@ def _direct_answer_review_response(
     return json.dumps({"mode": mode, "reason": reason}, ensure_ascii=False)
 
 
+def _continue_planning_response() -> str:
+    return json.dumps({"plan_type": "continue_planning"}, ensure_ascii=False)
+
+
 def _is_llm_call(kwargs: dict[str, Any], *, node: str, mode: str | None = None) -> bool:
     metadata = kwargs.get(LLM_CALL_METADATA_KEY)
     if not isinstance(metadata, dict):
@@ -182,6 +196,19 @@ def _is_direct_answer_review_response(text: object) -> bool:
         "KEEP_DIRECT_ANSWER",
         "WIZARD_NEEDED",
     }
+
+
+def _is_planner_gate_response(text: object) -> bool:
+    if not isinstance(text, str):
+        return False
+    try:
+        parse_direct_answer_plan(text)
+    except DirectAnswerPlanParseError:
+        try:
+            parse_continue_planning_plan(text)
+        except ContinuePlanningPlanParseError:
+            return False
+    return True
 
 
 class _FakeSSH:
@@ -430,8 +457,12 @@ class HarnessRunner:
                     )
         if "tool_events" in expected:
             _assert_event_expectations(scenario.name, label, "tool", tool_events, expected)
+        if "tool_event_sequence" in expected:
+            _assert_event_sequence(scenario.name, label, "tool", tool_events, expected)
         if "runtime_events" in expected:
             _assert_event_expectations(scenario.name, label, "runtime", runtime_events, expected)
+        if "runtime_event_sequence" in expected:
+            _assert_event_sequence(scenario.name, label, "runtime", runtime_events, expected)
         if "files" in expected:
             for spec in expected["files"]:
                 _assert_expected_file(scenario.name, spec)
@@ -635,6 +666,35 @@ def _assert_event_expectations(
             raise AssertionError(
                 f"{scenario_name} {label}: {event_type} event missing {expected_event!r}"
             )
+
+
+def _assert_event_sequence(
+    scenario_name: str,
+    label: str,
+    event_type: str,
+    actual_events: list[dict[str, Any]],
+    expected: dict[str, Any],
+) -> None:
+    cursor = 0
+    for expected_event in expected[f"{event_type}_event_sequence"]:
+        match_index = _next_event_match(actual_events, expected_event, start=cursor)
+        if match_index is None:
+            raise AssertionError(
+                f"{scenario_name} {label}: {event_type} sequence missing {expected_event!r}"
+            )
+        cursor = match_index + 1
+
+
+def _next_event_match(
+    events: list[dict[str, Any]],
+    expected: dict[str, Any],
+    *,
+    start: int,
+) -> int | None:
+    for index, event in enumerate(events[start:], start=start):
+        if _contains_subset(event, expected):
+            return index
+    return None
 
 
 def _contains_subset(actual: Any, expected: Any) -> bool:

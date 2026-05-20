@@ -65,3 +65,33 @@ expected:
     - type: command_batch
       phase: finish
       count: 3
+  runtime_event_sequence:
+    - type: command_batch
+      phase: start
+      count: 3
+    - kind: work_item
+      phase: started
+      payload:
+        category: worker
+        status: running
+    - kind: work_item
+      phase: started
+      payload:
+        category: worker
+        status: running
+    - kind: work_item
+      phase: started
+      payload:
+        category: worker
+        status: running
+    - type: worker_group
+      phase: running
+      active: 3
+      total: 3
+    - type: worker_group
+      phase: finished
+      active: 0
+      total: 3
+    - type: command_batch
+      phase: finish
+      count: 3

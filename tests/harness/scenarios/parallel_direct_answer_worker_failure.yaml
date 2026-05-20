@@ -37,3 +37,36 @@ expected:
         - id: failed
           status: failed
           error: "parallel worker failed"
+  runtime_event_sequence:
+    - kind: work_item
+      phase: started
+      payload:
+        category: worker
+        status: running
+        summary: "可回答部分"
+    - kind: work_item
+      phase: started
+      payload:
+        category: worker
+        status: running
+        summary: "失败部分"
+    - type: worker_group
+      phase: running
+      active: 2
+      total: 2
+    - kind: work_item
+      phase: completed
+      payload:
+        category: worker
+        status: completed
+        summary: "可回答部分正文。"
+    - kind: work_item
+      phase: failed
+      payload:
+        category: worker
+        status: failed
+        reason: "parallel worker failed"
+    - type: worker_group
+      phase: finished
+      active: 0
+      total: 2

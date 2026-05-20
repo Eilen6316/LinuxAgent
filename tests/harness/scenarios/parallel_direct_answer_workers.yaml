@@ -38,3 +38,30 @@ expected:
         - id: joke-b
           status: finished
           summary: "第二个笑话正文。"
+  runtime_event_sequence:
+    - kind: work_item
+      phase: started
+      payload:
+        category: worker
+        status: running
+        summary: "第一个笑话"
+    - kind: work_item
+      phase: started
+      payload:
+        category: worker
+        status: running
+        summary: "第二个笑话"
+    - type: worker_group
+      phase: running
+      active: 2
+      total: 2
+    - kind: work_item
+      phase: completed
+      payload:
+        category: worker
+        status: completed
+        summary: "第一个笑话正文。"
+    - type: worker_group
+      phase: finished
+      active: 0
+      total: 2

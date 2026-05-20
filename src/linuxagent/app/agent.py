@@ -199,8 +199,7 @@ class LinuxAgent:
     async def _handle_slash(self, line: str, thread_id: str) -> str | None:
         return await handle_slash(self, line, thread_id)
 
-    async def _handle_resume_command(self, arg: str, thread_id: str) -> str | None:
-        del thread_id
+    async def _handle_resume_command(self, arg: str, _thread_id: str) -> str | None:
         if arg:
             await self.ui.print(self.translator.t("resume.usage"))
             return None

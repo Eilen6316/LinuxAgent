@@ -17,6 +17,15 @@ turns:
       exit_code: 0
       response_contains:
         - "first analysis"
+      runtime_event_sequence:
+        - kind: request
+          phase: requested
+          payload:
+            request_type: confirm_command
+        - kind: request
+          phase: resolved
+          payload:
+            request_type: confirm_command
       audit_log_contains:
         - event: confirm_decision
           decision: "yes"

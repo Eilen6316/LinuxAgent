@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import BaseMessage
+from langchain_core.tools import BaseTool
 
 import linuxagent.graph.intent as intent_module
 from linuxagent.graph.intent import (
@@ -19,6 +21,7 @@ from linuxagent.graph.intent import (
     _parse_intent_decision,
 )
 from linuxagent.graph.state import AgentState
+from linuxagent.interfaces import LLMProvider
 from linuxagent.prompts_loader import (
     build_direct_answer_prompt,
     build_direct_answer_review_prompt,
@@ -207,24 +210,30 @@ def _wizard_intent() -> IntentDecision:
     return IntentDecision(IntentMode.WIZARD_NEEDED, "", "needs wizard")
 
 
-class _Provider:
+class _Provider(LLMProvider):
     def __init__(self, responses: list[str] | None = None) -> None:
         self.responses = list(responses or ["clarify through model"])
         self.complete_messages: list[list[BaseMessage]] = []
-        self.last_usage = None
+
+    @property
+    def last_usage(self) -> None:
+        return None
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
         del kwargs
         self.complete_messages.append(messages)
         return self.responses.pop(0)
 
-    async def complete_with_tools(self, messages: list[BaseMessage], tools, **kwargs: Any) -> str:
+    async def complete_with_tools(
+        self, messages: list[BaseMessage], tools: list[BaseTool], **kwargs: Any
+    ) -> str:
         del tools
         return await self.complete(messages, **kwargs)
 
-    def stream(self, messages: list[BaseMessage], **kwargs: Any) -> None:
+    async def stream(self, messages: list[BaseMessage], **kwargs: Any) -> AsyncIterator[str]:
         del messages, kwargs
-        raise NotImplementedError
+        if False:
+            yield ""
 
 
 def _context(
@@ -247,7 +256,6 @@ def _context(
         runtime_observer=None,
         tool_runtime_limits=ToolRuntimeLimits(),
         product_context="",
-        operating_manifest="",
         prompt_cache_key=None,
         parallel_direct_answer_tasks=8,
     )
@@ -255,4 +263,6 @@ def _context(
 
 def _last_prompt(provider: _Provider) -> dict[str, object]:
     payload = str(provider.complete_messages[-1][-1].content)
-    return json.loads(payload)
+    prompt = json.loads(payload)
+    assert isinstance(prompt, dict)
+    return prompt

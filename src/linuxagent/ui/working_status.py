@@ -80,6 +80,7 @@ class WorkingStatus:
         else:
             text = self._render_legacy_items()
         _append_pending_inputs(text, self._pending_inputs, self._translator)
+        text.append("\n")
         return text
 
     def _refresh(self) -> None:

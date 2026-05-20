@@ -795,6 +795,7 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     assert "esc 中断" in rendered
     assert "整理文件 workspace/disk_info.sh" in rendered
     assert "read_file · 95 lines" in rendered
+    assert rendered.endswith("\n")
 
     await ui.print("done")
 
@@ -815,6 +816,7 @@ async def test_console_working_status_shows_pending_input_preview(monkeypatch) -
     rendered = render_console.export_text()
     assert "下次工具调用后将提交的消息" in rendered
     assert "后续问题" in rendered
+    assert rendered.endswith("\n")
 
     await ui.print_user_input("后续问题")
     assert ui._pending_inputs == ()
