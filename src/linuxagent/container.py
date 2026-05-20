@@ -21,6 +21,7 @@ from .app.runtime_telemetry import record_runtime_event
 from .audit import AuditLog
 from .audit_sink import HttpAuditSink
 from .cluster import SSHManager
+from .event_replay import RuntimeEventStore
 from .executors import LinuxCommandExecutor
 from .graph import GraphRuntime
 from .graph.agent_graph import AgentGraph
@@ -90,6 +91,7 @@ class Container:
         self._active_turn_view = ActiveTurnView()
         self._turn_history_summaries: list[TurnHistorySummary] = []
         self._last_turn_history_key: tuple[str, str, str] | None = None
+        self._runtime_event_store = RuntimeEventStore()
 
     @property
     def config(self) -> AppConfig:
@@ -409,6 +411,7 @@ class Container:
     def _runtime_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
             record_runtime_event(self.telemetry(), event)
+            self._runtime_event_store.record(event)
             self._request_pending_input_at_safe_point(event)
             if await self._render_active_runtime_event(event):
                 return
