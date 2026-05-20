@@ -2463,12 +2463,12 @@ async def test_graph_passes_product_context_to_direct_answer_paths(tmp_path) -> 
 async def test_graph_loads_operating_manifest_only_for_self_manual_direct_answer(
     tmp_path,
 ) -> None:
-    manifest = operating_manifest_context(section_names=("tools", "safety", "cache"))
+    events: list[dict[str, Any]] = []
     graph, provider = _graph(
         tmp_path,
         [_router_response("DIRECT_ANSWER", answer_context="self_manual"), "manual answer"],
         product_context=product_capability_context(provider="deepseek", model="deepseek-chat"),
-        operating_manifest=manifest,
+        runtime_observer=events.append,
     )
 
     result = await graph.ainvoke(
@@ -2487,6 +2487,9 @@ async def test_graph_loads_operating_manifest_only_for_self_manual_direct_answer
     assert "# tools" in prompts[1]
     assert "# safety" in prompts[1]
     assert "# cache" in prompts[1]
+    context_events = [event for event in events if event.get("kind") == "context"]
+    assert [event["phase"] for event in context_events] == ["injected"]
+    assert context_events[0]["payload"]["source"] == "linuxagent-manual"
 
 
 async def test_graph_continues_planning_when_planner_gate_fails(tmp_path) -> None:
@@ -2518,14 +2521,14 @@ async def test_graph_continues_planning_when_planner_gate_fails(tmp_path) -> Non
 
 
 async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> None:
-    manifest = operating_manifest_context(section_names=("tools", "safety"))
+    events: list[dict[str, Any]] = []
     graph, provider = _graph(
         tmp_path,
         [
             _router_response("DIRECT_ANSWER", "router supplied direct answer"),
             _direct_answer_review_response(),
         ],
-        operating_manifest=manifest,
+        runtime_observer=events.append,
     )
     config = {"configurable": {"thread_id": "daily-chat"}}
 
@@ -2538,6 +2541,9 @@ async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> N
     prompt = "\n".join(str(message.content) for message in provider.complete_messages[0])
     assert "# tools" not in prompt
     assert "# safety" not in prompt
+    context_events = [event for event in events if event.get("kind") == "context"]
+    assert [event["phase"] for event in context_events] == ["skipped"]
+    assert context_events[0]["payload"]["source"] == "linuxagent-manual"
     snapshot = await graph.aget_state(config)
     assert not snapshot.tasks
     assert snapshot.values.get("pending_command") is None

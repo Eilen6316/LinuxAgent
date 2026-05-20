@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from linuxagent.operating_manifest import manifest_index, operating_manifest_context
+from linuxagent.operating_manifest import (
+    manifest_index,
+    manifest_section_names,
+    operating_manifest_context,
+)
 
 
 def test_manifest_index_lists_sections() -> None:
@@ -12,6 +16,10 @@ def test_manifest_index_lists_sections() -> None:
     assert "- tools:" in index
     assert "- cache:" in index
     assert "- safety:" in index
+
+
+def test_manifest_section_names_follow_selection_order() -> None:
+    assert manifest_section_names(("safety", "tools")) == ("tools", "safety")
 
 
 def test_operating_manifest_context_can_select_sections() -> None:

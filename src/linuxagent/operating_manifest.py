@@ -46,6 +46,12 @@ def operating_manifest_context(*, section_names: Iterable[str] | None = None) ->
     return "\n\n".join(parts)
 
 
+def manifest_section_names(section_names: Iterable[str] | None = None) -> tuple[str, ...]:
+    """Return stable manifest section names after applying optional selection."""
+
+    return tuple(section.name for section in _selected_sections(section_names))
+
+
 def _selected_sections(section_names: Iterable[str] | None) -> tuple[ManifestSection, ...]:
     if section_names is None:
         return MANIFEST_SECTIONS

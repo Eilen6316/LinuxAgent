@@ -10,6 +10,13 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool
 from langgraph.types import Command
 
+from ..context_injection import (
+    ContextSource,
+    context_injected_event,
+    context_skipped_event,
+    linuxagent_manual_context,
+    manual_prompt_context,
+)
 from ..i18n import Translator, default_translator
 from ..interfaces import CommandSource, LLMProvider
 from ..plans import CommandPlan, DirectAnswerPlan, FilePatchPlan, NoChangePlan
@@ -57,6 +64,7 @@ from .state import (
     reset_planning_for_wizard,
 )
 from .tool_loop import ToolEventObserver, tool_event_observer
+from .turn_context import current_turn_context
 from .user_input_routing import clear_user_input_routing_flags, user_input_request_update
 from .wizard_gate import _apply_wizard_hard_gates
 
@@ -93,16 +101,12 @@ class IntentNodeContext:
     runtime_observer: RuntimeEventObserver | None
     tool_runtime_limits: ToolRuntimeLimits
     product_context: str
-    operating_manifest: str
     prompt_cache_key: str | None
     parallel_direct_answer_tasks: int
     translator: Translator = field(default_factory=default_translator)
 
     def direct_answer_context(self) -> str:
-        manifest = self.operating_manifest.strip()
-        if not manifest:
-            return self.product_context
-        return f"{self.product_context}\n\n{manifest}"
+        return self.product_context
 
 
 def make_parse_intent_node(
@@ -135,11 +139,11 @@ def make_parse_intent_node(
         runtime_observer=runtime_observer,
         tool_runtime_limits=tool_runtime_limits or ToolRuntimeLimits(),
         product_context=product_context,
-        operating_manifest=operating_manifest,
         prompt_cache_key=prompt_cache_key,
         parallel_direct_answer_tasks=parallel_direct_answer_tasks,
         translator=translator or default_translator(),
     )
+    del operating_manifest
 
     async def parse_intent_node(state: AgentState) -> AgentState:
         return await _parse_intent_update(context, state)
@@ -229,8 +233,11 @@ async def _direct_answer_update(
     intent: IntentDecision,
 ) -> AgentState:
     if intent.answer_context is AnswerContext.SELF_MANUAL:
-        answer = await _complete_direct_answer(context, messages, user_text, current_trace_id)
-        return _direct_response_update(current_trace_id, answer)
+        return await _self_manual_direct_answer_update(
+            context, messages, user_text, current_trace_id
+        )
+    if intent.mode is IntentMode.DIRECT_ANSWER:
+        await _notify_manual_context_skipped(context, current_trace_id)
     if intent.parallel_tasks:
         return await complete_parallel_direct_answer(
             context,
@@ -261,6 +268,54 @@ async def _direct_answer_update(
     if reviewed_intent.mode is IntentMode.CLARIFY:
         return _direct_response_update(current_trace_id, reviewed_intent.answer)
     return _direct_response_update(current_trace_id, intent.answer)
+
+
+async def _self_manual_direct_answer_update(
+    context: IntentNodeContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+) -> AgentState:
+    injection = linuxagent_manual_context("self_manual direct answer")
+    await _notify_context_event(context, current_trace_id, context_injected_event, injection)
+    answer = await _complete_direct_answer(
+        replace(
+            context,
+            product_context=manual_prompt_context(context.product_context, injection),
+        ),
+        messages,
+        user_text,
+        current_trace_id,
+    )
+    return _direct_response_update(current_trace_id, answer)
+
+
+async def _notify_manual_context_skipped(
+    context: IntentNodeContext,
+    current_trace_id: str,
+) -> None:
+    await _notify_context_event(
+        context,
+        current_trace_id,
+        context_skipped_event,
+        source=ContextSource.LINUXAGENT_MANUAL,
+        reason="direct answer did not request LinuxAgent manual",
+        summary="manual not injected",
+    )
+
+
+async def _notify_context_event(
+    context: IntentNodeContext,
+    fallback_id: str,
+    event_builder: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> None:
+    turn = current_turn_context()
+    thread_id = turn.thread_id if turn is not None else fallback_id
+    turn_id = turn.turn_id if turn is not None else fallback_id
+    event = event_builder(*args, thread_id=thread_id, turn_id=turn_id, **kwargs)
+    await notify_event(context.runtime_observer, event.to_event())
 
 
 def _context_for_state(context: IntentNodeContext, state: AgentState) -> IntentNodeContext:
