@@ -42,6 +42,7 @@ from linuxagent.runtime_control import CancellationToken, current_cancellation_t
 from linuxagent.sandbox import SandboxProfile
 from linuxagent.tools import ToolRuntimeLimits
 from linuxagent.tools.sandbox import ToolSandboxSpec, attach_tool_sandbox
+from linuxagent.turn_context import RuntimeTurnContext, turn_context_scope
 
 
 def _cfg(**overrides: object) -> APIConfig:
@@ -984,22 +985,34 @@ async def test_complete_with_tools_runs_parallel_safe_tools_concurrently() -> No
     provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
 
     before = time.monotonic()
-    await provider.complete_with_tools(
-        [HumanMessage(content="lookup")],
-        [_parallel_sandboxed(first_lookup), _parallel_sandboxed(second_lookup)],
-        runtime_observer=runtime_events.append,
-    )
+    with turn_context_scope(RuntimeTurnContext(thread_id="thread-1", turn_id="turn-1")):
+        await provider.complete_with_tools(
+            [HumanMessage(content="lookup")],
+            [_parallel_sandboxed(first_lookup), _parallel_sandboxed(second_lookup)],
+            runtime_observer=runtime_events.append,
+        )
     elapsed = time.monotonic() - before
 
     assert elapsed < 0.09
     assert abs(started[0][1] - started[1][1]) < 0.03
-    worker_events = [event for event in runtime_events if event["type"] == "worker_group"]
+    worker_events = [event for event in runtime_events if event.get("type") == "worker_group"]
     assert [event["phase"] for event in worker_events] == ["running", "finished"]
     assert worker_events[0]["total"] == 2
     assert {worker["name"] for worker in worker_events[-1]["workers"]} == {
         "first_lookup",
         "second_lookup",
     }
+    worker_items = [
+        event
+        for event in runtime_events
+        if event.get("kind") == "work_item" and event.get("payload", {}).get("category") == "worker"
+    ]
+    assert [event["phase"] for event in worker_items] == [
+        "started",
+        "started",
+        "completed",
+        "completed",
+    ]
 
 
 async def test_complete_with_tools_keeps_conflicting_resources_serial() -> None:
@@ -1078,15 +1091,22 @@ async def test_complete_with_tools_preserves_partial_failure_in_parallel_batch()
     )
     provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
 
-    await provider.complete_with_tools(
-        [HumanMessage(content="lookup")],
-        [_parallel_sandboxed(good_lookup), _parallel_sandboxed(bad_lookup)],
-        runtime_observer=runtime_events.append,
-    )
+    with turn_context_scope(RuntimeTurnContext(thread_id="thread-1", turn_id="turn-1")):
+        await provider.complete_with_tools(
+            [HumanMessage(content="lookup")],
+            [_parallel_sandboxed(good_lookup), _parallel_sandboxed(bad_lookup)],
+            runtime_observer=runtime_events.append,
+        )
 
     finished = [event for event in runtime_events if event["phase"] == "finished"][-1]
     statuses = {worker["name"]: worker["status"] for worker in finished["workers"]}
     assert statuses == {"good_lookup": "finished", "bad_lookup": "failed"}
+    worker_items = [
+        event
+        for event in runtime_events
+        if event.get("kind") == "work_item" and event.get("payload", {}).get("category") == "worker"
+    ]
+    assert worker_items[-1]["payload"]["status"] == "failed"
 
 
 async def test_complete_with_tools_uses_configured_max_rounds() -> None:

@@ -12,12 +12,12 @@ from langgraph.types import Command, Interrupt
 
 from linuxagent.app.graph_invocation import start_graph_invocation
 from linuxagent.graph.runtime import GraphRuntime
-from linuxagent.graph.turn_context import (
+from linuxagent.runtime_control import CancellationToken, current_cancellation_token
+from linuxagent.turn_context import (
     RuntimeTurnContext,
     current_turn_context,
     turn_context_scope,
 )
-from linuxagent.runtime_control import CancellationToken, current_cancellation_token
 
 
 class _FakeGraph:

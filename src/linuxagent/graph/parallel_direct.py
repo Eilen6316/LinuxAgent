@@ -14,6 +14,7 @@ from .direct_answer import DirectAnswerContext, _complete_direct_answer
 from .events import RuntimeEventObserver, notify_event
 from .intent_router import ParallelDirectTask
 from .state import AgentState, reset_planning_for_response
+from .worker_events import notify_worker_lifecycle
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,13 @@ async def _notify_parallel_direct(
     phase: WorkerStatus,
     tasks: tuple[ParallelDirectTask, ...],
 ) -> None:
+    workers = _parallel_direct_workers(tasks, phase)
+    await notify_worker_lifecycle(
+        observer,
+        trace_id=trace_id,
+        workers=workers,
+        status=phase,
+    )
     await notify_event(
         observer,
         worker_group_event(
@@ -82,17 +90,7 @@ async def _notify_parallel_direct(
             phase=phase,
             label_key="runtime.group.direct_answer_tasks",
             active=len(tasks) if phase is WorkerStatus.RUNNING else None,
-            workers=(
-                RuntimeWorker(
-                    id=task.id,
-                    name_key="runtime.agent.direct_answer_worker",
-                    name_params={"index": index + 1},
-                    status=phase,
-                    goal=task.goal,
-                    detail=task.goal,
-                )
-                for index, task in enumerate(tasks)
-            ),
+            workers=workers,
         ),
     )
 
@@ -102,6 +100,13 @@ async def _notify_parallel_direct_results(
     trace_id: str,
     results: tuple[ParallelDirectResult, ...],
 ) -> None:
+    workers = _parallel_direct_result_workers(results)
+    await notify_worker_lifecycle(
+        observer,
+        trace_id=trace_id,
+        workers=workers,
+        status=WorkerStatus.FINISHED,
+    )
     await notify_event(
         observer,
         worker_group_event(
@@ -109,19 +114,42 @@ async def _notify_parallel_direct_results(
             phase=WorkerStatus.FINISHED,
             label_key="runtime.group.direct_answer_tasks",
             active=0,
-            workers=(
-                RuntimeWorker(
-                    id=result.task.id,
-                    name_key="runtime.agent.direct_answer_worker",
-                    name_params={"index": index + 1},
-                    status=WorkerStatus.FINISHED if result.succeeded else WorkerStatus.FAILED,
-                    goal=result.task.goal,
-                    summary=result.answer,
-                    error=result.error,
-                )
-                for index, result in enumerate(results)
-            ),
+            workers=workers,
         ),
+    )
+
+
+def _parallel_direct_workers(
+    tasks: tuple[ParallelDirectTask, ...],
+    phase: WorkerStatus,
+) -> tuple[RuntimeWorker, ...]:
+    return tuple(
+        RuntimeWorker(
+            id=task.id,
+            name_key="runtime.agent.direct_answer_worker",
+            name_params={"index": index + 1},
+            status=phase,
+            goal=task.goal,
+            detail=task.goal,
+        )
+        for index, task in enumerate(tasks)
+    )
+
+
+def _parallel_direct_result_workers(
+    results: tuple[ParallelDirectResult, ...],
+) -> tuple[RuntimeWorker, ...]:
+    return tuple(
+        RuntimeWorker(
+            id=result.task.id,
+            name_key="runtime.agent.direct_answer_worker",
+            name_params={"index": index + 1},
+            status=WorkerStatus.FINISHED if result.succeeded else WorkerStatus.FAILED,
+            goal=result.task.goal,
+            summary=result.answer,
+            error=result.error,
+        )
+        for index, result in enumerate(results)
     )
 
 

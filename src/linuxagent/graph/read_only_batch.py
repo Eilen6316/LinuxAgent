@@ -21,6 +21,7 @@ from .execution import (
     synthetic_result,
 )
 from .state import AgentState
+from .worker_events import notify_worker_lifecycle
 
 BatchStep = tuple[int, PlannedCommand]
 
@@ -194,6 +195,13 @@ async def _notify_parallel_agents(
     status: WorkerStatus,
     commands: tuple[str, ...],
 ) -> None:
+    workers = _command_workers(commands, status)
+    await notify_worker_lifecycle(
+        observer,
+        trace_id=trace_id,
+        workers=workers,
+        status=status,
+    )
     await notify_event(
         observer,
         worker_group_event(
@@ -201,16 +209,7 @@ async def _notify_parallel_agents(
             phase=status,
             label_key="runtime.group.read_only_batch",
             active=len(commands) if status == WorkerStatus.RUNNING else 0,
-            workers=(
-                RuntimeWorker(
-                    id=f"cmd-{index}",
-                    name_key="runtime.agent.command_worker",
-                    name_params={"index": index + 1},
-                    status=status,
-                    detail=command,
-                )
-                for index, command in enumerate(commands)
-            ),
+            workers=workers,
         ),
     )
 
@@ -220,6 +219,13 @@ async def _notify_parallel_agent_results(
     trace_id: str,
     results: tuple[ExecutionResult, ...],
 ) -> None:
+    workers = _command_result_workers(results)
+    await notify_worker_lifecycle(
+        observer,
+        trace_id=trace_id,
+        workers=workers,
+        status=WorkerStatus.FINISHED,
+    )
     await notify_event(
         observer,
         worker_group_event(
@@ -227,19 +233,39 @@ async def _notify_parallel_agent_results(
             phase=WorkerStatus.FINISHED,
             label_key="runtime.group.read_only_batch",
             active=0,
-            workers=(
-                RuntimeWorker(
-                    id=f"cmd-{index}",
-                    name_key="runtime.agent.command_worker",
-                    name_params={"index": index + 1},
-                    status=WorkerStatus.FINISHED if result.exit_code == 0 else WorkerStatus.FAILED,
-                    detail=result.command,
-                    summary_key="runtime.agent.status.exit",
-                    summary_params={"exit_code": result.exit_code},
-                )
-                for index, result in enumerate(results)
-            ),
+            workers=workers,
         ),
+    )
+
+
+def _command_workers(
+    commands: tuple[str, ...],
+    status: WorkerStatus,
+) -> tuple[RuntimeWorker, ...]:
+    return tuple(
+        RuntimeWorker(
+            id=f"cmd-{index}",
+            name_key="runtime.agent.command_worker",
+            name_params={"index": index + 1},
+            status=status,
+            detail=command,
+        )
+        for index, command in enumerate(commands)
+    )
+
+
+def _command_result_workers(results: tuple[ExecutionResult, ...]) -> tuple[RuntimeWorker, ...]:
+    return tuple(
+        RuntimeWorker(
+            id=f"cmd-{index}",
+            name_key="runtime.agent.command_worker",
+            name_params={"index": index + 1},
+            status=WorkerStatus.FINISHED if result.exit_code == 0 else WorkerStatus.FAILED,
+            detail=result.command,
+            summary_key="runtime.agent.status.exit",
+            summary_params={"exit_code": result.exit_code},
+        )
+        for index, result in enumerate(results)
     )
 
 

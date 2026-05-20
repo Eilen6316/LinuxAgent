@@ -8,8 +8,8 @@ from typing import Any
 
 from ..runtime_events import tool_work_item_event
 from ..telemetry import TelemetryRecorder
+from ..turn_context import current_turn_context
 from .events import RuntimeEventObserver, notify_event
-from .turn_context import current_turn_context
 
 ToolEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
 

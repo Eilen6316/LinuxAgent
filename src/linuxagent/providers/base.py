@@ -48,7 +48,13 @@ from ..pending_input import (
     current_pending_input_preview_updater,
 )
 from ..runtime_control import CancellationToken
-from ..runtime_events import RuntimeWorker, WorkerStatus, worker_group_event
+from ..runtime_events import (
+    RuntimeEventPhase,
+    RuntimeWorker,
+    WorkerStatus,
+    worker_group_event,
+    worker_lifecycle_events,
+)
 from ..security import redact_record
 from ..tools.catalog import ToolCatalogReport, inspect_tool_catalog
 from ..tools.sandbox import (
@@ -57,6 +63,7 @@ from ..tools.sandbox import (
     invoke_tool_with_sandbox,
     tool_sandbox_record,
 )
+from ..turn_context import current_turn_context
 from .errors import (
     ProviderConnectionError,
     ProviderError,
@@ -753,6 +760,7 @@ async def _notify_tool_batch(
         return
     batch_trace_id = trace_id or batch[0].tool_call_id or "tool-batch"
     workers = _tool_batch_workers(batch, phase=phase, results=results)
+    await _notify_tool_lifecycle(observer, batch_trace_id, workers, phase)
     await _notify_tool_observer(
         observer,
         worker_group_event(
@@ -762,6 +770,26 @@ async def _notify_tool_batch(
             workers=workers,
         ),
     )
+
+
+async def _notify_tool_lifecycle(
+    observer: RuntimeEventObserver,
+    trace_id: str,
+    workers: tuple[RuntimeWorker, ...],
+    phase: WorkerStatus,
+) -> None:
+    turn = current_turn_context()
+    if turn is None:
+        return
+    event_phase = _worker_event_phase(phase)
+    for event in worker_lifecycle_events(
+        thread_id=turn.thread_id,
+        turn_id=turn.turn_id,
+        trace_id=trace_id,
+        workers=workers,
+        phase=event_phase,
+    ):
+        await _notify_tool_observer(observer, event.to_event())
 
 
 def _tool_batch_workers(
@@ -791,6 +819,17 @@ def _tool_batch_workers(
         )
         for index, planned in enumerate(batch)
     )
+
+
+def _worker_event_phase(status: WorkerStatus) -> RuntimeEventPhase:
+    phases = {
+        WorkerStatus.QUEUED: RuntimeEventPhase.STARTED,
+        WorkerStatus.RUNNING: RuntimeEventPhase.STARTED,
+        WorkerStatus.FINISHED: RuntimeEventPhase.COMPLETED,
+        WorkerStatus.FAILED: RuntimeEventPhase.FAILED,
+        WorkerStatus.CANCELLED: RuntimeEventPhase.CANCELLED,
+    }
+    return phases[status]
 
 
 def _tool_worker_status(result: ToolRunResult | None) -> WorkerStatus:

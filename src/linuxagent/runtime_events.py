@@ -62,6 +62,7 @@ class WorkItemCategory(StrEnum):
     WORKER_GROUP = "worker_group"
     AGENT_GROUP = "agent_group"
     BACKGROUND_JOB = "background_job"
+    WORKER = "worker"
     GENERIC = "generic"
 
 
@@ -351,6 +352,28 @@ def worker_group_event(
     return event.to_event()
 
 
+def worker_lifecycle_events(
+    *,
+    thread_id: str,
+    turn_id: str,
+    trace_id: str,
+    workers: Iterable[RuntimeWorker],
+    phase: RuntimeEventPhase,
+    parent_id: str | None = None,
+) -> tuple[RuntimeEvent, ...]:
+    parent = parent_id or f"worker_group:{trace_id}"
+    return tuple(
+        work_item_runtime_event(
+            thread_id=thread_id,
+            turn_id=turn_id,
+            parent_id=parent,
+            phase=phase,
+            item=_worker_work_item(worker, trace_id=trace_id),
+        )
+        for worker in workers
+    )
+
+
 def cancelled_worker_group_event(*, trace_id: str, reason: str) -> dict[str, Any]:
     return worker_group_event(
         trace_id=trace_id,
@@ -371,6 +394,33 @@ def cancelled_worker_group_event(*, trace_id: str, reason: str) -> dict[str, Any
 def _active_worker_count(workers: tuple[RuntimeWorker, ...]) -> int:
     active_statuses = {WorkerStatus.QUEUED, WorkerStatus.RUNNING}
     return sum(1 for worker in workers if worker.status in active_statuses)
+
+
+def _worker_work_item(worker: RuntimeWorker, *, trace_id: str) -> RuntimeWorkItem:
+    status = _worker_item_status(worker.status)
+    return RuntimeWorkItem(
+        item_id=f"worker:{trace_id}:{worker.id}",
+        category=WorkItemCategory.WORKER,
+        status=status,
+        label=worker.name,
+        label_key=worker.name_key,
+        label_params=worker.name_params,
+        summary=_preview(worker.summary or worker.detail or worker.goal),
+        summary_key=worker.summary_key or worker.detail_key,
+        summary_params=worker.summary_params or worker.detail_params,
+        reason=_preview(worker.error),
+    )
+
+
+def _worker_item_status(status: WorkerStatus) -> WorkItemStatus:
+    statuses = {
+        WorkerStatus.QUEUED: WorkItemStatus.QUEUED,
+        WorkerStatus.RUNNING: WorkItemStatus.RUNNING,
+        WorkerStatus.FINISHED: WorkItemStatus.COMPLETED,
+        WorkerStatus.FAILED: WorkItemStatus.FAILED,
+        WorkerStatus.CANCELLED: WorkItemStatus.CANCELLED,
+    }
+    return statuses[status]
 
 
 def _legacy_event_kind(event_type: str) -> RuntimeEventKind:
@@ -453,6 +503,7 @@ def _work_item_category(event_type: str) -> WorkItemCategory:
         "worker_group": WorkItemCategory.WORKER_GROUP,
         "agent_group": WorkItemCategory.AGENT_GROUP,
         "background_job": WorkItemCategory.BACKGROUND_JOB,
+        "worker": WorkItemCategory.WORKER,
     }
     return categories.get(event_type, WorkItemCategory.GENERIC)
 

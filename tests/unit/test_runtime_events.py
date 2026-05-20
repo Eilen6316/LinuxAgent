@@ -9,7 +9,9 @@ from linuxagent.runtime_events import (
     RuntimeEvent,
     RuntimeEventKind,
     RuntimeEventPhase,
+    RuntimeWorker,
     RuntimeWorkItem,
+    WorkerStatus,
     WorkItemCategory,
     WorkItemStatus,
     context_runtime_event,
@@ -17,6 +19,7 @@ from linuxagent.runtime_events import (
     legacy_work_item_event,
     runtime_event,
     work_item_runtime_event,
+    worker_lifecycle_events,
 )
 
 
@@ -137,6 +140,33 @@ def test_work_item_runtime_event_builds_parent_child_payload() -> None:
     assert payload["payload"]["item_id"] == "tool:read"
     assert payload["payload"]["category"] == "tool"
     assert payload["payload"]["status"] == "running"
+
+
+def test_worker_lifecycle_events_build_per_worker_items() -> None:
+    events = worker_lifecycle_events(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        trace_id="trace-1",
+        phase=RuntimeEventPhase.STARTED,
+        workers=(
+            RuntimeWorker(
+                id="worker-1",
+                status=WorkerStatus.RUNNING,
+                name_key="runtime.agent.command_worker",
+                summary="reading files",
+            ),
+        ),
+    )
+
+    payload = events[0].to_event()
+    assert payload["kind"] == "work_item"
+    assert payload["phase"] == "started"
+    assert payload["parent_id"] == "worker_group:trace-1"
+    assert payload["payload"]["item_id"] == "worker:trace-1:worker-1"
+    assert payload["payload"]["category"] == "worker"
+    assert payload["payload"]["status"] == "running"
+    assert payload["payload"]["label_key"] == "runtime.agent.command_worker"
+    assert payload["payload"]["summary"] == "reading files"
 
 
 def test_legacy_work_item_event_maps_worker_group_progress() -> None:

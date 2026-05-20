@@ -1285,6 +1285,24 @@ async def test_graph_allow_all_parallelizes_read_only_plan_with_ordered_results(
     ]
     batch_events = [event for event in events if event.get("type") == "command_batch"]
     assert [event["phase"] for event in batch_events] == ["start", "finish"]
+    worker_item_events = [
+        event
+        for event in events
+        if event.get("kind") == "work_item" and event.get("payload", {}).get("category") == "worker"
+    ]
+    assert [event["phase"] for event in worker_item_events] == [
+        "started",
+        "started",
+        "started",
+        "completed",
+        "completed",
+        "completed",
+    ]
+    assert [event["payload"]["item_id"].rsplit(":", 1)[-1] for event in worker_item_events[:3]] == [
+        "cmd-0",
+        "cmd-1",
+        "cmd-2",
+    ]
     worker_events = [event for event in events if event.get("type") == "worker_group"]
     assert [event["phase"] for event in worker_events] == ["running", "finished"]
     assert worker_events[0]["active"] == 3
@@ -2631,6 +2649,21 @@ async def test_graph_runs_parallel_direct_answer_tasks(tmp_path) -> None:
     assert "第一个笑话正文。" in answer
     assert "**第二个笑话**" in answer
     assert "第二个笑话正文。" in answer
+    worker_item_events = [
+        event
+        for event in events
+        if event.get("kind") == "work_item" and event.get("payload", {}).get("category") == "worker"
+    ]
+    assert [event["phase"] for event in worker_item_events] == [
+        "started",
+        "started",
+        "completed",
+        "completed",
+    ]
+    assert [event["payload"]["item_id"].rsplit(":", 1)[-1] for event in worker_item_events[:2]] == [
+        "joke-a",
+        "joke-b",
+    ]
     worker_events = [event for event in events if event.get("type") == "worker_group"]
     assert [event["phase"] for event in worker_events] == ["running", "finished"]
     assert worker_events[0]["label_key"] == "runtime.group.direct_answer_tasks"

@@ -19,10 +19,10 @@ from ..pending_request import (
 )
 from ..runtime_control import CancellationToken, cancellation_scope, new_turn_id
 from ..runtime_events import RuntimeEventKind, RuntimeEventPhase, runtime_event
+from ..turn_context import RuntimeTurnContext, turn_context_scope
 from .agent_graph import AgentGraph
 from .events import RuntimeEventObserver, notify_event
 from .state import AgentState
-from .turn_context import RuntimeTurnContext, turn_context_scope
 
 GRAPH_LIMIT = 100
 INTERRUPT_POLL_SECONDS = 0.05

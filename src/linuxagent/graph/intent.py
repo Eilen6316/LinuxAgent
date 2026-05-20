@@ -31,6 +31,7 @@ from ..prompts_loader import (
 from ..services import ClusterService
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
+from ..turn_context import current_turn_context
 from .common import trace_id
 from .direct_answer import (
     DirectAnswerReviewDecision,
@@ -64,7 +65,6 @@ from .state import (
     reset_planning_for_wizard,
 )
 from .tool_loop import ToolEventObserver, tool_event_observer
-from .turn_context import current_turn_context
 from .user_input_routing import clear_user_input_routing_flags, user_input_request_update
 from .wizard_gate import _apply_wizard_hard_gates
 

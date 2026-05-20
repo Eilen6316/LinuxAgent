@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 
 from linuxagent.graph.tool_loop import tool_event_observer
-from linuxagent.graph.turn_context import RuntimeTurnContext, turn_context_scope
 from linuxagent.telemetry import TelemetryRecorder
+from linuxagent.turn_context import RuntimeTurnContext, turn_context_scope
 
 
 async def test_tool_event_observer_captures_allowed_output_text(tmp_path) -> None:
