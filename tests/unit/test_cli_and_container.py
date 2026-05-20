@@ -1101,6 +1101,42 @@ async def test_runtime_observer_deduplicates_repeated_activity(
     assert ui.raw == [("ok", False)]
 
 
+async def test_runtime_observer_does_not_interrupt_pending_input_at_safe_point(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeUI:
+        def __init__(self) -> None:
+            self.requests = 0
+            self.activities: list[str] = []
+
+        def request_pending_input_interrupt(self) -> bool:
+            self.requests += 1
+            return True
+
+        async def print_activity(self, text: str) -> None:
+            self.activities.append(text)
+
+    ui = _FakeUI()
+    monkeypatch.setattr(container_module.Container, "ui", lambda self: ui)
+    container = Container(AppConfig.model_validate({"telemetry": {"enabled": False}}))
+    observer = container._runtime_event_observer()
+
+    await observer({"type": "activity", "phase": "plan"})
+    await observer({"type": "command", "phase": "finish", "command": "uptime"})
+    await observer(
+        {
+            "schema_version": 1,
+            "kind": "work_item",
+            "phase": "completed",
+            "thread_id": "thread",
+            "turn_id": "turn",
+            "payload": {"item_id": "tool:1", "category": "tool", "status": "completed"},
+        }
+    )
+
+    assert ui.requests == 0
+
+
 async def test_runtime_observer_renders_typed_active_view(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

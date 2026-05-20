@@ -132,7 +132,9 @@ class _FakeUI:
         self.resume_sessions: list[Any] = []
         self.activity_visible: bool | None = None
         self.working: list[str] = []
+        self.cleared_activity = 0
         self.cancelled: list[str] = []
+        self.pending_input_updates: list[tuple[str, ...]] = []
 
     async def input_stream(self):
         for item in self._inputs:
@@ -151,6 +153,12 @@ class _FakeUI:
     async def print_markdown(self, text: str) -> None:
         self.markdown_printed.append(text)
 
+    async def print_user_input(self, text: str) -> None:
+        self.printed.append(f"user:{text}")
+
+    async def update_pending_inputs(self, inputs: tuple[str, ...]) -> None:
+        self.pending_input_updates.append(inputs)
+
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
         self.raw_printed.append((text, stderr))
 
@@ -159,6 +167,9 @@ class _FakeUI:
 
     def start_working(self, text: str = "Working") -> None:
         self.working.append(text)
+
+    def clear_activity(self) -> None:
+        self.cleared_activity += 1
 
     async def print_activity(self, text: str) -> None:
         self.activities.append(text)
@@ -201,6 +212,12 @@ class _CancelsAfterEventUI(_FakeUI):
     async def wait_for_cancel(self) -> str:
         await _wait_for_event(self._event, deadline_seconds=1.0)
         return "escape"
+
+
+class _YieldsForPendingInputUI(_FakeUI):
+    async def wait_for_cancel(self) -> str:
+        await asyncio.sleep(0)
+        return "pending_input"
 
 
 class _FakeGraph:
@@ -400,7 +417,8 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
 
     assert str(result["messages"][-1].content) == "done"
     assert ui.working == ["Working"]
-    assert ui.printed == []
+    assert ui.cleared_activity >= 1
+    assert ui.printed == ["user:now"]
     assert ui.markdown_printed == ["done"]
     first_call = graph.calls[0]
     assert first_call["command_source"] is CommandSource.USER
@@ -442,10 +460,36 @@ async def test_run_turn_escape_cancels_inflight_graph(tmp_path) -> None:
     result = await agent.run_turn("slow task", thread_id="cancel")
 
     assert result == {}
-    assert ui.printed == []
+    assert ui.printed == ["user:slow task"]
     assert ui.activities == []
     assert ui.cancelled == ["escape"]
+    assert ui.cleared_activity >= 1
     assert ("turn", "cancelled") in [(event["kind"], event["phase"]) for event in events]
+
+
+async def test_run_turn_pending_input_yield_does_not_show_cancel_message(tmp_path) -> None:
+    ui = _YieldsForPendingInputUI()
+    events: list[dict[str, Any]] = []
+    agent = LinuxAgent(
+        graph_runtime=GraphRuntime(_SlowGraph([]), runtime_observer=events.append),  # type: ignore[arg-type]
+        ui=ui,
+        chat_service=ChatService(tmp_path / "history.json", max_messages=10),
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
+        context_manager=ContextManager(10),
+        monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
+    )
+
+    result = await agent.run_turn("slow task", thread_id="cancel")
+
+    assert result == {}
+    assert ui.cancelled == []
+    assert any(
+        event["kind"] == "turn"
+        and event["phase"] == "cancelled"
+        and event["payload"]["reason"] == "pending_input"
+        for event in events
+    )
 
 
 async def test_run_turn_escape_cancels_when_graph_blocks_event_loop(tmp_path) -> None:
@@ -470,7 +514,7 @@ async def test_run_turn_escape_does_not_wait_for_slow_graph_cleanup(tmp_path) ->
     result = await asyncio.wait_for(agent.run_turn("slow task", thread_id="cancel"), timeout=0.2)
 
     assert result == {}
-    assert ui.printed == []
+    assert ui.printed == ["user:slow task"]
     assert ui.cancelled == ["escape"]
     assert await _wait_for_event(graph.cancel_cleanup_started, deadline_seconds=0.2)
     assert not graph.cancel_cleanup_done.is_set()
@@ -514,7 +558,7 @@ async def test_run_turn_handles_interrupt_resume(tmp_path) -> None:
     await agent.run_turn("run", thread_id="t2")
 
     assert ui.interrupts == [{"type": "confirm_command"}]
-    assert ui.printed == []
+    assert ui.printed == ["user:run"]
     assert ui.markdown_printed == ["ok"]
 
 
@@ -649,11 +693,15 @@ async def test_run_queues_input_while_turn_is_busy(tmp_path) -> None:
     assert await _wait_for_event(graph.started, deadline_seconds=0.2)
 
     assert len(graph.calls) == 1
+    assert ("second",) in ui.pending_input_updates
+    assert "user:second" not in ui.printed
     graph.release.set()
     await asyncio.wait_for(run_task, timeout=0.5)
     release_input.set()
 
     assert [call["messages"][-1].content for call in graph.calls] == ["first", "second"]
+    assert ui.pending_input_updates[-1] == ()
+    assert ui.printed == ["user:first", "user:second"]
 
 
 async def test_pending_interrupt_does_not_consume_queued_input_as_approval(tmp_path) -> None:

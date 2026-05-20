@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import sys
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from rich.console import Console
 from rich.live import Live
@@ -11,9 +14,10 @@ from rich.text import Text
 from ..active_view import ActiveTurnView, ActiveWorkItemView
 from ..i18n import Translator, default_translator
 
-WORKING_REFRESH_PER_SECOND = 4
+WORKING_REFRESH_PER_SECOND = 1
 ACTIVITY_INTERVAL_MS = 600
 MAX_ACTIVITY_ITEMS = 8
+MAX_PENDING_INPUTS = 5
 
 
 class WorkingStatus:
@@ -32,6 +36,7 @@ class WorkingStatus:
         self._message = self._working_title()
         self._items: list[str] = []
         self._omitted_count = 0
+        self._pending_inputs: tuple[str, ...] = ()
         self._active_view: ActiveTurnView | None = None
 
     def update(self, message: str) -> None:
@@ -45,10 +50,19 @@ class WorkingStatus:
         self._active_view = view
         self._refresh()
 
+    def refresh(self) -> None:
+        self._refresh()
+
+    def update_pending_inputs(self, inputs: tuple[str, ...]) -> None:
+        self._pending_inputs = inputs
+        if self._live is not None:
+            self._refresh()
+
     def stop(self) -> None:
         if self._live is None:
             return
-        self._live.stop()
+        with _console_stdout(self._console):
+            self._live.stop()
         self._live = None
         self._active_view = None
 
@@ -62,24 +76,29 @@ class WorkingStatus:
 
     def _render(self) -> Text:
         if self._active_view is not None:
-            return self._render_active_view(self._active_view)
-        return self._render_legacy_items()
+            text = self._render_active_view(self._active_view)
+        else:
+            text = self._render_legacy_items()
+        _append_pending_inputs(text, self._pending_inputs, self._translator)
+        return text
 
     def _refresh(self) -> None:
         if self._live is None or not self._live.is_started:
             self._started_at = time.monotonic()
-            self._live = Live(
-                get_renderable=self._render,
-                console=self._console,
-                transient=True,
-                auto_refresh=False,
-                refresh_per_second=WORKING_REFRESH_PER_SECOND,
-                redirect_stdout=False,
-                redirect_stderr=False,
-            )
-            self._live.start()
+            with _console_stdout(self._console):
+                self._live = Live(
+                    get_renderable=self._render,
+                    console=self._console,
+                    transient=True,
+                    auto_refresh=False,
+                    refresh_per_second=WORKING_REFRESH_PER_SECOND,
+                    redirect_stdout=False,
+                    redirect_stderr=False,
+                )
+                self._live.start(refresh=True)
             return
-        self._live.refresh()
+        with _console_stdout(self._console):
+            self._live.refresh()
 
     def _render_legacy_items(self) -> Text:
         elapsed = max(0, int(time.monotonic() - self._started_at))
@@ -198,6 +217,28 @@ def _active_item_label(item: ActiveWorkItemView) -> str:
     return f"{label}\n  {detail}"
 
 
+def _append_pending_inputs(text: Text, inputs: tuple[str, ...], translator: Translator) -> None:
+    if not inputs:
+        return
+    text.append("\n")
+    text.append(translator.t("ui.pending_input.title"), style="dim")
+    visible = inputs[-MAX_PENDING_INPUTS:]
+    for item in visible:
+        text.append("\n  ↳ ", style="dim")
+        text.append(_preview_input(item), style="dim italic")
+    hidden = len(inputs) - len(visible)
+    if hidden > 0:
+        text.append("\n  ")
+        text.append(translator.t("ui.pending_input.omitted", count=hidden), style="dim")
+
+
+def _preview_input(text: str) -> str:
+    compact = " ".join(text.strip().split())
+    if len(compact) <= 100:
+        return compact
+    return f"{compact[:97]}..."
+
+
 def _cancel_live_without_final_refresh(live: Live) -> None:
     refresh_thread = getattr(live, "_refresh_thread", None)
     if refresh_thread is not None:
@@ -213,3 +254,16 @@ def _cancel_live_without_final_refresh(live: Live) -> None:
         live.console.show_cursor(True)
         if not live._alt_screen and live.transient:
             live.console.control(live._live_render.restore_cursor())
+
+
+@contextmanager
+def _console_stdout(console: Console) -> Iterator[None]:
+    if console.file is sys.stdout:
+        yield
+        return
+    original = console._file
+    console.file = sys.stdout
+    try:
+        yield
+    finally:
+        console._file = original

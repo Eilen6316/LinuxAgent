@@ -44,6 +44,14 @@ class UserInterface(ABC):
         """Display Markdown-formatted assistant text when the UI supports it."""
         await self.print(text)
 
+    async def print_user_input(self, text: str) -> None:
+        """Display a submitted user message in the conversation transcript."""
+        await self.print(text)
+
+    async def update_pending_inputs(self, inputs: tuple[str, ...]) -> None:
+        """Display queued user inputs waiting behind the active turn."""
+        del inputs
+
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
         """Display raw command output without extra decoration."""
         del stderr
@@ -60,6 +68,10 @@ class UserInterface(ABC):
     def clear_activity(self) -> None:
         """Clear any transient activity display before normal output."""
         return None
+
+    def request_pending_input_interrupt(self) -> bool:
+        """Ask the active turn to yield so queued user input can run sooner."""
+        return False
 
     async def cancel_activity(self, reason: str) -> None:
         """Return from in-flight work cancellation with minimal terminal redraw."""

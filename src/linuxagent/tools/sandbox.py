@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+from contextvars import copy_context
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
-from ..runtime_control import CancellationToken
+from ..runtime_control import CancellationToken, cancellation_scope
 from ..sandbox import SandboxProfile
 from ..security import redact_record, redact_text
 from .runtime_context import tool_trace_context
@@ -95,46 +96,16 @@ async def invoke_tool_with_sandbox(
     trace_id: str | None = None,
     cancellation_token: CancellationToken | None = None,
 ) -> ToolRunResult:
-    preflight = _tool_preflight_result(
-        tool,
-        args,
-        limits,
-        remaining_total_chars,
-        trace_id,
-        cancellation_token,
-    )
-    if preflight is not None:
-        return preflight
-    timeout = _tool_timeout(tool, limits)
-    try:
-        raw_result = await asyncio.wait_for(_invoke_tool(tool, args, trace_id), timeout=timeout)
-    except TimeoutError:
-        return _tool_timeout_result(
-            tool,
-            args,
-            limits,
-            remaining_total_chars,
-            timeout,
-            trace_id,
+    with cancellation_scope(cancellation_token):
+        preflight = _tool_preflight_result(
+            tool, args, limits, remaining_total_chars, trace_id, cancellation_token
         )
-    except Exception as exc:  # noqa: BLE001 - tool failures are returned to the model
-        return _tool_exception_result(tool, args, limits, remaining_total_chars, trace_id, exc)
-
-    content, truncated = _finalize_tool_content(raw_result, limits, remaining_total_chars)
-    status = "truncated" if truncated else "allowed"
-    return ToolRunResult(
-        content=content,
-        event=_tool_event(
-            tool,
-            args,
-            "end",
-            status,
-            content,
-            truncated=truncated,
-            trace_id=trace_id,
-        ),
-        output_chars=len(content),
-    )
+        if preflight is not None:
+            return preflight
+        result = await _invoke_tool_result(tool, args, limits, remaining_total_chars, trace_id)
+    if isinstance(result, ToolRunResult):
+        return result
+    return _finish_tool_result(tool, args, result, limits, remaining_total_chars, trace_id)
 
 
 def _tool_exception_result(
@@ -153,6 +124,47 @@ def _tool_exception_result(
         limits,
         remaining_total_chars,
         trace_id,
+    )
+
+
+async def _invoke_tool_result(
+    tool: BaseTool,
+    args: dict[str, Any],
+    limits: ToolRuntimeLimits,
+    remaining_total_chars: int,
+    trace_id: str | None,
+) -> ToolRunResult | Any:
+    timeout = _tool_timeout(tool, limits)
+    try:
+        return await asyncio.wait_for(_invoke_tool(tool, args, trace_id), timeout=timeout)
+    except TimeoutError:
+        return _tool_timeout_result(tool, args, limits, remaining_total_chars, timeout, trace_id)
+    except Exception as exc:  # noqa: BLE001 - tool failures are returned to the model
+        return _tool_exception_result(tool, args, limits, remaining_total_chars, trace_id, exc)
+
+
+def _finish_tool_result(
+    tool: BaseTool,
+    args: dict[str, Any],
+    raw_result: Any,
+    limits: ToolRuntimeLimits,
+    remaining_total_chars: int,
+    trace_id: str | None,
+) -> ToolRunResult:
+    content, truncated = _finalize_tool_content(raw_result, limits, remaining_total_chars)
+    status = "truncated" if truncated else "allowed"
+    return ToolRunResult(
+        content=content,
+        event=_tool_event(
+            tool,
+            args,
+            "end",
+            status,
+            content,
+            truncated=truncated,
+            trace_id=trace_id,
+        ),
+        output_chars=len(content),
     )
 
 
@@ -251,8 +263,14 @@ async def _invoke_tool(tool: BaseTool, args: dict[str, Any], trace_id: str | Non
 async def _invoke_sync_tool_off_loop(
     tool: BaseTool, args: dict[str, Any], trace_id: str | None
 ) -> Any:
-    done = threading.Event()
+    loop = asyncio.get_running_loop()
+    finished = loop.create_future()
     result: dict[str, Any] = {}
+    context = copy_context()
+
+    def mark_finished() -> None:
+        if not finished.done():
+            finished.set_result(None)
 
     def run() -> None:
         try:
@@ -260,16 +278,28 @@ async def _invoke_sync_tool_off_loop(
         except BaseException as exc:  # noqa: BLE001 - propagated to tool error handling
             result["error"] = exc
         finally:
-            done.set()
+            _notify_finished(loop, mark_finished)
 
-    thread = threading.Thread(target=run, name="linuxagent-tool-call", daemon=True)
+    thread = threading.Thread(
+        target=lambda: context.run(run),
+        name="linuxagent-tool-call",
+        daemon=True,
+    )
     thread.start()
-    while not done.is_set():  # noqa: ASYNC110
-        await asyncio.sleep(0.005)
+    await finished
     error = result.get("error")
     if isinstance(error, BaseException):
         raise error
     return result.get("value")
+
+
+def _notify_finished(loop: asyncio.AbstractEventLoop, callback: Any) -> None:
+    if loop.is_closed():
+        return
+    try:
+        loop.call_soon_threadsafe(callback)
+    except RuntimeError:
+        return
 
 
 def _invoke_sync_tool(tool: BaseTool, args: dict[str, Any], trace_id: str | None) -> Any:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import suppress
 from types import SimpleNamespace
 from typing import Any
@@ -9,8 +10,13 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command, Interrupt
 
+from linuxagent.app.graph_invocation import start_graph_invocation
 from linuxagent.graph.runtime import GraphRuntime
-from linuxagent.graph.turn_context import current_turn_context
+from linuxagent.graph.turn_context import (
+    RuntimeTurnContext,
+    current_turn_context,
+    turn_context_scope,
+)
 from linuxagent.runtime_control import CancellationToken, current_cancellation_token
 
 
@@ -79,6 +85,21 @@ class _TurnContextCheckingGraph(_FakeGraph):
             self.seen_thread_id = context.thread_id
             self.seen_turn_id = context.turn_id
         return self.result
+
+
+class _SlowSnapshotGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__(result={"messages": [AIMessage(content="ok")]})
+        self.snapshot_calls = 0
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del state, config
+        await asyncio.sleep(0.22)
+        return self.result
+
+    async def aget_state(self, config: Any) -> Any:
+        self.snapshot_calls += 1
+        return await super().aget_state(config)
 
 
 async def test_run_returns_inline_interrupts_without_app_langgraph_access() -> None:
@@ -248,3 +269,31 @@ async def test_run_exposes_turn_context_in_runtime_scope() -> None:
 
     assert graph.seen_thread_id == "thread"
     assert graph.seen_turn_id == "turn-1"
+
+
+async def test_run_throttles_interrupt_snapshot_polling() -> None:
+    graph = _SlowSnapshotGraph()
+
+    await GraphRuntime(graph).run({"messages": []}, thread_id="thread")  # type: ignore[arg-type]
+
+    assert graph.snapshot_calls <= 7
+
+
+async def test_graph_invocation_preserves_context_across_worker_thread() -> None:
+    token = CancellationToken.create()
+    token.turn_id = "turn-1"
+    seen_thread: str | None = None
+    seen_token: CancellationToken | None = None
+
+    async def run() -> str:
+        nonlocal seen_thread, seen_token
+        context = current_turn_context()
+        seen_thread = context.thread_id if context is not None else None
+        seen_token = current_cancellation_token()
+        return "ok"
+
+    with turn_context_scope(RuntimeTurnContext(thread_id="thread-1", turn_id="turn-1")):
+        invocation = start_graph_invocation(run)
+    assert await invocation.future == "ok"
+    assert seen_thread == "thread-1"
+    assert seen_token is None

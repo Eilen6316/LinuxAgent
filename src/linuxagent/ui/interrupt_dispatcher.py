@@ -47,6 +47,18 @@ class WizardAwareUserInterface(UserInterface):
     async def print_markdown(self, text: str) -> None:
         await self._wrapped.print_markdown(text)
 
+    async def print_user_input(self, text: str) -> None:
+        printer = getattr(self._wrapped, "print_user_input", None)
+        if callable(printer):
+            await printer(text)
+            return
+        await self._wrapped.print(text)
+
+    async def update_pending_inputs(self, inputs: tuple[str, ...]) -> None:
+        updater = getattr(self._wrapped, "update_pending_inputs", None)
+        if callable(updater):
+            await updater(inputs)
+
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
         await self._wrapped.print_raw(text, stderr=stderr)
 
@@ -65,6 +77,10 @@ class WizardAwareUserInterface(UserInterface):
 
     def clear_activity(self) -> None:
         self._wrapped.clear_activity()
+
+    def request_pending_input_interrupt(self) -> bool:
+        request = getattr(self._wrapped, "request_pending_input_interrupt", None)
+        return bool(request()) if callable(request) else False
 
     async def cancel_activity(self, reason: str) -> None:
         cancel_activity = getattr(self._wrapped, "cancel_activity", None)

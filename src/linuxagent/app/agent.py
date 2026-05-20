@@ -15,7 +15,7 @@ from ..telemetry import TelemetryRecorder
 from ..usage_insights import ContextManager
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
-from .output import print_assistant_response, start_working
+from .output import print_assistant_response, print_user_input, start_working, update_pending_inputs
 from .pending_loop import run_pending_input_loop
 from .pending_requests import interrupt_request, resume_status_for_request
 from .resume import (
@@ -71,6 +71,7 @@ class LinuxAgent:
                 initial_thread_id=thread_id,
                 read_inputs=self._read_inputs,
                 handle_input=self._handle_pending_input,
+                queue_changed=lambda inputs: update_pending_inputs(self.ui, inputs),
             )
         finally:
             if self.background_jobs is not None:
@@ -82,7 +83,9 @@ class LinuxAgent:
     async def _read_inputs(self, queue: PendingInputQueue) -> None:
         try:
             async for user_input in self.ui.input_stream():
-                queue.enqueue(user_input)
+                previewed = queue.preview_next(user_input)
+                queue.enqueue(user_input, previewed=previewed)
+                await update_pending_inputs(self.ui, queue.queued_preview())
         finally:
             queue.close()
 
@@ -107,32 +110,37 @@ class LinuxAgent:
         return active_thread_id, False
 
     async def run_turn(self, user_input: str, *, thread_id: str) -> dict[str, Any]:
+        await print_user_input(self.ui, user_input)
         start_working(self.ui)
-        self.context_manager.replace(await self._history(thread_id))
-        state = new_turn_state(
-            user_input,
-            history=self.context_manager.snapshot(),
-            command_permissions=await self.graph_runtime.command_permissions(thread_id=thread_id),
-            prompt_cache_thread_id=thread_id if self.prompt_cache_enabled else None,
-            ui_interactive=self.ui.is_interactive(),
-            previous_values=await self.graph_runtime.values(thread_id=thread_id),
-        )
-        result = await self._run_with_cancel(state, thread_id)
-        while result is not None and result.interrupts:
-            await self._persist_pending_history(thread_id)
-            interrupt = result.interrupts[0]
-            response = await self.ui.handle_interrupt(interrupt.legacy_payload)
-            result = await self._resume_with_cancel(response, thread_id)
-        if result is None:
-            return {}
-        if result.state.get("messages"):
+        try:
             self.context_manager.replace(await self._history(thread_id))
-            if not self.context_manager.snapshot():
-                self.context_manager.add([HumanMessage(content=user_input)])
-            self._persist_active_history(thread_id)
-            await print_execution_results(self.ui, result.state)
-            await print_assistant_response(self.ui, str(result.state["messages"][-1].content))
-        return result.state
+            permissions = await self.graph_runtime.command_permissions(thread_id=thread_id)
+            state = new_turn_state(
+                user_input,
+                history=self.context_manager.snapshot(),
+                command_permissions=permissions,
+                prompt_cache_thread_id=thread_id if self.prompt_cache_enabled else None,
+                ui_interactive=self.ui.is_interactive(),
+                previous_values=await self.graph_runtime.values(thread_id=thread_id),
+            )
+            result = await self._run_with_cancel(state, thread_id)
+            while result is not None and result.interrupts:
+                await self._persist_pending_history(thread_id)
+                interrupt = result.interrupts[0]
+                response = await self.ui.handle_interrupt(interrupt.legacy_payload)
+                result = await self._resume_with_cancel(response, thread_id)
+            if result is None:
+                return {}
+            if result.state.get("messages"):
+                self.context_manager.replace(await self._history(thread_id))
+                if not self.context_manager.snapshot():
+                    self.context_manager.add([HumanMessage(content=user_input)])
+                self._persist_active_history(thread_id)
+                await print_execution_results(self.ui, result.state)
+                await print_assistant_response(self.ui, str(result.state["messages"][-1].content))
+            return result.state
+        finally:
+            self.ui.clear_activity()
 
     async def _run_with_cancel(self, state: Any, thread_id: str) -> GraphRunResult | None:
         controller = CancellationController.create()

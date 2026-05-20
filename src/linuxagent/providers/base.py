@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from tenacity import (
     AsyncRetrying,
@@ -42,6 +42,11 @@ from tenacity import (
 
 from ..config.models import APIConfig
 from ..interfaces import LLM_CALL_METADATA_KEY, LLMProvider
+from ..pending_input import (
+    PendingInputDrainResult,
+    current_pending_input_drainer,
+    current_pending_input_preview_updater,
+)
 from ..runtime_control import CancellationToken
 from ..runtime_events import RuntimeWorker, WorkerStatus, worker_group_event
 from ..security import redact_record
@@ -181,6 +186,9 @@ class BaseLLMProvider(LLMProvider):
                 cancellation_token,
             )
             history.extend(tool_messages)
+            pending_input = _drain_pending_input_messages()
+            history.extend(HumanMessage(content=content) for content in pending_input.messages)
+            await _notify_pending_input_preview(pending_input.queued_preview)
 
         raise ProviderError("tool loop exceeded max rounds")
 
@@ -312,9 +320,14 @@ async def _invoke_model_off_loop(
     messages: list[BaseMessage],
     kwargs: dict[str, Any],
 ) -> BaseMessage:
+    loop = asyncio.get_running_loop()
+    finished = loop.create_future()
     result: list[BaseMessage] = []
     errors: list[BaseException] = []
-    done = threading.Event()
+
+    def mark_finished() -> None:
+        if not finished.done():
+            finished.set_result(None)
 
     def run() -> None:
         try:
@@ -322,14 +335,44 @@ async def _invoke_model_off_loop(
         except BaseException as exc:
             errors.append(exc)
         finally:
-            done.set()
+            _notify_finished(loop, mark_finished)
 
     threading.Thread(target=run, name="linuxagent-llm-provider", daemon=True).start()
-    while not done.is_set():  # noqa: ASYNC110
-        await asyncio.sleep(0.005)
+    await finished
     if errors:
         raise errors[0]
     return result[0]
+
+
+def _notify_finished(loop: asyncio.AbstractEventLoop, callback: Callable[[], None]) -> None:
+    if loop.is_closed():
+        return
+    try:
+        loop.call_soon_threadsafe(callback)
+    except RuntimeError:
+        return
+
+
+def _drain_pending_input_messages() -> PendingInputDrainResult:
+    drainer = current_pending_input_drainer()
+    if drainer is None:
+        return PendingInputDrainResult(messages=(), queued_preview=())
+    result = drainer()
+    if isinstance(result, PendingInputDrainResult):
+        return result
+    return PendingInputDrainResult(
+        messages=tuple(str(content) for content in result),
+        queued_preview=(),
+    )
+
+
+async def _notify_pending_input_preview(pending_preview: tuple[str, ...]) -> None:
+    preview_updater = current_pending_input_preview_updater()
+    if preview_updater is None:
+        return
+    result = preview_updater(pending_preview)
+    if inspect.isawaitable(result):
+        await result
 
 
 def _invoke_model_sync(

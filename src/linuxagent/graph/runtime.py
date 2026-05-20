@@ -25,6 +25,7 @@ from .state import AgentState
 from .turn_context import RuntimeTurnContext, turn_context_scope
 
 GRAPH_LIMIT = 100
+INTERRUPT_POLL_SECONDS = 0.05
 
 
 @dataclass(frozen=True)
@@ -208,16 +209,17 @@ class GraphRuntime:
             await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
         )
         task = asyncio.create_task(self._graph.ainvoke(graph_input, config=graph_config(thread_id)))
-        while not task.done():
+        while True:
             if _is_cancelled(cancellation_token):
+                return await task
+            done, _ = await asyncio.wait({task}, timeout=INTERRUPT_POLL_SECONDS)
+            if task in done:
                 return await task
             interrupts = await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
             if interrupts and _interrupt_signature(interrupts) != baseline:
                 task.cancel()
                 task.add_done_callback(_consume_task_exception)
                 return {}
-            await asyncio.sleep(0.01)
-        return await task
 
     async def _snapshot(self, thread_id: str) -> Any:
         return await self._graph.aget_state(graph_config(thread_id))

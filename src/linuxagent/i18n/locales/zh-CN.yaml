@@ -381,6 +381,9 @@ ui:
     omitted: "前面还有 {count} 个步骤"
     suffix: "（{elapsed}s • esc 中断）"
     activity_prefix: "LinuxAgent 正在"
+  pending_input:
+    title: "• 下次工具调用后将提交的消息（按 Esc 可中断并立即发送）"
+    omitted: "还有 {count} 条较早的待提交消息"
   wizard:
     footer: "Enter 选择 · Tab/方向键切换 · Esc 取消"
     submit: "提交"

@@ -381,6 +381,9 @@ ui:
     omitted: "{count} earlier steps"
     suffix: " ({elapsed}s • esc to interrupt)"
     activity_prefix: "LinuxAgent is"
+  pending_input:
+    title: "• Messages to be submitted after next tool call (press Esc to interrupt and send immediately)"
+    omitted: "{count} earlier queued messages"
   wizard:
     footer: "Enter to select · Tab/Arrow keys to navigate · Esc to cancel"
     submit: "Submit"

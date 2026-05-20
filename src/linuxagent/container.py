@@ -409,6 +409,7 @@ class Container:
     def _runtime_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
             record_runtime_event(self.telemetry(), event)
+            self._request_pending_input_at_safe_point(event)
             if await self._render_active_runtime_event(event):
                 return
             message = runtime_event_message(event, self.translator())
@@ -434,6 +435,9 @@ class Container:
                         await printer(result, include_output=False)
 
         return observe
+
+    def _request_pending_input_at_safe_point(self, event: dict[str, Any]) -> None:
+        del event
 
     async def _render_active_runtime_event(self, event: dict[str, Any]) -> bool:
         if not _active_runtime_event(event):
@@ -488,3 +492,16 @@ def _active_runtime_event(event: dict[str, Any]) -> bool:
     if event.get("schema_version") != 1:
         return False
     return event.get("kind") in {"turn", "work_item", "request"}
+
+
+def _pending_input_safe_point(event: dict[str, Any]) -> bool:
+    if event.get("schema_version") == 1:
+        return event.get("kind") == "work_item" and event.get("phase") in {
+            "completed",
+            "failed",
+            "cancelled",
+        }
+    return event.get("type") in {"command", "command_batch"} and event.get("phase") in {
+        "finish",
+        "result",
+    }

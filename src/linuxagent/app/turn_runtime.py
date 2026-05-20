@@ -77,6 +77,8 @@ async def _stop_cancel_task(cancel_task: asyncio.Task[str]) -> None:
 
 
 async def _publish_cancelled(ui: UserInterface, translator: Translator, reason: str) -> None:
+    if reason == "pending_input":
+        return
     cancel_activity = getattr(ui, "cancel_activity", None)
     if callable(cancel_activity):
         await cancel_activity(reason)

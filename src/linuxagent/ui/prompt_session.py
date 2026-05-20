@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from asyncio import Event
 from collections.abc import AsyncGenerator, Callable, Iterable
 from pathlib import Path
 from typing import Any, cast
@@ -11,6 +12,9 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.key_binding.key_processor import KeyPressEvent
+from prompt_toolkit.validation import ValidationError, Validator
 
 from ..i18n import Translator, default_translator
 from ..product_context import slash_commands
@@ -33,6 +37,14 @@ class PromptSessionManager:
         self._history_path = history_path
         self._translator = translator or default_translator()
         self._session_factory = session_factory or self._default_session_factory
+        self._cancel_event: Event | None = None
+        self._cancel_reason_setter: Callable[[str], None] | None = None
+
+    def set_cancel_event(
+        self, cancel_event: Event, reason_setter: Callable[[str], None] | None = None
+    ) -> None:
+        self._cancel_event = cancel_event
+        self._cancel_reason_setter = reason_setter
 
     def create_session(self) -> Any:
         return self._session_factory()
@@ -66,9 +78,25 @@ class PromptSessionManager:
         return PromptSession(
             history=FileHistory(str(self._history_path)),
             completer=cast(Completer, SlashCommandCompleter(self._translator)),
+            validator=_NonEmptyInputValidator(),
+            validate_while_typing=False,
             complete_while_typing=True,
+            erase_when_done=True,
             reserve_space_for_menu=8,
+            key_bindings=self._key_bindings(),
         )
+
+    def _key_bindings(self) -> KeyBindings:
+        bindings = KeyBindings()
+
+        @bindings.add("escape", eager=True)  # type: ignore[misc]
+        def _cancel_turn(_event: KeyPressEvent) -> None:
+            if self._cancel_event is not None:
+                if self._cancel_reason_setter is not None:
+                    self._cancel_reason_setter("escape")
+                self._cancel_event.set()
+
+        return bindings
 
 
 class SlashCommandCompleter:
@@ -100,3 +128,10 @@ class SlashCommandCompleter:
     ) -> AsyncGenerator[Completion, None]:
         for completion in self.get_completions(document, complete_event):
             yield completion
+
+
+class _NonEmptyInputValidator(Validator):  # type: ignore[misc]
+    def validate(self, document: Document) -> None:
+        if document.text.strip():
+            return
+        raise ValidationError(cursor_position=0)

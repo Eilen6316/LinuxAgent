@@ -97,6 +97,8 @@ async def test_wizard_aware_ui_forwards_common_methods() -> None:
     items = [item async for item in ui.input_stream()]
     await ui.print("plain")
     await ui.print_markdown("md")
+    await ui.print_user_input("input")
+    await ui.update_pending_inputs(("queued",))
     await ui.print_raw("raw", stderr=True)
     await ui.print_activity("activity")
     await ui.print_execution_result(object())  # type: ignore[arg-type]
@@ -106,7 +108,8 @@ async def test_wizard_aware_ui_forwards_common_methods() -> None:
     choice = await ui.choose_resume_session([{"thread_id": "t"}])
 
     assert items == ["hello"]
-    assert wrapped.printed == ["plain"]
+    assert wrapped.printed == ["plain", "input"]
+    assert wrapped.pending_inputs == [("queued",)]
     assert wrapped.markdown == ["md"]
     assert wrapped.raw == [("raw", True)]
     assert wrapped.activity == ["activity"]
@@ -306,6 +309,7 @@ class _WrappedUI:
         self.activity: list[str] = []
         self.execution_results: list[tuple[type[object], bool]] = []
         self.working: list[str] = []
+        self.pending_inputs: list[tuple[str, ...]] = []
         self.cleared = False
         self.activity_visible = True
 
@@ -325,6 +329,9 @@ class _WrappedUI:
 
     async def print_markdown(self, text: str) -> None:
         self.markdown.append(text)
+
+    async def update_pending_inputs(self, inputs: tuple[str, ...]) -> None:
+        self.pending_inputs.append(inputs)
 
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
         self.raw.append((text, stderr))

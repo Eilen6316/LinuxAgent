@@ -6,10 +6,12 @@ import asyncio
 import threading
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from contextvars import Context, copy_context
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 T = TypeVar("T")
+WORKER_POLL_SECONDS = 0.02
 
 
 @dataclass(frozen=True)
@@ -19,8 +21,9 @@ class GraphInvocation(Generic[T]):
 
 
 def start_graph_invocation(coro_factory: Callable[[], Awaitable[T]]) -> GraphInvocation[T]:
-    owner_future = asyncio.get_running_loop().create_future()
-    worker = _start_worker(coro_factory)
+    loop = asyncio.get_running_loop()
+    owner_future = loop.create_future()
+    worker = _start_worker(coro_factory, loop, copy_context())
     collect_task = asyncio.get_running_loop().create_task(
         _collect_worker_result(owner_future, worker)
     )
@@ -38,19 +41,25 @@ async def _run(coro_factory: Callable[[], Awaitable[T]]) -> T:
 class _Worker(Generic[T]):
     done: threading.Event
     cancel_requested: threading.Event
+    owner_future: asyncio.Future[T]
     result: list[T]
     errors: list[BaseException]
 
 
-def _start_worker(coro_factory: Callable[[], Awaitable[T]]) -> _Worker[T]:
+def _start_worker(
+    coro_factory: Callable[[], Awaitable[T]],
+    owner_loop: asyncio.AbstractEventLoop,
+    context: Context,
+) -> _Worker[T]:
     worker: _Worker[T] = _Worker(
         done=threading.Event(),
         cancel_requested=threading.Event(),
+        owner_future=owner_loop.create_future(),
         result=[],
         errors=[],
     )
     thread = threading.Thread(
-        target=lambda: _run_worker(coro_factory, worker),
+        target=lambda: context.run(_run_worker, coro_factory, worker, owner_loop),
         name="linuxagent-graph",
         daemon=True,
     )
@@ -58,13 +67,18 @@ def _start_worker(coro_factory: Callable[[], Awaitable[T]]) -> _Worker[T]:
     return worker
 
 
-def _run_worker(coro_factory: Callable[[], Awaitable[T]], worker: _Worker[T]) -> None:
+def _run_worker(
+    coro_factory: Callable[[], Awaitable[T]],
+    worker: _Worker[T],
+    owner_loop: asyncio.AbstractEventLoop,
+) -> None:
     try:
         worker.result.append(asyncio.run(_run_cancellable(coro_factory, worker)))
     except BaseException as exc:
         worker.errors.append(exc)
     finally:
         worker.done.set()
+        _notify_worker_done(owner_loop, worker)
 
 
 async def _run_cancellable(
@@ -85,18 +99,25 @@ async def _run_cancellable(
 
 async def _wait_for_cancel(cancel_requested: threading.Event) -> None:
     while not cancel_requested.is_set():  # noqa: ASYNC110
-        await asyncio.sleep(0.005)
+        await asyncio.sleep(WORKER_POLL_SECONDS)
 
 
 async def _collect_worker_result(
     owner_future: asyncio.Future[T],
     worker: _Worker[T],
 ) -> None:
-    while not worker.done.is_set():
-        if owner_future.cancelled():
-            return
-        await asyncio.sleep(0.005)
-    _copy_worker_result(owner_future, worker)
+    try:
+        result = await worker.owner_future
+    except asyncio.CancelledError:
+        if not owner_future.done():
+            owner_future.cancel()
+        return
+    except BaseException as exc:
+        if not owner_future.done():
+            owner_future.set_exception(exc)
+        return
+    if not owner_future.done():
+        owner_future.set_result(result)
 
 
 def _copy_worker_result(
@@ -106,9 +127,28 @@ def _copy_worker_result(
     if owner_future.done():
         return
     if worker.errors:
-        owner_future.set_exception(worker.errors[0])
+        error = worker.errors[0]
+        if isinstance(error, asyncio.CancelledError):
+            owner_future.cancel()
+        else:
+            owner_future.set_exception(error)
+        return
+    if not worker.result:
+        owner_future.set_exception(RuntimeError("graph worker exited without result"))
         return
     owner_future.set_result(worker.result[0])
+
+
+def _notify_worker_done(
+    owner_loop: asyncio.AbstractEventLoop,
+    worker: _Worker[T],
+) -> None:
+    if owner_loop.is_closed():
+        return
+    try:
+        owner_loop.call_soon_threadsafe(_copy_worker_result, worker.owner_future, worker)
+    except RuntimeError:
+        return
 
 
 def _cancel_worker(
@@ -119,5 +159,7 @@ def _cancel_worker(
     worker.cancel_requested.set()
     if not owner_future.done():
         owner_future.cancel()
+    if not worker.owner_future.done():
+        worker.owner_future.cancel()
     if not collect_task.done():
         collect_task.cancel()

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import os
 import sys
 import threading
 from pathlib import Path
@@ -74,55 +76,73 @@ async def test_console_ui_input_stream_uses_prompt_session(monkeypatch, tmp_path
     assert "linuxagent" in str(session.prompts[0])
 
 
-async def test_wait_for_escape_restores_terminal_without_drain(monkeypatch) -> None:
-    fd = 7
-    restored: list[tuple[int, int, list[str]]] = []
-    executor_calls: list[tuple[Any, int, Any]] = []
-
-    class _FakeStdin:
-        def fileno(self) -> int:
-            return fd
-
-    class _FakeLoop:
-        async def run_in_executor(self, executor: Any, func: Any, reader_fd: int, stop: Any) -> str:
-            executor_calls.append((executor, reader_fd, stop))
-            return func(reader_fd, stop)
-
-    fake_loop = _FakeLoop()
-    monkeypatch.setattr(console_module.sys, "stdin", _FakeStdin())
-    monkeypatch.setattr(console_module.asyncio, "get_running_loop", lambda: fake_loop)
-    monkeypatch.setattr(console_module.termios, "tcgetattr", lambda value: ["old", str(value)])
-    monkeypatch.setattr(console_module.tty, "setcbreak", lambda value: None)
-    monkeypatch.setattr(console_module.select, "select", lambda r, w, x, timeout: (r, w, x))
-    monkeypatch.setattr(console_module.os, "read", lambda value, count: b"\x1b")
-    monkeypatch.setattr(
-        console_module.termios,
-        "tcsetattr",
-        lambda value, when, attrs: restored.append((value, when, attrs)),
+async def test_console_ui_input_stream_patches_stdout(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    session = _FakeSession(["status", ""])
+    ui = ConsoleUI(
+        history_path=tmp_path / "prompt_history",
+        session_factory=lambda: session,
     )
+    captured: list[bool] = []
 
-    assert await console_module._wait_for_escape() == "escape"
+    class _PatchStdout:
+        def __init__(self, *, raw: bool) -> None:
+            self._raw = raw
 
-    assert executor_calls[0][0] is None
-    assert executor_calls[0][1] == fd
-    assert executor_calls[0][2].is_set()
-    assert restored == [(fd, console_module.termios.TCSANOW, ["old", str(fd)])]
+        def __enter__(self) -> None:
+            captured.append(self._raw)
+            return None
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            del exc_type, exc, tb
+            return False
+
+    monkeypatch.setattr(console_module, "patch_stdout", lambda raw=False: _PatchStdout(raw=raw))
+
+    items = []
+    async for item in ui.input_stream():
+        items.append(item)
+
+    assert items == ["status"]
+    assert captured
+    assert all(captured)
 
 
-def test_read_escape_can_stop_without_key(monkeypatch) -> None:
-    stop_event = console_module.threading.Event()
-    calls = 0
+async def test_console_print_user_input_follows_current_stdout(monkeypatch) -> None:
+    console = Console(record=True, width=40)
+    ui = _english_console_ui(console)
+    original_file = console._file
+    redirected = io.StringIO()
 
-    def fake_select(readable: object, writable: object, errors: object, timeout: float) -> Any:
-        nonlocal calls
-        calls += 1
-        stop_event.set()
-        return ((), writable, errors)
+    monkeypatch.setattr(sys, "stdout", redirected)
 
-    monkeypatch.setattr(console_module.select, "select", fake_select)
+    await ui.print_user_input("hello")
 
-    assert console_module._read_escape(7, stop_event) == "escape"
-    assert calls == 1
+    assert "hello" in redirected.getvalue()
+    assert console._file is original_file
+
+
+async def test_wait_for_cancel_uses_prompt_cancel_event(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    ui = ConsoleUI(console=Console(force_terminal=True))
+
+    task = asyncio.create_task(ui.wait_for_cancel())
+    await asyncio.sleep(0)
+    ui._cancel_event.set()
+
+    assert await asyncio.wait_for(task, timeout=0.1) == "escape"
+
+
+async def test_wait_for_cancel_can_yield_for_pending_input(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    ui = ConsoleUI(console=Console(force_terminal=True))
+    await ui.update_pending_inputs(("next question",))
+
+    task = asyncio.create_task(ui.wait_for_cancel())
+    await asyncio.sleep(0)
+
+    assert ui.request_pending_input_interrupt() is True
+    assert await asyncio.wait_for(task, timeout=0.1) == "pending_input"
 
 
 def test_console_ui_prints_linuxagent_wordmark() -> None:
@@ -186,7 +206,7 @@ def test_console_ui_disables_prompt_toolkit_cpr(monkeypatch, tmp_path: Path) -> 
 
     ui._default_session_factory()
 
-    assert console_module.os.environ["PROMPT_TOOLKIT_NO_CPR"] == "1"
+    assert os.environ["PROMPT_TOOLKIT_NO_CPR"] == "1"
 
 
 def test_console_prompt_turns_magenta_for_direct_shell_prefix() -> None:
@@ -755,6 +775,7 @@ async def test_console_working_status_ignores_empty_working_step(monkeypatch) ->
     rendered = render_console.export_text()
     assert "处理中\n" not in rendered
     assert "分类意图" in rendered
+    ui.clear_activity()
 
 
 async def test_console_print_activity_supports_multiline_working_status(monkeypatch) -> None:
@@ -778,6 +799,25 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     await ui.print("done")
 
     assert ui._working_status is None
+
+
+async def test_console_working_status_shows_pending_input_preview(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_activity("LinuxAgent 正在分类意图")
+    await ui.update_pending_inputs(("后续问题",))
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "下次工具调用后将提交的消息" in rendered
+    assert "后续问题" in rendered
+
+    await ui.print_user_input("后续问题")
+    assert ui._pending_inputs == ()
 
 
 async def test_console_print_activity_shows_parallel_agent_group(monkeypatch) -> None:
@@ -843,6 +883,7 @@ async def test_console_print_active_view_renders_work_items(monkeypatch) -> None
     assert "分类意图" in rendered
     assert "读取文件" in rendered
     assert "/LinuxAgent/.work/plan/PlanC.md" in rendered
+    ui.clear_activity()
 
 
 async def test_console_print_active_view_clears_on_terminal_status(monkeypatch) -> None:
@@ -894,6 +935,34 @@ def test_working_status_cancel_skips_live_stop(monkeypatch) -> None:
     assert stop_called is False
     assert status._live is None
     assert not live.is_started
+
+
+def test_working_status_follows_current_stdout(monkeypatch) -> None:
+    console = Console(record=True, width=120, force_terminal=True)
+    original_file = console._file
+    redirected = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", redirected)
+    status = WorkingStatus(console)
+
+    status.update("Working")
+    status.stop()
+
+    assert console._file is original_file
+    assert redirected.getvalue()
+
+
+def test_working_status_does_not_render_prompt_line() -> None:
+    console = Console(record=True, width=120, force_terminal=True)
+    status = WorkingStatus(console, translator=EN_TRANSLATOR)
+
+    status.update("Classifying intent")
+
+    assert status._live is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(status._render())
+    rendered = render_console.export_text()
+    assert "linuxagent" not in rendered
+    status.cancel()
 
 
 async def test_console_print_activity_keeps_non_working_messages_plain(monkeypatch) -> None:

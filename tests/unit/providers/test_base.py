@@ -23,8 +23,14 @@ from langchain_core.messages import (
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.tools import tool
 
+from linuxagent.app.graph_invocation import start_graph_invocation
 from linuxagent.config.models import APIConfig
 from linuxagent.interfaces import LLM_CALL_METADATA_KEY
+from linuxagent.pending_input import (
+    PendingInputDrainResult,
+    pending_input_drainer_scope,
+    pending_input_preview_updater_scope,
+)
 from linuxagent.providers.base import BaseLLMProvider
 from linuxagent.providers.errors import (
     ProviderConnectionError,
@@ -32,7 +38,7 @@ from linuxagent.providers.errors import (
     ProviderRateLimitError,
     ProviderTimeoutError,
 )
-from linuxagent.runtime_control import CancellationToken
+from linuxagent.runtime_control import CancellationToken, current_cancellation_token
 from linuxagent.sandbox import SandboxProfile
 from linuxagent.tools import ToolRuntimeLimits
 from linuxagent.tools.sandbox import ToolSandboxSpec, attach_tool_sandbox
@@ -303,6 +309,146 @@ async def test_complete_with_tools_resolves_tool_calls() -> None:
     )
     assert out == "systemctl status nginx"
     assert [tool.name for tool in model.bound_tools] == ["lookup_status"]
+
+
+async def test_complete_with_tools_drains_pending_input_between_tool_rounds() -> None:
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    drained = False
+
+    def drain() -> tuple[str, ...]:
+        nonlocal drained
+        if drained:
+            return ()
+        drained = True
+        return ("also check logs",)
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "lookup_status",
+                        "args": {"service": "nginx"},
+                        "id": "1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="combined answer"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    with pending_input_drainer_scope(drain):
+        out = await provider.complete_with_tools(
+            [HumanMessage(content="check nginx")], [_sandboxed(lookup_status)]
+        )
+
+    assert out == "combined answer"
+    assert [
+        message.content for message in model.messages[1] if isinstance(message, HumanMessage)
+    ] == [
+        "check nginx",
+        "also check logs",
+    ]
+
+
+async def test_complete_with_tools_steers_pending_input_in_graph_worker_thread() -> None:
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    drained = False
+    updates: list[tuple[str, ...]] = []
+
+    def drain() -> PendingInputDrainResult:
+        nonlocal drained
+        if drained:
+            return PendingInputDrainResult(messages=(), queued_preview=())
+        drained = True
+        return PendingInputDrainResult(
+            messages=("also check logs",),
+            queued_preview=(),
+        )
+
+    async def update_pending(inputs: tuple[str, ...]) -> None:
+        updates.append(inputs)
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "lookup_status",
+                        "args": {"service": "nginx"},
+                        "id": "1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="combined answer"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    async def run() -> str:
+        return await provider.complete_with_tools(
+            [HumanMessage(content="check nginx")], [_sandboxed(lookup_status)]
+        )
+
+    with (
+        pending_input_drainer_scope(drain),
+        pending_input_preview_updater_scope(update_pending),
+    ):
+        invocation = start_graph_invocation(run)
+
+    out = await invocation.future
+
+    assert out == "combined answer"
+    assert [
+        message.content for message in model.messages[1] if isinstance(message, HumanMessage)
+    ] == [
+        "check nginx",
+        "also check logs",
+    ]
+    assert updates == [()]
+
+
+async def test_complete_with_tools_preserves_cancellation_token_context_in_worker() -> None:
+    token = CancellationToken.create()
+
+    @tool
+    async def lookup_status() -> str:
+        """Return the visible token state."""
+        seen = current_cancellation_token()
+        return "token" if seen is token else "missing"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "lookup_status", "args": {}, "id": "1", "type": "tool_call"}],
+            ),
+            AIMessage(content="done"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    out = await provider.complete_with_tools(
+        [HumanMessage(content="check")],
+        [_sandboxed(lookup_status)],
+        cancellation_token=token,
+    )
+
+    assert out == "done"
+    assert model.messages[1][-1].content == "token"
 
 
 async def test_complete_with_tools_without_tools_strips_runtime_kwargs() -> None:

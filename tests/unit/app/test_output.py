@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from linuxagent.app.output import print_assistant_response, start_working
+from linuxagent.app.output import print_assistant_response, start_working, update_pending_inputs
 
 
 class _MarkdownUI:
@@ -23,6 +23,14 @@ class _PlainUI:
 
     async def print(self, text: str) -> None:
         self.plain.append(text)
+
+
+class _PendingUI:
+    def __init__(self) -> None:
+        self.updates: list[tuple[str, ...]] = []
+
+    async def update_pending_inputs(self, inputs: tuple[str, ...]) -> None:
+        self.updates.append(inputs)
 
 
 class _WorkingUI:
@@ -60,3 +68,12 @@ async def test_print_assistant_response_falls_back_to_plain_ui() -> None:
     await print_assistant_response(ui, "**ok**")  # type: ignore[arg-type]
 
     assert ui.plain == ["**ok**"]
+
+
+async def test_update_pending_inputs_normalizes_single_item_and_clear() -> None:
+    ui = _PendingUI()
+
+    await update_pending_inputs(ui, "later")  # type: ignore[arg-type]
+    await update_pending_inputs(ui, None)  # type: ignore[arg-type]
+
+    assert ui.updates == [("later",), ()]
