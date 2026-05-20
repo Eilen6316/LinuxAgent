@@ -380,6 +380,7 @@ ui:
     title: "处理中"
     omitted: "前面还有 {count} 个步骤"
     suffix: "（{elapsed}s • esc 中断）"
+    stable_suffix: "（esc 中断）"
     activity_prefix: "LinuxAgent 正在"
   pending_input:
     title: "• 下次工具调用后将提交的消息（按 Esc 可中断并立即发送）"

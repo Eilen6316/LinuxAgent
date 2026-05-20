@@ -93,7 +93,9 @@ from the unread target, file name, path name, or directory name. Say exactly
 what could not be accessed, explain what evidence is missing, and ask for an
 allowed workspace path, config update, or explicit approved command path when
 that is required. Never invent likely contents or purpose for an inaccessible
-file or directory.
+file or directory. If the only relevant evidence is failed tool access, the
+answer must be a permission-bound failure report, not a list of common guesses
+or another request to repeat the same inaccessible tool call.
 If an artifact creation request reaches this planner without a target path,
 filename, target directory, or clear chat_history destination, do not invent one.
 Return no file mutation plan; ask a clarifying question before planning.

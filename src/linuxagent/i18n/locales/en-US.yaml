@@ -380,6 +380,7 @@ ui:
     title: "Working"
     omitted: "{count} earlier steps"
     suffix: " ({elapsed}s • esc to interrupt)"
+    stable_suffix: " (esc to interrupt)"
     activity_prefix: "LinuxAgent is"
   pending_input:
     title: "• Messages to be submitted after next tool call (press Esc to interrupt and send immediately)"

@@ -31,7 +31,13 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.tools import BaseTool
 from tenacity import (
     AsyncRetrying,
@@ -193,6 +199,9 @@ class BaseLLMProvider(LLMProvider):
                 cancellation_token,
             )
             history.extend(tool_messages)
+            failure_context = _tool_failure_context(tool_messages)
+            if failure_context is not None:
+                history.append(failure_context)
             pending_input = _drain_pending_input_messages()
             history.extend(HumanMessage(content=content) for content in pending_input.messages)
             await _notify_pending_input_preview(pending_input.queued_preview)
@@ -327,14 +336,9 @@ async def _invoke_model_off_loop(
     messages: list[BaseMessage],
     kwargs: dict[str, Any],
 ) -> BaseMessage:
-    loop = asyncio.get_running_loop()
-    finished = loop.create_future()
+    finished = threading.Event()
     result: list[BaseMessage] = []
     errors: list[BaseException] = []
-
-    def mark_finished() -> None:
-        if not finished.done():
-            finished.set_result(None)
 
     def run() -> None:
         try:
@@ -342,22 +346,14 @@ async def _invoke_model_off_loop(
         except BaseException as exc:
             errors.append(exc)
         finally:
-            _notify_finished(loop, mark_finished)
+            finished.set()
 
     threading.Thread(target=run, name="linuxagent-llm-provider", daemon=True).start()
-    await finished
+    while not finished.is_set():  # noqa: ASYNC110 - completion comes from a worker thread.
+        await asyncio.sleep(0.01)
     if errors:
         raise errors[0]
     return result[0]
-
-
-def _notify_finished(loop: asyncio.AbstractEventLoop, callback: Callable[[], None]) -> None:
-    if loop.is_closed():
-        return
-    try:
-        loop.call_soon_threadsafe(callback)
-    except RuntimeError:
-        return
 
 
 def _drain_pending_input_messages() -> PendingInputDrainResult:
@@ -646,8 +642,53 @@ def _append_tool_results(
                 content=result.content,
                 name=planned_call.tool_name,
                 tool_call_id=planned_call.tool_call_id,
+                status=_tool_message_status(result.event),
             )
         )
+
+
+def _tool_message_status(event: dict[str, Any]) -> str:
+    phase = str(event.get("phase") or "")
+    status = str(event.get("status") or "")
+    if phase == "error" or status in {"denied", "timeout", "error", "cancelled"}:
+        return "error"
+    return "success"
+
+
+def _tool_failure_context(tool_messages: list[ToolMessage]) -> SystemMessage | None:
+    failures = [_tool_failure_summary(message) for message in tool_messages]
+    details = tuple(item for item in failures if item)
+    if not details:
+        return None
+    return SystemMessage(
+        content=(
+            "The preceding tool results include failures. Treat those failures as "
+            "authoritative evidence about what LinuxAgent could not access or "
+            "complete. Do not infer facts from unread content, path names, or "
+            "directory names. In the next answer or plan, state what failed, why "
+            "the evidence is missing, and what permission, allowed path, config "
+            "change, or explicit approved command would be needed. Do not ask the "
+            "user to confirm the same inaccessible tool call again.\n" + "\n".join(details)
+        )
+    )
+
+
+def _tool_failure_summary(message: ToolMessage) -> str | None:
+    if getattr(message, "status", None) != "error":
+        return None
+    content = message.content
+    if not isinstance(content, str):
+        return f"- {message.name or 'tool'} failed"
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        return f"- {message.name or 'tool'} failed: {content[:300]}"
+    if not isinstance(payload, dict):
+        return f"- {message.name or 'tool'} failed"
+    tool_name = str(payload.get("tool") or message.name or "tool")
+    error_type = str(payload.get("error_type") or "error")
+    failure_message = str(payload.get("message") or "")
+    return f"- {tool_name} failed with {error_type}: {failure_message[:300]}"
 
 
 def _planned_tool_call(

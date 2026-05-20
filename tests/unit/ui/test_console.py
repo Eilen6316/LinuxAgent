@@ -791,7 +791,8 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（" in rendered
+    assert "处理中（esc 中断）" in rendered
+    assert "s • esc 中断" not in rendered
     assert "esc 中断" in rendered
     assert "整理文件 workspace/disk_info.sh" in rendered
     assert "read_file · 95 lines" in rendered
@@ -837,7 +838,8 @@ async def test_console_print_activity_shows_parallel_agent_group(monkeypatch) ->
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（" in rendered
+    assert "处理中（esc 中断）" in rendered
+    assert "s • esc 中断" not in rendered
     assert "esc 中断" in rendered
     assert "并发处理 只读批次：2/2" in rendered
     assert "agent A: running - 查 systemctl 状态" in rendered
@@ -881,7 +883,8 @@ async def test_console_print_active_view_renders_work_items(monkeypatch) -> None
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（" in rendered
+    assert "处理中（esc 中断）" in rendered
+    assert "s • esc 中断" not in rendered
     assert "分类意图" in rendered
     assert "读取文件" in rendered
     assert "/LinuxAgent/.work/plan/PlanC.md" in rendered

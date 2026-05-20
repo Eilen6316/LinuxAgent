@@ -106,17 +106,12 @@ class WorkingStatus:
             self._live.refresh()
 
     def _render_legacy_items(self) -> Text:
-        elapsed = max(0, int(time.monotonic() - self._started_at))
-        suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
         title = self._working_title()
         if not self._items:
-            return Text.assemble(
-                (_activity_indicator(), self._accent_style()),
-                " ",
-                (title, "bold"),
-                (suffix, "dim"),
-            )
+            return self._render_title()
         if len(self._items) == 1 and "\n" not in self._message:
+            elapsed = max(0, int(time.monotonic() - self._started_at))
+            suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
             return Text.assemble(
                 (_activity_indicator(), self._accent_style()),
                 " ",
@@ -124,12 +119,7 @@ class WorkingStatus:
                 (f": {self._message}", "bold") if self._message != title else "",
                 (suffix, "dim"),
             )
-        text = Text.assemble(
-            (_activity_indicator(), self._accent_style()),
-            " ",
-            (title, "bold"),
-            (suffix, "dim"),
-        )
+        text = self._render_title(stable=True)
         visible_items = self._visible_items()
         for index, item in enumerate(visible_items):
             text.append("\n")
@@ -137,18 +127,23 @@ class WorkingStatus:
         return text
 
     def _render_active_view(self, view: ActiveTurnView) -> Text:
-        text = self._render_title()
         items = _active_view_items(view)
+        text = self._render_title(stable=bool(items))
         for item in items:
             text.append("\n")
             _append_render_item(text, _active_item_label(item), current=_active_item_current(item))
         return text
 
-    def _render_title(self) -> Text:
-        elapsed = max(0, int(time.monotonic() - self._started_at))
-        suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
+    def _render_title(self, *, stable: bool = False) -> Text:
+        if stable:
+            indicator = "•"
+            suffix = self._translator.t("ui.working.stable_suffix")
+        else:
+            indicator = _activity_indicator()
+            elapsed = max(0, int(time.monotonic() - self._started_at))
+            suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
         return Text.assemble(
-            (_activity_indicator(), self._accent_style()),
+            (indicator, self._accent_style()),
             " ",
             (self._working_title(), "bold"),
             (suffix, "dim"),

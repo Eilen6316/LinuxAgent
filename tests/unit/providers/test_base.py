@@ -18,6 +18,7 @@ from langchain_core.messages import (
     AIMessageChunk,
     BaseMessage,
     HumanMessage,
+    SystemMessage,
     ToolMessage,
 )
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
@@ -811,6 +812,46 @@ async def test_complete_with_tools_redacts_tool_exception_message() -> None:
     assert "plain-token" not in events[1]["output_preview"]
     assert "password=***redacted***" in events[1]["output_preview"]
     assert "token=***redacted***" in events[1]["output_preview"]
+
+
+async def test_complete_with_tools_adds_failure_context_after_denied_tool() -> None:
+    @tool
+    async def read_file(path: str) -> str:
+        """Read a bounded workspace file."""
+        raise ValueError(f"path is outside allowed roots (., /tmp): {path}")
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "read_file",
+                        "args": {"path": "/root/.linuxagent/config.yaml"},
+                        "id": "1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="无法读取该文件，因为它不在允许路径内。"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    out = await provider.complete_with_tools(
+        [HumanMessage(content="读取配置文件")],
+        [_sandboxed(read_file)],
+    )
+
+    assert "无法读取" in out
+    second_round = model.messages[1]
+    failure_context = [
+        message.content for message in second_round if isinstance(message, SystemMessage)
+    ]
+    assert failure_context
+    assert "Do not infer facts from unread content" in str(failure_context[-1])
+    assert "read_file failed with error" in str(failure_context[-1])
+    assert "/root/.linuxagent/config.yaml" in str(failure_context[-1])
 
 
 async def test_complete_with_tools_truncates_tool_exception_message() -> None:
