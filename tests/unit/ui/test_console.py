@@ -21,6 +21,7 @@ from linuxagent.config.models import LanguageCode
 from linuxagent.i18n import Translator
 from linuxagent.interfaces import ExecutionResult
 from linuxagent.ui import ConsoleUI
+from linuxagent.ui import working_status as working_status_module
 from linuxagent.ui.console import SlashCommandCompleter
 from linuxagent.ui.working_status import WorkingStatus
 
@@ -719,25 +720,27 @@ async def test_console_print_activity_uses_transient_working_status(monkeypatch)
     await ui.print_activity("LinuxAgent 正在规划命令")
 
     assert ui._working_status is not None
+    assert ui._build_prompt() == []
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中: 规划命令" in rendered
+    assert "处理中（0s • esc 中断）" in rendered
+    assert "规划命令" in rendered
     assert "esc 中断" in rendered
     assert "╭" not in rendered
     assert "│" not in rendered
     assert "╰" not in rendered
-    assert "\n" not in rendered.rstrip("\n")
 
     await ui.print("done")
 
     assert ui._working_status is None
+    assert ui._build_prompt()
     final_rendered = console.export_text()
     assert "已完成步骤" not in final_rendered
     assert "规划命令" in final_rendered
 
 
-async def test_console_print_activity_keeps_cumulative_working_history(
+async def test_console_print_activity_keeps_current_working_status(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
@@ -751,8 +754,9 @@ async def test_console_print_activity_keeps_cumulative_working_history(
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "分类意图" in rendered
+    assert "处理中（0s • esc 中断）" in rendered
     assert "规划命令" in rendered
+    assert "分类意图" not in rendered
     assert "esc 中断" in rendered
 
     await ui.print("done")
@@ -791,8 +795,7 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（esc 中断）" in rendered
-    assert "s • esc 中断" not in rendered
+    assert "处理中（0s • esc 中断）" in rendered
     assert "esc 中断" in rendered
     assert "整理文件 workspace/disk_info.sh" in rendered
     assert "read_file · 95 lines" in rendered
@@ -838,8 +841,7 @@ async def test_console_print_activity_shows_parallel_agent_group(monkeypatch) ->
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（esc 中断）" in rendered
-    assert "s • esc 中断" not in rendered
+    assert "处理中（0s • esc 中断）" in rendered
     assert "esc 中断" in rendered
     assert "并发处理 只读批次：2/2" in rendered
     assert "agent A: running - 查 systemctl 状态" in rendered
@@ -848,6 +850,54 @@ async def test_console_print_activity_shows_parallel_agent_group(monkeypatch) ->
     await ui.print("done")
 
     assert ui._working_status is None
+
+
+async def test_console_print_activity_preserves_elapsed_after_tool_status_clear(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    now = 100.0
+    monkeypatch.setattr(console_module.time, "monotonic", lambda: now)
+    monkeypatch.setattr(working_status_module.time, "monotonic", lambda: now)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_activity("LinuxAgent 正在列目录 /LinuxAgent")
+    now = 103.0
+    await ui.print_activity("LinuxAgent 无法读取文件 /etc/ansible/hosts\n  denied")
+    await ui.print_activity("LinuxAgent 正在整理目录 /LinuxAgent\n  list_dir · 36 items")
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "处理中（3s • esc 中断）" in rendered
+    assert "整理目录 /LinuxAgent" in rendered
+    ui.clear_activity()
+
+
+async def test_console_print_activity_keeps_tool_failure_in_working_status(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    now = 100.0
+    monkeypatch.setattr(console_module.time, "monotonic", lambda: now)
+    monkeypatch.setattr(working_status_module.time, "monotonic", lambda: now)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_activity("LinuxAgent 正在读取文件 /etc/ansible/hosts")
+    now = 102.0
+    await ui.print_activity("LinuxAgent 无法读取文件 /etc/ansible/hosts\n  denied")
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "处理中（2s • esc 中断）" in rendered
+    assert "无法读取文件 /etc/ansible/hosts" in rendered
+    assert "denied" in rendered
+    ui.clear_activity()
 
 
 async def test_console_print_active_view_renders_work_items(monkeypatch) -> None:
@@ -883,8 +933,7 @@ async def test_console_print_active_view_renders_work_items(monkeypatch) -> None
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（esc 中断）" in rendered
-    assert "s • esc 中断" not in rendered
+    assert "处理中（0s • esc 中断）" in rendered
     assert "分类意图" in rendered
     assert "读取文件" in rendered
     assert "/LinuxAgent/.work/plan/PlanC.md" in rendered
@@ -942,6 +991,29 @@ def test_working_status_cancel_skips_live_stop(monkeypatch) -> None:
     assert not live.is_started
 
 
+def test_working_status_limits_multiline_details() -> None:
+    console = Console(record=True, width=120, force_terminal=True)
+    status = WorkingStatus(console)
+
+    status.update(
+        "LinuxAgent 正在并发处理 只读批次：4/4\n"
+        "  - agent A: running\n"
+        "  - agent B: running\n"
+        "  - agent C: running\n"
+        "  - agent D: queued"
+    )
+
+    render_console = Console(record=True, width=120)
+    render_console.print(status._render())
+    rendered = render_console.export_text()
+
+    assert "agent A: running" in rendered
+    assert "agent B: running" in rendered
+    assert "agent C: running..." in rendered
+    assert "agent D: queued" not in rendered
+    status.cancel()
+
+
 def test_working_status_follows_current_stdout(monkeypatch) -> None:
     console = Console(record=True, width=120, force_terminal=True)
     original_file = console._file
@@ -970,7 +1042,7 @@ def test_working_status_does_not_render_prompt_line() -> None:
     status.cancel()
 
 
-def test_working_status_skips_periodic_refresh_for_multiline_view(monkeypatch) -> None:
+def test_working_status_refreshes_multiline_view_timer(monkeypatch) -> None:
     console = Console(record=True, width=120, force_terminal=True)
     status = WorkingStatus(console)
     status.update("LinuxAgent 正在整理目录 /root/.linuxagent\n  list_dir · 17 items")
@@ -987,7 +1059,7 @@ def test_working_status_skips_periodic_refresh_for_multiline_view(monkeypatch) -
 
     status.refresh()
 
-    assert refreshes == 0
+    assert refreshes == 1
     status.cancel()
 
 

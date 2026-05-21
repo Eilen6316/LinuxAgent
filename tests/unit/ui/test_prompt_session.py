@@ -28,6 +28,37 @@ def test_prompt_session_manager_builds_dynamic_prompt(tmp_path) -> None:
     assert ("ansibrightmagenta", ">") in prompt()
 
 
+def test_prompt_session_manager_hides_prompt_while_activity_busy(tmp_path) -> None:
+    invalidations = 0
+
+    class _FakeApp:
+        def invalidate(self) -> None:
+            nonlocal invalidations
+            invalidations += 1
+
+    manager = PromptSessionManager(
+        theme="auto",
+        prompt_symbol=">",
+        history_path=tmp_path / "history",
+        session_factory=lambda: SimpleNamespace(
+            default_buffer=SimpleNamespace(text="status"),
+            app=_FakeApp(),
+        ),
+    )
+
+    session = manager.create_session()
+    prompt = manager.dynamic_prompt(session)
+    manager.set_activity_busy(True)
+
+    assert prompt() == []
+    assert invalidations == 1
+
+    manager.set_activity_busy(False)
+
+    assert ("bold ansibrightcyan", "linuxagent") in prompt()
+    assert invalidations == 2
+
+
 def test_prompt_session_manager_default_history_file_is_0600(tmp_path) -> None:
     history_path = tmp_path / "prompt_history"
     manager = PromptSessionManager(

@@ -16,7 +16,8 @@ from ..i18n import Translator, default_translator
 
 WORKING_REFRESH_PER_SECOND = 1
 ACTIVITY_INTERVAL_MS = 600
-MAX_ACTIVITY_ITEMS = 8
+MAX_ACTIVE_VIEW_ITEMS = 8
+MAX_STATUS_DETAIL_LINES = 3
 MAX_PENDING_INPUTS = 5
 
 
@@ -27,23 +28,23 @@ class WorkingStatus:
         *,
         theme: str = "auto",
         translator: Translator | None = None,
+        started_at: float | None = None,
     ) -> None:
         self._console = console
         self._theme = theme
         self._translator = translator or default_translator()
         self._live: Live | None = None
-        self._started_at = 0.0
+        self._started_at = started_at or 0.0
         self._message = self._working_title()
-        self._items: list[str] = []
-        self._omitted_count = 0
         self._pending_inputs: tuple[str, ...] = ()
         self._active_view: ActiveTurnView | None = None
+
+    def set_started_at(self, started_at: float) -> None:
+        self._started_at = started_at
 
     def update(self, message: str) -> None:
         self._active_view = None
         self._message = _working_label(message, self._translator)
-        if self._message != self._working_title():
-            self._append_item(self._message)
         self._refresh()
 
     def update_view(self, view: ActiveTurnView) -> None:
@@ -89,7 +90,8 @@ class WorkingStatus:
 
     def _refresh(self) -> None:
         if self._live is None or not self._live.is_started:
-            self._started_at = time.monotonic()
+            if self._started_at <= 0.0:
+                self._started_at = time.monotonic()
             with _console_stdout(self._console):
                 self._live = Live(
                     get_renderable=self._render,
@@ -107,41 +109,28 @@ class WorkingStatus:
 
     def _render_legacy_items(self) -> Text:
         title = self._working_title()
-        if not self._items:
+        if self._message == title:
             return self._render_title()
-        if len(self._items) == 1 and "\n" not in self._message:
-            elapsed = max(0, int(time.monotonic() - self._started_at))
-            suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
-            return Text.assemble(
-                (_activity_indicator(), self._accent_style()),
-                " ",
-                (title, "bold"),
-                (f": {self._message}", "bold") if self._message != title else "",
-                (suffix, "dim"),
-            )
-        text = self._render_title(stable=True)
-        visible_items = self._visible_items()
-        for index, item in enumerate(visible_items):
+
+        header, details = _split_activity_message(self._message)
+        text = self._render_title()
+        for item in [header, *details]:
             text.append("\n")
-            _append_render_item(text, item, current=index == len(visible_items) - 1)
+            _append_detail_item(text, item)
         return text
 
     def _render_active_view(self, view: ActiveTurnView) -> Text:
         items = _active_view_items(view)
-        text = self._render_title(stable=bool(items))
+        text = self._render_title()
         for item in items:
             text.append("\n")
             _append_render_item(text, _active_item_label(item), current=_active_item_current(item))
         return text
 
-    def _render_title(self, *, stable: bool = False) -> Text:
-        if stable:
-            indicator = "•"
-            suffix = self._translator.t("ui.working.stable_suffix")
-        else:
-            indicator = _activity_indicator()
-            elapsed = max(0, int(time.monotonic() - self._started_at))
-            suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
+    def _render_title(self) -> Text:
+        indicator = _activity_indicator()
+        elapsed = max(0, int(time.monotonic() - self._started_at))
+        suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
         return Text.assemble(
             (indicator, self._accent_style()),
             " ",
@@ -157,27 +146,8 @@ class WorkingStatus:
     def _working_title(self) -> str:
         return self._translator.t("ui.working.title")
 
-    def _append_item(self, message: str) -> None:
-        if self._items and self._items[-1] == message:
-            return
-        self._items.append(message)
-        if len(self._items) <= MAX_ACTIVITY_ITEMS:
-            return
-        self._items.pop(0)
-        self._omitted_count += 1
-
-    def _visible_items(self) -> list[str]:
-        if self._omitted_count <= 0:
-            return list(self._items)
-        omitted = self._translator.t("ui.working.omitted", count=self._omitted_count)
-        return [omitted, *self._items]
-
     def _periodic_refresh_allowed(self) -> bool:
-        if self._pending_inputs:
-            return False
-        if self._active_view is not None:
-            return not _active_view_items(self._active_view)
-        return len(self._items) <= 1 and "\n" not in self._message
+        return not self._pending_inputs
 
 
 def _working_label(message: str, translator: Translator) -> str:
@@ -197,6 +167,26 @@ def _activity_indicator() -> str:
     return "•" if tick % 2 == 0 else "◦"
 
 
+def _split_activity_message(message: str) -> tuple[str, list[str]]:
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    if not lines:
+        return "", []
+    return lines[0], _limited_details(lines[1:])
+
+
+def _limited_details(lines: list[str]) -> list[str]:
+    if len(lines) <= MAX_STATUS_DETAIL_LINES:
+        return lines
+    visible = lines[:MAX_STATUS_DETAIL_LINES]
+    visible[-1] = f"{visible[-1]}..."
+    return visible
+
+
+def _append_detail_item(text: Text, item: str) -> None:
+    text.append("  └ ", style="dim")
+    text.append(item, style="dim")
+
+
 def _append_render_item(text: Text, item: str, *, current: bool) -> None:
     marker = "•" if current else "✓"
     style = "bold" if current else "dim"
@@ -209,7 +199,7 @@ def _append_render_item(text: Text, item: str, *, current: bool) -> None:
 
 
 def _active_view_items(view: ActiveTurnView) -> list[ActiveWorkItemView]:
-    return list(view.items[-MAX_ACTIVITY_ITEMS:])
+    return list(view.items[-MAX_ACTIVE_VIEW_ITEMS:])
 
 
 def _active_item_current(item: ActiveWorkItemView) -> bool:

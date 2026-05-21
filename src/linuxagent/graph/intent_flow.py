@@ -165,18 +165,57 @@ async def _planned_outcome_update(
     current_trace_id: str,
     outcome: PlannedWork | AgentState,
     observed_tool_outputs: list[str],
+    *,
+    allow_file_patch_misroute_retry: bool = True,
 ) -> AgentState:
     if isinstance(outcome, DirectAnswerPlan):
         return direct_response_update(current_trace_id, outcome.answer)
     if isinstance(outcome, CommandPlan):
         return plan_update(current_trace_id, outcome, context.cluster_service)
     if isinstance(outcome, FilePatchPlan):
+        misroute_error = _ansible_runtime_file_patch_misroute(user_text, outcome)
+        if allow_file_patch_misroute_retry and misroute_error is not None:
+            recovered = await _retry_plan_or_error(
+                context,
+                messages,
+                user_text,
+                current_trace_id,
+                misroute_error,
+                outcome.model_dump_json(),
+            )
+            return await _planned_outcome_update(
+                context,
+                messages,
+                user_text,
+                current_trace_id,
+                recovered,
+                observed_tool_outputs,
+                allow_file_patch_misroute_retry=False,
+            )
         return file_patch_update(current_trace_id, outcome)
     if isinstance(outcome, NoChangePlan):
         return await _no_change_update(
             context, messages, user_text, current_trace_id, outcome, observed_tool_outputs
         )
     return outcome
+
+
+def _ansible_runtime_file_patch_misroute(user_text: str, plan: FilePatchPlan) -> str | None:
+    text = user_text.casefold()
+    if "ansible" not in text:
+        return None
+    if "playbook" in text:
+        return None
+    target_text = " ".join((*plan.files_changed, plan.unified_diff)).casefold()
+    if "/etc/ansible/playbooks" not in target_text and "playbook" not in target_text:
+        return None
+    return (
+        "Planner returned a FilePatchPlan for an Ansible runtime inspection request. "
+        "The user asked to use ansible commands against an existing inventory; treat "
+        "inventory paths such as /etc/ansible/hosts as command inputs. Do not create "
+        "or edit playbooks under /etc/ansible. Return a CommandPlan with argv-safe "
+        "ansible or ansible-inventory commands."
+    )
 
 
 async def _no_change_update(
