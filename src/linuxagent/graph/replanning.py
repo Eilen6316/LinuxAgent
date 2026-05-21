@@ -22,6 +22,32 @@ from .state import AgentState, reset_execution_for_pending_work, reset_safety_fo
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
 DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS = 2
 MAX_REPAIR_PLAN_PARSE_RETRIES = 2
+_PACKAGE_MANAGER_INSTALL_VERBS = {
+    "apk": frozenset({"add"}),
+    "apt": frozenset({"install"}),
+    "apt-get": frozenset({"install"}),
+    "brew": frozenset({"install"}),
+    "dnf": frozenset({"install"}),
+    "yum": frozenset({"install"}),
+    "zypper": frozenset({"install"}),
+}
+_PACKAGE_MANAGER_FAMILIES = {
+    "apk": "alpine",
+    "apt": "debian",
+    "apt-get": "debian",
+    "brew": "darwin",
+    "dnf": "redhat",
+    "yum": "redhat",
+    "zypper": "suse",
+}
+_OS_IDS_BY_PACKAGE_FAMILY = {
+    "alpine": frozenset({"alpine"}),
+    "darwin": frozenset({"darwin"}),
+    "debian": frozenset({"debian", "linuxmint", "raspbian", "ubuntu"}),
+    "redhat": frozenset({"almalinux", "amzn", "centos", "fedora", "ol", "rhel", "rocky"}),
+    "suse": frozenset({"opensuse", "opensuse-leap", "sles", "suse"}),
+}
+_PRIVILEGE_WRAPPERS = frozenset({"doas", "sudo"})
 
 
 def make_repair_plan_node(
@@ -94,7 +120,9 @@ async def _complete_valid_repair_plan(
             rejected_response,
         )
         try:
-            return parse_command_plan(proposed)
+            plan = parse_command_plan(proposed)
+            _ensure_package_manager_install_is_grounded(plan, state)
+            return plan
         except CommandPlanParseError as exc:
             error = str(exc)
             rejected_response = proposed
@@ -193,6 +221,114 @@ def _remove_successful_commands(plan: CommandPlan, state: AgentState) -> Command
     if not commands:
         raise CommandPlanParseError("repair plan only repeated already successful commands")
     return plan.model_copy(update={"commands": commands})
+
+
+def _ensure_package_manager_install_is_grounded(plan: CommandPlan, state: AgentState) -> None:
+    for command in plan.commands:
+        manager = _package_manager_install_command(command.command)
+        if manager is None or _has_package_manager_evidence(manager, state):
+            continue
+        raise CommandPlanParseError(
+            "package-manager install command requires prior read-only "
+            f"OS/package-manager evidence; {command.command!r} was proposed "
+            f"without evidence that {manager} matches this host. First return "
+            "argv-safe read-only probes such as `/bin/cat /etc/os-release` "
+            "and separate `which apt-get`, `which dnf`, `which yum`, "
+            "`which zypper`, `which apk`, or `which pacman` commands; then "
+            "choose the matching installer from observed results."
+        )
+
+
+def _package_manager_install_command(command: str) -> str | None:
+    tokens = _unwrap_privilege_wrapper(_command_tokens(command))
+    if not tokens:
+        return None
+    manager = _executable_name(tokens[0])
+    if manager == "pacman":
+        sync_requested = any(arg.startswith("-S") or arg == "--sync" for arg in tokens[1:])
+        return manager if sync_requested else None
+    verbs = _PACKAGE_MANAGER_INSTALL_VERBS.get(manager)
+    if verbs is None:
+        return None
+    return manager if any(token in verbs for token in tokens[1:]) else None
+
+
+def _has_package_manager_evidence(manager: str, state: AgentState) -> bool:
+    family = _PACKAGE_MANAGER_FAMILIES.get(manager)
+    for result in _successful_results(state):
+        if _result_proves_package_manager(result.command, manager, family):
+            return True
+        if family is not None and _os_release_supports_package_family(result, family):
+            return True
+    return False
+
+
+def _result_proves_package_manager(command: str, manager: str, family: str | None) -> bool:
+    tokens = _unwrap_privilege_wrapper(_command_tokens(command))
+    if not tokens:
+        return False
+    executable = _executable_name(tokens[0])
+    if executable in {"which", "whereis"}:
+        return any(
+            _same_package_family(_executable_name(token), manager, family) for token in tokens[1:]
+        )
+    if _same_package_family(executable, manager, family):
+        return any(token in {"--version", "-v", "version"} for token in tokens[1:])
+    return False
+
+
+def _os_release_supports_package_family(result: Any, family: str) -> bool:
+    if "os-release" not in result.command.casefold():
+        return False
+    ids = _os_release_ids(result.stdout)
+    return bool(ids & _OS_IDS_BY_PACKAGE_FAMILY.get(family, frozenset()))
+
+
+def _os_release_ids(output: str) -> set[str]:
+    ids: set[str] = set()
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.casefold() not in {"id", "id_like"}:
+            continue
+        ids.update(value.strip().strip('"').strip("'").casefold().split())
+    return ids
+
+
+def _successful_results(state: AgentState) -> tuple[Any, ...]:
+    results = list(state.get("plan_results", ()))
+    execution_result = state.get("execution_result")
+    if execution_result is not None and all(result is not execution_result for result in results):
+        results.append(execution_result)
+    return tuple(result for result in results if result.exit_code == 0)
+
+
+def _same_package_family(candidate: str, manager: str, family: str | None) -> bool:
+    if candidate == manager:
+        return True
+    return family is not None and _PACKAGE_MANAGER_FAMILIES.get(candidate) == family
+
+
+def _command_tokens(command: str) -> tuple[str, ...]:
+    try:
+        return tuple(shlex.split(command))
+    except ValueError:
+        return ()
+
+
+def _unwrap_privilege_wrapper(tokens: tuple[str, ...]) -> tuple[str, ...]:
+    if not tokens or _executable_name(tokens[0]) not in _PRIVILEGE_WRAPPERS:
+        return tokens
+    index = 1
+    while index < len(tokens) and tokens[index].startswith("-"):
+        index += 1
+    return tokens[index:]
+
+
+def _executable_name(token: str) -> str:
+    return token.rsplit("/", 1)[-1]
 
 
 def _successful_command_lines(state: AgentState) -> list[str]:

@@ -3439,6 +3439,33 @@ async def test_graph_retries_invalid_repair_command_plan(tmp_path) -> None:
     assert "rpm -q nginx 2>/dev/null || echo missing" in retry_prompt
 
 
+async def test_graph_retries_ungrounded_package_manager_install_repair(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _multi_command_plan_json(["/bin/false"]),
+            command_plan_json("apt-get install -y ansible"),
+            _multi_command_plan_json(["/bin/cat /etc/os-release", "which dnf"]),
+        ],
+    )
+    config = {"configurable": {"thread_id": "repair-probes-package-manager-first"}}
+
+    await graph.ainvoke(
+        initial_state("install ansible after failure", source=CommandSource.USER),
+        config=config,
+    )
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+    snapshot = await graph.aget_state(config)
+
+    assert snapshot.tasks[0].interrupts[0].value["command"] == "/bin/cat /etc/os-release"
+    assert snapshot.values["command_plan"].primary.command == "/bin/cat /etc/os-release"
+    assert _llm_call_count(provider, node="repair_plan", mode="command_repair") == 2
+    retry_prompt = str(provider.complete_messages[-1][-1].content)
+    assert "Previous repair response was rejected" in retry_prompt
+    assert "package-manager install command requires prior read-only" in retry_prompt
+    assert "apt-get install -y ansible" in retry_prompt
+
+
 async def test_graph_repair_plan_does_not_repeat_successful_commands(tmp_path) -> None:
     graph, provider = _graph(
         tmp_path,

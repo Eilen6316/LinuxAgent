@@ -162,6 +162,14 @@ represent each fallback as a separate command step. Do not add shell
 redirections like `2>&1`; stdout and stderr are captured separately by the
 executor.
 
+If a requested executable is missing or a package installation may be needed,
+do not guess the operating system or package manager. When the current evidence
+does not already identify the distribution and installer, first return
+read-only probes such as `/bin/cat /etc/os-release` and separate argv-safe
+package-manager checks (`which apt-get`, `which dnf`, `which yum`,
+`which zypper`, `which apk`, or `which pacman`). Only propose an install command
+after observed results prove the matching package manager for this host.
+
 For static local file creation, code edits, config edits, script edits, or other
 file mutations whose final content is fully known at planning time, prefer a
 FilePatchPlan instead of a CommandPlan. The patch will be shown to the user
