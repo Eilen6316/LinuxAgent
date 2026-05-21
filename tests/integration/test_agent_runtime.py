@@ -60,6 +60,7 @@ class _UI:
         self.response = {"decision": "yes", "latency_ms": 1} if response is None else response
         self.interrupts: list[dict[str, Any]] = []
         self.printed: list[str] = []
+        self.user_inputs: list[str] = []
         self.execution_results: list[ExecutionResult] = []
 
     async def input_stream(self) -> AsyncIterator[str]:
@@ -76,8 +77,14 @@ class _UI:
     async def print(self, text: str) -> None:
         self.printed.append(text)
 
+    async def print_user_input(self, text: str) -> None:
+        self.user_inputs.append(text)
+
     async def print_execution_result(self, result: ExecutionResult) -> None:
         self.execution_results.append(result)
+
+    def clear_activity(self) -> None:
+        return None
 
 
 def _router_response(mode: str, answer: str = "", reason: str = "test route") -> str:

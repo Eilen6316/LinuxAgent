@@ -120,6 +120,7 @@ class PlannedCommand(BaseModel):
 class CommandPlan(BaseModel):
     model_config = _FROZEN
 
+    plan_type: Literal["command_plan"] = "command_plan"
     goal: str = Field(min_length=1)
     commands: tuple[PlannedCommand, ...] = Field(min_length=1)
     risk_summary: str = ""
@@ -310,6 +311,7 @@ def command_plan_json(
 ) -> str:
     """Small helper for tests and harness fixtures."""
     plan: dict[str, Any] = {
+        "plan_type": "command_plan",
         "goal": goal,
         "commands": [
             {

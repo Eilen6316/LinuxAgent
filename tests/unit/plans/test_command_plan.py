@@ -23,9 +23,28 @@ from linuxagent.plans import (
 def test_parse_command_plan_accepts_json_object() -> None:
     plan = parse_command_plan(command_plan_json("/bin/echo hi", goal="Say hi"))
 
+    assert plan.plan_type == "command_plan"
     assert plan.goal == "Say hi"
     assert plan.primary.command == "/bin/echo hi"
     assert plan.primary.read_only is True
+
+
+def test_parse_command_plan_accepts_legacy_json_without_plan_type() -> None:
+    payload = json.loads(command_plan_json("/bin/echo hi"))
+    del payload["plan_type"]
+
+    plan = parse_command_plan(json.dumps(payload))
+
+    assert plan.plan_type == "command_plan"
+    assert plan.primary.command == "/bin/echo hi"
+
+
+def test_parse_command_plan_rejects_wrong_plan_type() -> None:
+    payload = json.loads(command_plan_json("/bin/echo hi"))
+    payload["plan_type"] = "no_change"
+
+    with pytest.raises(CommandPlanParseError, match="plan_type"):
+        parse_command_plan(json.dumps(payload))
 
 
 def test_parse_command_plan_accepts_json_code_fence() -> None:
