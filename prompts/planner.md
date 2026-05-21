@@ -105,6 +105,7 @@ schema. Do not include markdown or prose:
 
 ```json
 {{
+  "plan_type": "command_plan",
   "goal": "short operator goal",
   "commands": [
     {{
