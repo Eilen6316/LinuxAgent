@@ -33,7 +33,7 @@ from .diff_renderer import (
 )
 from .prompt_session import PromptSessionManager, SlashCommandCompleter
 from .resume_selector import ResumeSelector
-from .working_status import WORKING_REFRESH_PER_SECOND, WorkingStatus
+from .working_status import WORKING_REFRESH_PER_SECOND, WorkingStatus, _working_label
 
 __all__ = ["ConsoleUI", "SlashCommandCompleter"]
 
@@ -60,6 +60,7 @@ class ConsoleUI(UserInterface):
         self._model = model
         self._activity_visible = True
         self._working_status: WorkingStatus | None = None
+        self._activity_started_at: float | None = None
         self._pending_inputs: tuple[str, ...] = ()
         self._owner_loop: asyncio.AbstractEventLoop | None = None
         self._cancel_event: asyncio.Event = asyncio.Event()
@@ -144,7 +145,7 @@ class ConsoleUI(UserInterface):
     async def print_raw(self, text: str, *, stderr: bool = False) -> None:
         if await self._run_on_owner_loop(lambda: self.print_raw(text, stderr=stderr)):
             return
-        self.clear_activity()
+        self._clear_activity(reset_timer=False)
         rendered = Text(text, style="red") if stderr else Text(text)
         self._print_to_current_stdout(rendered, end="")
 
@@ -155,7 +156,7 @@ class ConsoleUI(UserInterface):
             lambda: self.print_execution_result(result, include_output=include_output)
         ):
             return
-        self.clear_activity()
+        self._clear_activity(reset_timer=False)
         display = _execution_result_display(result, include_output=include_output)
         style = "green" if result.exit_code == 0 else "red"
         title = self._translator.t("ui.console.command_result_title", exit_code=result.exit_code)
@@ -166,18 +167,17 @@ class ConsoleUI(UserInterface):
             return
         if not self._activity_visible:
             return
-        working_prefix = self._translator.t("ui.working.activity_prefix")
-        if text.startswith(working_prefix) and sys.stdin.isatty() and self._console.is_terminal:
+        if self._is_transient_activity(text) and sys.stdin.isatty() and self._console.is_terminal:
             self.start_working(text)
             return
-        self.clear_activity()
+        self._clear_activity(reset_timer=False)
         self._print_to_current_stdout(Text(text, style="dim"))
 
     async def print_active_view(self, view: ActiveTurnView) -> None:
         if await self._run_on_owner_loop(lambda: self.print_active_view(view)):
             return
         if _terminal_active_view(view):
-            self.clear_activity()
+            self._clear_activity(reset_timer=False)
             return
         self._render_active_view(view)
 
@@ -189,12 +189,19 @@ class ConsoleUI(UserInterface):
             return
         if not sys.stdin.isatty() or not self._console.is_terminal:
             return
+        self._prompt_session.set_activity_busy(True)
+        now = time.monotonic()
+        if self._starts_new_activity_cycle(text) or self._activity_started_at is None:
+            self._activity_started_at = now
         if self._working_status is None:
             self._working_status = WorkingStatus(
                 self._console,
                 theme=self._theme,
                 translator=self._translator,
+                started_at=self._activity_started_at,
             )
+        else:
+            self._working_status.set_started_at(self._activity_started_at)
         self._working_status.update(text)
         self._working_status.update_pending_inputs(self._pending_inputs)
         self._ensure_working_refresh_task()
@@ -204,21 +211,51 @@ class ConsoleUI(UserInterface):
             return
         if not sys.stdin.isatty() or not self._console.is_terminal:
             return
+        if self._activity_started_at is None:
+            self._activity_started_at = time.monotonic()
         if self._working_status is None:
             self._working_status = WorkingStatus(
                 self._console,
                 theme=self._theme,
                 translator=self._translator,
+                started_at=self._activity_started_at,
             )
+        else:
+            self._working_status.set_started_at(self._activity_started_at)
         self._working_status.update_view(view)
         self._working_status.update_pending_inputs(self._pending_inputs)
         self._ensure_working_refresh_task()
 
     def clear_activity(self) -> None:
+        self._clear_activity(reset_timer=True)
+
+    def _clear_activity(self, *, reset_timer: bool) -> None:
         self._stop_working_refresh_task()
         if self._working_status is not None:
             self._working_status.stop()
             self._working_status = None
+        if reset_timer:
+            self._activity_started_at = None
+            self._prompt_session.set_activity_busy(False)
+
+    def _starts_new_activity_cycle(self, text: str) -> bool:
+        return _working_label(text, self._translator) == self._translator.t("ui.working.title")
+
+    def _is_transient_activity(self, text: str) -> bool:
+        if text.startswith(self._translator.t("ui.working.activity_prefix")):
+            return True
+        return any(text.startswith(prefix) for prefix in self._tool_failure_activity_prefixes())
+
+    def _tool_failure_activity_prefixes(self) -> tuple[str, ...]:
+        specs: tuple[tuple[str, dict[str, str]], ...] = (
+            ("runtime.tool.activity_guidance_failed", {"path": ""}),
+            ("runtime.tool.activity_read_failed", {"path": ""}),
+            ("runtime.tool.activity_list_failed", {"path": ""}),
+            ("runtime.tool.activity_search_failed", {"target": ""}),
+        )
+        return tuple(
+            prefix for key, params in specs if (prefix := self._translator.t(key, **params).strip())
+        )
 
     def _ensure_working_refresh_task(self) -> None:
         if self._working_refresh_task is not None and not self._working_refresh_task.done():
@@ -258,6 +295,8 @@ class ConsoleUI(UserInterface):
         if self._working_status is not None:
             self._working_status.cancel()
             self._working_status = None
+        self._activity_started_at = None
+        self._prompt_session.set_activity_busy(False)
 
     def _remove_pending_input(self, text: str) -> None:
         if not self._pending_inputs:

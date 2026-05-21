@@ -70,6 +70,13 @@ inline interpreter commands are acceptable only when they are necessary and
 readable in the confirmation panel. Keep commands separate when they require
 different risk levels, package-manager fallbacks, remote targets, or when one
 failure should not block independent results.
+For Ansible runtime inspection against an existing inventory, including paths
+such as `/etc/ansible/hosts`, treat the inventory path as a command input, not
+as a workspace file to edit. If the user asks to use ansible commands for a
+resource audit, inventory check, host group inspection, or result summary,
+return a CommandPlan with argv-safe `ansible` or `ansible-inventory` commands.
+Do not create, edit, or write playbooks under `/etc/ansible` unless the user
+explicitly asks to create or modify a playbook/config file there.
 When editing existing files or writing code against current repository content,
 inspect current content with the available read-only workspace tools before
 producing a FilePatchPlan. Follow each tool's declared input semantics instead

@@ -39,6 +39,8 @@ class PromptSessionManager:
         self._session_factory = session_factory or self._default_session_factory
         self._cancel_event: Event | None = None
         self._cancel_reason_setter: Callable[[str], None] | None = None
+        self._activity_busy = False
+        self._active_session: Any | None = None
 
     def set_cancel_event(
         self, cancel_event: Event, reason_setter: Callable[[str], None] | None = None
@@ -47,7 +49,14 @@ class PromptSessionManager:
         self._cancel_reason_setter = reason_setter
 
     def create_session(self) -> Any:
-        return self._session_factory()
+        self._active_session = self._session_factory()
+        return self._active_session
+
+    def set_activity_busy(self, busy: bool) -> None:
+        if busy == self._activity_busy:
+            return
+        self._activity_busy = busy
+        self._invalidate_active_session()
 
     def dynamic_prompt(self, session: Any) -> Callable[[], list[tuple[str, str]]]:
         def prompt() -> list[tuple[str, str]]:
@@ -56,6 +65,8 @@ class PromptSessionManager:
         return prompt
 
     def build_prompt(self, current_text: str = "") -> list[tuple[str, str]]:
+        if self._activity_busy:
+            return []
         accent = "ansiblue" if self._theme == "light" else "ansibrightcyan"
         symbol_style = "ansibrightblack"
         if current_text.startswith("!"):
@@ -85,6 +96,12 @@ class PromptSessionManager:
             reserve_space_for_menu=8,
             key_bindings=self._key_bindings(),
         )
+
+    def _invalidate_active_session(self) -> None:
+        app = getattr(self._active_session, "app", None)
+        invalidate = getattr(app, "invalidate", None)
+        if callable(invalidate):
+            invalidate()
 
     def _key_bindings(self) -> KeyBindings:
         bindings = KeyBindings()

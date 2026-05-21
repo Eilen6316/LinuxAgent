@@ -2314,6 +2314,32 @@ async def test_graph_ignores_unresolved_external_tool_targets(tmp_path) -> None:
     assert snapshot.values["execution_result"].stderr != "no matching cluster hosts selected"
 
 
+async def test_graph_retries_ansible_runtime_inspection_file_patch_as_command(tmp_path) -> None:
+    bad_patch = file_patch_plan_json(
+        "/etc/ansible/playbooks/system_check.yml",
+        "- hosts: yingxiaoyun-no-prod\n  tasks: []\n",
+    )
+    good_command = command_plan_json("ansible yingxiaoyun-no-prod -i /etc/ansible/hosts -m setup")
+    graph, provider = _graph(tmp_path, [bad_patch, good_command])
+    config = {"configurable": {"thread_id": "ansible-runtime-misroute"}}
+
+    await graph.ainvoke(
+        initial_state(
+            "使用ansible命令对yingxiaoyun-no-prod这个资源分组进行系统资源使用率巡检，"
+            "资源分组在这个主机清单文件中/etc/ansible/hosts，然后对巡检结果做下总结",
+            source=CommandSource.USER,
+        ),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["pending_command"] == (
+        "ansible yingxiaoyun-no-prod -i /etc/ansible/hosts -m setup"
+    )
+    assert snapshot.values.get("file_patch_plan") is None
+    assert _has_llm_call(provider, node="parse_intent", mode="planner_retry")
+
+
 async def test_graph_treats_localhost_target_as_local_execution(tmp_path) -> None:
     cfg = ClusterConfig(
         batch_confirm_threshold=2,
