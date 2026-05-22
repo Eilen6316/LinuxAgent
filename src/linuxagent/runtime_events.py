@@ -39,6 +39,7 @@ class RuntimeEventKind(StrEnum):
 class RuntimeEventPhase(StrEnum):
     """Common runtime event lifecycle phases."""
 
+    SPAWNED = "spawned"
     STARTED = "started"
     UPDATED = "updated"
     DELTA = "delta"
@@ -362,7 +363,14 @@ def worker_lifecycle_events(
     parent_id: str | None = None,
 ) -> tuple[RuntimeEvent, ...]:
     parent = parent_id or f"worker_group:{trace_id}"
-    return tuple(
+    worker_tuple = tuple(workers)
+    progress_event = work_item_runtime_event(
+        thread_id=thread_id,
+        turn_id=turn_id,
+        item=_worker_group_work_item(parent, worker_tuple, phase),
+        phase=RuntimeEventPhase.DELTA,
+    )
+    worker_events = tuple(
         work_item_runtime_event(
             thread_id=thread_id,
             turn_id=turn_id,
@@ -370,8 +378,9 @@ def worker_lifecycle_events(
             phase=phase,
             item=_worker_work_item(worker, trace_id=trace_id),
         )
-        for worker in workers
+        for worker in worker_tuple
     )
+    return (progress_event, *worker_events)
 
 
 def cancelled_worker_group_event(*, trace_id: str, reason: str) -> dict[str, Any]:
@@ -410,6 +419,31 @@ def _worker_work_item(worker: RuntimeWorker, *, trace_id: str) -> RuntimeWorkIte
         summary_params=worker.summary_params or worker.detail_params,
         reason=_preview(worker.error),
     )
+
+
+def _worker_group_work_item(
+    item_id: str, workers: tuple[RuntimeWorker, ...], phase: RuntimeEventPhase
+) -> RuntimeWorkItem:
+    return RuntimeWorkItem(
+        item_id=item_id,
+        category=WorkItemCategory.WORKER_GROUP,
+        status=_worker_group_status(workers, phase),
+        progress=WorkItemProgress(active=_active_worker_count(workers), total=len(workers)),
+    )
+
+
+def _worker_group_status(
+    workers: tuple[RuntimeWorker, ...], phase: RuntimeEventPhase
+) -> WorkItemStatus:
+    if phase is RuntimeEventPhase.CANCELLED:
+        return WorkItemStatus.CANCELLED
+    if phase is RuntimeEventPhase.FAILED or any(
+        worker.status is WorkerStatus.FAILED for worker in workers
+    ):
+        return WorkItemStatus.FAILED
+    if phase is RuntimeEventPhase.COMPLETED:
+        return WorkItemStatus.COMPLETED
+    return WorkItemStatus.RUNNING
 
 
 def _worker_item_status(status: WorkerStatus) -> WorkItemStatus:

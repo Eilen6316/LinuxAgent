@@ -158,15 +158,36 @@ def test_worker_lifecycle_events_build_per_worker_items() -> None:
         ),
     )
 
-    payload = events[0].to_event()
-    assert payload["kind"] == "work_item"
-    assert payload["phase"] == "started"
-    assert payload["parent_id"] == "worker_group:trace-1"
-    assert payload["payload"]["item_id"] == "worker:trace-1:worker-1"
-    assert payload["payload"]["category"] == "worker"
-    assert payload["payload"]["status"] == "running"
-    assert payload["payload"]["label_key"] == "runtime.agent.command_worker"
-    assert payload["payload"]["summary"] == "reading files"
+    group = events[0].to_event()
+    worker = events[1].to_event()
+    assert group["kind"] == "work_item"
+    assert group["phase"] == "delta"
+    assert group["payload"]["item_id"] == "worker_group:trace-1"
+    assert group["payload"]["category"] == "worker_group"
+    assert group["payload"]["status"] == "running"
+    assert group["payload"]["progress"] == {"active": 1, "total": 1}
+    assert worker["kind"] == "work_item"
+    assert worker["phase"] == "started"
+    assert worker["parent_id"] == "worker_group:trace-1"
+    assert worker["payload"]["item_id"] == "worker:trace-1:worker-1"
+    assert worker["payload"]["category"] == "worker"
+    assert worker["payload"]["status"] == "running"
+    assert worker["payload"]["label_key"] == "runtime.agent.command_worker"
+    assert worker["payload"]["summary"] == "reading files"
+
+
+def test_worker_lifecycle_events_map_queued_workers_to_spawned() -> None:
+    events = worker_lifecycle_events(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        trace_id="trace-1",
+        phase=RuntimeEventPhase.SPAWNED,
+        workers=(RuntimeWorker(id="worker-1", status=WorkerStatus.QUEUED),),
+    )
+
+    worker = events[1].to_event()
+    assert worker["phase"] == "spawned"
+    assert worker["payload"]["status"] == "queued"
 
 
 def test_legacy_work_item_event_maps_worker_group_progress() -> None:

@@ -36,7 +36,7 @@ async def notify_worker_lifecycle(
 
 def _worker_phase(status: WorkerStatus) -> RuntimeEventPhase:
     phases = {
-        WorkerStatus.QUEUED: RuntimeEventPhase.STARTED,
+        WorkerStatus.QUEUED: RuntimeEventPhase.SPAWNED,
         WorkerStatus.RUNNING: RuntimeEventPhase.STARTED,
         WorkerStatus.FINISHED: RuntimeEventPhase.COMPLETED,
         WorkerStatus.FAILED: RuntimeEventPhase.FAILED,
