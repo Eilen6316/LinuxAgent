@@ -1,0 +1,43 @@
+scenario: "runtime lifecycle event gate"
+provider_responses:
+  - '{"mode":"DIRECT_ANSWER","answer":"fallback answer","reason":"parallel direct tasks","parallel_tasks":[{"id":"worker-a","goal":"first task","prompt":"answer first task"},{"id":"worker-b","goal":"second task","prompt":"answer second task"}]}'
+  - "first result"
+  - "second result"
+turns:
+  - input: "run lifecycle gate workers"
+    expected:
+      command_executed: false
+      response_contains:
+        - "**first task**"
+        - "first result"
+        - "**second task**"
+        - "second result"
+      runtime_event_sequence:
+        - kind: turn
+          phase: started
+        - kind: context
+          phase: skipped
+          payload:
+            source: linuxagent-manual
+        - kind: work_item
+          phase: delta
+          payload:
+            category: worker_group
+            status: running
+            progress:
+              active: 2
+              total: 2
+        - kind: work_item
+          phase: started
+          payload:
+            category: worker
+            status: running
+            summary: "first task"
+        - kind: work_item
+          phase: completed
+          payload:
+            category: worker
+            status: completed
+            summary: "first result"
+        - kind: turn
+          phase: completed

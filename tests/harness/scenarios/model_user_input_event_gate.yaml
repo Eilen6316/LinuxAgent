@@ -1,0 +1,36 @@
+scenario: "model user input event gate"
+provider_responses:
+  - '{"mode":"REQUEST_USER_INPUT","answer":"请补充必要信息。","reason":"needs structured input","request_user_input":{"prompt":"collect app constraints","questions":[{"id":"kind","title":"应用类型","kind":"single","options":[{"id":"web","label":"Web"}]},{"id":"notes","title":"补充要求","kind":"text"}]}}'
+  - '{"goal":"build app","commands":[{"command":"/bin/echo app","purpose":"echo app","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - "done"
+turns:
+  - input: "帮我设计一个应用"
+    expected_interrupts:
+      - type: request_user_input
+        request_type: request_user_input
+    resume:
+      status: submit
+      partial: false
+      answers:
+        - question_id: kind
+          selected_ids:
+            - web
+        - question_id: notes
+          text: fast prototype
+    expected:
+      command_executed: false
+      runtime_event_sequence:
+        - kind: turn
+          phase: started
+        - kind: request
+          phase: requested
+          payload:
+            request_type: request_user_input
+        - kind: request
+          phase: resolved
+          payload:
+            request_type: request_user_input
+        - kind: request
+          phase: requested
+          payload:
+            request_type: confirm_command

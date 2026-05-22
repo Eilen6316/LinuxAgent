@@ -182,6 +182,7 @@ def _is_intent_router_response(text: str) -> bool:
         "COMMAND_PLAN",
         "CLARIFY",
         "WIZARD_NEEDED",
+        "REQUEST_USER_INPUT",
     }
 
 
