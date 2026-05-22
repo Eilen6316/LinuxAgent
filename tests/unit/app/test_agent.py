@@ -13,11 +13,21 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command, Interrupt
 
 from linuxagent.app import LinuxAgent
-from linuxagent.app.pending_requests import interrupt_request, resume_status_for_request
+from linuxagent.app.pending_requests import (
+    interrupt_request,
+    resume_status_for_replay_snapshot,
+    resume_status_for_request,
+)
 from linuxagent.audit import AuditLog
+from linuxagent.event_replay import RuntimeEventStore
 from linuxagent.graph.runtime import GraphInterrupt, GraphRuntime
 from linuxagent.interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
-from linuxagent.pending_request import PendingRequestType, build_pending_request
+from linuxagent.pending_request import (
+    PendingRequestType,
+    build_pending_request,
+    request_started_event,
+)
+from linuxagent.runtime_events import RuntimeEventKind, RuntimeEventPhase, runtime_event
 from linuxagent.services import (
     BackgroundJobRuntimeStatus,
     BackgroundJobSnapshot,
@@ -590,6 +600,30 @@ def test_resume_status_uses_pending_request_type() -> None:
     assert label == "resume.status.pending_patch"
 
 
+def test_resume_status_uses_replay_pending_request_snapshot() -> None:
+    request = build_pending_request(
+        turn_id="turn-1",
+        request_id="req-1",
+        request_type=PendingRequestType.REQUEST_USER_INPUT.value,
+    )
+    store = RuntimeEventStore()
+    store.record(
+        runtime_event(
+            thread_id="thread-1",
+            turn_id="turn-1",
+            kind=RuntimeEventKind.TURN,
+            phase=RuntimeEventPhase.STARTED,
+        )
+    )
+    store.record(request_started_event(thread_id="thread-1", request=request))
+
+    label = resume_status_for_replay_snapshot(
+        store.latest("thread-1"), translator=_FakeTranslator()
+    )
+
+    assert label == "resume.status.pending_request"
+
+
 async def test_run_turn_persists_pending_interrupt_history(tmp_path) -> None:
     chat_service = ChatService(tmp_path / "history.json", max_messages=10)
     graph = _FakeGraph(
@@ -1012,6 +1046,45 @@ async def test_resume_status_keeps_patch_and_confirm_labels(tmp_path) -> None:
     await agent.run(thread_id="cli")
 
     assert "pending patch" in ui.resume_sessions[0].label
+
+
+async def test_resume_selector_uses_replay_snapshot_when_interrupt_is_absent(tmp_path) -> None:
+    chat_service = ChatService(tmp_path / "history.json", max_messages=10)
+    chat_service.replace_session("saved-thread", [HumanMessage(content="need input")])
+    ui = _FakeUI(inputs=["/resume"])
+    ui.resume_selector_enabled = True
+    request = build_pending_request(
+        turn_id="turn-1",
+        request_id="req-1",
+        request_type=PendingRequestType.REQUEST_USER_INPUT.value,
+    )
+    store = RuntimeEventStore()
+    store.record(
+        runtime_event(
+            thread_id="saved-thread",
+            turn_id="turn-1",
+            kind=RuntimeEventKind.TURN,
+            phase=RuntimeEventPhase.STARTED,
+        )
+    )
+    store.record(request_started_event(thread_id="saved-thread", request=request))
+    runtime = GraphRuntime(
+        _FakeGraph([]),  # type: ignore[arg-type]
+        replay_snapshot_provider=store.latest,
+    )
+    agent = LinuxAgent(
+        graph_runtime=runtime,
+        ui=ui,
+        chat_service=chat_service,
+        command_service=_command_service(),
+        audit=AuditLog(tmp_path / "audit.log"),
+        context_manager=ContextManager(10),
+        monitoring_service=_FakeMonitoringService(),  # type: ignore[arg-type]
+    )
+
+    await agent.run(thread_id="cli")
+
+    assert "pending request" in ui.resume_sessions[0].label
 
 
 async def test_new_slash_command_resets_active_context(tmp_path) -> None:

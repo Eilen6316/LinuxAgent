@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool
 
 from ..audit import AuditLog
 from ..config.models import AppConfig
+from ..event_replay import TurnReplaySnapshot
 from ..graph import GraphDependencies, GraphRuntime, build_agent_graph
 from ..graph.agent_graph import AgentGraph
 from ..graph.checkpoint import PersistentMemorySaver
@@ -63,5 +64,10 @@ def build_graph(
 def build_graph_runtime(
     graph: AgentGraph,
     runtime_observer: Callable[[dict[str, Any]], Any] | None = None,
+    replay_snapshot_provider: Callable[[str], TurnReplaySnapshot | None] | None = None,
 ) -> GraphRuntime:
-    return GraphRuntime(graph, runtime_observer=runtime_observer)
+    return GraphRuntime(
+        graph,
+        runtime_observer=runtime_observer,
+        replay_snapshot_provider=replay_snapshot_provider,
+    )

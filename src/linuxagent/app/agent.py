@@ -17,7 +17,7 @@ from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
 from .output import print_assistant_response, print_user_input, start_working, update_pending_inputs
 from .pending_loop import run_pending_input_loop
-from .pending_requests import interrupt_request, resume_status_for_request
+from .pending_requests import resume_status_for_thread
 from .resume import (
     ResumeSessionItem,
     render_resumed_session,
@@ -258,11 +258,9 @@ class LinuxAgent:
         return items
 
     async def _resume_status(self, thread_id: str) -> str:
-        interrupts = await self.graph_runtime.pending_interrupts(thread_id=thread_id)
-        if not interrupts:
-            return ""
-        request = interrupt_request(interrupts[0], turn_id=thread_id)
-        return resume_status_for_request(request, translator=self.translator)
+        return await resume_status_for_thread(
+            self.graph_runtime, thread_id, translator=self.translator
+        )
 
     async def _resume_pending_work(self, thread_id: str) -> None:
         while True:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +11,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
+from ..event_replay import TurnReplaySnapshot
 from ..pending_request import (
     PendingRequest,
     pending_request_from_interrupt,
@@ -51,10 +52,15 @@ class GraphRuntime:
     """Wrap raw LangGraph APIs behind stable methods for the app layer."""
 
     def __init__(
-        self, graph: AgentGraph, *, runtime_observer: RuntimeEventObserver | None = None
+        self,
+        graph: AgentGraph,
+        *,
+        runtime_observer: RuntimeEventObserver | None = None,
+        replay_snapshot_provider: Callable[[str], TurnReplaySnapshot | None] | None = None,
     ) -> None:
         self._graph = graph
         self._runtime_observer = runtime_observer
+        self._replay_snapshot_provider = replay_snapshot_provider
 
     async def run(
         self,
@@ -108,6 +114,11 @@ class GraphRuntime:
             await self._snapshot(thread_id),
             turn_id=turn_id or thread_id,
         )
+
+    def latest_replay_snapshot(self, *, thread_id: str) -> TurnReplaySnapshot | None:
+        if self._replay_snapshot_provider is None:
+            return None
+        return self._replay_snapshot_provider(thread_id)
 
     async def history(self, *, thread_id: str) -> list[BaseMessage]:
         values = await self.values(thread_id=thread_id)

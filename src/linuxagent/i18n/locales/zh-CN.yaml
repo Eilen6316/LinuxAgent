@@ -81,6 +81,7 @@ resume:
     pending_wizard: "pending wizard"
     pending_patch: "pending patch"
     pending_confirm: "pending confirm"
+    pending_request: "pending request"
   role:
     human: "你"
     ai: "LinuxAgent"
