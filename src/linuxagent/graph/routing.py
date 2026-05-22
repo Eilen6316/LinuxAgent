@@ -40,15 +40,29 @@ def make_respond_refused_node(
     return respond_refused
 
 
-def make_respond_node(
+def make_response_builder_node(
     translator: Translator | None = None,
 ) -> Callable[[AgentState], Awaitable[AgentState]]:
     tr = translator or default_translator()
 
-    async def respond(state: AgentState) -> AgentState:
+    async def response_builder(state: AgentState) -> AgentState:
         if state.get("messages"):
             return {}
         return {"messages": [AIMessage(content=tr.t("graph.done"))]}
+
+    return response_builder
+
+
+def make_response_guard_node() -> Callable[[AgentState], Awaitable[AgentState]]:
+    async def response_guard(_state: AgentState) -> AgentState:
+        return {}
+
+    return response_guard
+
+
+def make_respond_node() -> Callable[[AgentState], Awaitable[AgentState]]:
+    async def respond(_state: AgentState) -> AgentState:
+        return {}
 
     return respond
 
@@ -59,6 +73,14 @@ async def respond_block_node(state: AgentState) -> AgentState:
 
 async def respond_refused_node(state: AgentState) -> AgentState:
     return await make_respond_refused_node()(state)
+
+
+async def response_builder_node(state: AgentState) -> AgentState:
+    return await make_response_builder_node()(state)
+
+
+async def response_guard_node(state: AgentState) -> AgentState:
+    return await make_response_guard_node()(state)
 
 
 async def respond_node(state: AgentState) -> AgentState:

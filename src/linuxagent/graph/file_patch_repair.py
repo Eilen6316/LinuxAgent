@@ -200,7 +200,9 @@ def _repair_success_command(
     plan: CommandPlan | FilePatchPlan | NoChangePlan,
 ) -> Command[Any]:
     if isinstance(plan, NoChangePlan):
-        return Command(goto="respond", update=_repair_no_change_update(current_trace_id, plan))
+        return Command(
+            goto="response_builder", update=_repair_no_change_update(current_trace_id, plan)
+        )
     if isinstance(plan, CommandPlan):
         return Command(
             goto="safety_check", update=_repair_command_update(state, current_trace_id, plan)

@@ -17,8 +17,23 @@ STATE_SECTIONS: tuple[StateSection, ...] = (
     StateSection(
         name="message/history",
         fields=("messages",),
-        producers=("app", "parse_intent", "analyze", "respond", "wizard", "file_patch"),
-        consumers=("app", "parse_intent", "wizard", "analyze", "respond"),
+        producers=(
+            "app",
+            "parse_intent",
+            "analyze",
+            "response_builder",
+            "wizard",
+            "file_patch",
+        ),
+        consumers=(
+            "app",
+            "parse_intent",
+            "wizard",
+            "analyze",
+            "response_builder",
+            "response_guard",
+            "respond",
+        ),
     ),
     StateSection(
         name="planning",
@@ -49,7 +64,7 @@ STATE_SECTIONS: tuple[StateSection, ...] = (
             "execute",
             "file_patch_confirm",
             "analyze",
-            "respond",
+            "response_builder",
         ),
     ),
     StateSection(
@@ -105,7 +120,14 @@ STATE_SECTIONS: tuple[StateSection, ...] = (
             "skip_command_repair",
         ),
         producers=("confirm", "execute", "file_patch_confirm", "repair_plan", "repair_file_patch"),
-        consumers=("execute", "routing", "repair_plan", "repair_file_patch", "analyze", "respond"),
+        consumers=(
+            "execute",
+            "routing",
+            "repair_plan",
+            "repair_file_patch",
+            "analyze",
+            "response_builder",
+        ),
     ),
     StateSection(
         name="audit correlation",

@@ -50,7 +50,7 @@ async def _user_input_request_node(state: AgentState) -> AgentState | Command[An
     }
     if result.status == "submit":
         return _submit_command(current_trace_id, request, result, state, update)
-    return Command(goto="respond", update=_non_submit_update(update, request, result))
+    return Command(goto="response_builder", update=_non_submit_update(update, request, result))
 
 
 def _submit_command(
@@ -99,7 +99,7 @@ def _request_cancel_command(
     }
     if request is not None:
         update["user_input_request"] = request.model_dump(mode="json")
-    return Command(goto="respond", update=update)
+    return Command(goto="response_builder", update=update)
 
 
 def _checkpoint_command(

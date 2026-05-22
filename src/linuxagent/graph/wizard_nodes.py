@@ -201,7 +201,7 @@ async def _wizard_non_submit_command(
         current_trace_id,
     )
     return Command(
-        goto="respond",
+        goto="response_builder",
         update={
             **update,
             "direct_response": True,
@@ -229,7 +229,7 @@ async def _planner_failed_update(
         sub_status=failed_reason,
     )
     return Command(
-        goto="respond",
+        goto="response_builder",
         update={
             "trace_id": current_trace_id,
             "wizard_attempted": True,
@@ -263,7 +263,7 @@ async def _wizard_refused_update(
 ) -> Command[Any]:
     record_wizard_event(audit, trace_id=current_trace_id, status=status, plan=plan, result=None)
     return Command(
-        goto="respond",
+        goto="response_builder",
         update={
             "trace_id": current_trace_id,
             "wizard_attempted": True,

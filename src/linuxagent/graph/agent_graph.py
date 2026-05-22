@@ -27,6 +27,8 @@ from .routing import (
     make_respond_block_node,
     make_respond_node,
     make_respond_refused_node,
+    make_response_builder_node,
+    make_response_guard_node,
     make_route_after_execute,
     route_after_file_patch_apply,
     route_after_parse,
@@ -167,7 +169,9 @@ def _add_execution_nodes(graph: Any, deps: GraphDependencies) -> None:
 
 
 def _add_response_nodes(graph: Any, deps: GraphDependencies) -> None:
-    graph.add_node("respond", _langgraph_node(make_respond_node(deps.translator)))
+    graph.add_node("response_builder", _langgraph_node(make_response_builder_node(deps.translator)))
+    graph.add_node("response_guard", _langgraph_node(make_response_guard_node()))
+    graph.add_node("respond", _langgraph_node(make_respond_node()))
     graph.add_node("respond_block", _langgraph_node(make_respond_block_node(deps.translator)))
     graph.add_node("respond_refused", _langgraph_node(make_respond_refused_node(deps.translator)))
 
@@ -201,7 +205,9 @@ def _add_graph_edges(graph: Any, deps: GraphDependencies) -> None:
         },
     )
     graph.add_edge("file_patch_verification", "safety_check")
-    graph.add_edge("analyze", "respond")
+    graph.add_edge("analyze", "response_builder")
+    graph.add_edge("response_builder", "response_guard")
+    graph.add_edge("response_guard", "respond")
     graph.add_edge("respond", END)
     graph.add_edge("respond_block", END)
     graph.add_edge("respond_refused", END)
@@ -210,7 +216,7 @@ def _add_graph_edges(graph: Any, deps: GraphDependencies) -> None:
 def _add_parse_edges(graph: Any) -> None:
     edges = {
         "PATCH_CONFIRM": "file_patch_confirm",
-        "RESPOND": "respond",
+        "RESPOND": "response_builder",
         "SAFETY": "safety_check",
         "USER_INPUT_REQUEST": "user_input",
         "WIZARD": "wizard",

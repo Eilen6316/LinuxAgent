@@ -538,6 +538,21 @@ def _wizard_submit_result() -> dict[str, Any]:
     }
 
 
+async def test_graph_routes_final_messages_through_response_boundary(tmp_path) -> None:
+    graph, _provider = _graph(tmp_path, [])
+
+    edges = {
+        (edge.source, edge.target, edge.data, edge.conditional) for edge in graph.get_graph().edges
+    }
+
+    assert ("parse_intent", "response_builder", "RESPOND", True) in edges
+    assert ("analyze", "response_builder", None, False) in edges
+    assert ("response_builder", "response_guard", None, False) in edges
+    assert ("response_guard", "respond", None, False) in edges
+    assert ("parse_intent", "respond", "RESPOND", True) not in edges
+    assert ("analyze", "respond", None, False) not in edges
+
+
 async def test_graph_interrupt_then_resume_executes(tmp_path) -> None:
     graph, provider = _graph(tmp_path, [command_plan_json("/bin/echo hi"), "analysis ok"])
     config = {"configurable": {"thread_id": "t1"}}
