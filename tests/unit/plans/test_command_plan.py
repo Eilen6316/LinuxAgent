@@ -159,6 +159,29 @@ def test_parse_command_plan_exposes_argv_error_code() -> None:
     assert exc_info.value.code is PlanParseErrorCode.ARGV_UNSAFE
 
 
+def test_parse_command_plan_prioritizes_argv_error_over_empty_filtered_commands() -> None:
+    payload = json.loads(command_plan_json("/bin/echo hi"))
+    payload["commands"] = [
+        {
+            "command": "find / -maxdepth 4 -type f -name linuxagent.yaml 2>/dev/null",
+            "purpose": "search config",
+            "read_only": True,
+            "target_hosts": [],
+        },
+        {
+            "command": "ls -la /root/.linuxagent 2>/dev/null; ls -la /etc/linuxagent",
+            "purpose": "check config dirs",
+            "read_only": True,
+            "target_hosts": [],
+        },
+    ]
+
+    with pytest.raises(CommandPlanParseError) as exc_info:
+        parse_command_plan(json.dumps(payload))
+
+    assert exc_info.value.code is PlanParseErrorCode.ARGV_UNSAFE
+
+
 def test_parse_no_change_plan_accepts_json_object() -> None:
     plan = parse_no_change_plan(
         json.dumps(

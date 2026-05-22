@@ -298,11 +298,12 @@ def _format_validation_error(exc: ValidationError, model_name: str = "CommandPla
 
 def _command_plan_error_code(exc: ValidationError) -> PlanParseErrorCode:
     for err in exc.errors():
-        if tuple(err.get("loc", ())) == ("commands",) and err.get("type") == "too_short":
-            return PlanParseErrorCode.EMPTY_COMMANDS
         ctx = err.get("ctx")
         if isinstance(ctx, dict) and isinstance(ctx.get("error"), ArgvUnsafeCommandError):
             return PlanParseErrorCode.ARGV_UNSAFE
+    for err in exc.errors():
+        if tuple(err.get("loc", ())) == ("commands",) and err.get("type") == "too_short":
+            return PlanParseErrorCode.EMPTY_COMMANDS
     return PlanParseErrorCode.INVALID_SCHEMA
 
 

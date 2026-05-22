@@ -64,3 +64,28 @@ async def test_retry_plan_or_error_reports_argv_retry_exhaustion() -> None:
     assert result["plan_error"] is not None
     assert "argv-safe" in str(result["plan_error"])
     assert len(provider.complete_messages) == 2
+
+
+async def test_retry_prompt_tells_model_to_split_shell_style_config_lookup() -> None:
+    bad = command_plan_json(
+        "ls -la /root/.linuxagent 2>/dev/null; ls -la /etc/linuxagent 2>/dev/null"
+    )
+    provider = _RetryProvider([bad, bad])
+    context = SimpleNamespace(
+        provider=provider,
+        planner_prompt=_Prompt(),
+        direct_answer_prompt=_Prompt(),
+        product_context="",
+        telemetry=None,
+        prompt_cache_key=None,
+        translator=Translator(LanguageCode.ZH_CN),
+        tools=(SimpleNamespace(name="read_file"),),
+    )
+    error = CommandPlanParseError("unsafe argv", code=PlanParseErrorCode.ARGV_UNSAFE)
+
+    await _retry_plan_or_error(context, [], "找一下linuxagent配置文件", "trace-1", error, bad)
+
+    retry_prompt = str(provider.complete_messages[0][-1].content)
+    assert "Do not add `2>/dev/null`" in retry_prompt
+    assert "put each check in its own CommandPlan.commands entry" in retry_prompt
+    assert "printenv LINUXAGENT_CONFIG" in retry_prompt

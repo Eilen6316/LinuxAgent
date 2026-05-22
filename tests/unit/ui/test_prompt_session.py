@@ -28,7 +28,7 @@ def test_prompt_session_manager_builds_dynamic_prompt(tmp_path) -> None:
     assert ("ansibrightmagenta", ">") in prompt()
 
 
-def test_prompt_session_manager_hides_prompt_while_activity_busy(tmp_path) -> None:
+def test_prompt_session_manager_keeps_prompt_visible_while_activity_busy(tmp_path) -> None:
     invalidations = 0
 
     class _FakeApp:
@@ -50,7 +50,8 @@ def test_prompt_session_manager_hides_prompt_while_activity_busy(tmp_path) -> No
     prompt = manager.dynamic_prompt(session)
     manager.set_activity_busy(True)
 
-    assert prompt() == []
+    assert ("bold ansibrightcyan", "linuxagent") in prompt()
+    assert ("ansibrightblack", ">") in prompt()
     assert invalidations == 1
 
     manager.set_activity_busy(False)

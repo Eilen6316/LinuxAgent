@@ -65,8 +65,6 @@ class PromptSessionManager:
         return prompt
 
     def build_prompt(self, current_text: str = "") -> list[tuple[str, str]]:
-        if self._activity_busy:
-            return []
         accent = "ansiblue" if self._theme == "light" else "ansibrightcyan"
         symbol_style = "ansibrightblack"
         if current_text.startswith("!"):

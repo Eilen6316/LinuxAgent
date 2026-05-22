@@ -720,7 +720,8 @@ async def test_console_print_activity_uses_transient_working_status(monkeypatch)
     await ui.print_activity("LinuxAgent 正在规划命令")
 
     assert ui._working_status is not None
-    assert ui._build_prompt() == []
+    assert ("bold ansibrightcyan", "linuxagent") in ui._build_prompt()
+    assert ("ansibrightblack", "❯") in ui._build_prompt()
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()

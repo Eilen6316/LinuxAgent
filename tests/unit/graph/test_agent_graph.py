@@ -3184,6 +3184,65 @@ async def test_graph_retries_command_plan_with_shell_syntax(tmp_path) -> None:
     assert "ps aux --sort=-%cpu | head -6" in retry_prompt
 
 
+async def test_graph_retries_linuxagent_config_lookup_with_shell_redirections(tmp_path) -> None:
+    bad = json.dumps(
+        {
+            "plan_type": "command_plan",
+            "goal": "查找 LinuxAgent 配置文件",
+            "commands": [
+                {
+                    "command": (
+                        "find / -maxdepth 4 -type f -name linuxagent.json -o "
+                        "-name linuxagent.yaml -o -name linuxagent.toml -o "
+                        "-name linuxagent.conf 2>/dev/null"
+                    ),
+                    "purpose": "搜索系统中可能存在的 LinuxAgent 配置文件",
+                    "read_only": True,
+                    "target_hosts": [],
+                    "background": False,
+                    "timeout_seconds": 15,
+                },
+                {
+                    "command": (
+                        "ls -la /root/.linuxagent 2>/dev/null; "
+                        "ls -la /root/.config/linuxagent 2>/dev/null; "
+                        "ls -la /etc/linuxagent 2>/dev/null"
+                    ),
+                    "purpose": "检查常见配置文件目录是否存在",
+                    "read_only": True,
+                    "target_hosts": [],
+                    "background": False,
+                    "timeout_seconds": 10,
+                },
+            ],
+            "risk_summary": "只读查找",
+            "preflight_checks": [],
+            "verification_commands": [],
+            "rollback_commands": [],
+            "requires_root": False,
+            "expected_side_effects": [],
+        },
+        ensure_ascii=False,
+    )
+    graph, provider = _graph(
+        tmp_path,
+        [bad, command_plan_json("printenv LINUXAGENT_CONFIG")],
+    )
+    config = {"configurable": {"thread_id": "linuxagent-config-lookup-retry"}}
+
+    await graph.ainvoke(
+        initial_state("找一下linuxagent配置文件", source=CommandSource.USER),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["pending_command"] == "printenv LINUXAGENT_CONFIG"
+    retry_prompt = str(provider.complete_messages[-1][-1].content)
+    assert "Do not add `2>/dev/null`" in retry_prompt
+    assert "printenv LINUXAGENT_CONFIG" in retry_prompt
+    assert _has_llm_call(provider, node="parse_intent", mode="planner_retry")
+
+
 async def test_graph_falls_back_after_repeated_argv_unsafe_plan(tmp_path) -> None:
     bad = command_plan_json("ls -la /tmp/*.sh /tmp/*.py 2>&1")
     graph, provider = _graph(tmp_path, [bad, bad, bad])

@@ -177,7 +177,13 @@ def _retry_intent_prompt(user_text: str, error: str, rejected_response: str, att
         "use pipes, redirects, command substitution, chaining, environment assignment "
         "prefixes, or shell-only glob expansion. For filename pattern matching, use a "
         "short pathlib-based `python3 -c` command or another executable that accepts "
-        "the pattern as argv. Output exactly one valid JSON object and nothing else."
+        "the pattern as argv. Do not add `2>/dev/null`; stderr is already captured "
+        "separately. Do not join multiple checks with `;`, `&&`, or `||`; put each "
+        "check in its own CommandPlan.commands entry. For LinuxAgent config lookup, "
+        "prefer checking the active documented paths directly, such as `printenv "
+        "LINUXAGENT_CONFIG`, `ls -l config.yaml`, and `ls -l "
+        "~/.config/linuxagent/config.yaml`, instead of scanning `/` first. Output "
+        "exactly one valid JSON object and nothing else."
     )
 
 
