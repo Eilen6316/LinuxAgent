@@ -183,6 +183,8 @@ graph:
   blocked: "Execution blocked: {reason}"
   refused: "Execution refused: {command}"
   done: "Operation completed."
+  response_guard_blocked: "Final response blocked: detected a command suggestion that violates the command safety policy ({reason})."
+  response_guard_injection_removed: "[removed unsafe tool-output instruction]"
   no_execution_result: "No execution result to analyze."
   background_started: "Background job started: {job_id}\nUse `/job {job_id}` to view progress and output, and `/job stop {job_id}` to stop it."
   no_change_evidence: "{answer}\n\nEvidence:\n{evidence}"

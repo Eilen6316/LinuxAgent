@@ -183,6 +183,8 @@ graph:
   blocked: "已阻止执行：{reason}"
   refused: "已拒绝执行：{command}"
   done: "操作已完成。"
+  response_guard_blocked: "已阻止最终回复：检测到违反命令安全策略的命令建议（{reason}）。"
+  response_guard_injection_removed: "[已移除不安全的工具输出指令]"
   no_execution_result: "没有执行结果可分析。"
   background_started: "后台任务已启动：{job_id}\n使用 `/job {job_id}` 查看进度和输出，使用 `/job stop {job_id}` 停止。"
   no_change_evidence: "{answer}\n\n依据：\n{evidence}"

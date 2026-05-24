@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage
 
 from ..i18n import Translator, default_translator
 from ..interfaces import SafetyLevel
+from ..response_guard import guard_response_text
 from .file_patch_nodes import should_repair_file_patch
 from .plan_steps import has_next_plan_step
 from .replanning import should_repair_plan
@@ -53,9 +54,28 @@ def make_response_builder_node(
     return response_builder
 
 
-def make_response_guard_node() -> Callable[[AgentState], Awaitable[AgentState]]:
-    async def response_guard(_state: AgentState) -> AgentState:
-        return {}
+def make_response_guard_node(
+    translator: Translator | None = None,
+) -> Callable[[AgentState], Awaitable[AgentState]]:
+    tr = translator or default_translator()
+
+    async def response_guard(state: AgentState) -> AgentState:
+        messages = state.get("messages") or []
+        last = messages[-1] if messages else None
+        if not isinstance(last, AIMessage) or not isinstance(last.content, str):
+            return {}
+        result = guard_response_text(
+            last.content,
+            injection_replacement=tr.t("graph.response_guard_injection_removed"),
+            blocked_response=lambda reason: tr.t(
+                "graph.response_guard_blocked",
+                reason=reason,
+            ),
+            translator=tr,
+        )
+        if not result.changed:
+            return {}
+        return {"messages": [AIMessage(content=result.text, id=last.id)]}
 
     return response_guard
 

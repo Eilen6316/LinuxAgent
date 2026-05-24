@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from langchain_core.messages import AIMessage
+
 from linuxagent.config.models import LanguageCode
 from linuxagent.graph.routing import (
     make_respond_block_node,
     make_respond_node,
     make_respond_refused_node,
     make_response_builder_node,
+    make_response_guard_node,
     respond_block_node,
     respond_node,
     respond_refused_node,
@@ -87,6 +90,44 @@ async def test_response_nodes_render_operator_messages() -> None:
     assert unchanged == {}
     assert guarded == {}
     assert terminal == {}
+
+
+async def test_response_guard_redacts_and_replaces_final_message_by_id() -> None:
+    message = AIMessage(content="token=sk-prodsecret1234567890", id="final-message")
+
+    guarded = await response_guard_node({"messages": [message]})
+
+    assert len(guarded["messages"]) == 1
+    replacement = guarded["messages"][0]
+    assert replacement.id == "final-message"
+    assert "sk-prodsecret" not in str(replacement.content)
+    assert "***redacted***" in str(replacement.content)
+
+
+async def test_response_guard_blocks_dangerous_command_suggestions() -> None:
+    message = AIMessage(
+        content="Run this:\n```bash\ncat /etc/shadow\n```",
+        id="final-message",
+    )
+
+    guarded = await response_guard_node({"messages": [message]})
+
+    replacement = guarded["messages"][0]
+    assert replacement.id == "final-message"
+    assert "已阻止最终回复" in str(replacement.content)
+    assert "访问敏感路径" in str(replacement.content)
+
+
+async def test_response_guard_renders_english_blocked_message() -> None:
+    translator = Translator(LanguageCode.EN_US)
+    message = AIMessage(content="Run `cat /etc/shadow`.", id="final-message")
+
+    guarded = await make_response_guard_node(translator)({"messages": [message]})
+
+    replacement = guarded["messages"][0]
+    assert replacement.id == "final-message"
+    assert "Final response blocked" in str(replacement.content)
+    assert "Sensitive path access" in str(replacement.content)
 
 
 async def test_response_nodes_can_render_english_operator_messages() -> None:

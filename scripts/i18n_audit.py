@@ -51,6 +51,16 @@ CHINESE_ALLOWLIST: tuple[AllowlistEntry, ...] = (
         pattern=r"未启用额外 LLM 工具",
         reason="model-visible product context is intentionally outside runtime i18n",
     ),
+    AllowlistEntry(
+        path="src/linuxagent/response_guard.py",
+        pattern=r"忽略(?:以上|之前|前面).*",
+        reason="prompt-injection detector pattern is not user-facing display text",
+    ),
+    AllowlistEntry(
+        path="src/linuxagent/response_guard.py",
+        pattern=r"泄露.*(?:系统提示|开发者消息|指令)",
+        reason="prompt-injection detector pattern is not user-facing display text",
+    ),
 )
 
 ENGLISH_REPORT_EXCLUDE_DIRS = {
