@@ -498,7 +498,9 @@ class Container:
 def _active_runtime_event(event: dict[str, Any]) -> bool:
     if event.get("schema_version") != 1:
         return False
-    return event.get("kind") in {"turn", "work_item", "request"}
+    if event.get("kind") in {"turn", "work_item", "request"}:
+        return True
+    return event.get("kind") == "status" and event.get("phase") == "usage"
 
 
 def _pending_input_safe_point(event: dict[str, Any]) -> bool:

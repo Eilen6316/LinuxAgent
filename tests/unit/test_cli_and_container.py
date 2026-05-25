@@ -28,7 +28,15 @@ from linuxagent.container import Container
 from linuxagent.i18n import Translator
 from linuxagent.policy.config_rules import PolicyConfigError
 from linuxagent.product_context import product_capability_context, slash_help
-from linuxagent.runtime_events import RuntimeWorker, WorkerStatus, worker_group_event
+from linuxagent.runtime_events import (
+    PlanItemStatus,
+    RuntimeEventPhase,
+    RuntimePlanItem,
+    RuntimeWorker,
+    WorkerStatus,
+    plan_legacy_event,
+    worker_group_event,
+)
 from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner, SandboxProfile
 from linuxagent.services import MonitoringAlert
 from linuxagent.tools import (
@@ -979,6 +987,24 @@ def test_worker_group_event_contract_builds_lifecycle_payload() -> None:
     assert event["total"] == 2
     assert event["workers"][0]["status"] == "queued"
     assert event["workers"][1]["goal"] == "read logs"
+
+
+def test_runtime_event_message_formats_plan_updates() -> None:
+    event = plan_legacy_event(
+        trace_id="trace-1",
+        phase=RuntimeEventPhase.UPDATED,
+        explanation="复杂任务",
+        items=(
+            RuntimePlanItem(step="收集上下文", status=PlanItemStatus.COMPLETED),
+            RuntimePlanItem(step="生成答案", status=PlanItemStatus.IN_PROGRESS),
+        ),
+    )
+    message = runtime_event_message(event)
+
+    assert message is not None
+    assert "已更新计划: 复杂任务" in message
+    assert "已完成 收集上下文" in message
+    assert "进行中 生成答案" in message
 
 
 def test_runtime_event_message_localizes_worker_group_item_keys() -> None:

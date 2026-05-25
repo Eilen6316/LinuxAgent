@@ -11,6 +11,7 @@ from linuxagent.interfaces import LLM_CALL_METADATA_KEY
 from linuxagent.llm_calls import LLMCallOptions, complete_llm, tool_provider_kwargs
 from linuxagent.runtime_control import CancellationToken, cancellation_scope
 from linuxagent.telemetry import TelemetryRecorder
+from linuxagent.turn_context import RuntimeTurnContext, turn_context_scope
 
 
 class _Usage:
@@ -83,6 +84,50 @@ async def test_complete_llm_omits_empty_prompt_cache_key(tmp_path) -> None:
     assert result == "ok"
     assert "prompt_cache_key" not in provider.kwargs
     assert provider.kwargs[LLM_CALL_METADATA_KEY]["trace_id"] == "trace-1"
+
+
+async def test_complete_llm_publishes_runtime_usage_event() -> None:
+    provider = _Provider()
+    events: list[dict[str, Any]] = []
+
+    with turn_context_scope(RuntimeTurnContext(thread_id="thread-1", turn_id="turn-1")):
+        await complete_llm(
+            provider,  # type: ignore[arg-type]
+            [],
+            telemetry=None,
+            trace_id="trace-1",
+            attributes={"node": "parse_intent", "mode": "planner"},
+            prompt_cache_key=None,
+            runtime_observer=events.append,
+        )
+
+    assert events == [
+        {
+            "schema_version": 1,
+            "event_id": events[0]["event_id"],
+            "thread_id": "thread-1",
+            "turn_id": "turn-1",
+            "kind": "status",
+            "phase": "usage",
+            "timestamp": events[0]["timestamp"],
+            "payload": {
+                "trace_id": "trace-1",
+                "usage": {
+                    "input_tokens": 20,
+                    "cached_input_tokens": 12,
+                    "output_tokens": 4,
+                    "reasoning_output_tokens": 1,
+                    "total_tokens": 24,
+                },
+                "attributes": {
+                    "node": "parse_intent",
+                    "mode": "planner",
+                    "llm.prompt_cache_supported": True,
+                    "llm.cache_hit": True,
+                },
+            },
+        }
+    ]
 
 
 async def test_complete_llm_does_not_pass_cancellation_token_to_plain_completion() -> None:

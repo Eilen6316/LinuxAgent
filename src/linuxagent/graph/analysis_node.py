@@ -50,6 +50,7 @@ def make_analyze_result_node(
                 trace_id=current_trace_id,
                 attributes={"node": "analyze", "mode": "analysis"},
                 prompt_cache_key=state.get("prompt_cache_key") or prompt_cache_key,
+                runtime_observer=runtime_observer,
             )
         except Exception:  # noqa: BLE001 - keep graph resilient when provider analysis fails
             analysis = result_context

@@ -17,6 +17,7 @@ from ..telemetry import TelemetryRecorder
 from .common import trace_id
 from .events import RuntimeEventObserver, notify_event
 from .llm_calls import complete_llm
+from .plan_progress import notify_command_plan_progress
 from .state import AgentState, reset_execution_for_pending_work, reset_safety_for_replan
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -72,6 +73,7 @@ def make_repair_plan_node(
                 current_trace_id,
                 telemetry,
                 cache_key,
+                runtime_observer,
             )
         except CommandPlanParseError as exc:
             return _repair_error(current_trace_id, str(exc))
@@ -79,7 +81,7 @@ def make_repair_plan_node(
             plan = _remove_successful_commands(plan, state)
         except CommandPlanParseError as exc:
             return _repair_error(current_trace_id, str(exc))
-        return {
+        update: AgentState = {
             "trace_id": current_trace_id,
             "pending_command": plan.primary.command,
             "command_plan": plan,
@@ -94,6 +96,8 @@ def make_repair_plan_node(
             **reset_safety_for_replan(),
             **reset_execution_for_pending_work(),
         }
+        await notify_command_plan_progress(runtime_observer, current_trace_id, update)
+        return update
 
     return repair_plan_node
 
@@ -105,6 +109,7 @@ async def _complete_valid_repair_plan(
     current_trace_id: str,
     telemetry: TelemetryRecorder | None,
     prompt_cache_key: str | None,
+    runtime_observer: RuntimeEventObserver | None,
 ) -> CommandPlan:
     error = ""
     rejected_response = ""
@@ -116,6 +121,7 @@ async def _complete_valid_repair_plan(
             current_trace_id,
             telemetry,
             prompt_cache_key,
+            runtime_observer,
             error,
             rejected_response,
         )
@@ -138,6 +144,7 @@ async def _complete_repair_plan(
     current_trace_id: str,
     telemetry: TelemetryRecorder | None,
     prompt_cache_key: str | None,
+    runtime_observer: RuntimeEventObserver | None,
     validation_error: str,
     rejected_response: str,
 ) -> str:
@@ -158,6 +165,7 @@ async def _complete_repair_plan(
             trace_id=current_trace_id,
             attributes={"node": "repair_plan", "mode": "command_repair"},
             prompt_cache_key=prompt_cache_key,
+            runtime_observer=runtime_observer,
         )
     ).strip()
 

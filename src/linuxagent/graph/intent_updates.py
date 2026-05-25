@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage
 from ..interfaces import CommandSource
 from ..plans import CommandPlan
 from .host_selection import selected_hosts_for_plan
+from .plan_progress import notify_command_plan_progress
 from .state import (
     AgentState,
     reset_planning_for_command_plan,
@@ -83,3 +84,11 @@ def last_message_text(messages: list[Any]) -> str:
     if not messages:
         return ""
     return str(messages[-1].content)
+
+
+async def notify_command_plan_items(context: Any, current_trace_id: str, state: AgentState) -> None:
+    await notify_command_plan_progress(
+        context.runtime_observer,
+        current_trace_id,
+        state,
+    )

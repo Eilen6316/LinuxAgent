@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from linuxagent.active_view import (
     ActivePendingRequestView,
+    ActiveTokenUsageView,
     ActiveTurnView,
     ActiveWorkItemView,
 )
@@ -172,3 +173,23 @@ def test_drops_resolved_pending_request_and_running_success_items() -> None:
 
 def test_idle_turn_has_no_history_summary() -> None:
     assert consolidate_turn_history(ActiveTurnView()) is None
+
+
+def test_consolidates_token_usage_summary() -> None:
+    summary = consolidate_turn_history(
+        ActiveTurnView(
+            thread_id="thread",
+            turn_id="turn",
+            status="completed",
+            token_usage=ActiveTokenUsageView(input_tokens=10, output_tokens=5, total_tokens=15),
+        )
+    )
+
+    assert summary is not None
+    assert summary.to_snapshot()["token_usage"] == {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 15,
+    }

@@ -57,6 +57,7 @@ class WorkItemCategory(StrEnum):
     """Visible runtime work item categories."""
 
     ACTIVITY = "activity"
+    PLAN = "plan"
     COMMAND = "command"
     COMMAND_BATCH = "command_batch"
     TOOL = "tool"
@@ -75,6 +76,30 @@ class WorkItemStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class PlanItemStatus(StrEnum):
+    """Visible checklist state for model/runtime task planning."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FINISHED = "finished"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class RuntimePlanItem(BaseModel):
+    """One checklist item in a visible runtime plan."""
+
+    model_config = ConfigDict(frozen=True)
+
+    step: str = Field(min_length=1)
+    status: PlanItemStatus
+
+    def to_payload(self) -> dict[str, Any]:
+        return self.model_dump(mode="json", exclude_none=True)
 
 
 class RuntimeEvent(BaseModel):
@@ -156,6 +181,7 @@ class RuntimeWorkItem(BaseModel):
     summary_key: str | None = None
     summary_params: dict[str, object] = Field(default_factory=dict)
     progress: WorkItemProgress | None = None
+    plan: tuple[RuntimePlanItem, ...] = ()
     result_preview: str | None = None
     reason: str | None = None
 
@@ -272,6 +298,102 @@ def context_runtime_event(
         phase=phase,
         payload=payload,
     )
+
+
+def plan_work_item_event(
+    *,
+    thread_id: str,
+    turn_id: str,
+    trace_id: str,
+    items: Iterable[RuntimePlanItem],
+    phase: RuntimeEventPhase | str = RuntimeEventPhase.UPDATED,
+    explanation: str | None = None,
+    parent_id: str | None = None,
+) -> RuntimeEvent:
+    """Build a Codex-style visible task checklist event."""
+
+    plan_items = tuple(items)
+    item = RuntimeWorkItem(
+        item_id=f"plan:{trace_id}",
+        category=WorkItemCategory.PLAN,
+        status=_plan_work_item_status(plan_items),
+        label_key="runtime.group.task_plan",
+        summary=_preview(explanation),
+        plan=plan_items,
+    )
+    return work_item_runtime_event(
+        thread_id=thread_id,
+        turn_id=turn_id,
+        item=item,
+        phase=phase,
+        parent_id=parent_id,
+    )
+
+
+class RuntimePlanEvent(BaseModel):
+    """Legacy-compatible runtime event for non-active UIs and harness assertions."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["plan"] = "plan"
+    phase: RuntimeEventPhase | str = RuntimeEventPhase.UPDATED
+    trace_id: str = Field(min_length=1)
+    explanation: str | None = None
+    plan: tuple[RuntimePlanItem, ...]
+
+    def to_event(self) -> dict[str, Any]:
+        return self.model_dump(mode="json", exclude_none=True)
+
+
+def plan_legacy_event(
+    *,
+    trace_id: str,
+    items: Iterable[RuntimePlanItem],
+    phase: RuntimeEventPhase | str = RuntimeEventPhase.UPDATED,
+    explanation: str | None = None,
+) -> dict[str, Any]:
+    event = RuntimePlanEvent(
+        trace_id=trace_id,
+        phase=phase,
+        explanation=_preview(explanation),
+        plan=tuple(items),
+    )
+    return event.to_event()
+
+
+def llm_usage_runtime_event(
+    *,
+    thread_id: str,
+    turn_id: str,
+    trace_id: str,
+    usage: Mapping[str, Any],
+    attributes: Mapping[str, Any] | None = None,
+) -> RuntimeEvent:
+    """Build a runtime status event for model token usage."""
+
+    payload = {
+        "trace_id": trace_id,
+        "usage": dict(usage),
+        "attributes": dict(attributes or {}),
+    }
+    return runtime_event(
+        thread_id=thread_id,
+        turn_id=turn_id,
+        kind=RuntimeEventKind.STATUS,
+        phase="usage",
+        payload=payload,
+    )
+
+
+def _plan_work_item_status(items: tuple[RuntimePlanItem, ...]) -> WorkItemStatus:
+    if any(item.status is PlanItemStatus.FAILED for item in items):
+        return WorkItemStatus.FAILED
+    if any(item.status is PlanItemStatus.CANCELLED for item in items):
+        return WorkItemStatus.CANCELLED
+    completed_statuses = {PlanItemStatus.COMPLETED, PlanItemStatus.FINISHED}
+    if items and all(item.status in completed_statuses for item in items):
+        return WorkItemStatus.COMPLETED
+    return WorkItemStatus.RUNNING
 
 
 class WorkerStatus(StrEnum):
@@ -460,7 +582,14 @@ def _worker_item_status(status: WorkerStatus) -> WorkItemStatus:
 def _legacy_event_kind(event_type: str) -> RuntimeEventKind:
     if event_type == "activity":
         return RuntimeEventKind.STATUS
-    if event_type in {"command", "command_batch", "worker_group", "agent_group", "background_job"}:
+    if event_type in {
+        "command",
+        "command_batch",
+        "plan",
+        "worker_group",
+        "agent_group",
+        "background_job",
+    }:
         return RuntimeEventKind.WORK_ITEM
     if event_type == "request":
         return RuntimeEventKind.REQUEST
@@ -531,6 +660,7 @@ def _tool_summary_params(event: Mapping[str, Any]) -> dict[str, object]:
 def _work_item_category(event_type: str) -> WorkItemCategory:
     categories = {
         "activity": WorkItemCategory.ACTIVITY,
+        "plan": WorkItemCategory.PLAN,
         "command": WorkItemCategory.COMMAND,
         "command_batch": WorkItemCategory.COMMAND_BATCH,
         "tool": WorkItemCategory.TOOL,

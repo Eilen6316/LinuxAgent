@@ -12,17 +12,54 @@ TerminalTurnStatus = Literal["idle", "running", "completed", "failed", "cancelle
 
 
 @dataclass(frozen=True)
+class ActivePlanItemView:
+    step: str
+    status: str
+
+    def to_snapshot(self) -> dict[str, str]:
+        return {"step": self.step, "status": self.status}
+
+
+@dataclass(frozen=True)
+class ActiveTokenUsageView:
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_output_tokens: int = 0
+    total_tokens: int = 0
+
+    def __add__(self, other: ActiveTokenUsageView) -> ActiveTokenUsageView:
+        return ActiveTokenUsageView(
+            input_tokens=self.input_tokens + other.input_tokens,
+            cached_input_tokens=self.cached_input_tokens + other.cached_input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            reasoning_output_tokens=(self.reasoning_output_tokens + other.reasoning_output_tokens),
+            total_tokens=self.total_tokens + other.total_tokens,
+        )
+
+    def to_snapshot(self) -> dict[str, int]:
+        return {
+            "input_tokens": self.input_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
+            "output_tokens": self.output_tokens,
+            "reasoning_output_tokens": self.reasoning_output_tokens,
+            "total_tokens": self.total_tokens,
+        }
+
+
+@dataclass(frozen=True)
 class ActiveWorkItemView:
     item_id: str
     category: str
     status: str
     label: str | None = None
     summary: str | None = None
+    plan: tuple[ActivePlanItemView, ...] = ()
     result_preview: str | None = None
     reason: str | None = None
 
     def to_snapshot(self) -> dict[str, Any]:
-        return _drop_none(
+        payload = _drop_none(
             {
                 "item_id": self.item_id,
                 "category": self.category,
@@ -33,6 +70,9 @@ class ActiveWorkItemView:
                 "reason": self.reason,
             }
         )
+        if self.plan:
+            payload["plan"] = [item.to_snapshot() for item in self.plan]
+        return payload
 
 
 @dataclass(frozen=True)
@@ -56,6 +96,7 @@ class ActiveTurnView:
     status: TerminalTurnStatus = "idle"
     items: tuple[ActiveWorkItemView, ...] = ()
     pending_request: ActivePendingRequestView | None = None
+    token_usage: ActiveTokenUsageView | None = None
 
     def to_snapshot(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -67,6 +108,8 @@ class ActiveTurnView:
         }
         if self.pending_request is not None:
             payload["pending_request"] = self.pending_request.to_snapshot()
+        if self.token_usage is not None:
+            payload["token_usage"] = self.token_usage.to_snapshot()
         return payload
 
 
@@ -80,6 +123,8 @@ def apply_event(view: ActiveTurnView, event: RuntimeEvent | dict[str, Any]) -> A
         return _apply_work_item_event(view, runtime_event)
     if runtime_event.kind is RuntimeEventKind.REQUEST:
         return _apply_request_event(view, runtime_event)
+    if runtime_event.kind is RuntimeEventKind.STATUS:
+        return _apply_status_event(view, runtime_event)
     return view
 
 
@@ -88,6 +133,8 @@ def render_active_view_summary(view: ActiveTurnView) -> list[str]:
 
     lines = [f"turn:{view.status}:{view.turn_id}"]
     lines.extend(_item_summary(item) for item in view.items)
+    if view.token_usage is not None:
+        lines.append(f"usage:{view.token_usage.total_tokens}")
     if view.pending_request is not None:
         request = view.pending_request
         lines.append(f"request:{request.status}:{request.request_type}:{request.request_id}")
@@ -123,6 +170,20 @@ def _apply_request_event(view: ActiveTurnView, event: RuntimeEvent) -> ActiveTur
     return replace(_ensure_turn(view, event), pending_request=request)
 
 
+def _apply_status_event(view: ActiveTurnView, event: RuntimeEvent) -> ActiveTurnView:
+    if event.phase != "usage":
+        return view
+    usage = _usage_from_payload(event.payload)
+    if usage is None:
+        return view
+    ensured = _ensure_turn(view, event)
+    accumulated = usage if ensured.token_usage is None else ensured.token_usage + usage
+    return replace(
+        ensured,
+        token_usage=accumulated,
+    )
+
+
 def _ensure_turn(view: ActiveTurnView, event: RuntimeEvent) -> ActiveTurnView:
     status = "running" if view.status == "idle" else view.status
     return replace(view, thread_id=event.thread_id, turn_id=event.turn_id, status=status)
@@ -149,6 +210,7 @@ def _work_item_from_payload(payload: dict[str, Any]) -> ActiveWorkItemView | Non
         status=status,
         label=_optional_str(payload.get("label") or payload.get("label_key")),
         summary=_optional_str(payload.get("summary") or payload.get("summary_key")),
+        plan=_plan_items(payload.get("plan")),
         result_preview=_optional_str(payload.get("result_preview")),
         reason=_optional_str(payload.get("reason")),
     )
@@ -161,6 +223,37 @@ def _request_from_payload(payload: dict[str, Any], phase: str) -> ActivePendingR
         return None
     status = _optional_str(payload.get("status")) or phase
     return ActivePendingRequestView(request_id=request_id, request_type=request_type, status=status)
+
+
+def _usage_from_payload(payload: dict[str, Any]) -> ActiveTokenUsageView | None:
+    raw = payload.get("usage")
+    if not isinstance(raw, dict):
+        return None
+    usage = ActiveTokenUsageView(
+        input_tokens=_optional_int(raw.get("input_tokens")) or 0,
+        cached_input_tokens=_optional_int(raw.get("cached_input_tokens")) or 0,
+        output_tokens=_optional_int(raw.get("output_tokens")) or 0,
+        reasoning_output_tokens=_optional_int(raw.get("reasoning_output_tokens")) or 0,
+        total_tokens=_optional_int(raw.get("total_tokens")) or 0,
+    )
+    if usage.to_snapshot() == ActiveTokenUsageView().to_snapshot():
+        return None
+    return usage
+
+
+def _plan_items(value: Any) -> tuple[ActivePlanItemView, ...]:
+    if not isinstance(value, list):
+        return ()
+    items: list[ActivePlanItemView] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        step = _optional_str(item.get("step"))
+        status = _optional_str(item.get("status"))
+        if step is None or status is None:
+            continue
+        items.append(ActivePlanItemView(step=step, status=status))
+    return tuple(items)
 
 
 def _runtime_event(event: RuntimeEvent | dict[str, Any]) -> RuntimeEvent | None:
@@ -189,6 +282,14 @@ def _optional_str(value: Any) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    return None
 
 
 def _drop_none(payload: dict[str, Any]) -> dict[str, Any]:

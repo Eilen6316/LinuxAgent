@@ -88,6 +88,9 @@ class IntentRouterContext(Protocol):
     @property
     def parallel_direct_answer_tasks(self) -> int: ...
 
+    @property
+    def runtime_observer(self) -> Any | None: ...
+
 
 async def _route_intent(
     context: IntentRouterContext,
@@ -108,6 +111,7 @@ async def _route_intent(
             trace_id=current_trace_id,
             attributes={"node": "parse_intent", "mode": "intent_router"},
             prompt_cache_key=context.prompt_cache_key,
+            runtime_observer=context.runtime_observer,
         )
     ).strip()
     return _parse_intent_decision(raw, max_parallel_tasks=context.parallel_direct_answer_tasks)

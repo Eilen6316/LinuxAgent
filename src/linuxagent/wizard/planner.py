@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from langchain_core.messages import BaseMessage
 
@@ -54,6 +55,7 @@ class WizardPlanner:
         telemetry: TelemetryRecorder | None = None,
         trace_id: str,
         prompt_cache_key: str | None,
+        runtime_observer: Callable[[dict[str, Any]], Any] | None = None,
     ) -> WizardPlannerOutcome:
         messages = build_wizard_planner_prompt().format_messages(
             chat_history=list(history or []),
@@ -67,6 +69,7 @@ class WizardPlanner:
                 trace_id=trace_id,
                 attributes={"node": "wizard_planner", "mode": "plan"},
                 prompt_cache_key=prompt_cache_key,
+                runtime_observer=runtime_observer,
             )
         except Exception as exc:
             _record_outcome(telemetry, trace_id, "provider_failed")

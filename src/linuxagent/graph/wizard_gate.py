@@ -127,6 +127,7 @@ async def _wizard_gate_response(
             trace_id=current_trace_id,
             attributes={"node": "parse_intent", "mode": "wizard_gate_response"},
             prompt_cache_key=context.prompt_cache_key,
+            runtime_observer=getattr(context, "runtime_observer", None),
         )
     except ProviderError:
         return ""

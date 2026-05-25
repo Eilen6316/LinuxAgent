@@ -16,8 +16,10 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 from prompt_toolkit.validation import ValidationError, Validator
 
+from ..active_view import ActiveTokenUsageView
 from ..i18n import Translator, default_translator
 from ..product_context import slash_commands
+from .working_status import token_usage_text
 
 _DIRECT_COMMAND_PROMPT_STYLE = "ansibrightmagenta"
 
@@ -40,6 +42,7 @@ class PromptSessionManager:
         self._cancel_event: Event | None = None
         self._cancel_reason_setter: Callable[[str], None] | None = None
         self._activity_busy = False
+        self._token_usage: ActiveTokenUsageView | None = None
         self._active_session: Any | None = None
 
     def set_cancel_event(
@@ -58,6 +61,12 @@ class PromptSessionManager:
         self._activity_busy = busy
         self._invalidate_active_session()
 
+    def set_token_usage(self, usage: ActiveTokenUsageView | None) -> None:
+        if usage == self._token_usage:
+            return
+        self._token_usage = usage
+        self._invalidate_active_session()
+
     def dynamic_prompt(self, session: Any) -> Callable[[], list[tuple[str, str]]]:
         def prompt() -> list[tuple[str, str]]:
             return self.build_prompt(session.default_buffer.text)
@@ -74,6 +83,7 @@ class PromptSessionManager:
             (f"bold {accent}", "linuxagent"),
             ("", " "),
             (symbol_style, self._prompt_symbol),
+            *_token_usage_prompt_fragments(self._token_usage, self._translator),
             ("", " "),
         ]
 
@@ -150,3 +160,15 @@ class _NonEmptyInputValidator:
         if document.text.strip():
             return
         raise ValidationError(cursor_position=0)
+
+
+def _token_usage_prompt_fragments(
+    usage: ActiveTokenUsageView | None,
+    translator: Translator,
+) -> list[tuple[str, str]]:
+    if usage is None:
+        return []
+    return [
+        ("", " "),
+        ("ansibrightblack", token_usage_text(usage, translator)),
+    ]

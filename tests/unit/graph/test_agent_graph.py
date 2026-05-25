@@ -48,6 +48,7 @@ class _FakeProvider:
         self.complete_kwargs: list[dict[str, Any]] = []
         self.complete_metadata: list[dict[str, Any]] = []
         self.last_usage = None
+        self.prompt_cache_supported = False
 
     async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
         self._record_call(messages, kwargs)
@@ -83,6 +84,27 @@ class _FakeProvider:
         self.complete_kwargs.append(dict(kwargs))
         self.complete_metadata.append(_llm_metadata(kwargs))
         self.complete_messages.append(messages)
+
+
+class _Usage:
+    def to_attributes(self) -> dict[str, int | bool]:
+        return {
+            "llm.input_tokens": 100,
+            "llm.cached_input_tokens": 20,
+            "llm.output_tokens": 10,
+            "llm.reasoning_output_tokens": 5,
+            "llm.total_tokens": 110,
+            "llm.cache_hit": True,
+        }
+
+
+class _UsageProvider(_FakeProvider):
+    prompt_cache_supported = True
+
+    async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
+        response = await super().complete(messages, **kwargs)
+        self.last_usage = _Usage()
+        return response
 
 
 class _ScriptedToolProvider(_FakeProvider):
@@ -263,8 +285,9 @@ def _graph(
     telemetry: TelemetryRecorder | None = None,
     product_context: str = "",
     operating_manifest: str = "",
+    provider_factory: Any = _FakeProvider,
 ):
-    provider = _FakeProvider(responses)
+    provider = provider_factory(responses)
     executor = LinuxCommandExecutor(
         security_config or SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
     )
@@ -2609,6 +2632,38 @@ async def test_graph_answers_daily_question_without_command_panel(tmp_path) -> N
     assert snapshot.values["direct_response"] is True
 
 
+async def test_graph_publishes_llm_usage_runtime_events(tmp_path) -> None:
+    events: list[dict[str, Any]] = []
+    graph, _provider = _graph(
+        tmp_path,
+        [
+            _router_response("DIRECT_ANSWER", "router supplied direct answer"),
+            _direct_answer_review_response(),
+        ],
+        runtime_observer=events.append,
+        provider_factory=_UsageProvider,
+    )
+    runtime = GraphRuntime(graph, runtime_observer=events.append)
+
+    await runtime.run(
+        initial_state("一个概念问题", source=CommandSource.USER),
+        thread_id="usage-events",
+        turn_id="turn-usage-events",
+    )
+
+    usage_events = [
+        event for event in events if event.get("kind") == "status" and event.get("phase") == "usage"
+    ]
+    assert usage_events
+    assert usage_events[0]["payload"]["usage"] == {
+        "input_tokens": 100,
+        "cached_input_tokens": 20,
+        "output_tokens": 10,
+        "reasoning_output_tokens": 5,
+        "total_tokens": 110,
+    }
+
+
 async def test_graph_answers_howto_without_command_panel(tmp_path) -> None:
     graph, _provider = _graph(
         tmp_path,
@@ -2714,6 +2769,16 @@ async def test_graph_runs_parallel_direct_answer_tasks(tmp_path) -> None:
         "finished",
     ]
     assert _llm_call_count(provider, node="parse_intent", mode="parallel_direct_answer") == 2
+    plan_events = [event for event in events if event.get("type") == "plan"]
+    assert len(plan_events) == 2
+    assert [item["status"] for item in plan_events[0]["plan"]] == [
+        "in_progress",
+        "in_progress",
+    ]
+    assert [item["status"] for item in plan_events[-1]["plan"]] == [
+        "completed",
+        "completed",
+    ]
     assert provider.tool_calls == 0
     snapshot = await graph.aget_state(config)
     assert snapshot.values.get("pending_command") is None
@@ -3405,33 +3470,57 @@ async def test_graph_artifact_requests_follow_planner_not_fixed_diagnostics(tmp_
 
 
 async def test_graph_continues_multi_command_llm_plan_after_confirmation(tmp_path) -> None:
+    events: list[dict[str, Any]] = []
     graph, provider = _graph(
         tmp_path,
         [_multi_command_plan_json(["/bin/echo install", "/bin/echo verify"]), "analysis ok"],
+        runtime_observer=events.append,
     )
-    config = {"configurable": {"thread_id": "llm-plan-continue"}}
+    runtime = GraphRuntime(graph, runtime_observer=events.append)
+    thread_id = "llm-plan-continue"
+    turn_id = "turn-llm-plan-continue"
+    config = {"configurable": {"thread_id": thread_id}}
 
-    await graph.ainvoke(
-        initial_state("install and verify demo", source=CommandSource.USER), config=config
+    first = await runtime.run(
+        initial_state("install and verify demo", source=CommandSource.USER),
+        thread_id=thread_id,
+        turn_id=turn_id,
     )
-    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+    assert first.interrupts[0].legacy_payload["command"] == "/bin/echo install"
+    second = await runtime.resume(
+        {"decision": "yes", "latency_ms": 1},
+        thread_id=thread_id,
+        turn_id=turn_id,
+    )
     snapshot = await graph.aget_state(config)
 
+    assert second.interrupts[0].legacy_payload["command"] == "/bin/echo verify"
     assert snapshot.tasks[0].interrupts[0].value["command"] == "/bin/echo verify"
     assert snapshot.values["command_source"] is CommandSource.LLM
-    resumed = await graph.ainvoke(
-        Command(resume={"decision": "yes", "latency_ms": 1}), config=config
+    resumed = await runtime.resume(
+        {"decision": "yes", "latency_ms": 1},
+        thread_id=thread_id,
+        turn_id=turn_id,
     )
 
     snapshot = await graph.aget_state(config)
     results = snapshot.values["plan_results"]
     assert not snapshot.tasks
     assert [result.command for result in results] == ["/bin/echo install", "/bin/echo verify"]
-    assert "analysis ok" in str(resumed["messages"][-1].content)
+    assert "analysis ok" in str(resumed.state["messages"][-1].content)
     analysis_prompt = str(provider.complete_messages[-1][-1].content)
     assert "Command step results" in analysis_prompt
     assert "/bin/echo install" in analysis_prompt
     assert "/bin/echo verify" in analysis_prompt
+    plan_events = [event for event in events if event.get("type") == "plan"]
+    assert [item["status"] for item in plan_events[0]["plan"]] == [
+        "in_progress",
+        "pending",
+    ]
+    assert [item["status"] for item in plan_events[-1]["plan"]] == [
+        "completed",
+        "completed",
+    ]
 
 
 async def test_graph_continues_multi_command_plan_after_failed_step(tmp_path) -> None:

@@ -16,7 +16,12 @@ from rich.console import Console
 
 import linuxagent.ui.console as console_module
 from linuxagent import __version__
-from linuxagent.active_view import ActiveTurnView, ActiveWorkItemView
+from linuxagent.active_view import (
+    ActivePlanItemView,
+    ActiveTokenUsageView,
+    ActiveTurnView,
+    ActiveWorkItemView,
+)
 from linuxagent.config.models import LanguageCode
 from linuxagent.i18n import Translator
 from linuxagent.interfaces import ExecutionResult
@@ -938,6 +943,76 @@ async def test_console_print_active_view_renders_work_items(monkeypatch) -> None
     assert "分类意图" in rendered
     assert "读取文件" in rendered
     assert "/LinuxAgent/.work/plan/PlanC.md" in rendered
+    ui.clear_activity()
+
+
+async def test_console_print_active_view_renders_plan_and_token_usage(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread",
+            turn_id="turn",
+            status="running",
+            token_usage=ActiveTokenUsageView(
+                input_tokens=12000,
+                output_tokens=1700,
+                total_tokens=13700,
+            ),
+            items=(
+                ActiveWorkItemView(
+                    item_id="plan:trace",
+                    category="plan",
+                    status="running",
+                    label="runtime.group.task_plan",
+                    summary="复杂任务",
+                    plan=(
+                        ActivePlanItemView("收集上下文", "completed"),
+                        ActivePlanItemView("生成答案", "in_progress"),
+                    ),
+                ),
+            ),
+        )
+    )
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert Translator(LanguageCode.ZH_CN).t("runtime.group.task_plan") in rendered
+    assert "复杂任务" in rendered
+    assert "✓ 收集上下文" in rendered
+    assert "□ 生成答案" in rendered
+    assert "↓ 13.7k tokens" in rendered
+    ui.clear_activity()
+
+
+async def test_console_keeps_token_usage_visible_after_terminal_active_view(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread",
+            turn_id="turn",
+            status="completed",
+            token_usage=ActiveTokenUsageView(
+                input_tokens=12000,
+                output_tokens=1700,
+                total_tokens=13700,
+            ),
+        )
+    )
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "↓ 13.7k tokens" in rendered
+    assert any("↓ 13.7k tokens" in fragment for _style, fragment in ui._build_prompt())
     ui.clear_activity()
 
 

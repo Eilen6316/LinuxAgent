@@ -6,9 +6,11 @@ from datetime import UTC, datetime
 
 from linuxagent.runtime_events import (
     MAX_RESULT_PREVIEW_CHARS,
+    PlanItemStatus,
     RuntimeEvent,
     RuntimeEventKind,
     RuntimeEventPhase,
+    RuntimePlanItem,
     RuntimeWorker,
     RuntimeWorkItem,
     WorkerStatus,
@@ -17,6 +19,9 @@ from linuxagent.runtime_events import (
     context_runtime_event,
     legacy_runtime_event,
     legacy_work_item_event,
+    llm_usage_runtime_event,
+    plan_legacy_event,
+    plan_work_item_event,
     runtime_event,
     work_item_runtime_event,
     worker_lifecycle_events,
@@ -188,6 +193,59 @@ def test_worker_lifecycle_events_map_queued_workers_to_spawned() -> None:
     worker = events[1].to_event()
     assert worker["phase"] == "spawned"
     assert worker["payload"]["status"] == "queued"
+
+
+def test_plan_work_item_event_builds_checklist_payload() -> None:
+    event = plan_work_item_event(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        trace_id="trace-1",
+        explanation="complex task",
+        items=(
+            RuntimePlanItem(step="inspect state", status=PlanItemStatus.COMPLETED),
+            RuntimePlanItem(step="write answer", status=PlanItemStatus.IN_PROGRESS),
+        ),
+    )
+
+    payload = event.to_event()["payload"]
+    assert payload["item_id"] == "plan:trace-1"
+    assert payload["category"] == "plan"
+    assert payload["status"] == "running"
+    assert payload["summary"] == "complex task"
+    assert payload["plan"] == [
+        {"step": "inspect state", "status": "completed"},
+        {"step": "write answer", "status": "in_progress"},
+    ]
+
+
+def test_plan_legacy_event_builds_non_active_ui_message_payload() -> None:
+    event = plan_legacy_event(
+        trace_id="trace-1",
+        items=(RuntimePlanItem(step="task", status=PlanItemStatus.PENDING),),
+    )
+
+    assert event == {
+        "type": "plan",
+        "phase": "updated",
+        "trace_id": "trace-1",
+        "plan": [{"step": "task", "status": "pending"}],
+    }
+
+
+def test_llm_usage_runtime_event_builds_status_payload() -> None:
+    event = llm_usage_runtime_event(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        trace_id="trace-1",
+        usage={"total_tokens": 42},
+        attributes={"node": "parse_intent"},
+    )
+
+    payload = event.to_event()
+    assert payload["kind"] == "status"
+    assert payload["phase"] == "usage"
+    assert payload["payload"]["usage"] == {"total_tokens": 42}
+    assert payload["payload"]["attributes"] == {"node": "parse_intent"}
 
 
 def test_legacy_work_item_event_maps_worker_group_progress() -> None:

@@ -9,7 +9,17 @@ from langchain_core.messages import AIMessage, BaseMessage
 
 from ..interfaces import CommandSource
 from ..providers.errors import ProviderError
-from ..runtime_events import RuntimeWorker, WorkerStatus, worker_group_event
+from ..runtime_events import (
+    PlanItemStatus,
+    RuntimeEventPhase,
+    RuntimePlanItem,
+    RuntimeWorker,
+    WorkerStatus,
+    plan_legacy_event,
+    plan_work_item_event,
+    worker_group_event,
+)
+from ..turn_context import current_turn_context
 from .direct_answer import DirectAnswerContext, _complete_direct_answer
 from .events import RuntimeEventObserver, notify_event
 from .intent_router import ParallelDirectTask
@@ -38,10 +48,12 @@ async def complete_parallel_direct_answer(
     tasks: tuple[ParallelDirectTask, ...],
     router_answer: str,
 ) -> AgentState:
+    await _notify_parallel_direct_plan(runtime_observer, current_trace_id, tasks, ())
     await _notify_parallel_direct(runtime_observer, current_trace_id, WorkerStatus.RUNNING, tasks)
     results = await asyncio.gather(
         *(_complete_parallel_task(context, messages, current_trace_id, task) for task in tasks)
     )
+    await _notify_parallel_direct_plan(runtime_observer, current_trace_id, tasks, tuple(results))
     await _notify_parallel_direct_results(runtime_observer, current_trace_id, tuple(results))
     return _parallel_direct_response_update(
         current_trace_id,
@@ -117,6 +129,48 @@ async def _notify_parallel_direct_results(
             workers=workers,
         ),
     )
+
+
+async def _notify_parallel_direct_plan(
+    observer: RuntimeEventObserver | None,
+    trace_id: str,
+    tasks: tuple[ParallelDirectTask, ...],
+    results: tuple[ParallelDirectResult, ...],
+) -> None:
+    result_by_id = {result.task.id: result for result in results}
+    plan_items = tuple(
+        RuntimePlanItem(
+            step=task.goal,
+            status=_plan_status_for_task(task, result_by_id),
+        )
+        for task in tasks
+    )
+    turn = current_turn_context()
+    if turn is not None:
+        await notify_event(
+            observer,
+            plan_work_item_event(
+                thread_id=turn.thread_id,
+                turn_id=turn.turn_id,
+                trace_id=trace_id,
+                phase=RuntimeEventPhase.UPDATED,
+                items=plan_items,
+            ).to_event(),
+        )
+    await notify_event(
+        observer,
+        plan_legacy_event(trace_id=trace_id, phase=RuntimeEventPhase.UPDATED, items=plan_items),
+    )
+
+
+def _plan_status_for_task(
+    task: ParallelDirectTask,
+    result_by_id: dict[str, ParallelDirectResult],
+) -> PlanItemStatus:
+    result = result_by_id.get(task.id)
+    if result is None:
+        return PlanItemStatus.IN_PROGRESS
+    return PlanItemStatus.COMPLETED if result.succeeded else PlanItemStatus.FAILED
 
 
 def _parallel_direct_workers(

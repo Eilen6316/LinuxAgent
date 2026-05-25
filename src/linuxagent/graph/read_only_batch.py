@@ -9,7 +9,11 @@ from ..interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResu
 from ..plans import PlannedCommand
 from ..policy.argv import any_command_permission_matches
 from ..policy.capabilities import UNSAFE_BATCH_CAPABILITY_PREFIXES
-from ..runtime_events import RuntimeWorker, WorkerStatus, worker_group_event
+from ..runtime_events import (
+    RuntimeWorker,
+    WorkerStatus,
+    worker_group_event,
+)
 from ..services import CommandService
 from ..telemetry import TelemetryRecorder
 from .common import span
@@ -20,6 +24,7 @@ from .execution import (
     run_command,
     synthetic_result,
 )
+from .plan_progress import notify_command_plan_progress
 from .state import AgentState
 from .worker_events import notify_worker_lifecycle
 
@@ -67,7 +72,9 @@ async def execute_parallel_read_only_batch(
         await notify_command_result(runtime_observer, current_trace_id, result)
     await _notify_parallel_agent_results(runtime_observer, current_trace_id, results)
     await _notify_batch(runtime_observer, current_trace_id, "finish", commands)
-    return _parallel_batch_update(state, batch_steps, results, runtime_observer, current_trace_id)
+    update = _parallel_batch_update(state, batch_steps, results, runtime_observer, current_trace_id)
+    await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
+    return update
 
 
 def parallel_read_only_batch(

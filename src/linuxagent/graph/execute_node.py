@@ -19,6 +19,7 @@ from .execution import (
     run_command,
     synthetic_result,
 )
+from .plan_progress import notify_command_plan_progress
 from .read_only_batch import (
     execute_parallel_read_only_batch,
     parallel_read_only_batch,
@@ -127,7 +128,9 @@ async def _execute_single_command(
         result = synthetic_result(command, 1, "", str(exc))
     await record_command_execution(audit, state, result, current_trace_id)
     await notify_command_result(runtime_observer, current_trace_id, result)
-    return _single_command_update(state, result, runtime_observer, current_trace_id)
+    update = _single_command_update(state, result, runtime_observer, current_trace_id)
+    await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
+    return update
 
 
 async def _start_background_command(
@@ -142,15 +145,19 @@ async def _start_background_command(
         result = synthetic_result(command, 1, "", "background jobs are not available")
         await record_command_execution(audit, state, result, current_trace_id)
         await notify_command_result(runtime_observer, current_trace_id, result)
-        return _single_command_update(state, result, runtime_observer, current_trace_id)
+        update = _single_command_update(state, result, runtime_observer, current_trace_id)
+        await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
+        return update
     if state.get("selected_hosts") or state.get("batch_hosts"):
         result = synthetic_result(command, 1, "", "background jobs do not support remote targets")
         await record_command_execution(audit, state, result, current_trace_id)
         await notify_command_result(runtime_observer, current_trace_id, result)
-        return {
+        update = {
             **_single_command_update(state, result, runtime_observer, current_trace_id),
             "skip_command_repair": True,
         }
+        await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
+        return update
     step = _current_plan_step(state)
     try:
         snapshot = await background_jobs.start(
@@ -162,10 +169,12 @@ async def _start_background_command(
         result = synthetic_result(command, 1, "", str(exc))
         await record_command_execution(audit, state, result, current_trace_id)
         await notify_command_result(runtime_observer, current_trace_id, result)
-        return {
+        update = {
             **_single_command_update(state, result, runtime_observer, current_trace_id),
             "skip_command_repair": True,
         }
+        await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
+        return update
     result = synthetic_result(
         command,
         0,
@@ -174,10 +183,12 @@ async def _start_background_command(
     )
     await record_command_execution(audit, state, result, current_trace_id)
     await notify_command_result(runtime_observer, current_trace_id, result)
-    return {
+    update = {
         **_single_command_update(state, result, runtime_observer, current_trace_id),
         "background_job_id": snapshot.job_id,
     }
+    await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
+    return update
 
 
 def _current_step_background(state: AgentState) -> bool:

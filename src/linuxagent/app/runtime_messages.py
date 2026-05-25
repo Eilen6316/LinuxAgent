@@ -63,6 +63,8 @@ def runtime_event_message(
         return _command_event_message(phase, event, tr)
     if event_type == "command_batch":
         return _command_batch_event_message(phase, event, tr)
+    if event_type == "plan":
+        return _plan_event_message(event, tr)
     if event_type in {"worker_group", "agent_group"}:
         return _worker_group_event_message(event, tr)
     if event_type == "background_job":
@@ -111,6 +113,35 @@ def _worker_group_event_message(event: dict[str, Any], translator: Translator) -
     if remaining > 0:
         lines.append(f"  - {translator.t('runtime.agent_group_more', count=remaining)}")
     return "\n".join(lines)
+
+
+def _plan_event_message(event: dict[str, Any], translator: Translator) -> str | None:
+    items = _plan_items(event)
+    if not items:
+        return None
+    title = translator.t("runtime.plan.updated")
+    explanation = str(event.get("explanation") or "").strip()
+    lines = [title if not explanation else f"{title}: {explanation}"]
+    for item in items[:_WORKER_ITEMS]:
+        step = _trim_agent_detail(str(item.get("step") or "").strip())
+        status = _plan_status_text(str(item.get("status") or "pending"), translator)
+        lines.append(f"  - {status} {step}".rstrip())
+    remaining = len(items) - _WORKER_ITEMS
+    if remaining > 0:
+        lines.append(f"  - {translator.t('runtime.agent_group_more', count=remaining)}")
+    return "\n".join(lines)
+
+
+def _plan_items(event: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    return _event_items(event.get("plan"))
+
+
+def _plan_status_text(status: str, translator: Translator) -> str:
+    key = f"runtime.plan.status.{status}"
+    try:
+        return translator.t(key)
+    except CatalogError:
+        return status
 
 
 def _worker_group_title(event: dict[str, Any], translator: Translator) -> str:

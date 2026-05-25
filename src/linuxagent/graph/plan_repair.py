@@ -53,6 +53,9 @@ class PlanRepairContext(Protocol):
     @property
     def tools(self) -> tuple[Any, ...]: ...
 
+    @property
+    def runtime_observer(self) -> Any | None: ...
+
 
 async def _recover_plan_parse_error(
     context: PlanRepairContext,
@@ -77,6 +80,7 @@ async def _recover_plan_parse_error(
             context.telemetry,
             context.product_context,
             context.prompt_cache_key,
+            getattr(context, "runtime_observer", None),
         )
     if not context.tools:
         return _parse_error_update(current_trace_id, str(error))
@@ -121,6 +125,7 @@ async def _retry_plan_or_error(
         rejected_response,
         context.telemetry,
         context.prompt_cache_key,
+        getattr(context, "runtime_observer", None),
     )
     if isinstance(retry_plan, CommandPlan | DirectAnswerPlan | FilePatchPlan | NoChangePlan):
         return retry_plan
@@ -135,6 +140,7 @@ async def _retry_plan_or_error(
             context.telemetry,
             context.product_context,
             context.prompt_cache_key,
+            getattr(context, "runtime_observer", None),
         )
     if _should_retry_parse_error(error):
         return _parse_error_update(
@@ -204,6 +210,7 @@ async def _retry_command_plan(
     rejected_response: str,
     telemetry: TelemetryRecorder | None,
     prompt_cache_key: str | None,
+    runtime_observer: Any | None,
 ) -> PlannedWork | str:
     current_error = error
     current_response = rejected_response
@@ -220,6 +227,7 @@ async def _retry_command_plan(
             attempt,
             telemetry,
             prompt_cache_key,
+            runtime_observer,
         )
         try:
             return _parse_planned_work(retry_proposed)
@@ -252,6 +260,7 @@ async def _complete_retry_plan(
     attempt: int,
     telemetry: TelemetryRecorder | None,
     prompt_cache_key: str | None,
+    runtime_observer: Any | None,
 ) -> str:
     retry_messages = prompt.format_messages(
         chat_history=messages[:-1],
@@ -271,5 +280,6 @@ async def _complete_retry_plan(
                 "attempt": attempt,
             },
             prompt_cache_key=prompt_cache_key,
+            runtime_observer=runtime_observer,
         )
     ).strip()

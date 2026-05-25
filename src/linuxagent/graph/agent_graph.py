@@ -143,7 +143,7 @@ def _add_execution_nodes(graph: Any, deps: GraphDependencies) -> None:
             )
         ),
     )
-    graph.add_node("advance_plan", _langgraph_node(make_advance_plan_node()))
+    graph.add_node("advance_plan", _langgraph_node(make_advance_plan_node(deps.runtime_observer)))
     graph.add_node(
         "repair_plan",
         _langgraph_node(

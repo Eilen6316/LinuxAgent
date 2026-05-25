@@ -76,6 +76,7 @@ async def _complete_plan_candidate(
                 trace_id=current_trace_id,
                 attributes={"node": "parse_intent", "mode": "planner"},
                 prompt_cache_key=context.prompt_cache_key,
+                runtime_observer=context.runtime_observer,
             )
         ).strip(), None
     try:
@@ -124,6 +125,7 @@ async def _plan_gate(
                 trace_id=current_trace_id,
                 attributes={"node": "parse_intent", "mode": "planner_gate"},
                 prompt_cache_key=context.prompt_cache_key,
+                runtime_observer=context.runtime_observer,
             )
         ).strip()
     except ProviderError:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..interfaces import CommandSource
+from ..runtime_events import PlanItemStatus, RuntimePlanItem
 from .state import AgentState
 
 
@@ -35,3 +36,24 @@ def next_plan_step_update(state: AgentState) -> AgentState:
         "user_confirmed": False,
         "audit_id": None,
     }
+
+
+def command_plan_items(state: AgentState) -> tuple[RuntimePlanItem, ...]:
+    plan = state.get("command_plan")
+    if plan is None:
+        return ()
+    current_index = state.get("plan_step_index", 0)
+    start_index = state.get("plan_result_start_index", 0)
+    results = state.get("plan_results", ())[start_index:]
+    items: list[RuntimePlanItem] = []
+    for index, step in enumerate(plan.commands):
+        if index < len(results):
+            status = (
+                PlanItemStatus.COMPLETED if results[index].exit_code == 0 else PlanItemStatus.FAILED
+            )
+        elif index == current_index:
+            status = PlanItemStatus.IN_PROGRESS
+        else:
+            status = PlanItemStatus.PENDING
+        items.append(RuntimePlanItem(step=step.purpose or step.command, status=status))
+    return tuple(items)

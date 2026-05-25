@@ -68,6 +68,7 @@ async def _complete_direct_answer(
             trace_id=current_trace_id,
             attributes={"node": "parse_intent", "mode": mode},
             prompt_cache_key=context.prompt_cache_key,
+            runtime_observer=getattr(context, "runtime_observer", None),
         )
     ).strip()
 
@@ -100,6 +101,7 @@ async def _review_direct_answer(
                 trace_id=current_trace_id,
                 attributes={"node": "parse_intent", "mode": "direct_answer_review"},
                 prompt_cache_key=context.prompt_cache_key,
+                runtime_observer=getattr(context, "runtime_observer", None),
             )
         ).strip()
     except ProviderError:
@@ -140,6 +142,7 @@ async def _fallback_direct_answer(
     telemetry: TelemetryRecorder | None,
     product_context: str,
     prompt_cache_key: str | None,
+    runtime_observer: Any | None = None,
 ) -> AgentState:
     prompt_messages = direct_answer_prompt.format_messages(
         chat_history=messages[:-1],
@@ -161,6 +164,7 @@ async def _fallback_direct_answer(
             trace_id=current_trace_id,
             attributes={"node": "parse_intent", "fallback": "direct_answer"},
             prompt_cache_key=prompt_cache_key,
+            runtime_observer=runtime_observer,
         )
     ).strip()
     return _direct_response_update(current_trace_id, answer)

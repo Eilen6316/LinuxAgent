@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from .active_view import ActivePendingRequestView, ActiveTurnView, ActiveWorkItemView
+from .active_view import (
+    ActivePendingRequestView,
+    ActiveTokenUsageView,
+    ActiveTurnView,
+    ActiveWorkItemView,
+)
 
 MAX_HISTORY_WORK_ITEMS = 8
 
@@ -57,6 +62,7 @@ class TurnHistorySummary:
     status: TurnHistoryStatus
     items: tuple[TurnHistoryWorkItem, ...] = ()
     pending_request: TurnHistoryPendingRequest | None = None
+    token_usage: ActiveTokenUsageView | None = None
 
     def to_snapshot(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -67,6 +73,8 @@ class TurnHistorySummary:
         }
         if self.pending_request is not None:
             payload["pending_request"] = self.pending_request.to_snapshot()
+        if self.token_usage is not None:
+            payload["token_usage"] = self.token_usage.to_snapshot()
         return payload
 
 
@@ -84,6 +92,7 @@ def consolidate_turn_history(
         status=status,
         items=_history_items(view, max_items=max_items),
         pending_request=_pending_request(view.pending_request, status=status),
+        token_usage=view.token_usage,
     )
 
 

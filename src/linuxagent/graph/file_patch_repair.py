@@ -143,6 +143,7 @@ async def _complete_repair_candidate_plan(
         proposed,
         telemetry,
         prompt_cache_key,
+        runtime_observer,
     )
 
 
@@ -219,6 +220,7 @@ async def _complete_valid_repair_plan(
     proposed: str,
     telemetry: TelemetryRecorder | None,
     prompt_cache_key: str | None,
+    runtime_observer: RuntimeEventObserver | None,
 ) -> CommandPlan | FilePatchPlan | NoChangePlan:
     current = proposed
     for _ in _remaining_internal_repair_attempts(state, config):
@@ -239,6 +241,7 @@ async def _complete_valid_repair_plan(
                 str(exc),
                 telemetry,
                 prompt_cache_key,
+                runtime_observer,
             )
         except FilePatchApplyError as exc:
             if not is_repairable_patch_error(str(exc)):
@@ -253,6 +256,7 @@ async def _complete_valid_repair_plan(
                 str(exc),
                 telemetry,
                 prompt_cache_key,
+                runtime_observer,
             )
     plan = _parse_repair_candidate(current)
     if isinstance(plan, CommandPlan | NoChangePlan):
@@ -309,6 +313,7 @@ async def _retry_repair_plan_json(
     error: str,
     telemetry: TelemetryRecorder | None,
     prompt_cache_key: str | None,
+    runtime_observer: RuntimeEventObserver | None,
 ) -> str:
     prompt_messages = prompt.format_messages(
         original_request=_last_human_text(state.get("messages", [])),
@@ -323,6 +328,7 @@ async def _retry_repair_plan_json(
             trace_id=current_trace_id,
             attributes={"node": "repair_file_patch", "mode": "repair_retry", "retry": "json_only"},
             prompt_cache_key=prompt_cache_key,
+            runtime_observer=runtime_observer,
         )
     ).strip()
 
@@ -347,6 +353,7 @@ async def _complete_repair_plan(
                 trace_id=current_trace_id,
                 attributes={"node": "repair_file_patch", "mode": "repair"},
                 prompt_cache_key=prompt_cache_key,
+                runtime_observer=runtime_observer,
             )
         ).strip()
     return (

@@ -71,6 +71,7 @@ async def _wizard_node(
         telemetry=telemetry,
         trace_id=current_trace_id,
         prompt_cache_key=state.get("prompt_cache_key"),
+        runtime_observer=None,
     )
     if outcome.status != "ok" or outcome.plan is None:
         return await _planner_failed_update(
@@ -390,6 +391,7 @@ async def _wizard_response_text(
     provider: LLMProvider,
     telemetry: TelemetryRecorder | None,
     current_trace_id: str,
+    runtime_observer: Any | None = None,
 ) -> str:
     prompt = build_wizard_response_prompt()
     messages = prompt.format_messages(
@@ -408,6 +410,7 @@ async def _wizard_response_text(
             trace_id=current_trace_id,
             attributes={"node": "wizard", "mode": "response"},
             prompt_cache_key=state.get("prompt_cache_key"),
+            runtime_observer=runtime_observer,
         )
     except ProviderError:
         return ""

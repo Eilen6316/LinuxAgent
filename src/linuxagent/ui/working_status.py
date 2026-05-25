@@ -11,7 +11,12 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
-from ..active_view import ActiveTurnView, ActiveWorkItemView
+from ..active_view import (
+    ActivePlanItemView,
+    ActiveTokenUsageView,
+    ActiveTurnView,
+    ActiveWorkItemView,
+)
 from ..i18n import Translator, default_translator
 
 WORKING_REFRESH_PER_SECOND = 1
@@ -124,7 +129,10 @@ class WorkingStatus:
         text = self._render_title()
         for item in items:
             text.append("\n")
-            _append_render_item(text, _active_item_label(item), current=_active_item_current(item))
+            _append_active_item(text, item, self._translator)
+        if view.token_usage is not None:
+            text.append("\n")
+            _append_token_usage(text, view.token_usage, self._translator)
         return text
 
     def _render_title(self) -> Text:
@@ -198,6 +206,32 @@ def _append_render_item(text: Text, item: str, *, current: bool) -> None:
         text.append(f"    {line.strip()}", style=style)
 
 
+def _append_active_item(text: Text, item: ActiveWorkItemView, translator: Translator) -> None:
+    if item.plan:
+        _append_plan_item(text, item, translator)
+        return
+    _append_render_item(
+        text, _active_item_label(item, translator), current=_active_item_current(item)
+    )
+
+
+def _append_plan_item(text: Text, item: ActiveWorkItemView, translator: Translator) -> None:
+    _append_render_item(
+        text, _active_item_label(item, translator), current=_active_item_current(item)
+    )
+    for plan_item in item.plan:
+        text.append("\n")
+        text.append("    ")
+        marker, style = _plan_item_marker(plan_item)
+        text.append(f"{marker} ", style=style)
+        text.append(plan_item.step, style=style)
+
+
+def _append_token_usage(text: Text, usage: ActiveTokenUsageView, translator: Translator) -> None:
+    text.append("  ⎿ ", style="dim")
+    text.append(token_usage_text(usage, translator), style="dim")
+
+
 def _active_view_items(view: ActiveTurnView) -> list[ActiveWorkItemView]:
     return list(view.items[-MAX_ACTIVE_VIEW_ITEMS:])
 
@@ -206,12 +240,46 @@ def _active_item_current(item: ActiveWorkItemView) -> bool:
     return item.status in {"queued", "running"}
 
 
-def _active_item_label(item: ActiveWorkItemView) -> str:
+def _active_item_label(item: ActiveWorkItemView, translator: Translator) -> str:
     label = item.label or item.category
+    if label.startswith("runtime."):
+        label = translator.t(label)
     detail = item.summary or item.result_preview or item.reason
     if not detail:
         return label
     return f"{label}\n  {detail}"
+
+
+def _plan_item_marker(item: ActivePlanItemView) -> tuple[str, str]:
+    if item.status in {"completed", "finished"}:
+        return "✓", "dim"
+    if item.status in {"failed", "cancelled"}:
+        return "✗", "red"
+    if item.status in {"running", "in_progress"}:
+        return "□", "bold"
+    return "□", "dim"
+
+
+def token_usage_text(usage: ActiveTokenUsageView, translator: Translator) -> str:
+    total = _compact_tokens(usage.total_tokens)
+    if usage.input_tokens or usage.output_tokens:
+        return translator.t(
+            "ui.working.token_usage_full",
+            total=total,
+            input=_compact_tokens(usage.input_tokens),
+            output=_compact_tokens(usage.output_tokens),
+        )
+    return translator.t("ui.working.token_usage_total", total=total)
+
+
+def _compact_tokens(value: int) -> str:
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}m"
+    if value >= 10_000:
+        return f"{value / 1_000:.1f}k"
+    if value >= 1_000:
+        return f"{value / 1_000:.2g}k"
+    return str(value)
 
 
 def _append_pending_inputs(text: Text, inputs: tuple[str, ...], translator: Translator) -> None:

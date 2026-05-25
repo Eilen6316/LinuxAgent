@@ -29,6 +29,7 @@ from .intent_router import AnswerContext, IntentDecision, IntentMode
 from .intent_updates import (
     direct_response_update,
     file_patch_update,
+    notify_command_plan_items,
     parse_error_update,
     plan_update,
     wizard_needed_update,
@@ -171,7 +172,9 @@ async def _planned_outcome_update(
     if isinstance(outcome, DirectAnswerPlan):
         return direct_response_update(current_trace_id, outcome.answer)
     if isinstance(outcome, CommandPlan):
-        return plan_update(current_trace_id, outcome, context.cluster_service)
+        update = plan_update(current_trace_id, outcome, context.cluster_service)
+        await notify_command_plan_items(context, current_trace_id, update)
+        return update
     if isinstance(outcome, FilePatchPlan):
         misroute_error = _ansible_runtime_file_patch_misroute(user_text, outcome)
         if allow_file_patch_misroute_retry and misroute_error is not None:
@@ -246,6 +249,7 @@ async def _no_change_update(
                     context.telemetry,
                     context.product_context,
                     context.prompt_cache_key,
+                    context.runtime_observer,
                 )
             return parse_error_update(current_trace_id, retry_error)
     return await _planned_outcome_update(

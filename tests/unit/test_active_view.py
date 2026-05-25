@@ -10,12 +10,16 @@ from linuxagent.pending_request import (
     request_started_event,
 )
 from linuxagent.runtime_events import (
+    PlanItemStatus,
     RuntimeEvent,
     RuntimeEventKind,
     RuntimeEventPhase,
+    RuntimePlanItem,
     RuntimeWorkItem,
     WorkItemCategory,
     WorkItemStatus,
+    llm_usage_runtime_event,
+    plan_work_item_event,
     runtime_event,
     work_item_runtime_event,
 )
@@ -149,6 +153,68 @@ def test_active_view_reduces_pending_request_protocol_events() -> None:
     snapshot = view.to_snapshot()
     assert snapshot["status"] == "running"
     assert "pending_request" not in snapshot
+
+
+def test_active_view_reduces_plan_and_token_usage_events() -> None:
+    view = ActiveTurnView()
+    view = apply_event(
+        view,
+        plan_work_item_event(
+            thread_id="thread-1",
+            turn_id="turn-1",
+            trace_id="trace-1",
+            items=(
+                RuntimePlanItem(step="first task", status=PlanItemStatus.COMPLETED),
+                RuntimePlanItem(step="second task", status=PlanItemStatus.IN_PROGRESS),
+            ),
+        ),
+    )
+    view = apply_event(
+        view,
+        llm_usage_runtime_event(
+            thread_id="thread-1",
+            turn_id="turn-1",
+            trace_id="trace-1",
+            usage={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+        ),
+    )
+
+    snapshot = view.to_snapshot()
+    assert snapshot["items"][0]["category"] == "plan"
+    assert snapshot["items"][0]["plan"] == [
+        {"step": "first task", "status": "completed"},
+        {"step": "second task", "status": "in_progress"},
+    ]
+    assert len(snapshot["items"]) == 1
+    assert snapshot["token_usage"] == {
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 15,
+    }
+
+
+def test_active_view_accumulates_token_usage_as_fixed_turn_state() -> None:
+    view = ActiveTurnView()
+    for total in (15, 20):
+        view = apply_event(
+            view,
+            llm_usage_runtime_event(
+                thread_id="thread-1",
+                turn_id="turn-1",
+                trace_id="trace-1",
+                usage={"input_tokens": total, "output_tokens": 5, "total_tokens": total + 5},
+            ),
+        )
+
+    assert view.to_snapshot()["token_usage"] == {
+        "input_tokens": 35,
+        "cached_input_tokens": 0,
+        "output_tokens": 10,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 45,
+    }
 
 
 def _work_item(

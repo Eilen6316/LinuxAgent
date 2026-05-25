@@ -130,6 +130,17 @@ runtime:
     read_only_batch: "只读批次"
     graph_turn: "当前请求"
     direct_answer_tasks: "对话子任务"
+    task_plan: "任务计划"
+  plan:
+    updated: "已更新计划"
+    status:
+      pending: "待处理"
+      in_progress: "进行中"
+      running: "运行中"
+      completed: "已完成"
+      finished: "已完成"
+      failed: "失败"
+      cancelled: "已取消"
   agent:
     graph_turn_worker: "主任务"
     direct_answer_worker: "子任务 {index}"
@@ -385,6 +396,8 @@ ui:
     suffix: "（{elapsed}s • esc 中断）"
     stable_suffix: "（esc 中断）"
     activity_prefix: "LinuxAgent 正在"
+    token_usage_total: "↓ {total} tokens"
+    token_usage_full: "↓ {total} tokens（输入 {input}，输出 {output}）"
   pending_input:
     title: "• 下次工具调用后将提交的消息（按 Esc 可中断并立即发送）"
     omitted: "还有 {count} 条较早的待提交消息"

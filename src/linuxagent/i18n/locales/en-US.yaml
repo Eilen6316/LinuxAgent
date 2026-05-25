@@ -130,6 +130,17 @@ runtime:
     read_only_batch: "read-only batch"
     graph_turn: "current request"
     direct_answer_tasks: "conversation subtasks"
+    task_plan: "task plan"
+  plan:
+    updated: "Updated plan"
+    status:
+      pending: "pending"
+      in_progress: "running"
+      running: "running"
+      completed: "done"
+      finished: "done"
+      failed: "failed"
+      cancelled: "cancelled"
   agent:
     graph_turn_worker: "main task"
     direct_answer_worker: "subtask {index}"
@@ -385,6 +396,8 @@ ui:
     suffix: " ({elapsed}s • esc to interrupt)"
     stable_suffix: " (esc to interrupt)"
     activity_prefix: "LinuxAgent is"
+    token_usage_total: "↓ {total} tokens"
+    token_usage_full: "↓ {total} tokens (in {input}, out {output})"
   pending_input:
     title: "• Messages to be submitted after next tool call (press Esc to interrupt and send immediately)"
     omitted: "{count} earlier queued messages"
