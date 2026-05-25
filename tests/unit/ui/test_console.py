@@ -28,7 +28,7 @@ from linuxagent.interfaces import ExecutionResult
 from linuxagent.ui import ConsoleUI
 from linuxagent.ui import working_status as working_status_module
 from linuxagent.ui.console import SlashCommandCompleter
-from linuxagent.ui.working_status import WorkingStatus
+from linuxagent.ui.working_status import WorkingStatus, _plan_item_marker
 
 EN_TRANSLATOR = Translator(LanguageCode.EN_US)
 
@@ -1020,6 +1020,11 @@ async def test_console_print_active_view_renders_plan_and_token_usage(monkeypatc
     assert "□ 生成答案" in rendered
     assert "↓ 13.7k tokens" in rendered
     ui.clear_activity()
+
+
+def test_working_status_plan_item_marker_colors_completed_green() -> None:
+    assert _plan_item_marker(ActivePlanItemView("done", "completed")) == ("✓", "green")
+    assert _plan_item_marker(ActivePlanItemView("failed", "failed")) == ("✗", "red")
 
 
 async def test_console_keeps_token_usage_visible_after_terminal_active_view(monkeypatch) -> None:

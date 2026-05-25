@@ -265,7 +265,7 @@ def _localized_label(
 
 def _plan_item_marker(item: ActivePlanItemView) -> tuple[str, str]:
     if item.status in {"completed", "finished"}:
-        return "✓", "dim"
+        return "✓", "green"
     if item.status in {"failed", "cancelled"}:
         return "✗", "red"
     if item.status in {"running", "in_progress"}:
