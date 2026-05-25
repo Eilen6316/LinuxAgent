@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from langgraph.types import Command
@@ -10,7 +11,13 @@ from langgraph.types import Command
 from ..audit import AuditLog
 from ..interfaces import ExecutionResult
 from ..plans import PlannedCommand
-from ..services import BackgroundJobController, ClusterService, CommandService, JobDaemonError
+from ..services import (
+    BackgroundJobController,
+    BackgroundJobSnapshot,
+    ClusterService,
+    CommandService,
+    JobDaemonError,
+)
 from ..telemetry import TelemetryRecorder
 from .common import span, trace_id
 from .events import RuntimeEventObserver
@@ -28,6 +35,15 @@ from .read_only_batch import (
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
+
+
+@dataclass(frozen=True)
+class _BackgroundCommandContext:
+    state: AgentState
+    command: str
+    audit: AuditLog
+    runtime_observer: RuntimeEventObserver | None
+    trace_id: str
 
 
 def make_execute_node(
@@ -141,53 +157,85 @@ async def _start_background_command(
     runtime_observer: RuntimeEventObserver | None,
     current_trace_id: str,
 ) -> AgentState:
-    if background_jobs is None:
-        result = synthetic_result(command, 1, "", "background jobs are not available")
-        await record_command_execution(audit, state, result, current_trace_id)
-        await notify_command_result(runtime_observer, current_trace_id, result)
-        update = _single_command_update(state, result, runtime_observer, current_trace_id)
-        await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
-        return update
-    if state.get("selected_hosts") or state.get("batch_hosts"):
-        result = synthetic_result(command, 1, "", "background jobs do not support remote targets")
-        await record_command_execution(audit, state, result, current_trace_id)
-        await notify_command_result(runtime_observer, current_trace_id, result)
-        update = {
-            **_single_command_update(state, result, runtime_observer, current_trace_id),
-            "skip_command_repair": True,
-        }
-        await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
-        return update
-    step = _current_plan_step(state)
-    try:
-        snapshot = await background_jobs.start(
-            command,
-            goal=_background_goal(state, command),
-            timeout_seconds=step.timeout_seconds if step is not None else None,
-        )
-    except JobDaemonError as exc:
-        result = synthetic_result(command, 1, "", str(exc))
-        await record_command_execution(audit, state, result, current_trace_id)
-        await notify_command_result(runtime_observer, current_trace_id, result)
-        update = {
-            **_single_command_update(state, result, runtime_observer, current_trace_id),
-            "skip_command_repair": True,
-        }
-        await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
-        return update
-    result = synthetic_result(
-        command,
-        0,
-        f"background job started: {snapshot.job_id}",
-        "",
+    context = _BackgroundCommandContext(
+        state=state,
+        command=command,
+        audit=audit,
+        runtime_observer=runtime_observer,
+        trace_id=current_trace_id,
     )
-    await record_command_execution(audit, state, result, current_trace_id)
-    await notify_command_result(runtime_observer, current_trace_id, result)
-    update = {
-        **_single_command_update(state, result, runtime_observer, current_trace_id),
-        "background_job_id": snapshot.job_id,
-    }
-    await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
+    if background_jobs is None:
+        return await _background_error_update(
+            context,
+            "background jobs are not available",
+        )
+    if state.get("selected_hosts") or state.get("batch_hosts"):
+        return await _background_error_update(
+            context,
+            "background jobs do not support remote targets",
+            skip_command_repair=True,
+        )
+    try:
+        snapshot = await _start_background_job(background_jobs, context)
+    except JobDaemonError as exc:
+        return await _background_error_update(
+            context,
+            str(exc),
+            skip_command_repair=True,
+        )
+    result = synthetic_result(command, 0, f"background job started: {snapshot.job_id}", "")
+    return await _background_result_update(
+        context,
+        result,
+        extra={"background_job_id": snapshot.job_id},
+    )
+
+
+async def _start_background_job(
+    background_jobs: BackgroundJobController,
+    context: _BackgroundCommandContext,
+) -> BackgroundJobSnapshot:
+    step = _current_plan_step(context.state)
+    return await background_jobs.start(
+        context.command,
+        goal=_background_goal(context.state, context.command),
+        timeout_seconds=step.timeout_seconds if step is not None else None,
+    )
+
+
+async def _background_error_update(
+    context: _BackgroundCommandContext,
+    error: str,
+    *,
+    skip_command_repair: bool = False,
+) -> AgentState:
+    result = synthetic_result(context.command, 1, "", error)
+    return await _background_result_update(
+        context,
+        result,
+        skip_command_repair=skip_command_repair,
+    )
+
+
+async def _background_result_update(
+    context: _BackgroundCommandContext,
+    result: ExecutionResult,
+    *,
+    skip_command_repair: bool = False,
+    extra: AgentState | None = None,
+) -> AgentState:
+    await record_command_execution(context.audit, context.state, result, context.trace_id)
+    await notify_command_result(context.runtime_observer, context.trace_id, result)
+    update = _single_command_update(
+        context.state, result, context.runtime_observer, context.trace_id
+    )
+    if skip_command_repair:
+        update["skip_command_repair"] = True
+    if extra is not None:
+        update.update(extra)
+    await notify_command_plan_progress(
+        context.runtime_observer, context.trace_id, {**context.state, **update}
+    )
     return update
 
 

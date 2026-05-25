@@ -225,12 +225,13 @@ async def _complete_valid_repair_plan(
     current = proposed
     for _ in _remaining_internal_repair_attempts(state, config):
         try:
-            plan = _parse_repair_candidate(current)
-            if isinstance(plan, CommandPlan | NoChangePlan):
-                return plan
-            _ensure_repair_plan_is_valid(plan, config)
-            return plan
-        except (FilePatchPlanParseError, NoChangePlanParseError) as exc:
+            return _parse_valid_repair_candidate(current, config)
+        except (
+            FilePatchPlanParseError,
+            NoChangePlanParseError,
+            FilePatchApplyError,
+        ) as exc:
+            error = _repair_retry_error(exc)
             current = await _retry_repair_plan_json(
                 provider,
                 prompt,
@@ -238,31 +239,31 @@ async def _complete_valid_repair_plan(
                 config,
                 current_trace_id,
                 current,
-                str(exc),
+                error,
                 telemetry,
                 prompt_cache_key,
                 runtime_observer,
             )
-        except FilePatchApplyError as exc:
-            if not is_repairable_patch_error(str(exc)):
-                raise
-            current = await _retry_repair_plan_json(
-                provider,
-                prompt,
-                state,
-                config,
-                current_trace_id,
-                current,
-                str(exc),
-                telemetry,
-                prompt_cache_key,
-                runtime_observer,
-            )
-    plan = _parse_repair_candidate(current)
+    return _parse_valid_repair_candidate(current, config)
+
+
+def _parse_valid_repair_candidate(
+    candidate: str,
+    config: FilePatchConfig,
+) -> CommandPlan | FilePatchPlan | NoChangePlan:
+    plan = _parse_repair_candidate(candidate)
     if isinstance(plan, CommandPlan | NoChangePlan):
         return plan
     _ensure_repair_plan_is_valid(plan, config)
     return plan
+
+
+def _repair_retry_error(
+    exc: FilePatchPlanParseError | NoChangePlanParseError | FilePatchApplyError,
+) -> str:
+    if isinstance(exc, FilePatchApplyError) and not is_repairable_patch_error(str(exc)):
+        raise exc
+    return str(exc)
 
 
 def _parse_repair_candidate(candidate: str) -> CommandPlan | FilePatchPlan | NoChangePlan:

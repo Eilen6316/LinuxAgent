@@ -946,6 +946,39 @@ async def test_console_print_active_view_renders_work_items(monkeypatch) -> None
     ui.clear_activity()
 
 
+async def test_console_print_active_view_renders_i18n_label_params(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread",
+            turn_id="turn",
+            status="running",
+            items=(
+                ActiveWorkItemView(
+                    item_id="worker:trace:2",
+                    category="worker",
+                    status="running",
+                    label="runtime.agent.command_worker",
+                    label_params={"index": 2},
+                    summary="runtime.agent.status.exit",
+                    summary_params={"exit_code": 0},
+                ),
+            ),
+        )
+    )
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=120)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "命令 worker 2" in rendered
+    assert "exit 0" in rendered
+    ui.clear_activity()
+
+
 async def test_console_print_active_view_renders_plan_and_token_usage(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     console = Console(record=True, width=120, force_terminal=True)

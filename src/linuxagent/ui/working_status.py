@@ -17,7 +17,7 @@ from ..active_view import (
     ActiveTurnView,
     ActiveWorkItemView,
 )
-from ..i18n import Translator, default_translator
+from ..i18n import CatalogError, Translator, default_translator
 
 WORKING_REFRESH_PER_SECOND = 1
 ACTIVITY_INTERVAL_MS = 600
@@ -241,13 +241,26 @@ def _active_item_current(item: ActiveWorkItemView) -> bool:
 
 
 def _active_item_label(item: ActiveWorkItemView, translator: Translator) -> str:
-    label = item.label or item.category
-    if label.startswith("runtime."):
-        label = translator.t(label)
+    label = _localized_label(item.label or item.category, item.label_params, translator)
     detail = item.summary or item.result_preview or item.reason
+    if item.summary is not None:
+        detail = _localized_label(item.summary, item.summary_params, translator)
     if not detail:
         return label
     return f"{label}\n  {detail}"
+
+
+def _localized_label(
+    label: str,
+    params: dict[str, object] | None,
+    translator: Translator,
+) -> str:
+    if not label.startswith("runtime."):
+        return label
+    try:
+        return translator.t(label, **(params or {}))
+    except CatalogError:
+        return label
 
 
 def _plan_item_marker(item: ActivePlanItemView) -> tuple[str, str]:

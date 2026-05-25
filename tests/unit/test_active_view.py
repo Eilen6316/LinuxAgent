@@ -195,6 +195,40 @@ def test_active_view_reduces_plan_and_token_usage_events() -> None:
     }
 
 
+def test_active_view_preserves_i18n_params_for_work_items() -> None:
+    view = apply_event(
+        ActiveTurnView(),
+        {
+            "schema_version": 1,
+            "thread_id": "thread-1",
+            "turn_id": "turn-1",
+            "kind": "work_item",
+            "phase": "updated",
+            "payload": {
+                "item_id": "worker:1",
+                "category": "worker",
+                "status": "running",
+                "label_key": "runtime.agent.command_worker",
+                "label_params": {"index": 2},
+                "summary_key": "runtime.agent.status.exit",
+                "summary_params": {"exit_code": 0},
+            },
+        },
+    )
+
+    assert view.to_snapshot()["items"] == [
+        {
+            "item_id": "worker:1",
+            "category": "worker",
+            "status": "running",
+            "label": "runtime.agent.command_worker",
+            "label_params": {"index": 2},
+            "summary": "runtime.agent.status.exit",
+            "summary_params": {"exit_code": 0},
+        }
+    ]
+
+
 def test_active_view_accumulates_token_usage_as_fixed_turn_state() -> None:
     view = ActiveTurnView()
     for total in (15, 20):

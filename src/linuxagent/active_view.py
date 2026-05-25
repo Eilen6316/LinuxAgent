@@ -53,7 +53,9 @@ class ActiveWorkItemView:
     category: str
     status: str
     label: str | None = None
+    label_params: dict[str, object] | None = None
     summary: str | None = None
+    summary_params: dict[str, object] | None = None
     plan: tuple[ActivePlanItemView, ...] = ()
     result_preview: str | None = None
     reason: str | None = None
@@ -65,7 +67,9 @@ class ActiveWorkItemView:
                 "category": self.category,
                 "status": self.status,
                 "label": self.label,
+                "label_params": self.label_params,
                 "summary": self.summary,
+                "summary_params": self.summary_params,
                 "result_preview": self.result_preview,
                 "reason": self.reason,
             }
@@ -209,7 +213,9 @@ def _work_item_from_payload(payload: dict[str, Any]) -> ActiveWorkItemView | Non
         category=category,
         status=status,
         label=_optional_str(payload.get("label") or payload.get("label_key")),
+        label_params=_object_params(payload.get("label_params")),
         summary=_optional_str(payload.get("summary") or payload.get("summary_key")),
+        summary_params=_object_params(payload.get("summary_params")),
         plan=_plan_items(payload.get("plan")),
         result_preview=_optional_str(payload.get("result_preview")),
         reason=_optional_str(payload.get("reason")),
@@ -290,6 +296,13 @@ def _optional_int(value: Any) -> int | None:
     if isinstance(value, int) and value >= 0:
         return value
     return None
+
+
+def _object_params(value: Any) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    params = {str(key): item for key, item in value.items() if isinstance(key, str)}
+    return params or None
 
 
 def _drop_none(payload: dict[str, Any]) -> dict[str, Any]:
