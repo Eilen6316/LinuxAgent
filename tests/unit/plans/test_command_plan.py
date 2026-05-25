@@ -101,6 +101,31 @@ def test_parse_command_plan_accepts_background_metadata() -> None:
     assert plan.primary.timeout_seconds == 10
 
 
+def test_parse_command_plan_accepts_step_acceptable_exit_codes() -> None:
+    payload = json.loads(command_plan_json("which ansible"))
+    payload["commands"][0]["acceptable_exit_codes"] = [0, 1, 1]
+
+    plan = parse_command_plan(json.dumps(payload))
+
+    assert plan.primary.acceptable_exit_codes == (0, 1)
+
+
+def test_parse_command_plan_rejects_invalid_acceptable_exit_codes() -> None:
+    payload = json.loads(command_plan_json("which ansible"))
+    payload["commands"][0]["acceptable_exit_codes"] = [0, 256]
+
+    with pytest.raises(CommandPlanParseError, match="acceptable_exit_codes"):
+        parse_command_plan(json.dumps(payload))
+
+
+def test_parse_command_plan_rejects_nonzero_success_for_mutation() -> None:
+    payload = json.loads(command_plan_json("/bin/touch /tmp/demo", read_only=False))
+    payload["commands"][0]["acceptable_exit_codes"] = [0, 1]
+
+    with pytest.raises(CommandPlanParseError, match="non-read-only"):
+        parse_command_plan(json.dumps(payload))
+
+
 @pytest.mark.parametrize(
     "command",
     [

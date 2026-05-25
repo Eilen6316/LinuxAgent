@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 from langchain_core.messages import AIMessage
 
 from linuxagent.config.models import LanguageCode
+from linuxagent.graph.plan_steps import command_plan_items
 from linuxagent.graph.routing import (
     make_respond_block_node,
     make_respond_node,
@@ -74,6 +77,41 @@ async def test_route_after_execute_analyzes_when_command_repair_limit_reached() 
     )
 
     assert route == "ANALYZE"
+
+
+async def test_route_after_execute_analyzes_expected_nonzero_plan_result() -> None:
+    payload = json.loads(command_plan_json("which ansible", goal="Check whether ansible exists"))
+    payload["commands"][0]["acceptable_exit_codes"] = [0, 1]
+    plan = parse_command_plan(json.dumps(payload))
+    result = ExecutionResult(
+        command="which ansible",
+        exit_code=1,
+        stdout="",
+        stderr="which: no ansible",
+        duration=0,
+    )
+
+    route = await route_after_execute(
+        {
+            "command_plan": plan,
+            "plan_step_index": 0,
+            "plan_results": (result,),
+            "plan_result_start_index": 0,
+        }
+    )
+
+    assert route == "ANALYZE"
+    assert (
+        command_plan_items(
+            {
+                "command_plan": plan,
+                "plan_step_index": 0,
+                "plan_results": (result,),
+                "plan_result_start_index": 0,
+            }
+        )[0].status
+        == "completed"
+    )
 
 
 async def test_response_nodes_render_operator_messages() -> None:

@@ -454,6 +454,7 @@ def _multi_command_plan_json(commands: list[str]) -> str:
             "purpose": f"Run {command}",
             "read_only": True,
             "target_hosts": [],
+            "acceptable_exit_codes": [0],
         }
         for command in commands
     ]

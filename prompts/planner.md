@@ -121,7 +121,8 @@ schema. Do not include markdown or prose:
       "read_only": true,
       "target_hosts": [],
       "background": false,
-      "timeout_seconds": null
+      "timeout_seconds": null,
+      "acceptable_exit_codes": [0]
     }}
   ],
   "risk_summary": "short risk summary",
@@ -149,6 +150,11 @@ remote `target_hosts`, unbounded daemons, interactive terminal programs,
 commands that require live stdin, or commands whose next plan step depends on
 immediate stdout. The command still goes through policy, HITL, sandbox
 execution, audit, and telemetry before the background job starts.
+Use `acceptable_exit_codes` to describe the command outcome contract for that
+step. Keep `[0]` for normal commands. For read-only probes where a non-zero
+exit code still answers the planned question, include every exit code that
+means the step produced the expected information. Do not use this field to hide
+unexpected errors or to treat mutations as successful.
 For multi-part requests, the commands array must cover every requested outcome
 before the turn can be considered complete. Do not stop at package download or
 installation when the user also asked for configuration, password changes,
@@ -164,11 +170,12 @@ executor.
 
 If a requested executable is missing or a package installation may be needed,
 do not guess the operating system or package manager. When the current evidence
-does not already identify the distribution and installer, first return
-read-only probes such as `/bin/cat /etc/os-release` and separate argv-safe
-package-manager checks (`which apt-get`, `which dnf`, `which yum`,
-`which zypper`, `which apk`, or `which pacman`). Only propose an install command
-after observed results prove the matching package manager for this host.
+does not already identify the distribution and installer, first return the
+minimum read-only probes needed to identify them. Choose only probes justified
+by existing evidence and common host conventions, stop probing once there is
+enough evidence, and use `acceptable_exit_codes` when an absence result is
+expected information. Only propose an install command after observed results
+prove the matching package manager for this host.
 
 For static local file creation, code edits, config edits, script edits, or other
 file mutations whose final content is fully known at planning time, prefer a

@@ -25,6 +25,7 @@ from .execution import (
     synthetic_result,
 )
 from .plan_progress import notify_command_plan_progress
+from .plan_steps import plan_step_succeeded
 from .state import AgentState
 from .worker_events import notify_worker_lifecycle
 
@@ -70,7 +71,7 @@ async def execute_parallel_read_only_batch(
     for result in results:
         await record_command_execution(audit, state, result, current_trace_id)
         await notify_command_result(runtime_observer, current_trace_id, result)
-    await _notify_parallel_agent_results(runtime_observer, current_trace_id, results)
+    await _notify_parallel_agent_results(runtime_observer, current_trace_id, batch_steps, results)
     await _notify_batch(runtime_observer, current_trace_id, "finish", commands)
     update = _parallel_batch_update(state, batch_steps, results, runtime_observer, current_trace_id)
     await notify_command_plan_progress(runtime_observer, current_trace_id, {**state, **update})
@@ -224,9 +225,10 @@ async def _notify_parallel_agents(
 async def _notify_parallel_agent_results(
     observer: RuntimeEventObserver | None,
     trace_id: str,
+    batch_steps: tuple[BatchStep, ...],
     results: tuple[ExecutionResult, ...],
 ) -> None:
-    workers = _command_result_workers(results)
+    workers = _command_result_workers(batch_steps, results)
     await notify_worker_lifecycle(
         observer,
         trace_id=trace_id,
@@ -261,18 +263,23 @@ def _command_workers(
     )
 
 
-def _command_result_workers(results: tuple[ExecutionResult, ...]) -> tuple[RuntimeWorker, ...]:
+def _command_result_workers(
+    batch_steps: tuple[BatchStep, ...],
+    results: tuple[ExecutionResult, ...],
+) -> tuple[RuntimeWorker, ...]:
     return tuple(
         RuntimeWorker(
             id=f"cmd-{index}",
             name_key="runtime.agent.command_worker",
             name_params={"index": index + 1},
-            status=WorkerStatus.FINISHED if result.exit_code == 0 else WorkerStatus.FAILED,
+            status=WorkerStatus.FINISHED
+            if plan_step_succeeded(step, result)
+            else WorkerStatus.FAILED,
             detail=result.command,
             summary_key="runtime.agent.status.exit",
             summary_params={"exit_code": result.exit_code},
         )
-        for index, result in enumerate(results)
+        for index, ((_, step), result) in enumerate(zip(batch_steps, results, strict=True))
     )
 
 

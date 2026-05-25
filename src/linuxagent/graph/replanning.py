@@ -18,6 +18,7 @@ from .common import trace_id
 from .events import RuntimeEventObserver, notify_event
 from .llm_calls import complete_llm
 from .plan_progress import notify_command_plan_progress
+from .plan_steps import plan_result_succeeded
 from .state import AgentState, reset_execution_for_pending_work, reset_safety_for_replan
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -183,7 +184,10 @@ def should_repair_plan(
     attempts = state.get("command_repair_attempts", 0)
     if attempts >= max_repair_attempts:
         return False
-    return any(result.exit_code != 0 for result in _current_plan_results(state))
+    return any(
+        not _plan_result_succeeded(plan, index, result)
+        for index, result in enumerate(_current_plan_results(state))
+    )
 
 
 def _current_plan_results(state: AgentState) -> tuple[Any, ...]:
@@ -201,7 +205,16 @@ def _failure_context(
     validation_error: str = "",
     rejected_response: str = "",
 ) -> str:
-    failures = [result for result in _current_plan_results(state) if result.exit_code != 0]
+    plan = state.get("command_plan")
+    failures = (
+        [
+            result
+            for index, result in enumerate(_current_plan_results(state))
+            if not _plan_result_succeeded(plan, index, result)
+        ]
+        if plan is not None
+        else [result for result in _current_plan_results(state) if result.exit_code != 0]
+    )
     parts = [execution_display_text(result).text for result in failures]
     successful = _successful_command_lines(state)
     if successful:
@@ -240,9 +253,8 @@ def _ensure_package_manager_install_is_grounded(plan: CommandPlan, state: AgentS
             "package-manager install command requires prior read-only "
             f"OS/package-manager evidence; {command.command!r} was proposed "
             f"without evidence that {manager} matches this host. First return "
-            "argv-safe read-only probes such as `/bin/cat /etc/os-release` "
-            "and separate `which apt-get`, `which dnf`, `which yum`, "
-            "`which zypper`, `which apk`, or `which pacman` commands; then "
+            "argv-safe read-only OS or package-manager probes chosen from the "
+            "observed host evidence; then "
             "choose the matching installer from observed results."
         )
 
@@ -340,19 +352,47 @@ def _executable_name(token: str) -> str:
 
 
 def _successful_command_lines(state: AgentState) -> list[str]:
+    plan = state.get("command_plan")
+    if plan is None:
+        return [
+            f"- {result.command}"
+            for result in _current_plan_results(state)
+            if result.exit_code == 0
+        ]
     return [
-        f"- {result.command}" for result in _current_plan_results(state) if result.exit_code == 0
+        f"- {result.command}"
+        for index, result in enumerate(_current_plan_results(state))
+        if _plan_result_succeeded(plan, index, result)
     ]
 
 
 def _successful_command_keys(state: AgentState) -> set[str]:
+    plan = state.get("command_plan")
+    if plan is None:
+        return {
+            key
+            for result in _current_plan_results(state)
+            if result.exit_code == 0
+            for key in (_command_key(result.command),)
+            if key
+        }
     return {
         key
-        for result in _current_plan_results(state)
-        if result.exit_code == 0
+        for index, result in enumerate(_current_plan_results(state))
+        if _plan_result_succeeded(plan, index, result)
         for key in (_command_key(result.command),)
         if key
     }
+
+
+def _plan_result_succeeded(
+    plan: CommandPlan | None,
+    relative_index: int,
+    result: Any,
+) -> bool:
+    if plan is None:
+        return getattr(result, "exit_code", None) == 0
+    return plan_result_succeeded(plan, relative_index, result)
 
 
 def _command_key(command: str) -> str:

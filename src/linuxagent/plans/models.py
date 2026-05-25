@@ -8,7 +8,7 @@ import shlex
 from enum import StrEnum
 from typing import Any, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 _SHELL_CONTROL_TOKENS = frozenset(
@@ -110,11 +110,28 @@ class PlannedCommand(BaseModel):
     target_hosts: tuple[str, ...] = ()
     background: bool = False
     timeout_seconds: float | None = Field(default=None, gt=0, le=86400)
+    acceptable_exit_codes: tuple[int, ...] = (0,)
 
     @field_validator("command")
     @classmethod
     def _command_is_argv_safe(cls, command: str) -> str:
         return _validate_argv_safe_command(command)
+
+    @field_validator("acceptable_exit_codes")
+    @classmethod
+    def _exit_codes_are_valid(cls, codes: tuple[int, ...]) -> tuple[int, ...]:
+        normalized = tuple(dict.fromkeys(codes))
+        if not normalized:
+            raise ValueError("acceptable_exit_codes must not be empty")
+        if any(code < 0 or code > 255 for code in normalized):
+            raise ValueError("acceptable_exit_codes must be integers between 0 and 255")
+        return normalized
+
+    @model_validator(mode="after")
+    def _mutation_steps_require_zero_success(self) -> PlannedCommand:
+        if not self.read_only and self.acceptable_exit_codes != (0,):
+            raise ValueError("non-read-only commands may only accept exit code 0")
+        return self
 
 
 class CommandPlan(BaseModel):
@@ -321,6 +338,7 @@ def command_plan_json(
                 "read_only": read_only,
                 "target_hosts": [],
                 "background": False,
+                "acceptable_exit_codes": [0],
             }
         ],
         "risk_summary": "Generated command plan.",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..interfaces import CommandSource
+from ..plans import CommandPlan, PlannedCommand
 from ..runtime_events import PlanItemStatus, RuntimePlanItem
 from .state import AgentState
 
@@ -49,7 +50,9 @@ def command_plan_items(state: AgentState) -> tuple[RuntimePlanItem, ...]:
     for index, step in enumerate(plan.commands):
         if index < len(results):
             status = (
-                PlanItemStatus.COMPLETED if results[index].exit_code == 0 else PlanItemStatus.FAILED
+                PlanItemStatus.COMPLETED
+                if plan_step_succeeded(step, results[index])
+                else PlanItemStatus.FAILED
             )
         elif index == current_index:
             status = PlanItemStatus.IN_PROGRESS
@@ -57,3 +60,14 @@ def command_plan_items(state: AgentState) -> tuple[RuntimePlanItem, ...]:
             status = PlanItemStatus.PENDING
         items.append(RuntimePlanItem(step=step.purpose or step.command, status=status))
     return tuple(items)
+
+
+def plan_step_succeeded(step: PlannedCommand, result: object) -> bool:
+    exit_code = getattr(result, "exit_code", None)
+    return isinstance(exit_code, int) and exit_code in step.acceptable_exit_codes
+
+
+def plan_result_succeeded(plan: CommandPlan, index: int, result: object) -> bool:
+    if not 0 <= index < len(plan.commands):
+        return False
+    return plan_step_succeeded(plan.commands[index], result)
