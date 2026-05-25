@@ -12,24 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 _SHELL_CONTROL_TOKENS = frozenset(
-    {
-        "|",
-        "||",
-        "&",
-        "&&",
-        ";",
-        "(",
-        ")",
-        "<",
-        ">",
-        "<<",
-        ">>",
-        "<>",
-        "<&",
-        ">&",
-        "<<-",
-        ">|",
-    }
+    (*"|&;()<>", "||", "&&", "<<", ">>", "<>", "<&", ">&", "<<-", ">|")
 )
 _SHELL_ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*")
 _PlanT = TypeVar("_PlanT", bound=BaseModel)
