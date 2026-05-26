@@ -19,6 +19,7 @@ from .i18n import Translator, default_translator
 from .logger import configure_dependency_logging, configure_logging
 from .mcp_server import McpServer, serve_stdio
 from .memory import MemoryDisabledError, format_memory_notes, format_memory_status
+from .memory.suggestions import suggest_from_history
 from .providers.errors import ProviderError
 from .services import MonitoringAlert, collect_system_snapshot, evaluate_alerts
 from .tools import format_tool_catalog_check
@@ -91,9 +92,26 @@ def _add_subcommands(parser: argparse.ArgumentParser) -> None:
     )
     memory_subparsers.add_parser("status", help="Show memory status.")
     memory_subparsers.add_parser("list", help="List manual memory notes.")
+    memory_subparsers.add_parser("pending", help="List pending memory suggestions.")
     memory_subparsers.add_parser("summary", help="Print the memory summary used in prompts.")
     memory_add = memory_subparsers.add_parser("add", help="Add an explicit manual memory note.")
     memory_add.add_argument("text", nargs="+", help="Memory text to store after redaction.")
+    suggest_parser = memory_subparsers.add_parser(
+        "suggest",
+        help="Create a pending memory suggestion from saved chat history.",
+    )
+    suggest_parser.add_argument(
+        "--sessions",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Number of recent saved sessions to inspect.",
+    )
+    promote_parser = memory_subparsers.add_parser(
+        "promote",
+        help="Promote a pending memory suggestion by filename.",
+    )
+    promote_parser.add_argument("name", help="Pending suggestion filename from `memory pending`.")
     subparsers.add_parser(
         "job-daemon",
         help="Run the local background job supervisor.",
@@ -375,8 +393,46 @@ def _cmd_memory(args: argparse.Namespace) -> int:
     if command == "list":
         print(format_memory_notes(store.list_notes(), translator=translator))
         return 0
+    if command == "pending":
+        from .memory import format_memory_suggestions
+
+        print(format_memory_suggestions(store.list_suggestions(), translator=translator))
+        return 0
     if command == "summary":
         print(store.read_summary().strip() or translator.t("memory.summary_empty"))
+        return 0
+    if command == "suggest":
+        chat_service = container.chat_service()
+        chat_service.load()
+        try:
+            result = suggest_from_history(store, chat_service, session_limit=args.sessions)
+        except MemoryDisabledError:
+            print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
+            return 1
+        except ValueError as exc:
+            print(translator.t("memory.error", message=exc), file=sys.stderr)
+            return 1
+        if result.suggestion is None:
+            print(translator.t("memory.suggest_none"))
+            return 0
+        print(
+            translator.t(
+                "memory.suggested",
+                path=result.suggestion.path,
+                sessions=result.session_count,
+            )
+        )
+        return 0
+    if command == "promote":
+        try:
+            note = store.promote_suggestion(args.name)
+        except MemoryDisabledError:
+            print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
+            return 1
+        except (FileNotFoundError, ValueError) as exc:
+            print(translator.t("memory.error", message=exc), file=sys.stderr)
+            return 1
+        print(translator.t("memory.promoted", path=note.path))
         return 0
     if command == "add":
         try:

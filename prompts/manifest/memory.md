@@ -9,3 +9,7 @@ When `memory.enabled` is true, LinuxAgent can maintain an opt-in filesystem memo
 before persistence; the generated summary can be injected into prompts as operator/project
 background. This memory is advisory only and never changes command policy, sandbox enforcement,
 execution approval, or audit records.
+
+`/memory suggest` and `linuxagent memory suggest` create reviewable candidates under `pending/`
+from local chat history. Candidates do not affect prompts until the operator explicitly promotes
+one with `memory promote <pending-filename>`.

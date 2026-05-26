@@ -721,6 +721,27 @@ async def test_memory_slash_adds_manual_note(tmp_path) -> None:
     assert "Prefer journalctl -u app.service" in store.read_summary()
 
 
+async def test_memory_slash_suggest_creates_pending_note(tmp_path) -> None:
+    history_path = tmp_path / "history.json"
+    chat_service = ChatService(history_path, max_messages=10)
+    chat_service.replace_session(
+        "thread-1",
+        [HumanMessage(content="Prefer staging before prod")],
+        title="Ops preference",
+    )
+    chat_service.save()
+    ui = _FakeUI(inputs=["/memory suggest", "/exit"])
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+    agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui, chat_service=chat_service)
+    agent.memory_store = store
+
+    await agent.run(thread_id="cli")
+
+    assert "已生成待确认 memory suggestion" in "\n".join(ui.printed)
+    assert store.list_notes() == ()
+    assert len(store.list_suggestions()) == 1
+
+
 async def test_trace_slash_command_toggles_activity_output(tmp_path) -> None:
     ui = _FakeUI(inputs=["/trace off", "/exit"])
     agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui)

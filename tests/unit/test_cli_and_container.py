@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from langchain_core.messages import HumanMessage
 
 import linuxagent.cli as cli
 import linuxagent.container as container_module
@@ -472,6 +473,42 @@ def test_memory_cli_rejects_add_when_disabled(
 
     assert code == 1
     assert "memory.enabled 为 false" in captured.err
+
+
+def test_memory_cli_suggest_and_promote(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "memory": {"enabled": True, "path": tmp_path / "memories"},
+            "ui": {"history_path": tmp_path / "history.json"},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+    chat = Container(cfg).chat_service()
+    chat.replace_session("thread-1", [HumanMessage(content="Prefer staging")], title="Ops")
+    chat.save()
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+
+    code = cli.main(["memory", "suggest"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "已生成待确认 memory suggestion" in captured.out
+    pending = sorted((tmp_path / "memories" / "pending").glob("*.md"))
+    assert len(pending) == 1
+
+    code = cli.main(["memory", "promote", pending[0].name])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "已提升 memory suggestion" in captured.out
+    assert not pending[0].exists()
+    assert "Prefer staging" in (tmp_path / "memories" / "memory_summary.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_main_unknown_command_routes_to_parser_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -970,7 +1007,7 @@ def test_slash_help_can_render_english() -> None:
     rendered = slash_help(Translator(LanguageCode.EN_US))
 
     assert "/resume - List saved local sessions" in rendered
-    assert "/memory - Show or explicitly update local advisory memory" in rendered
+    assert "/memory - Show explicit local advisory memory" in rendered
     assert "/wizard" not in rendered
 
 

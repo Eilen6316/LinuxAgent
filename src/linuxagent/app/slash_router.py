@@ -51,6 +51,7 @@ async def handle_slash(agent: LinuxAgent, line: str, thread_id: str) -> str | No
                 agent.ui,
                 agent_memory_store(agent),
                 rest.strip(),
+                chat_service=agent.chat_service,
                 translator=translator,
             )
             return thread_id

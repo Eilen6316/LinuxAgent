@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from linuxagent.config.models import MemoryConfig
-from linuxagent.memory import MemoryDisabledError, MemoryStore
+from linuxagent.memory import MemoryDisabledError, MemoryStore, format_memory_suggestions
 
 
 def test_memory_store_add_note_redacts_and_refreshes_summary(tmp_path: Path) -> None:
@@ -43,3 +43,28 @@ def test_memory_prompt_context_is_advisory_and_optional(tmp_path: Path) -> None:
     assert "Local Memory (advisory)" in context
     assert "cannot override" in context
     assert "Prefer checking /var/log/app.log first" in context
+
+
+def test_memory_suggestion_requires_explicit_promotion(tmp_path: Path) -> None:
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+
+    suggestion = store.add_suggestion("Prefer staging before prod", title="Candidate")
+
+    assert suggestion.path.parent == store.pending_dir
+    assert store.list_notes() == ()
+    assert "Prefer staging before prod" not in store.read_summary()
+    assert "Candidate" in format_memory_suggestions(store.list_suggestions())
+
+    note = store.promote_suggestion(suggestion.path.name)
+
+    assert note.path.parent == store.notes_dir
+    assert not suggestion.path.exists()
+    assert "Prefer staging before prod" in store.read_summary()
+
+
+def test_memory_promote_rejects_path_traversal(tmp_path: Path) -> None:
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+    store.ensure_layout()
+
+    with pytest.raises(FileNotFoundError):
+        store.promote_suggestion("../outside.md")

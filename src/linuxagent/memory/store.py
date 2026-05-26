@@ -50,6 +50,14 @@ class MemoryStatus:
     summary_chars: int
 
 
+@dataclass(frozen=True)
+class MemorySuggestion:
+    path: Path
+    title: str
+    created_at: datetime
+    bytes: int
+
+
 class MemoryStore:
     """Manage LinuxAgent's opt-in filesystem memory layout."""
 
@@ -72,10 +80,15 @@ class MemoryStore:
     def notes_dir(self) -> Path:
         return self.root / "extensions" / "ad_hoc" / "notes"
 
+    @property
+    def pending_dir(self) -> Path:
+        return self.root / "pending"
+
     def ensure_layout(self) -> None:
         self._require_enabled()
         _ensure_private_dir(self.root)
         _ensure_private_dir(self.notes_dir)
+        _ensure_private_dir(self.pending_dir)
         if not self.memory_path.exists():
             _write_private_text(self.memory_path, _DEFAULT_MEMORY)
 
@@ -110,22 +123,53 @@ class MemoryStore:
     def list_notes(self, *, limit: int | None = 20) -> tuple[MemoryNote, ...]:
         if not self.config.enabled or not self.notes_dir.is_dir():
             return ()
-        paths = sorted(self.notes_dir.glob("*.md"), reverse=True)
-        if limit is not None:
-            paths = paths[:limit]
-        notes: list[MemoryNote] = []
-        for path in paths:
-            stat = path.stat()
-            created_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
-            notes.append(
-                MemoryNote(
-                    path=path,
-                    title=_read_note_title(path),
-                    created_at=created_at,
-                    bytes=stat.st_size,
-                )
+        return tuple(
+            MemoryNote(
+                path=item.path,
+                title=item.title,
+                created_at=item.created_at,
+                bytes=item.bytes,
             )
-        return tuple(notes)
+            for item in _list_markdown_items(self.notes_dir, limit=limit)
+        )
+
+    def add_suggestion(self, text: str, *, title: str | None = None) -> MemorySuggestion:
+        self._require_enabled()
+        clean = redact_text(text.strip()).text
+        if not clean:
+            raise ValueError("memory suggestion text cannot be empty")
+        if len(clean.encode("utf-8")) > self.config.max_note_bytes:
+            raise ValueError("memory suggestion exceeds memory.max_note_bytes")
+        self.ensure_layout()
+        now = datetime.now(tz=UTC)
+        suggestion_title = _note_title(title, clean)
+        path = self._unique_pending_path(suggestion_title, now=now)
+        body = _note_body(suggestion_title, clean, created_at=now, source="suggested")
+        _write_private_text(path, body)
+        return MemorySuggestion(
+            path=path,
+            title=suggestion_title,
+            created_at=now,
+            bytes=len(body.encode()),
+        )
+
+    def list_suggestions(self, *, limit: int | None = 20) -> tuple[MemorySuggestion, ...]:
+        if not self.config.enabled or not self.pending_dir.is_dir():
+            return ()
+        return tuple(_list_markdown_items(self.pending_dir, limit=limit))
+
+    def promote_suggestion(self, name: str) -> MemoryNote:
+        self._require_enabled()
+        self.ensure_layout()
+        source = self._pending_path(name)
+        if source is None:
+            raise FileNotFoundError(f"memory suggestion not found: {name}")
+        text = source.read_text(encoding="utf-8").strip()
+        title = _read_note_title(source)
+        note = self.add_note(text, title=title)
+        source.unlink()
+        self.refresh_summary()
+        return note
 
     def read_summary(self) -> str:
         if not self.config.enabled or not self.config.inject_summary:
@@ -166,16 +210,31 @@ class MemoryStore:
         _write_private_text(self.summary_path, "\n".join(lines).rstrip() + "\n")
 
     def _unique_note_path(self, title: str, *, now: datetime) -> Path:
+        return self._unique_markdown_path(self.notes_dir, title, now=now)
+
+    def _unique_pending_path(self, title: str, *, now: datetime) -> Path:
+        return self._unique_markdown_path(self.pending_dir, title, now=now)
+
+    def _unique_markdown_path(self, directory: Path, title: str, *, now: datetime) -> Path:
         stamp = now.strftime("%Y%m%dT%H%M%SZ")
         slug = _slug(title) or "note"
-        base = self.notes_dir / f"{stamp}-{slug}.md"
+        base = directory / f"{stamp}-{slug}.md"
         if not base.exists():
             return base
         for index in range(2, 1000):
-            candidate = self.notes_dir / f"{stamp}-{slug}-{index}.md"
+            candidate = directory / f"{stamp}-{slug}-{index}.md"
             if not candidate.exists():
                 return candidate
         raise RuntimeError("could not allocate memory note path")
+
+    def _pending_path(self, name: str) -> Path | None:
+        candidate = Path(name)
+        if candidate.is_absolute() or ".." in candidate.parts or candidate.name != name:
+            return None
+        path = self.pending_dir / candidate.name
+        if path.is_file() and path.suffix == ".md":
+            return path
+        return None
 
     def _require_enabled(self) -> None:
         if not self.config.enabled:
@@ -202,6 +261,17 @@ def format_memory_notes(
         return tr.t("memory.empty")
     lines = [tr.t("memory.notes_title")]
     lines.extend(f"- {note.title} ({note.path.name}, {note.bytes} bytes)" for note in notes)
+    return "\n".join(lines)
+
+
+def format_memory_suggestions(
+    suggestions: tuple[MemorySuggestion, ...], *, translator: Translator | None = None
+) -> str:
+    tr = translator or default_translator()
+    if not suggestions:
+        return tr.t("memory.suggestions_empty")
+    lines = [tr.t("memory.suggestions_title")]
+    lines.extend(f"- {item.title} ({item.path.name}, {item.bytes} bytes)" for item in suggestions)
     return "\n".join(lines)
 
 
@@ -245,11 +315,11 @@ def _note_title(title: str | None, text: str) -> str:
     return (collapsed[:80] or "Memory note").rstrip()
 
 
-def _note_body(title: str, text: str, *, created_at: datetime) -> str:
+def _note_body(title: str, text: str, *, created_at: datetime, source: str = "manual") -> str:
     return (
         f"# {title}\n\n"
         f"created_at: {created_at.isoformat()}\n"
-        "source: manual\n\n"
+        f"source: {source}\n\n"
         f"{text.rstrip()}\n"
     )
 
@@ -275,3 +345,22 @@ def _slug(title: str) -> str:
     lowered = title.lower()
     parts = re.findall(r"[a-z0-9]+", lowered)
     return "-".join(parts[:8])
+
+
+def _list_markdown_items(directory: Path, *, limit: int | None) -> tuple[MemorySuggestion, ...]:
+    paths = sorted(directory.glob("*.md"), reverse=True)
+    if limit is not None:
+        paths = paths[:limit]
+    items: list[MemorySuggestion] = []
+    for path in paths:
+        stat = path.stat()
+        created_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
+        items.append(
+            MemorySuggestion(
+                path=path,
+                title=_read_note_title(path),
+                created_at=created_at,
+                bytes=stat.st_size,
+            )
+        )
+    return tuple(items)
