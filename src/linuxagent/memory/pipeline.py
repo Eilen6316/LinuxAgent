@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import BaseMessage
 
 from ..security import redact_text
-from ..services import ChatService
+from ..services import ChatService, ChatSession
 from .store import MemoryDisabledError, MemoryStore
 
 
@@ -57,7 +57,7 @@ def maybe_run_startup_pipeline(memory_store: MemoryStore, chat_service: ChatServ
 
 
 def _write_stage1(memory_store: MemoryStore, chat_service: ChatService) -> int:
-    sessions = chat_service.list_sessions(limit=memory_store.config.max_rollouts_per_startup)
+    sessions = _eligible_sessions(memory_store, chat_service)
     count = 0
     for session in sessions:
         payload = {
@@ -76,6 +76,30 @@ def _write_stage1(memory_store: MemoryStore, chat_service: ChatService) -> int:
         _write_json(path, payload)
         count += 1
     return count
+
+
+def _eligible_sessions(memory_store: MemoryStore, chat_service: ChatService) -> list[ChatSession]:
+    now = datetime.now(tz=UTC)
+    max_age = timedelta(days=memory_store.config.max_rollout_age_days)
+    min_idle = timedelta(hours=memory_store.config.min_rollout_idle_hours)
+    candidates = chat_service.list_sessions(limit=None)
+    eligible: list[ChatSession] = []
+    for session in candidates:
+        updated_at = _as_utc(session.updated_at)
+        if memory_store.config.max_rollout_age_days > 0 and now - updated_at > max_age:
+            continue
+        if now - updated_at < min_idle:
+            continue
+        eligible.append(session)
+        if len(eligible) >= memory_store.config.max_rollouts_per_startup:
+            break
+    return eligible
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _message_snippets(messages: tuple[BaseMessage, ...], *, limit: int) -> list[dict[str, str]]:

@@ -11,7 +11,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -213,7 +213,7 @@ class MemoryStore:
     def write_consolidated_files(self) -> None:
         self._require_enabled()
         self.ensure_layout()
-        stage1_paths = sorted(self.stage1_dir.glob("*.json"))
+        stage1_paths = self._selected_stage1_paths()
         raw_lines = [
             "# LinuxAgent Raw Memories",
             "",
@@ -249,6 +249,14 @@ class MemoryStore:
         if not stage1_paths and not notes:
             lines.extend(["", "No manual memory notes yet."])
         _write_private_text(self.summary_path, "\n".join(lines).rstrip() + "\n")
+
+    def _selected_stage1_paths(self) -> list[Path]:
+        paths = _eligible_stage1_paths(
+            self.stage1_dir,
+            max_unused_days=self.config.max_unused_days,
+        )
+        paths = paths[-self.config.max_raw_memories_for_consolidation :]
+        return sorted(paths)
 
     def _unique_note_path(self, title: str, *, now: datetime) -> Path:
         return self._unique_markdown_path(self.notes_dir, title, now=now)
@@ -400,6 +408,39 @@ def _stage1_summary(path: Path) -> str:
                 if text:
                     lines.append(f"- {role}: {text[:300]}")
     return "\n".join(lines)
+
+
+def _eligible_stage1_paths(directory: Path, *, max_unused_days: int) -> list[Path]:
+    paths = sorted(directory.glob("*.json"))
+    if max_unused_days == 0:
+        return sorted(paths, key=lambda path: (_stage1_last_used_at(path), path.name))
+    cutoff = datetime.now(tz=UTC) - timedelta(days=max_unused_days)
+    eligible = [path for path in paths if _stage1_last_used_at(path) >= cutoff]
+    return sorted(eligible, key=lambda path: (_stage1_last_used_at(path), path.name))
+
+
+def _stage1_last_used_at(path: Path) -> datetime:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    if not isinstance(payload, dict):
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    for key in ("last_usage", "last_used_at", "updated_at", "generated_at"):
+        parsed = _parse_datetime(payload.get(key))
+        if parsed is not None:
+            return parsed
+    return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.astimezone(UTC) if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _slug(title: str) -> str:

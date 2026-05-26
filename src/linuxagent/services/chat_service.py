@@ -61,9 +61,10 @@ class ChatService:
         )
         self._messages = trimmed
 
-    def list_sessions(self, *, limit: int = 10) -> list[ChatSession]:
+    def list_sessions(self, *, limit: int | None = 10) -> list[ChatSession]:
         sessions = sorted(self._sessions.values(), key=lambda session: session.updated_at)
-        return list(reversed(sessions[-limit:]))
+        latest_first = list(reversed(sessions))
+        return latest_first if limit is None else latest_first[:limit]
 
     def get_session(self, thread_id: str) -> ChatSession | None:
         return self._sessions.get(thread_id)
