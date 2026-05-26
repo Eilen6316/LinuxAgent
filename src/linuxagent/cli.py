@@ -354,6 +354,7 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
         tools=cfg.mcp.tools,
         resources=cfg.mcp.resources,
         skills=container.skill_manifests(),
+        memory_store=container.memory_store(),
     )
     return serve_stdio(server)
 

@@ -99,6 +99,7 @@ mcp:
     - linuxagent.audit.verify
   resources:
     - linuxagent://skills/summary
+    - linuxagent://memory/summary
 
 skills:
   enabled: false

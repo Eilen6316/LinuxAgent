@@ -173,7 +173,7 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.mcp.enabled is True
     assert cfg.mcp.transport == "stdio"
     assert cfg.mcp.tools == ("linuxagent.policy.classify", "linuxagent.audit.verify")
-    assert cfg.mcp.resources == ("linuxagent://skills/summary",)
+    assert cfg.mcp.resources == ("linuxagent://skills/summary", "linuxagent://memory/summary")
     assert cfg.skills.enabled is False
     assert cfg.skills.manifests == ()
     assert cfg.memory.enabled is False

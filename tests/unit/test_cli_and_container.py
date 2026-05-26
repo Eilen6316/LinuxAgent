@@ -388,33 +388,29 @@ def test_mcp_command_starts_stdio_server(monkeypatch: pytest.MonkeyPatch) -> Non
         {
             "mcp": {
                 "tools": ["linuxagent.policy.classify"],
-                "resources": ["linuxagent://skills/summary"],
+                "resources": ["linuxagent://skills/summary", "linuxagent://memory/summary"],
             },
             "telemetry": {"enabled": False, "exporter": "none"},
         }
     )
-    calls: list[tuple[str, Path]] = []
+    calls: list[Any] = []
 
     monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
     monkeypatch.setattr(
         cli,
         "serve_stdio",
-        lambda server: (
-            calls.append(("serve", server.audit_path, server.tools, server.resources)) or 0
-        ),
+        lambda server: calls.append(server) or 0,
     )
 
     code = cli.main(["mcp"])
 
     assert code == 0
-    assert calls == [
-        (
-            "serve",
-            cfg.audit.path,
-            ("linuxagent.policy.classify",),
-            ("linuxagent://skills/summary",),
-        )
-    ]
+    assert len(calls) == 1
+    assert calls[0].audit_path == cfg.audit.path
+    assert calls[0].tools == ("linuxagent.policy.classify",)
+    assert calls[0].resources == ("linuxagent://skills/summary", "linuxagent://memory/summary")
+    assert calls[0].memory_store is not None
+    assert calls[0].memory_store.root == cfg.memory.path
 
 
 def test_mcp_command_rejects_disabled_server(

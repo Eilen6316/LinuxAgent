@@ -44,6 +44,7 @@ mcp:
     - linuxagent.audit.verify
   resources:
     - linuxagent://skills/summary
+    - linuxagent://memory/summary
 ```
 
 `transport` currently accepts only `stdio`. `tools` and `resources` are explicit
@@ -71,10 +72,12 @@ configured audit path.
 | Resource | Behavior | State mutation |
 |---|---|---|
 | `linuxagent://skills/summary` | Returns Skill name/version/description/permissions/guidance presence | None |
+| `linuxagent://memory/summary` | Returns opt-in advisory memory summary metadata when memory is enabled | None |
 
 Resources intentionally return summaries. They do not expose command strings,
 planner guidance bodies, execution results, raw audit logs, config secrets, or
-filesystem content.
+filesystem content. The memory summary is advisory model context only; it cannot
+alter policy, HITL, sandbox, execution, or audit behavior.
 
 ## Non-Exposed Capabilities
 

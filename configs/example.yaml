@@ -209,6 +209,7 @@ mcp:
     - linuxagent.audit.verify
   resources:
     - linuxagent://skills/summary
+    - linuxagent://memory/summary
 
 skills:
   # Declarative local YAML manifests only. No Python hooks, shell hooks, remote

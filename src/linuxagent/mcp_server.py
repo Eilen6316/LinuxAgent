@@ -6,7 +6,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 from . import __version__
 from .audit import verify_audit_log
@@ -15,6 +15,7 @@ from .mcp_tools import (
     AUDIT_TOOL_NAME,
     MCP_READ_ONLY_RESOURCE_URIS,
     MCP_READ_ONLY_TOOL_NAMES,
+    MEMORY_SUMMARY_RESOURCE,
     POLICY_TOOL_NAME,
     SKILLS_SUMMARY_RESOURCE,
     McpResourceUri,
@@ -23,6 +24,9 @@ from .mcp_tools import (
 from .policy import PolicyEngine
 from .security import redact_record
 from .skills import SkillManifest
+
+if TYPE_CHECKING:
+    from .memory import MemoryStore
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "linuxagent-mcp"
@@ -65,6 +69,12 @@ _RESOURCE_DEFINITIONS: dict[McpResourceUri, JsonObject] = {
         "description": "Read-only summary of configured LinuxAgent Skill manifests.",
         "mimeType": "application/json",
     },
+    MEMORY_SUMMARY_RESOURCE: {
+        "uri": MEMORY_SUMMARY_RESOURCE,
+        "name": "LinuxAgent Memory Summary",
+        "description": "Read-only advisory local memory summary when memory is enabled.",
+        "mimeType": "application/json",
+    },
 }
 JsonObject = dict[str, Any]
 
@@ -76,6 +86,7 @@ class McpServer:
     tools: tuple[McpToolName, ...] = MCP_READ_ONLY_TOOL_NAMES
     resources: tuple[McpResourceUri, ...] = MCP_READ_ONLY_RESOURCE_URIS
     skills: tuple[SkillManifest, ...] = ()
+    memory_store: MemoryStore | None = None
 
     def handle(self, request: JsonObject) -> JsonObject | None:
         method = request.get("method")
@@ -132,6 +143,11 @@ class McpServer:
             return _result(
                 request_id,
                 _resource_result(uri, _skill_summary(self.skills)),
+            )
+        if uri == MEMORY_SUMMARY_RESOURCE:
+            return _result(
+                request_id,
+                _resource_result(uri, _memory_summary(self.memory_store)),
             )
         return _error(request_id, -32602, f"unknown resource: {uri}")
 
@@ -250,6 +266,22 @@ def _skill_summary(skills: tuple[SkillManifest, ...]) -> JsonObject:
             }
             for skill in skills
         ],
+    }
+
+
+def _memory_summary(memory_store: MemoryStore | None) -> JsonObject:
+    if memory_store is None:
+        return {"enabled": False, "path": None, "summary": "", "notes": 0}
+    status = memory_store.status()
+    summary = memory_store.read_summary()
+    return {
+        "enabled": status.enabled,
+        "path": str(status.path),
+        "summary_path": str(status.summary_path),
+        "summary": summary,
+        "notes": status.note_count,
+        "summary_chars": status.summary_chars,
+        "advisory_only": True,
     }
 
 

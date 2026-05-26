@@ -7,7 +7,9 @@ import json
 from pathlib import Path
 
 from linuxagent.audit import AuditLog
+from linuxagent.config.models import MemoryConfig
 from linuxagent.mcp_server import McpServer, serve_stdio
+from linuxagent.memory import MemoryStore
 from linuxagent.policy import DEFAULT_POLICY_ENGINE
 from linuxagent.skills import SkillManifest
 
@@ -97,6 +99,13 @@ def test_mcp_resources_list_keeps_protocol_metadata_stable_when_language_changes
         resources[0]["description"] == "Read-only summary of configured LinuxAgent Skill manifests."
     )
     assert resources[0]["mimeType"] == "application/json"
+    assert resources[1]["uri"] == "linuxagent://memory/summary"
+    assert resources[1]["name"] == "LinuxAgent Memory Summary"
+    assert (
+        resources[1]["description"]
+        == "Read-only advisory local memory summary when memory is enabled."
+    )
+    assert resources[1]["mimeType"] == "application/json"
 
 
 def test_mcp_skill_summary_resource_reports_manifest_metadata(tmp_path: Path) -> None:
@@ -153,6 +162,46 @@ def test_mcp_skill_summary_resource_reports_disabled_when_no_skills(tmp_path: Pa
     assert response is not None
     content = json.loads(response["result"]["contents"][0]["text"])
     assert content == {"enabled": False, "skills": []}
+
+
+def test_mcp_memory_summary_resource_reports_enabled_memory(tmp_path: Path) -> None:
+    memory = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+    memory.add_note("Token token=abc123 should be redacted", title="Secret note")
+    server = McpServer(DEFAULT_POLICY_ENGINE, tmp_path / "audit.log", memory_store=memory)
+
+    response = server.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "resources/read",
+            "params": {"uri": "linuxagent://memory/summary"},
+        }
+    )
+
+    assert response is not None
+    content = json.loads(response["result"]["contents"][0]["text"])
+    assert content["enabled"] is True
+    assert content["path"] == str(memory.root)
+    assert content["notes"] == 1
+    assert content["advisory_only"] is True
+    assert "Secret note" in content["summary"]
+    assert "token=***redacted***" in content["summary"]
+    assert "abc123" not in response["result"]["contents"][0]["text"]
+
+
+def test_mcp_memory_summary_resource_reports_disabled_without_store(tmp_path: Path) -> None:
+    response = _server(tmp_path).handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 13,
+            "method": "resources/read",
+            "params": {"uri": "linuxagent://memory/summary"},
+        }
+    )
+
+    assert response is not None
+    content = json.loads(response["result"]["contents"][0]["text"])
+    assert content == {"enabled": False, "path": None, "summary": "", "notes": 0}
 
 
 def test_mcp_disabled_resource_is_rejected(tmp_path: Path) -> None:
