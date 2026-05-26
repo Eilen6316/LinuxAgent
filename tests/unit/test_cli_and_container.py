@@ -1362,6 +1362,57 @@ async def test_runtime_observer_renders_typed_active_view(
     assert container._active_turn_view.status == "idle"
 
 
+async def test_runtime_observer_marks_network_tool_memory_pollution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class _FakeUI:
+        async def print_active_view(self, view: object) -> None:
+            del view
+
+        async def print_activity(self, text: str) -> None:
+            del text
+
+    monkeypatch.setattr(container_module.Container, "ui", lambda self: _FakeUI())
+    container = Container(
+        AppConfig.model_validate(
+            {
+                "memory": {
+                    "enabled": True,
+                    "disable_on_external_context": True,
+                    "path": tmp_path / "memories",
+                },
+                "telemetry": {"enabled": False},
+            }
+        )
+    )
+    observer = container._runtime_event_observer()
+
+    await observer(
+        {
+            "schema_version": 1,
+            "kind": "work_item",
+            "phase": "completed",
+            "thread_id": "thread",
+            "turn_id": "turn",
+            "payload": {
+                "item_id": "tool:fetch_url",
+                "category": "tool",
+                "status": "completed",
+                "label_params": {
+                    "sandbox": {
+                        "permissions": {
+                            "network_access": True,
+                        }
+                    }
+                },
+            },
+        }
+    )
+
+    assert container.memory_pollution_registry().is_polluted("thread")
+
+
 async def test_runtime_observer_consolidates_active_history_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -455,6 +455,10 @@ memory root 内的文件，并在持久化前做脱敏。`linuxagent memory stat
 `memory.generate_memories` 控制写路径。旧配置里的 `inject_summary`、
 `auto_consolidate_on_startup` 和 `stage1_session_limit` 仍会被接受并映射到新字段。
 
+当 `memory.disable_on_external_context` 为 true 时，使用 network tool 等外部上下文的
+thread 会被标记为 polluted，并在后续 memory generation 中跳过，避免把外部或临时上下文
+写入长期本地记忆。
+
 memory 不是安全边界，不能降低 policy 决策、跳过 HITL、改变 sandbox enforcement、
 执行命令或修改 audit 记录。需要完全关闭 memory 读写时：
 

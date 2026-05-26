@@ -28,7 +28,7 @@ from .graph.agent_graph import AgentGraph
 from .graph.checkpoint import PersistentMemorySaver
 from .i18n import Translator
 from .interfaces import ExecutionResult, LLMProvider, UserInterface
-from .memory import MemoryStore
+from .memory import MemoryPollutionRegistry, MemoryStore
 from .operating_manifest import operating_manifest_context
 from .policy import PolicyEngine, runtime_policy_config
 from .sandbox import SandboxRunner
@@ -319,6 +319,12 @@ class Container:
     def memory_store(self) -> MemoryStore:
         return self._cached("memory_store", lambda: MemoryStore(self._config.memory))
 
+    def memory_pollution_registry(self) -> MemoryPollutionRegistry:
+        return self._cached(
+            "memory_pollution_registry",
+            lambda: MemoryPollutionRegistry(self.memory_store().pollution_path),
+        )
+
     def knowledge_base(self) -> KnowledgeBase:
         return self._cached("knowledge_base", lambda: KnowledgeBase(self.nlp_enhancer()))
 
@@ -422,6 +428,7 @@ class Container:
 
     def _runtime_event_observer(self) -> Callable[[dict[str, Any]], Any]:
         async def observe(event: dict[str, Any]) -> None:
+            self._mark_memory_pollution_from_event(event)
             record_runtime_event(self.telemetry(), event)
             self._runtime_event_store.record(event)
             self._request_pending_input_at_safe_point(event)
@@ -450,6 +457,21 @@ class Container:
                         await printer(result, include_output=False)
 
         return observe
+
+    def _mark_memory_pollution_from_event(self, event: dict[str, Any]) -> None:
+        if not self._config.memory.enabled or not self._config.memory.disable_on_external_context:
+            return
+        thread_id = _event_thread_id(event)
+        if not thread_id:
+            return
+        reason = _external_context_reason(event)
+        if reason is None:
+            return
+        self.memory_pollution_registry().mark(
+            thread_id,
+            reason=reason,
+            source=str(event.get("kind") or event.get("type") or "runtime_event"),
+        )
 
     def _request_pending_input_at_safe_point(self, event: dict[str, Any]) -> None:
         del event
@@ -509,6 +531,50 @@ def _active_runtime_event(event: dict[str, Any]) -> bool:
     if event.get("kind") in {"turn", "work_item", "request"}:
         return True
     return event.get("kind") == "status" and event.get("phase") == "usage"
+
+
+def _event_thread_id(event: dict[str, Any]) -> str | None:
+    value = event.get("thread_id")
+    return value if isinstance(value, str) and value else None
+
+
+def _external_context_reason(event: dict[str, Any]) -> str | None:
+    kind = str(event.get("kind") or "")
+    if kind == "context" and event.get("phase") in {"injected", "requested"}:
+        payload = event.get("payload")
+        source = ""
+        if isinstance(payload, dict):
+            source = str(payload.get("source") or "")
+        return f"external_context:{source or 'context'}"
+    if kind == "work_item":
+        payload = event.get("payload")
+        if isinstance(payload, dict) and _work_item_uses_external_context(payload):
+            return "external_context:tool_network_access"
+    if event.get("type") == "tool" and _legacy_tool_uses_external_context(event):
+        return "external_context:tool_network_access"
+    return None
+
+
+def _work_item_uses_external_context(payload: dict[str, Any]) -> bool:
+    if payload.get("category") != "tool":
+        return False
+    label_params = payload.get("label_params")
+    sandbox = label_params.get("sandbox") if isinstance(label_params, dict) else None
+    return _sandbox_has_network_access(sandbox if isinstance(sandbox, dict) else None)
+
+
+def _legacy_tool_uses_external_context(event: dict[str, Any]) -> bool:
+    sandbox = event.get("sandbox")
+    return _sandbox_has_network_access(sandbox if isinstance(sandbox, dict) else None)
+
+
+def _sandbox_has_network_access(sandbox: dict[str, Any] | None) -> bool:
+    if sandbox is None:
+        return False
+    permissions = sandbox.get("permissions")
+    if not isinstance(permissions, dict):
+        return False
+    return permissions.get("network_access") is True
 
 
 def _pending_input_safe_point(event: dict[str, Any]) -> bool:

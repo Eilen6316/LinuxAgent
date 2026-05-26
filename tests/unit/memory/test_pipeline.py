@@ -11,7 +11,12 @@ import pytest
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, messages_to_dict
 
 from linuxagent.config.models import MemoryConfig
-from linuxagent.memory import MemoryPipelineLockedError, MemoryStore, run_memory_pipeline
+from linuxagent.memory import (
+    MemoryPipelineLockedError,
+    MemoryPollutionRegistry,
+    MemoryStore,
+    run_memory_pipeline,
+)
 from linuxagent.memory.pipeline import maybe_run_startup_pipeline, start_startup_pipeline_task
 from linuxagent.services import ChatService
 
@@ -146,6 +151,49 @@ def test_memory_pipeline_recovers_stale_lock(tmp_path: Path) -> None:
     assert result.stage1_records == 1
     assert not store.pipeline_lock_path.exists()
     assert store.status().pipeline.state == "completed"
+
+
+def test_memory_pipeline_skips_polluted_threads_when_enabled(tmp_path: Path) -> None:
+    chat = ChatService(tmp_path / "history.json", max_messages=10)
+    now = datetime.now(tz=UTC)
+    _write_history(
+        chat,
+        [
+            _history_session(
+                "clean",
+                [HumanMessage(content="Prefer staging")],
+                title="Clean",
+                updated_at=now - timedelta(hours=8),
+            ),
+            _history_session(
+                "polluted",
+                [HumanMessage(content="Fetched external docs")],
+                title="Polluted",
+                updated_at=now - timedelta(hours=9),
+            ),
+        ],
+    )
+    store = MemoryStore(
+        MemoryConfig(
+            enabled=True,
+            disable_on_external_context=True,
+            path=tmp_path / "memories",
+        )
+    )
+    MemoryPollutionRegistry(store.pollution_path).mark(
+        "polluted",
+        reason="external_context:tool_network_access",
+        source="work_item",
+    )
+
+    result = run_memory_pipeline(store, chat)
+
+    assert result.stage1_records == 1
+    payloads = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(store.stage1_dir.glob("*.json"))
+    ]
+    assert [payload["thread_id"] for payload in payloads] == ["clean"]
 
 
 def test_memory_pipeline_skips_fresh_and_stale_rollouts(tmp_path: Path) -> None:

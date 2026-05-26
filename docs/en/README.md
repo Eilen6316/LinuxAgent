@@ -469,6 +469,11 @@ path, and `memory.generate_memories` controls the write path. Legacy
 `inject_summary`, `auto_consolidate_on_startup`, and `stage1_session_limit`
 keys are still accepted and mapped to the new names.
 
+When `memory.disable_on_external_context` is true, threads that use external
+context sources such as network tools are marked as polluted and skipped by
+future memory generation. This keeps externally sourced or transient context out
+of long-term local memory.
+
 Memory is not a safety boundary and cannot lower policy decisions, skip HITL,
 change sandbox enforcement, execute commands, or edit audit records. Disable
 all memory reads and writes with:

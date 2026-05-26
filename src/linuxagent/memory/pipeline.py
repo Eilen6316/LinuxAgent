@@ -17,6 +17,7 @@ from ..interfaces import LLMProvider
 from ..prompts_loader import load_prompt
 from ..security import redact_text
 from ..services import ChatService, ChatSession
+from .pollution import MemoryPollutionRegistry
 from .store import MemoryDisabledError, MemoryStore
 
 
@@ -305,8 +306,13 @@ def _eligible_sessions(memory_store: MemoryStore, chat_service: ChatService) -> 
     max_age = timedelta(days=memory_store.config.max_rollout_age_days)
     min_idle = timedelta(hours=memory_store.config.min_rollout_idle_hours)
     candidates = chat_service.list_sessions(limit=None)
+    pollution = MemoryPollutionRegistry(memory_store.pollution_path)
     eligible: list[ChatSession] = []
     for session in candidates:
+        if memory_store.config.disable_on_external_context and pollution.is_polluted(
+            session.thread_id
+        ):
+            continue
         updated_at = _as_utc(session.updated_at)
         if memory_store.config.max_rollout_age_days > 0 and now - updated_at > max_age:
             continue

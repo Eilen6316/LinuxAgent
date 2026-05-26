@@ -105,6 +105,10 @@ class MemoryStore:
         return self.root / "raw_memories.md"
 
     @property
+    def pollution_path(self) -> Path:
+        return self.root / "polluted_threads.json"
+
+    @property
     def pipeline_lock_path(self) -> Path:
         return self.root / ".pipeline.lock"
 

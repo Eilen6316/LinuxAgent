@@ -9,6 +9,7 @@ from .pipeline import (
     run_memory_pipeline,
     start_startup_pipeline_task,
 )
+from .pollution import MemoryPollutionRecord, MemoryPollutionRegistry
 from .store import (
     MemoryDisabledError,
     MemoryNote,
@@ -31,6 +32,8 @@ __all__ = [
     "MemoryPipelineResult",
     "MemoryPipelineStatus",
     "MemoryPipelineTask",
+    "MemoryPollutionRecord",
+    "MemoryPollutionRegistry",
     "format_memory_notes",
     "format_memory_suggestions",
     "format_memory_status",
