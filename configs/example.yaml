@@ -244,6 +244,7 @@ memory:
   extract_model:
   consolidation_model:
   stage1_message_limit: 12
+  pipeline_lock_ttl_seconds: 600
 
 telemetry:
   # Default is local JSONL spans. Set exporter: console for local stdout

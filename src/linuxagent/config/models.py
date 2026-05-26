@@ -499,6 +499,7 @@ class MemoryConfig(BaseModel):
     extract_model: str | None = None
     consolidation_model: str | None = None
     stage1_message_limit: int = Field(default=12, ge=1, le=100)
+    pipeline_lock_ttl_seconds: int = Field(default=600, ge=1, le=86400)
 
     @model_validator(mode="before")
     @classmethod

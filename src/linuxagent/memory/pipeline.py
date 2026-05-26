@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -31,6 +32,11 @@ class MemoryPipelineResult:
 
 
 @dataclass(frozen=True)
+class MemoryPipelineTask:
+    thread: threading.Thread
+
+
+@dataclass(frozen=True)
 class MemoryStage1Output:
     raw_memory: str
     rollout_summary: str
@@ -50,15 +56,42 @@ def run_memory_pipeline(
     """Run stage1 extraction and stage2 consolidation."""
     memory_store._require_enabled()
     memory_store.ensure_layout()
-    lock_fd = _acquire_lock(memory_store.pipeline_lock_path)
+    lock_fd = _acquire_lock(
+        memory_store.pipeline_lock_path,
+        ttl_seconds=memory_store.config.pipeline_lock_ttl_seconds,
+    )
+    started_at = datetime.now(tz=UTC)
+    memory_store.write_pipeline_status(
+        "running",
+        started_at=started_at,
+        pid=os.getpid(),
+    )
     try:
         stage1_records = _write_stage1(memory_store, chat_service, provider=provider)
         memory_store.write_consolidated_files()
-        return MemoryPipelineResult(
+        finished_at = datetime.now(tz=UTC)
+        result = MemoryPipelineResult(
             stage1_records=stage1_records,
             wrote_summary=True,
             lock_path=memory_store.pipeline_lock_path,
         )
+        memory_store.write_pipeline_status(
+            "completed",
+            started_at=started_at,
+            finished_at=finished_at,
+            stage1_records=stage1_records,
+            pid=os.getpid(),
+        )
+        return result
+    except Exception as exc:
+        memory_store.write_pipeline_status(
+            "failed",
+            reason=f"{type(exc).__name__}: {exc}",
+            started_at=started_at,
+            finished_at=datetime.now(tz=UTC),
+            pid=os.getpid(),
+        )
+        raise
     finally:
         _release_lock(memory_store.pipeline_lock_path, lock_fd)
 
@@ -70,11 +103,40 @@ def maybe_run_startup_pipeline(
     provider: LLMProvider | None = None,
 ) -> None:
     if not memory_store.config.enabled or not memory_store.config.generate_memories:
+        if memory_store.config.enabled:
+            memory_store.write_pipeline_status("skipped", reason="generate_memories_disabled")
         return
     try:
         run_memory_pipeline(memory_store, chat_service, provider=provider)
-    except (MemoryDisabledError, MemoryPipelineLockedError, OSError, ValueError):
+    except MemoryPipelineLockedError:
+        memory_store.write_pipeline_status("skipped", reason="locked")
+    except (MemoryDisabledError, OSError, ValueError):
         return
+
+
+def start_startup_pipeline_task(
+    memory_store: MemoryStore,
+    chat_service: ChatService,
+    *,
+    provider: LLMProvider | None = None,
+) -> MemoryPipelineTask | None:
+    if not memory_store.config.enabled:
+        return None
+    if not memory_store.config.generate_memories:
+        memory_store.write_pipeline_status("skipped", reason="generate_memories_disabled")
+        return None
+    thread = threading.Thread(
+        target=maybe_run_startup_pipeline,
+        kwargs={
+            "memory_store": memory_store,
+            "chat_service": chat_service,
+            "provider": provider,
+        },
+        name="linuxagent-memory-pipeline",
+        daemon=True,
+    )
+    thread.start()
+    return MemoryPipelineTask(thread=thread)
 
 
 def _write_stage1(
@@ -304,13 +366,25 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     os.chmod(path, 0o600)
 
 
-def _acquire_lock(path: Path) -> int:
+def _acquire_lock(path: Path, *, ttl_seconds: int) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
-    try:
-        return os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError as exc:
-        raise MemoryPipelineLockedError(f"memory pipeline is already running: {path}") from exc
+    payload = _lock_payload(ttl_seconds=ttl_seconds)
+    for _ in range(2):
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError as exc:
+            if _lock_is_stale(path):
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    continue
+                continue
+            raise MemoryPipelineLockedError(f"memory pipeline is already running: {path}") from exc
+        os.write(fd, payload.encode("utf-8"))
+        os.fsync(fd)
+        return fd
+    raise MemoryPipelineLockedError(f"memory pipeline is already running: {path}")
 
 
 def _release_lock(path: Path, fd: int) -> None:
@@ -324,3 +398,41 @@ def _release_lock(path: Path, fd: int) -> None:
 def _safe_filename(value: str) -> str:
     safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in value)
     return safe[:80] or "session"
+
+
+def _lock_payload(*, ttl_seconds: int) -> str:
+    started_at = datetime.now(tz=UTC)
+    expires_at = started_at + timedelta(seconds=ttl_seconds)
+    return (
+        json.dumps(
+            {
+                "pid": os.getpid(),
+                "started_at": started_at.isoformat(),
+                "expires_at": expires_at.isoformat(),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+
+
+def _lock_is_stale(path: Path) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    expires_at = _parse_time(payload.get("expires_at"))
+    return expires_at is not None and expires_at <= datetime.now(tz=UTC)
+
+
+def _parse_time(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.astimezone(UTC) if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)

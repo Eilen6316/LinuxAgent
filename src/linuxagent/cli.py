@@ -21,8 +21,8 @@ from .mcp_server import McpServer, serve_stdio
 from .memory import MemoryDisabledError, format_memory_notes, format_memory_status
 from .memory.pipeline import (
     MemoryPipelineLockedError,
-    maybe_run_startup_pipeline,
     run_memory_pipeline,
+    start_startup_pipeline_task,
 )
 from .memory.suggestions import suggest_from_history
 from .providers.errors import ProviderError
@@ -210,7 +210,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     chat_service = container.chat_service()
     chat_service.load()
     memory_store = container.memory_store()
-    maybe_run_startup_pipeline(
+    start_startup_pipeline_task(
         memory_store,
         chat_service,
         provider=container.provider() if memory_store.config.enabled else None,

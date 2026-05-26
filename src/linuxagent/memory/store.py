@@ -49,6 +49,17 @@ class MemoryStatus:
     notes_dir: Path
     note_count: int
     summary_chars: int
+    pipeline: MemoryPipelineStatus
+
+
+@dataclass(frozen=True)
+class MemoryPipelineStatus:
+    state: str
+    reason: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    stage1_records: int | None = None
+    pid: int | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +108,10 @@ class MemoryStore:
     def pipeline_lock_path(self) -> Path:
         return self.root / ".pipeline.lock"
 
+    @property
+    def pipeline_status_path(self) -> Path:
+        return self.root / "pipeline_status.json"
+
     def ensure_layout(self) -> None:
         self._require_enabled()
         _ensure_private_dir(self.root)
@@ -115,6 +130,58 @@ class MemoryStore:
             notes_dir=self.notes_dir,
             note_count=len(self.list_notes(limit=None)) if self.config.enabled else 0,
             summary_chars=_file_chars(self.summary_path) if self.config.enabled else 0,
+            pipeline=self.read_pipeline_status(),
+        )
+
+    def read_pipeline_status(self) -> MemoryPipelineStatus:
+        if not self.config.enabled:
+            return MemoryPipelineStatus(state="disabled")
+        if not self.pipeline_status_path.is_file():
+            return MemoryPipelineStatus(state="idle")
+        try:
+            payload = json.loads(self.pipeline_status_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return MemoryPipelineStatus(state="unknown", reason="unreadable_status")
+        if not isinstance(payload, dict):
+            return MemoryPipelineStatus(state="unknown", reason="invalid_status")
+        return MemoryPipelineStatus(
+            state=str(payload.get("state") or "unknown"),
+            reason=_optional_str(payload.get("reason")),
+            started_at=_parse_datetime(payload.get("started_at")),
+            finished_at=_parse_datetime(payload.get("finished_at")),
+            stage1_records=_optional_int(payload.get("stage1_records")),
+            pid=_optional_int(payload.get("pid")),
+        )
+
+    def write_pipeline_status(
+        self,
+        state: str,
+        *,
+        reason: str | None = None,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+        stage1_records: int | None = None,
+        pid: int | None = None,
+    ) -> None:
+        self._require_enabled()
+        _ensure_private_dir(self.root)
+        payload: dict[str, object] = {
+            "state": state,
+            "updated_at": datetime.now(tz=UTC).isoformat(),
+        }
+        if reason:
+            payload["reason"] = reason
+        if started_at is not None:
+            payload["started_at"] = started_at.isoformat()
+        if finished_at is not None:
+            payload["finished_at"] = finished_at.isoformat()
+        if stage1_records is not None:
+            payload["stage1_records"] = stage1_records
+        if pid is not None:
+            payload["pid"] = pid
+        _write_private_text(
+            self.pipeline_status_path,
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         )
 
     def add_note(self, text: str, *, title: str | None = None) -> MemoryNote:
@@ -299,6 +366,7 @@ def format_memory_status(status: MemoryStatus, *, translator: Translator | None 
         path=status.path,
         notes=status.note_count,
         summary_chars=status.summary_chars,
+        pipeline=_format_pipeline_status(status.pipeline),
     )
 
 
@@ -322,6 +390,19 @@ def format_memory_suggestions(
     lines = [tr.t("memory.suggestions_title")]
     lines.extend(f"- {item.title} ({item.path.name}, {item.bytes} bytes)" for item in suggestions)
     return "\n".join(lines)
+
+
+def _format_pipeline_status(status: MemoryPipelineStatus) -> str:
+    details: list[str] = [status.state]
+    if status.reason:
+        details.append(f"reason={status.reason}")
+    if status.stage1_records is not None:
+        details.append(f"stage1_records={status.stage1_records}")
+    if status.finished_at is not None:
+        details.append(f"finished_at={status.finished_at.isoformat()}")
+    elif status.started_at is not None:
+        details.append(f"started_at={status.started_at.isoformat()}")
+    return " ".join(details)
 
 
 def _ensure_private_dir(path: Path) -> None:
@@ -449,6 +530,14 @@ def _parse_datetime(value: object) -> datetime | None:
     except ValueError:
         return None
     return parsed.astimezone(UTC) if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _optional_int(value: object) -> int | None:
+    return value if isinstance(value, int) else None
 
 
 def _slug(title: str) -> str:

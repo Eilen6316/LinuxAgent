@@ -1551,7 +1551,7 @@ def test_chat_command_triggers_startup_memory_pipeline(
     monkeypatch.setattr(cli, "Container", _FakeContainer)
     monkeypatch.setattr(
         cli,
-        "maybe_run_startup_pipeline",
+        "start_startup_pipeline_task",
         lambda store, service, **kwargs: calls.append((store, service, kwargs["provider"])),
     )
 

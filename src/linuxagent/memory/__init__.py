@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from .pipeline import MemoryPipelineLockedError, MemoryPipelineResult, run_memory_pipeline
+from .pipeline import (
+    MemoryPipelineLockedError,
+    MemoryPipelineResult,
+    MemoryPipelineTask,
+    run_memory_pipeline,
+    start_startup_pipeline_task,
+)
 from .store import (
     MemoryDisabledError,
     MemoryNote,
+    MemoryPipelineStatus,
     MemoryStatus,
     MemoryStore,
     MemorySuggestion,
@@ -22,8 +29,11 @@ __all__ = [
     "MemoryStore",
     "MemoryPipelineLockedError",
     "MemoryPipelineResult",
+    "MemoryPipelineStatus",
+    "MemoryPipelineTask",
     "format_memory_notes",
     "format_memory_suggestions",
     "format_memory_status",
     "run_memory_pipeline",
+    "start_startup_pipeline_task",
 ]

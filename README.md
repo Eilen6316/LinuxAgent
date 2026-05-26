@@ -142,13 +142,14 @@ safety policy data lives in YAML, while Python code only loads, validates, and
 applies those policies.
 
 LinuxAgent also keeps a local filesystem memory at `~/.linuxagent/memories` by
-default. On chat startup it can generate redacted memory inputs from saved local
-sessions, then inject `memory_summary.md` as advisory operator/project context
-when `memory.use_memories` is true. This memory never changes policy, HITL
-confirmation, sandbox enforcement, command execution, or audit records. Disable
-all memory reads and writes with `memory.enabled: false` in `config.yaml`, or
-split the read/write paths with `memory.use_memories` and
-`memory.generate_memories`.
+default. On chat startup it starts a background memory pass that can generate
+redacted memory inputs from saved local sessions, then injects the current
+`memory_summary.md` as advisory operator/project context when
+`memory.use_memories` is true. `linuxagent memory status` shows the latest
+pipeline state. This memory never changes policy, HITL confirmation, sandbox
+enforcement, command execution, or audit records. Disable all memory reads and
+writes with `memory.enabled: false` in `config.yaml`, or split the read/write
+paths with `memory.use_memories` and `memory.generate_memories`.
 
 Each CLI launch starts with an empty conversation context. Saved sessions are
 available only when the operator asks for it with `/resume`; then enter the

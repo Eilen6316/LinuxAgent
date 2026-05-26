@@ -430,6 +430,7 @@ linuxagent check
 | `memory` | `min_rate_limit_remaining_percent` | `25` | 预留给 LLM memory worker 的额度阈值 |
 | `memory` | `max_raw_memories_for_consolidation` | `256` | consolidation 最多读取的 raw memory 输入 |
 | `memory` | `max_unused_days` | `30` | 超过该天数未使用的 raw memory 输入会被排除 |
+| `memory` | `pipeline_lock_ttl_seconds` | `600` | stale memory pipeline lock lease 超时时间 |
 | `telemetry` | `exporter` | `local` | 默认本地 JSONL span；`none` 禁用写入 |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | 本地 telemetry 路径 |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
@@ -445,9 +446,10 @@ linuxagent check
 ### 本地文件系统记忆
 
 本地记忆默认开启，数据位于 `~/.linuxagent/memories`。`linuxagent chat`
-启动时，LinuxAgent 会读取本机保存的会话，运行确定性的两阶段 consolidation，
-并把 `memory_summary.md` 作为 advisory 的操作者/项目上下文注入当前运行时。该流程只写
-memory root 内的文件，并在持久化前做脱敏。
+启动时，LinuxAgent 会读取本机保存的会话，后台启动两阶段 memory pass，
+并把当前 `memory_summary.md` 作为 advisory 的操作者/项目上下文注入当前运行时。该流程只写
+memory root 内的文件，并在持久化前做脱敏。`linuxagent memory status`
+会显示最近一次 pipeline 是 idle、running、completed、failed 还是 skipped。
 
 `memory.enabled` 是总开关。`memory.use_memories` 控制读路径，
 `memory.generate_memories` 控制写路径。旧配置里的 `inject_summary`、

@@ -38,7 +38,7 @@ trace:
   hidden: "Trace/activity 输出现在已隐藏。"
 memory:
   disabled: "memory.enabled 为 false；路径：{path}"
-  status: "memory 已启用：path={path}，notes={notes}，summary_chars={summary_chars}"
+  status: "memory 已启用：path={path}，notes={notes}，summary_chars={summary_chars}，pipeline={pipeline}"
   empty: "没有 memory notes。"
   notes_title: "Memory notes："
   suggestions_empty: "没有待确认 memory suggestions。"

@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from linuxagent.config.models import MemoryConfig
-from linuxagent.memory import MemoryDisabledError, MemoryStore, format_memory_suggestions
+from linuxagent.memory import (
+    MemoryDisabledError,
+    MemoryStore,
+    format_memory_status,
+    format_memory_suggestions,
+)
 
 
 def test_memory_store_add_note_redacts_and_refreshes_summary(tmp_path: Path) -> None:
@@ -68,3 +73,15 @@ def test_memory_promote_rejects_path_traversal(tmp_path: Path) -> None:
 
     with pytest.raises(FileNotFoundError):
         store.promote_suggestion("../outside.md")
+
+
+def test_memory_status_formats_pipeline_state(tmp_path: Path) -> None:
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+
+    store.write_pipeline_status("skipped", reason="locked")
+
+    status = store.status()
+    formatted = format_memory_status(status)
+    assert status.pipeline.state == "skipped"
+    assert status.pipeline.reason == "locked"
+    assert "pipeline=skipped reason=locked" in formatted

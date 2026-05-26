@@ -88,6 +88,7 @@ CONFIG_REQUIRED_PATHS = (
     ("memory", "extract_model"),
     ("memory", "consolidation_model"),
     ("memory", "stage1_message_limit"),
+    ("memory", "pipeline_lock_ttl_seconds"),
     ("telemetry", "enabled"),
     ("telemetry", "exporter"),
     ("telemetry", "path"),
@@ -200,6 +201,7 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.memory.max_unused_days == 30
     assert cfg.memory.extract_model is None
     assert cfg.memory.consolidation_model is None
+    assert cfg.memory.pipeline_lock_ttl_seconds == 600
     assert cfg.ui.max_chat_history == 20
     assert cfg.jobs.daemon_enabled is True
     assert cfg.jobs.max_history == 200

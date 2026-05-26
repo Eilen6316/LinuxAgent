@@ -12,7 +12,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, messag
 
 from linuxagent.config.models import MemoryConfig
 from linuxagent.memory import MemoryPipelineLockedError, MemoryStore, run_memory_pipeline
-from linuxagent.memory.pipeline import maybe_run_startup_pipeline
+from linuxagent.memory.pipeline import maybe_run_startup_pipeline, start_startup_pipeline_task
 from linuxagent.services import ChatService
 
 
@@ -37,6 +37,9 @@ def test_memory_pipeline_writes_stage1_and_consolidated_summary(tmp_path: Path) 
     result = run_memory_pipeline(store, chat)
 
     assert result.stage1_records == 1
+    status = store.status()
+    assert status.pipeline.state == "completed"
+    assert status.pipeline.stage1_records == 1
     stage1_files = sorted(store.stage1_dir.glob("*.json"))
     assert len(stage1_files) == 1
     payload = json.loads(stage1_files[0].read_text(encoding="utf-8"))
@@ -58,6 +61,8 @@ def test_memory_pipeline_lock_blocks_concurrent_run(tmp_path: Path) -> None:
 
     with pytest.raises(MemoryPipelineLockedError):
         run_memory_pipeline(store, chat)
+
+    assert store.status().pipeline.state == "idle"
 
 
 def test_startup_pipeline_respects_enabled_flag(tmp_path: Path) -> None:
@@ -86,7 +91,61 @@ def test_startup_pipeline_respects_enabled_flag(tmp_path: Path) -> None:
     maybe_run_startup_pipeline(enabled, chat)
 
     assert not disabled.summary_path.exists()
+    assert disabled.status().pipeline.state == "skipped"
+    assert disabled.status().pipeline.reason == "generate_memories_disabled"
     assert enabled.summary_path.exists()
+    assert enabled.status().pipeline.state == "completed"
+
+
+def test_startup_pipeline_task_runs_in_background(tmp_path: Path) -> None:
+    chat = ChatService(tmp_path / "history.json", max_messages=10)
+    _write_history(
+        chat,
+        [
+            _history_session(
+                "thread",
+                [HumanMessage(content="Prefer staging")],
+                title="Ops",
+                updated_at=datetime.now(tz=UTC) - timedelta(hours=8),
+            )
+        ],
+    )
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "enabled"))
+
+    task = start_startup_pipeline_task(store, chat)
+
+    assert task is not None
+    task.thread.join(timeout=2)
+    assert not task.thread.is_alive()
+    assert store.status().pipeline.state == "completed"
+
+
+def test_memory_pipeline_recovers_stale_lock(tmp_path: Path) -> None:
+    chat = ChatService(tmp_path / "history.json", max_messages=10)
+    _write_history(
+        chat,
+        [
+            _history_session(
+                "thread",
+                [HumanMessage(content="Prefer staging")],
+                title="Ops",
+                updated_at=datetime.now(tz=UTC) - timedelta(hours=8),
+            )
+        ],
+    )
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+    store.ensure_layout()
+    expired = datetime.now(tz=UTC) - timedelta(seconds=1)
+    store.pipeline_lock_path.write_text(
+        json.dumps({"expires_at": expired.isoformat()}),
+        encoding="utf-8",
+    )
+
+    result = run_memory_pipeline(store, chat)
+
+    assert result.stage1_records == 1
+    assert not store.pipeline_lock_path.exists()
+    assert store.status().pipeline.state == "completed"
 
 
 def test_memory_pipeline_skips_fresh_and_stale_rollouts(tmp_path: Path) -> None:

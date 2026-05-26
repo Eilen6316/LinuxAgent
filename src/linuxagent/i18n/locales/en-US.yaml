@@ -38,7 +38,7 @@ trace:
   hidden: "Trace/activity output is now hidden."
 memory:
   disabled: "memory.enabled is false; path: {path}"
-  status: "memory enabled: path={path}, notes={notes}, summary_chars={summary_chars}"
+  status: "memory enabled: path={path}, notes={notes}, summary_chars={summary_chars}, pipeline={pipeline}"
   empty: "No memory notes."
   notes_title: "Memory notes:"
   suggestions_empty: "No pending memory suggestions."

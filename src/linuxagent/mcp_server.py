@@ -281,6 +281,22 @@ def _memory_summary(memory_store: MemoryStore | None) -> JsonObject:
         "summary": summary,
         "notes": status.note_count,
         "summary_chars": status.summary_chars,
+        "pipeline": {
+            "state": status.pipeline.state,
+            "reason": status.pipeline.reason,
+            "started_at": (
+                status.pipeline.started_at.isoformat()
+                if status.pipeline.started_at is not None
+                else None
+            ),
+            "finished_at": (
+                status.pipeline.finished_at.isoformat()
+                if status.pipeline.finished_at is not None
+                else None
+            ),
+            "stage1_records": status.pipeline.stage1_records,
+            "pid": status.pipeline.pid,
+        },
         "advisory_only": True,
     }
 
