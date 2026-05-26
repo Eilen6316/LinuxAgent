@@ -431,8 +431,15 @@ linuxagent check
 | `cluster.hosts[].remote_profile` | `allow_sudo` | `false` | Allows sudo only when paired with a non-empty `sudo_allowlist` |
 | `audit` | `path` | `~/.linuxagent/audit.log` | Audit log location; **audit cannot be disabled** |
 | `memory` | `enabled` | `true` | Enable local filesystem memory under `~/.linuxagent/memories` |
-| `memory` | `inject_summary` | `true` | Inject `memory_summary.md` into model-facing product context when present |
-| `memory` | `auto_consolidate_on_startup` | `true` | Refresh redacted stage1 records and `memory_summary.md` on chat startup |
+| `memory` | `use_memories` | `true` | Inject `memory_summary.md` into model-facing product context when present |
+| `memory` | `generate_memories` | `true` | Generate redacted memory inputs on chat startup |
+| `memory` | `disable_on_external_context` | `false` | Disable memory generation for externally polluted threads |
+| `memory` | `max_rollouts_per_startup` | `2` | Maximum historical sessions considered per startup pass |
+| `memory` | `max_rollout_age_days` | `10` | Maximum session age for memory extraction |
+| `memory` | `min_rollout_idle_hours` | `6` | Minimum idle time before a session can be extracted |
+| `memory` | `min_rate_limit_remaining_percent` | `25` | Reserved threshold for LLM-backed memory workers |
+| `memory` | `max_raw_memories_for_consolidation` | `256` | Maximum raw memory inputs considered by consolidation |
+| `memory` | `max_unused_days` | `30` | Exclude raw memory inputs unused for longer than this |
 | `telemetry` | `exporter` | `local` | `local`, `console`, `otlp`, or `none` |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | Local telemetry path |
 | `telemetry` | `otlp_endpoint` | null | Required when `exporter: otlp` |
@@ -453,6 +460,11 @@ When `linuxagent chat` starts, LinuxAgent loads saved local sessions, runs a
 deterministic two-stage consolidation pass, and injects `memory_summary.md` as
 advisory operator/project context for the new runtime. The pipeline writes only
 inside the memory root and uses redaction before persistence.
+
+`memory.enabled` is the global switch. `memory.use_memories` controls the read
+path, and `memory.generate_memories` controls the write path. Legacy
+`inject_summary`, `auto_consolidate_on_startup`, and `stage1_session_limit`
+keys are still accepted and mapped to the new names.
 
 Memory is not a safety boundary and cannot lower policy decisions, skip HITL,
 change sandbox enforcement, execute commands, or edit audit records. Disable

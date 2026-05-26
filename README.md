@@ -142,11 +142,13 @@ safety policy data lives in YAML, while Python code only loads, validates, and
 applies those policies.
 
 LinuxAgent also keeps a local filesystem memory at `~/.linuxagent/memories` by
-default. On chat startup it automatically refreshes a redacted two-stage memory
-summary from saved local sessions, then injects `memory_summary.md` as advisory
-operator/project context. This memory never changes policy, HITL confirmation,
-sandbox enforcement, command execution, or audit records. Disable it with
-`memory.enabled: false` in `config.yaml`.
+default. On chat startup it can generate redacted memory inputs from saved local
+sessions, then inject `memory_summary.md` as advisory operator/project context
+when `memory.use_memories` is true. This memory never changes policy, HITL
+confirmation, sandbox enforcement, command execution, or audit records. Disable
+all memory reads and writes with `memory.enabled: false` in `config.yaml`, or
+split the read/write paths with `memory.use_memories` and
+`memory.generate_memories`.
 
 Each CLI launch starts with an empty conversation context. Saved sessions are
 available only when the operator asks for it with `/resume`; then enter the
@@ -180,7 +182,7 @@ not ask the LLM to explain or generate a reply for that turn.
 | Sandbox metadata boundary | Commands carry a selected sandbox profile into audit and telemetry; default `noop` records metadata only |
 | Skill guidance | Optional local Skill manifests can add advisory planner context without executable plugin hooks |
 | Learner memory | Successful command patterns are persisted locally after secret redaction |
-| Filesystem memory | `~/.linuxagent/memories/memory_summary.md` is refreshed on chat startup and injected as advisory context |
+| Filesystem memory | `~/.linuxagent/memories/memory_summary.md` is injected as advisory context; generation and use have separate switches |
 | LangGraph HITL | Confirmation uses `interrupt()` and checkpointing rather than inline `input()` |
 | SSH cluster guard | Batch confirmation, remote shell metacharacter blocking, remote profile audit |
 | Output protection | Command results are redacted and bounded before model-facing analysis |

@@ -74,11 +74,19 @@ CONFIG_REQUIRED_PATHS = (
     ("skills", "manifests"),
     ("memory", "enabled"),
     ("memory", "path"),
-    ("memory", "inject_summary"),
+    ("memory", "generate_memories"),
+    ("memory", "use_memories"),
+    ("memory", "disable_on_external_context"),
     ("memory", "max_summary_chars"),
     ("memory", "max_note_bytes"),
-    ("memory", "auto_consolidate_on_startup"),
-    ("memory", "stage1_session_limit"),
+    ("memory", "max_rollouts_per_startup"),
+    ("memory", "max_rollout_age_days"),
+    ("memory", "min_rollout_idle_hours"),
+    ("memory", "min_rate_limit_remaining_percent"),
+    ("memory", "max_raw_memories_for_consolidation"),
+    ("memory", "max_unused_days"),
+    ("memory", "extract_model"),
+    ("memory", "consolidation_model"),
     ("memory", "stage1_message_limit"),
     ("telemetry", "enabled"),
     ("telemetry", "exporter"),
@@ -181,9 +189,17 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.skills.manifests == ()
     assert cfg.memory.enabled is True
     assert cfg.memory.path.name == "memories"
-    assert cfg.memory.inject_summary is True
-    assert cfg.memory.auto_consolidate_on_startup is True
-    assert cfg.memory.stage1_session_limit == 10
+    assert cfg.memory.use_memories is True
+    assert cfg.memory.generate_memories is True
+    assert cfg.memory.disable_on_external_context is False
+    assert cfg.memory.max_rollouts_per_startup == 2
+    assert cfg.memory.max_rollout_age_days == 10
+    assert cfg.memory.min_rollout_idle_hours == 6
+    assert cfg.memory.min_rate_limit_remaining_percent == 25
+    assert cfg.memory.max_raw_memories_for_consolidation == 256
+    assert cfg.memory.max_unused_days == 30
+    assert cfg.memory.extract_model is None
+    assert cfg.memory.consolidation_model is None
     assert cfg.ui.max_chat_history == 20
     assert cfg.jobs.daemon_enabled is True
     assert cfg.jobs.max_history == 200

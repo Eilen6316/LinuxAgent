@@ -58,7 +58,7 @@ def test_startup_pipeline_respects_enabled_flag(tmp_path: Path) -> None:
     disabled = MemoryStore(
         MemoryConfig(
             enabled=True,
-            auto_consolidate_on_startup=False,
+            generate_memories=False,
             path=tmp_path / "disabled",
         )
     )

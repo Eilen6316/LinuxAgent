@@ -48,7 +48,7 @@ def run_memory_pipeline(
 
 
 def maybe_run_startup_pipeline(memory_store: MemoryStore, chat_service: ChatService) -> None:
-    if not memory_store.config.enabled or not memory_store.config.auto_consolidate_on_startup:
+    if not memory_store.config.enabled or not memory_store.config.generate_memories:
         return
     try:
         run_memory_pipeline(memory_store, chat_service)
@@ -57,7 +57,7 @@ def maybe_run_startup_pipeline(memory_store: MemoryStore, chat_service: ChatServ
 
 
 def _write_stage1(memory_store: MemoryStore, chat_service: ChatService) -> int:
-    sessions = chat_service.list_sessions(limit=memory_store.config.stage1_session_limit)
+    sessions = chat_service.list_sessions(limit=memory_store.config.max_rollouts_per_startup)
     count = 0
     for session in sessions:
         payload = {

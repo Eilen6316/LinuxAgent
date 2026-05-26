@@ -186,7 +186,7 @@ class MemoryStore:
         return note
 
     def read_summary(self) -> str:
-        if not self.config.enabled or not self.config.inject_summary:
+        if not self.config.enabled or not self.config.use_memories:
             return ""
         if not self.summary_path.is_file():
             return ""

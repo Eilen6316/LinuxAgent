@@ -421,8 +421,15 @@ linuxagent check
 | `cluster.hosts[].remote_profile` | `allow_sudo` | `false` | 仅在同时配置非空 `sudo_allowlist` 时允许 sudo |
 | `audit` | `path` | `~/.linuxagent/audit.log` | 审计日志位置；**审计无法关闭** |
 | `memory` | `enabled` | `true` | 启用 `~/.linuxagent/memories` 下的本地文件系统记忆 |
-| `memory` | `inject_summary` | `true` | 存在 `memory_summary.md` 时注入模型可见 product context |
-| `memory` | `auto_consolidate_on_startup` | `true` | chat 启动时自动刷新脱敏 stage1 记录和 `memory_summary.md` |
+| `memory` | `use_memories` | `true` | 存在 `memory_summary.md` 时注入模型可见 product context |
+| `memory` | `generate_memories` | `true` | chat 启动时生成脱敏 memory 输入 |
+| `memory` | `disable_on_external_context` | `false` | 外部上下文污染 thread 时禁用记忆生成 |
+| `memory` | `max_rollouts_per_startup` | `2` | 每次启动最多处理的历史会话数 |
+| `memory` | `max_rollout_age_days` | `10` | memory 抽取允许的最大会话年龄 |
+| `memory` | `min_rollout_idle_hours` | `6` | 会话空闲多久后才允许抽取 |
+| `memory` | `min_rate_limit_remaining_percent` | `25` | 预留给 LLM memory worker 的额度阈值 |
+| `memory` | `max_raw_memories_for_consolidation` | `256` | consolidation 最多读取的 raw memory 输入 |
+| `memory` | `max_unused_days` | `30` | 超过该天数未使用的 raw memory 输入会被排除 |
 | `telemetry` | `exporter` | `local` | 默认本地 JSONL span；`none` 禁用写入 |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | 本地 telemetry 路径 |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
@@ -441,6 +448,10 @@ linuxagent check
 启动时，LinuxAgent 会读取本机保存的会话，运行确定性的两阶段 consolidation，
 并把 `memory_summary.md` 作为 advisory 的操作者/项目上下文注入当前运行时。该流程只写
 memory root 内的文件，并在持久化前做脱敏。
+
+`memory.enabled` 是总开关。`memory.use_memories` 控制读路径，
+`memory.generate_memories` 控制写路径。旧配置里的 `inject_summary`、
+`auto_consolidate_on_startup` 和 `stage1_session_limit` 仍会被接受并映射到新字段。
 
 memory 不是安全边界，不能降低 policy 决策、跳过 HITL、改变 sandbox enforcement、
 执行命令或修改 audit 记录。需要完全关闭 memory 读写时：

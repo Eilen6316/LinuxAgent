@@ -59,6 +59,13 @@ OptionalUserPath = Annotated[Path | None, AfterValidator(_expand_optional_path)]
 UserPathTuple = Annotated[tuple[Path, ...], AfterValidator(_expand_path_tuple)]
 
 
+def _move_legacy_memory_key(data: dict[str, Any], *, old: str, new: str) -> None:
+    if old in data and new not in data:
+        data[new] = data.pop(old)
+        return
+    data.pop(old, None)
+
+
 class LLMProviderName(StrEnum):
     OPENAI = "openai"
     OPENAI_COMPATIBLE = "openai_compatible"
@@ -478,12 +485,39 @@ class MemoryConfig(BaseModel):
 
     enabled: bool = True
     path: UserPath = Field(default_factory=lambda: Path.home() / ".linuxagent" / "memories")
-    inject_summary: bool = True
+    generate_memories: bool = True
+    use_memories: bool = True
+    disable_on_external_context: bool = False
     max_summary_chars: int = Field(default=12000, ge=0, le=100000)
     max_note_bytes: int = Field(default=20000, ge=1, le=200000)
-    auto_consolidate_on_startup: bool = True
-    stage1_session_limit: int = Field(default=10, ge=1, le=100)
+    max_rollouts_per_startup: int = Field(default=2, ge=1, le=128)
+    max_rollout_age_days: int = Field(default=10, ge=0, le=90)
+    min_rollout_idle_hours: int = Field(default=6, ge=1, le=48)
+    min_rate_limit_remaining_percent: int = Field(default=25, ge=0, le=100)
+    max_raw_memories_for_consolidation: int = Field(default=256, ge=1, le=4096)
+    max_unused_days: int = Field(default=30, ge=0, le=365)
+    extract_model: str | None = None
+    consolidation_model: str | None = None
     stage1_message_limit: int = Field(default=12, ge=1, le=100)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalise_legacy_keys(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        updated = dict(data)
+        _move_legacy_memory_key(updated, old="inject_summary", new="use_memories")
+        _move_legacy_memory_key(
+            updated,
+            old="auto_consolidate_on_startup",
+            new="generate_memories",
+        )
+        _move_legacy_memory_key(
+            updated,
+            old="stage1_session_limit",
+            new="max_rollouts_per_startup",
+        )
+        return updated
 
 
 class UIConfig(BaseModel):
