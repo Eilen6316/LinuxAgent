@@ -536,7 +536,21 @@ def test_memory_cli_consolidate(
         ],
     )
     monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
-    monkeypatch.setattr(cli.Container, "provider", lambda self: None)
+    monkeypatch.setattr(
+        cli.Container,
+        "provider",
+        lambda self: _FakeMemoryProvider(
+            [
+                json.dumps(
+                    {
+                        "raw_memory": "Reusable knowledge:\n- Prefer staging",
+                        "rollout_summary": "User prefers staging",
+                        "rollout_slug": "staging",
+                    }
+                )
+            ]
+        ),
+    )
 
     code = cli.main(["memory", "consolidate"])
     captured = capsys.readouterr()
@@ -546,6 +560,28 @@ def test_memory_cli_consolidate(
     assert "Prefer staging" in (tmp_path / "memories" / "memory_summary.md").read_text(
         encoding="utf-8"
     )
+
+
+class _FakeMemoryProvider:
+    def __init__(self, responses: list[str]) -> None:
+        self._responses = list(responses)
+
+    async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
+        del messages, kwargs
+        return self._responses.pop(0)
+
+    async def complete_with_tools(
+        self,
+        messages: list[BaseMessage],
+        tools: list[Any],
+        **kwargs: Any,
+    ) -> str:
+        del messages, tools, kwargs
+        raise AssertionError("memory CLI consolidate must not call tools")
+
+    def stream(self, messages: list[BaseMessage], **kwargs: Any) -> Any:
+        del messages, kwargs
+        raise AssertionError("memory CLI consolidate must not stream")
 
 
 def test_main_unknown_command_routes_to_parser_error(monkeypatch: pytest.MonkeyPatch) -> None:

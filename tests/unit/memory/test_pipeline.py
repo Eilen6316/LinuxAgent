@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -38,8 +39,19 @@ def test_memory_pipeline_writes_stage1_and_consolidated_summary(tmp_path: Path) 
         ],
     )
     store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+    provider = _FakeMemoryProvider(
+        [
+            json.dumps(
+                {
+                    "raw_memory": "Reusable knowledge:\n- Prefer staging; token=abc123",
+                    "rollout_summary": "User prefers staging before risky operations.",
+                    "rollout_slug": "ops-staging",
+                }
+            )
+        ]
+    )
 
-    result = run_memory_pipeline(store, chat)
+    result = run_memory_pipeline(store, chat, provider=provider)
 
     assert result.stage1_records == 1
     status = store.status()
@@ -55,7 +67,35 @@ def test_memory_pipeline_writes_stage1_and_consolidated_summary(tmp_path: Path) 
     assert store.raw_memories_path.is_file()
     summary = store.read_summary()
     assert "Recent History Signals" in summary
-    assert "prefer staging" in summary
+    assert "Prefer staging" in summary
+
+
+def test_memory_pipeline_without_provider_does_not_write_deterministic_snippets(
+    tmp_path: Path,
+) -> None:
+    chat = ChatService(tmp_path / "history.json", max_messages=10)
+    _write_history(
+        chat,
+        [
+            _history_session(
+                "thread/one",
+                [
+                    HumanMessage(
+                        content="This chat text should not be copied into memory_summary.md"
+                    )
+                ],
+                title="No Provider",
+                updated_at=datetime.now(tz=UTC) - timedelta(hours=8),
+            )
+        ],
+    )
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+
+    result = run_memory_pipeline(store, chat, provider=None)
+
+    assert result.stage1_records == 0
+    assert list(store.stage1_dir.glob("*.json")) == []
+    assert "This chat text should not be copied" not in store.read_summary()
 
 
 def test_memory_pipeline_lock_blocks_concurrent_run(tmp_path: Path) -> None:
@@ -68,6 +108,50 @@ def test_memory_pipeline_lock_blocks_concurrent_run(tmp_path: Path) -> None:
         run_memory_pipeline(store, chat)
 
     assert store.status().pipeline.state == "idle"
+
+
+def test_memory_pipeline_recovers_expired_invalid_lock(tmp_path: Path) -> None:
+    chat = ChatService(tmp_path / "history.json", max_messages=10)
+    _write_history(
+        chat,
+        [
+            _history_session(
+                "thread",
+                [HumanMessage(content="Prefer staging")],
+                title="Ops",
+                updated_at=datetime.now(tz=UTC) - timedelta(hours=8),
+            )
+        ],
+    )
+    provider = _FakeMemoryProvider(
+        [
+            json.dumps(
+                {
+                    "raw_memory": "Reusable knowledge:\n- Prefer staging",
+                    "rollout_summary": "Staging preference",
+                    "rollout_slug": "staging",
+                }
+            )
+        ]
+    )
+    store = MemoryStore(
+        MemoryConfig(
+            enabled=True,
+            path=tmp_path / "memories",
+            pipeline_lock_ttl_seconds=1,
+        )
+    )
+    store.ensure_layout()
+    store.pipeline_lock_path.write_text("not-json", encoding="utf-8")
+    expired_mtime = datetime.now(tz=UTC) - timedelta(seconds=5)
+    ts = expired_mtime.timestamp()
+    store.pipeline_lock_path.touch()
+    os.utime(store.pipeline_lock_path, (ts, ts))
+
+    result = run_memory_pipeline(store, chat, provider=provider)
+
+    assert result.stage1_records == 1
+    assert not store.pipeline_lock_path.exists()
 
 
 def test_startup_pipeline_respects_enabled_flag(tmp_path: Path) -> None:
@@ -100,6 +184,7 @@ def test_startup_pipeline_respects_enabled_flag(tmp_path: Path) -> None:
     assert disabled.status().pipeline.reason == "generate_memories_disabled"
     assert enabled.summary_path.exists()
     assert enabled.status().pipeline.state == "completed"
+    assert enabled.status().pipeline.stage1_records == 0
 
 
 def test_startup_pipeline_task_runs_in_background(tmp_path: Path) -> None:
@@ -125,6 +210,29 @@ def test_startup_pipeline_task_runs_in_background(tmp_path: Path) -> None:
     assert store.status().pipeline.state == "completed"
 
 
+def test_startup_pipeline_records_failures(tmp_path: Path) -> None:
+    chat = ChatService(tmp_path / "history.json", max_messages=10)
+    _write_history(
+        chat,
+        [
+            _history_session(
+                "thread",
+                [HumanMessage(content="Prefer staging")],
+                title="Ops",
+                updated_at=datetime.now(tz=UTC) - timedelta(hours=8),
+            )
+        ],
+    )
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "enabled"))
+
+    maybe_run_startup_pipeline(store, chat, provider=_FailingMemoryProvider())
+
+    status = store.status().pipeline
+    assert status.state == "failed"
+    assert status.reason is not None
+    assert "RuntimeError: model unavailable" in status.reason
+
+
 def test_memory_pipeline_recovers_stale_lock(tmp_path: Path) -> None:
     chat = ChatService(tmp_path / "history.json", max_messages=10)
     _write_history(
@@ -138,6 +246,17 @@ def test_memory_pipeline_recovers_stale_lock(tmp_path: Path) -> None:
             )
         ],
     )
+    provider = _FakeMemoryProvider(
+        [
+            json.dumps(
+                {
+                    "raw_memory": "Reusable knowledge:\n- Prefer staging",
+                    "rollout_summary": "Staging preference",
+                    "rollout_slug": "staging",
+                }
+            )
+        ]
+    )
     store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
     store.ensure_layout()
     expired = datetime.now(tz=UTC) - timedelta(seconds=1)
@@ -146,7 +265,7 @@ def test_memory_pipeline_recovers_stale_lock(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    result = run_memory_pipeline(store, chat)
+    result = run_memory_pipeline(store, chat, provider=provider)
 
     assert result.stage1_records == 1
     assert not store.pipeline_lock_path.exists()
@@ -185,8 +304,19 @@ def test_memory_pipeline_skips_polluted_threads_when_enabled(tmp_path: Path) -> 
         reason="external_context:tool_network_access",
         source="work_item",
     )
+    provider = _FakeMemoryProvider(
+        [
+            json.dumps(
+                {
+                    "raw_memory": "Reusable knowledge:\n- Prefer staging",
+                    "rollout_summary": "Clean staging preference",
+                    "rollout_slug": "clean-staging",
+                }
+            )
+        ]
+    )
 
-    result = run_memory_pipeline(store, chat)
+    result = run_memory_pipeline(store, chat, provider=provider)
 
     assert result.stage1_records == 1
     payloads = [
@@ -223,8 +353,19 @@ def test_memory_pipeline_skips_fresh_and_stale_rollouts(tmp_path: Path) -> None:
         ],
     )
     store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+    provider = _FakeMemoryProvider(
+        [
+            json.dumps(
+                {
+                    "raw_memory": "Reusable knowledge:\n- Prefer staging",
+                    "rollout_summary": "Eligible staging preference",
+                    "rollout_slug": "eligible-staging",
+                }
+            )
+        ]
+    )
 
-    result = run_memory_pipeline(store, chat)
+    result = run_memory_pipeline(store, chat, provider=provider)
 
     assert result.stage1_records == 1
     stage1_files = sorted(store.stage1_dir.glob("*.json"))
@@ -256,6 +397,26 @@ def test_memory_consolidation_limits_and_prunes_unused_raw_inputs(tmp_path: Path
     assert "middle signal" in raw
     assert "new signal" in raw
     assert "old signal" not in summary
+    assert not (store.stage1_dir / "old.json").exists()
+    assert (store.stage1_dir / "middle.json").exists()
+    assert (store.stage1_dir / "new.json").exists()
+
+
+def test_memory_stage1_prune_can_be_disabled_for_debugging(tmp_path: Path) -> None:
+    store = MemoryStore(
+        MemoryConfig(
+            enabled=True,
+            path=tmp_path / "memories",
+            max_unused_days=0,
+        )
+    )
+    store.ensure_layout()
+    now = datetime.now(tz=UTC)
+    _write_stage1(store, "old", "Old", now - timedelta(days=400), "old signal")
+
+    store.write_consolidated_files()
+
+    assert (store.stage1_dir / "old.json").exists()
 
 
 def test_memory_pipeline_uses_ai_stage1_output_and_allows_noop(tmp_path: Path) -> None:
@@ -357,6 +518,25 @@ class _FakeMemoryProvider:
         del kwargs
         self.messages.append(messages)
         return self._responses.pop(0)
+
+    async def complete_with_tools(
+        self,
+        messages: list[BaseMessage],
+        tools: list[Any],
+        **kwargs: Any,
+    ) -> str:
+        del messages, tools, kwargs
+        raise AssertionError("memory pipeline must not call tools")
+
+    def stream(self, messages: list[BaseMessage], **kwargs: Any) -> Any:
+        del messages, kwargs
+        raise AssertionError("memory pipeline must not stream")
+
+
+class _FailingMemoryProvider:
+    async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
+        del messages, kwargs
+        raise RuntimeError("model unavailable")
 
     async def complete_with_tools(
         self,

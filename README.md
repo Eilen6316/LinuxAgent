@@ -143,13 +143,17 @@ applies those policies.
 
 LinuxAgent also keeps a local filesystem memory at `~/.linuxagent/memories` by
 default. On chat startup it starts a background memory pass that can generate
-redacted memory inputs from saved local sessions, then injects the current
-`memory_summary.md` as advisory operator/project context when
+redacted AI-extracted memory inputs from saved local sessions, then injects the
+current `memory_summary.md` as advisory operator/project context when
 `memory.use_memories` is true. `linuxagent memory status` shows the latest
-pipeline state. This memory never changes policy, HITL confirmation, sandbox
-enforcement, command execution, or audit records. Disable all memory reads and
-writes with `memory.enabled: false` in `config.yaml`, or split the read/write
-paths with `memory.use_memories` and `memory.generate_memories`.
+pipeline state, including failures. If no memory writer provider is available,
+startup generation no-ops instead of copying deterministic chat snippets into
+long-term memory. Stale stage-1 inputs are pruned by `memory.max_unused_days`,
+and stale pipeline locks recover after `memory.pipeline_lock_ttl_seconds`.
+This memory never changes policy, HITL confirmation, sandbox enforcement,
+command execution, or audit records. Disable all memory reads and writes with
+`memory.enabled: false` in `config.yaml`, or split the read/write paths with
+`memory.use_memories` and `memory.generate_memories`.
 
 Each CLI launch starts with an empty conversation context. Saved sessions are
 available only when the operator asks for it with `/resume`; then enter the

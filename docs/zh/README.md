@@ -429,7 +429,7 @@ linuxagent check
 | `memory` | `min_rollout_idle_hours` | `6` | 会话空闲多久后才允许抽取 |
 | `memory` | `min_rate_limit_remaining_percent` | `25` | 预留给 LLM memory worker 的额度阈值 |
 | `memory` | `max_raw_memories_for_consolidation` | `256` | consolidation 最多读取的 raw memory 输入 |
-| `memory` | `max_unused_days` | `30` | 超过该天数未使用的 raw memory 输入会被排除 |
+| `memory` | `max_unused_days` | `30` | 超过该天数未使用的 raw memory 输入会被排除并清理 |
 | `memory` | `pipeline_lock_ttl_seconds` | `600` | stale memory pipeline lock lease 超时时间 |
 | `telemetry` | `exporter` | `local` | 默认本地 JSONL span；`none` 禁用写入 |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | 本地 telemetry 路径 |
@@ -450,6 +450,14 @@ linuxagent check
 并把当前 `memory_summary.md` 作为 advisory 的操作者/项目上下文注入当前运行时。该流程只写
 memory root 内的文件，并在持久化前做脱敏。`linuxagent memory status`
 会显示最近一次 pipeline 是 idle、running、completed、failed 还是 skipped。
+
+Stage 1 由配置的 LLM provider 判断保存会话是否包含可复用的长期经验。
+没有可复用信息时 no-op 是允许且优先的；如果启动时没有可用的 memory writer
+provider，生成流程会 no-op，而不是把 deterministic 聊天片段复制进
+`memory_summary.md`。启动任务会把失败写入 `pipeline_status.json` 并通过
+`linuxagent memory status` 暴露；stale 或损坏的 pipeline lock 会在
+`memory.pipeline_lock_ttl_seconds` 后恢复。超过 `memory.max_unused_days`
+的 stage1 JSON 输入会在 consolidation 时清理。
 
 `memory.enabled` 是总开关。`memory.use_memories` 控制读路径，
 `memory.generate_memories` 控制写路径。旧配置里的 `inject_summary`、

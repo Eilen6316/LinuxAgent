@@ -8,6 +8,7 @@ HITL, sandbox, execution, or audit decisions.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -20,6 +21,8 @@ from ..security import redact_text
 
 if TYPE_CHECKING:
     from ..config.models import MemoryConfig
+
+LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_MEMORY = """# LinuxAgent Memory
 
@@ -284,6 +287,7 @@ class MemoryStore:
     def write_consolidated_files(self) -> None:
         self._require_enabled()
         self.ensure_layout()
+        self.prune_stage1_files()
         stage1_paths = self._selected_stage1_paths()
         raw_lines = [
             "# LinuxAgent Raw Memories",
@@ -320,6 +324,25 @@ class MemoryStore:
         if not stage1_paths and not notes:
             lines.extend(["", "No manual memory notes yet."])
         _write_private_text(self.summary_path, "\n".join(lines).rstrip() + "\n")
+
+    def prune_stage1_files(self) -> int:
+        self._require_enabled()
+        if not self.stage1_dir.is_dir() or self.config.max_unused_days == 0:
+            return 0
+        cutoff = datetime.now(tz=UTC) - timedelta(days=self.config.max_unused_days)
+        pruned = 0
+        for path in sorted(self.stage1_dir.glob("*.json")):
+            if _stage1_last_used_at(path) >= cutoff:
+                continue
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                LOGGER.warning("failed pruning stale memory stage1 file %s: %s", path, exc)
+                continue
+            pruned += 1
+        return pruned
 
     def _selected_stage1_paths(self) -> list[Path]:
         paths = _eligible_stage1_paths(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
@@ -19,6 +20,8 @@ from ..security import redact_text
 from ..services import ChatService, ChatSession
 from .pollution import MemoryPollutionRegistry
 from .store import MemoryDisabledError, MemoryStore
+
+LOGGER = logging.getLogger(__name__)
 
 
 class MemoryPipelineLockedError(RuntimeError):
@@ -45,7 +48,7 @@ class MemoryStage1Output:
 
     @property
     def has_memory(self) -> bool:
-        return bool(self.raw_memory or self.rollout_summary)
+        return bool(self.raw_memory and self.rollout_summary)
 
 
 def run_memory_pipeline(
@@ -62,12 +65,12 @@ def run_memory_pipeline(
         ttl_seconds=memory_store.config.pipeline_lock_ttl_seconds,
     )
     started_at = datetime.now(tz=UTC)
-    memory_store.write_pipeline_status(
-        "running",
-        started_at=started_at,
-        pid=os.getpid(),
-    )
     try:
+        memory_store.write_pipeline_status(
+            "running",
+            started_at=started_at,
+            pid=os.getpid(),
+        )
         stage1_records = _write_stage1(memory_store, chat_service, provider=provider)
         memory_store.write_consolidated_files()
         finished_at = datetime.now(tz=UTC)
@@ -85,7 +88,8 @@ def run_memory_pipeline(
         )
         return result
     except Exception as exc:
-        memory_store.write_pipeline_status(
+        _safe_write_pipeline_status(
+            memory_store,
             "failed",
             reason=f"{type(exc).__name__}: {exc}",
             started_at=started_at,
@@ -105,14 +109,27 @@ def maybe_run_startup_pipeline(
 ) -> None:
     if not memory_store.config.enabled or not memory_store.config.generate_memories:
         if memory_store.config.enabled:
-            memory_store.write_pipeline_status("skipped", reason="generate_memories_disabled")
+            _safe_write_pipeline_status(
+                memory_store,
+                "skipped",
+                reason="generate_memories_disabled",
+            )
         return
     try:
         run_memory_pipeline(memory_store, chat_service, provider=provider)
-    except MemoryPipelineLockedError:
-        memory_store.write_pipeline_status("skipped", reason="locked")
-    except (MemoryDisabledError, OSError, ValueError):
-        return
+    except MemoryPipelineLockedError as exc:
+        _safe_write_pipeline_status(memory_store, "skipped", reason="locked")
+        LOGGER.debug("memory startup pipeline skipped because the lock is held: %s", exc)
+    except Exception as exc:
+        if memory_store.read_pipeline_status().state != "failed":
+            _safe_write_pipeline_status(
+                memory_store,
+                "failed",
+                reason=f"{type(exc).__name__}: {exc}",
+                finished_at=datetime.now(tz=UTC),
+                pid=os.getpid(),
+            )
+        LOGGER.warning("memory startup pipeline failed: %s", exc)
 
 
 def start_startup_pipeline_task(
@@ -124,7 +141,11 @@ def start_startup_pipeline_task(
     if not memory_store.config.enabled:
         return None
     if not memory_store.config.generate_memories:
-        memory_store.write_pipeline_status("skipped", reason="generate_memories_disabled")
+        _safe_write_pipeline_status(
+            memory_store,
+            "skipped",
+            reason="generate_memories_disabled",
+        )
         return None
     thread = threading.Thread(
         target=maybe_run_startup_pipeline,
@@ -179,58 +200,10 @@ def _extract_stage1_output(
     provider: LLMProvider | None,
 ) -> MemoryStage1Output:
     if provider is None:
-        return _fallback_stage1_output(session)
+        return MemoryStage1Output("", "", "")
     raw = _complete_stage1_sync(provider, _stage1_messages(session))
     output = _parse_stage1_output(raw)
     return output if output is not None else MemoryStage1Output("", "", "")
-
-
-def _fallback_stage1_output(session: ChatSession) -> MemoryStage1Output:
-    snippets = _message_snippets(session.messages, limit=12)
-    if not snippets:
-        return MemoryStage1Output("", "", "")
-    title = redact_text(session.title).text
-    lines = [
-        "---",
-        f"description: Saved session signal for {title}",
-        f"task: {title}",
-        "task_group: linuxagent",
-        "task_outcome: uncertain",
-        "cwd: unknown",
-        f"keywords: {title}",
-        "---",
-        "",
-        f"### Task 1: {title}",
-        "",
-        "task_outcome: uncertain",
-        "",
-        "Reusable knowledge:",
-    ]
-    for item in snippets[:4]:
-        lines.append(f"- {item['role']}: {item['text'][:300]}")
-    raw_memory = "\n".join(lines).strip()
-    return MemoryStage1Output(
-        raw_memory=raw_memory,
-        rollout_summary=_fallback_rollout_summary(session, snippets),
-        rollout_slug=_safe_filename(title).lower(),
-    )
-
-
-def _fallback_rollout_summary(
-    session: ChatSession,
-    snippets: list[dict[str, str]],
-) -> str:
-    lines = [
-        f"# {redact_text(session.title).text}",
-        "",
-        f"thread_id: {session.thread_id}",
-        f"updated_at: {session.updated_at.isoformat()}",
-        "",
-        "Fallback deterministic summary; no LLM memory writer was provided.",
-    ]
-    for item in snippets[:6]:
-        lines.append(f"- {item['role']}: {item['text'][:300]}")
-    return "\n".join(lines).strip()
 
 
 def _stage1_messages(session: ChatSession) -> list[BaseMessage]:
@@ -380,7 +353,7 @@ def _acquire_lock(path: Path, *, ttl_seconds: int) -> int:
         try:
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except FileExistsError as exc:
-            if _lock_is_stale(path):
+            if _lock_is_stale(path, ttl_seconds=ttl_seconds):
                 try:
                     path.unlink()
                 except FileNotFoundError:
@@ -423,15 +396,26 @@ def _lock_payload(*, ttl_seconds: int) -> str:
     )
 
 
-def _lock_is_stale(path: Path) -> bool:
+def _lock_is_stale(path: Path, *, ttl_seconds: int) -> bool:
+    now = datetime.now(tz=UTC)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return False
+        return _lock_mtime_expired(path, ttl_seconds=ttl_seconds, now=now)
     if not isinstance(payload, dict):
-        return False
+        return _lock_mtime_expired(path, ttl_seconds=ttl_seconds, now=now)
     expires_at = _parse_time(payload.get("expires_at"))
-    return expires_at is not None and expires_at <= datetime.now(tz=UTC)
+    if expires_at is not None:
+        return expires_at <= now
+    return _lock_mtime_expired(path, ttl_seconds=ttl_seconds, now=now)
+
+
+def _lock_mtime_expired(path: Path, *, ttl_seconds: int, now: datetime) -> bool:
+    try:
+        modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    except OSError:
+        return False
+    return now - modified_at >= timedelta(seconds=ttl_seconds)
 
 
 def _parse_time(value: object) -> datetime | None:
@@ -442,3 +426,14 @@ def _parse_time(value: object) -> datetime | None:
     except ValueError:
         return None
     return parsed.astimezone(UTC) if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _safe_write_pipeline_status(
+    memory_store: MemoryStore,
+    state: str,
+    **kwargs: Any,
+) -> None:
+    try:
+        memory_store.write_pipeline_status(state, **kwargs)
+    except (MemoryDisabledError, OSError, ValueError) as exc:
+        LOGGER.warning("failed writing memory pipeline status %s: %s", state, exc)
