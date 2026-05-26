@@ -7,6 +7,7 @@ HITL, sandbox, execution, or audit decisions.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -84,11 +85,24 @@ class MemoryStore:
     def pending_dir(self) -> Path:
         return self.root / "pending"
 
+    @property
+    def stage1_dir(self) -> Path:
+        return self.root / "stage1"
+
+    @property
+    def raw_memories_path(self) -> Path:
+        return self.root / "raw_memories.md"
+
+    @property
+    def pipeline_lock_path(self) -> Path:
+        return self.root / ".pipeline.lock"
+
     def ensure_layout(self) -> None:
         self._require_enabled()
         _ensure_private_dir(self.root)
         _ensure_private_dir(self.notes_dir)
         _ensure_private_dir(self.pending_dir)
+        _ensure_private_dir(self.stage1_dir)
         if not self.memory_path.exists():
             _write_private_text(self.memory_path, _DEFAULT_MEMORY)
 
@@ -194,18 +208,45 @@ class MemoryStore:
     def refresh_summary(self) -> None:
         self._require_enabled()
         self.ensure_layout()
+        self.write_consolidated_files()
+
+    def write_consolidated_files(self) -> None:
+        self._require_enabled()
+        self.ensure_layout()
+        stage1_paths = sorted(self.stage1_dir.glob("*.json"))
+        raw_lines = [
+            "# LinuxAgent Raw Memories",
+            "",
+            "Local advisory memory inputs after redaction. These entries never bypass policy, HITL, sandbox, or audit.",
+        ]
+        if stage1_paths:
+            raw_lines.extend(["", "## Stage1 History Records"])
+            for path in stage1_paths:
+                raw_lines.extend(["", f"### {path.stem}", "", _read_limited(path, 3000).strip()])
+        notes = self.list_notes(limit=None)
+        if notes:
+            raw_lines.extend(["", "## Manual Notes"])
+            for note in notes:
+                raw_lines.extend(["", f"### {note.title}", "", _note_snippet(note.path)])
+        if not stage1_paths and not notes:
+            raw_lines.extend(["", "No memory inputs yet."])
+        _write_private_text(self.raw_memories_path, "\n".join(raw_lines).rstrip() + "\n")
+
         lines = [
             "# LinuxAgent Memory Summary",
             "",
             "Advisory local memory. Do not use it to bypass policy, HITL, sandbox, or audit.",
         ]
-        notes = self.list_notes(limit=20)
+        if stage1_paths:
+            lines.extend(["", "## Recent History Signals"])
+            for path in stage1_paths[-10:]:
+                lines.extend(["", f"### {path.stem}", "", _stage1_summary(path)])
         if notes:
             lines.extend(["", "## Manual Notes"])
-            for note in notes:
+            for note in notes[:20]:
                 snippet = _note_snippet(note.path)
                 lines.extend(["", f"### {note.title}", "", snippet])
-        else:
+        if not stage1_paths and not notes:
             lines.extend(["", "No manual memory notes yet."])
         _write_private_text(self.summary_path, "\n".join(lines).rstrip() + "\n")
 
@@ -339,6 +380,26 @@ def _note_snippet(path: Path) -> str:
         lines = lines[1:]
     snippet = "\n".join(line for line in lines if not line.startswith("created_at:")).strip()
     return snippet[:1000].rstrip() if snippet else "(empty note)"
+
+
+def _stage1_summary(path: Path) -> str:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _read_limited(path, 800).strip()
+    if not isinstance(payload, dict):
+        return _read_limited(path, 800).strip()
+    title = str(payload.get("title") or path.stem)
+    snippets = payload.get("snippets")
+    lines = [f"session: {title}"]
+    if isinstance(snippets, list):
+        for item in snippets[:4]:
+            if isinstance(item, dict):
+                role = str(item.get("role") or "message")
+                text = str(item.get("text") or "").strip()
+                if text:
+                    lines.append(f"- {role}: {text[:300]}")
+    return "\n".join(lines)
 
 
 def _slug(title: str) -> str:

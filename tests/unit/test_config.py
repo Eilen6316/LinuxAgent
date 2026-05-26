@@ -77,6 +77,9 @@ CONFIG_REQUIRED_PATHS = (
     ("memory", "inject_summary"),
     ("memory", "max_summary_chars"),
     ("memory", "max_note_bytes"),
+    ("memory", "auto_consolidate_on_startup"),
+    ("memory", "stage1_session_limit"),
+    ("memory", "stage1_message_limit"),
     ("telemetry", "enabled"),
     ("telemetry", "exporter"),
     ("telemetry", "path"),
@@ -179,6 +182,8 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.memory.enabled is False
     assert cfg.memory.path.name == "memories"
     assert cfg.memory.inject_summary is True
+    assert cfg.memory.auto_consolidate_on_startup is True
+    assert cfg.memory.stage1_session_limit == 10
     assert cfg.ui.max_chat_history == 20
     assert cfg.jobs.daemon_enabled is True
     assert cfg.jobs.max_history == 200

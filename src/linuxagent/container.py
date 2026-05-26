@@ -111,7 +111,6 @@ class Container:
             background_jobs=self.background_jobs(),
             job_daemon_unit=self.job_daemon_unit(),
             telemetry=self.telemetry(),
-            memory_store=self.memory_store(),
             tool_names=tuple(item.name for item in self.tool_catalog().items),
             prompt_cache_enabled=self._config.api.prompt_cache,
             translator=self.translator(),

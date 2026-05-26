@@ -481,6 +481,9 @@ class MemoryConfig(BaseModel):
     inject_summary: bool = True
     max_summary_chars: int = Field(default=12000, ge=0, le=100000)
     max_note_bytes: int = Field(default=20000, ge=1, le=200000)
+    auto_consolidate_on_startup: bool = True
+    stage1_session_limit: int = Field(default=10, ge=1, le=100)
+    stage1_message_limit: int = Field(default=12, ge=1, le=100)
 
 
 class UIConfig(BaseModel):

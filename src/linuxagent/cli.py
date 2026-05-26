@@ -19,6 +19,11 @@ from .i18n import Translator, default_translator
 from .logger import configure_dependency_logging, configure_logging
 from .mcp_server import McpServer, serve_stdio
 from .memory import MemoryDisabledError, format_memory_notes, format_memory_status
+from .memory.pipeline import (
+    MemoryPipelineLockedError,
+    maybe_run_startup_pipeline,
+    run_memory_pipeline,
+)
 from .memory.suggestions import suggest_from_history
 from .providers.errors import ProviderError
 from .services import MonitoringAlert, collect_system_snapshot, evaluate_alerts
@@ -112,6 +117,10 @@ def _add_subcommands(parser: argparse.ArgumentParser) -> None:
         help="Promote a pending memory suggestion by filename.",
     )
     promote_parser.add_argument("name", help="Pending suggestion filename from `memory pending`.")
+    memory_subparsers.add_parser(
+        "consolidate",
+        help="Run the locked two-stage local memory consolidation pipeline.",
+    )
     subparsers.add_parser(
         "job-daemon",
         help="Run the local background job supervisor.",
@@ -200,6 +209,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     container = Container(cfg, config_path=args.config)
     chat_service = container.chat_service()
     chat_service.load()
+    maybe_run_startup_pipeline(container.memory_store(), chat_service)
     try:
         asyncio.run(container.build_agent().run(thread_id=f"cli-{uuid4().hex}"))
     except ProviderError as exc:
@@ -405,21 +415,42 @@ def _cmd_memory(args: argparse.Namespace) -> int:
         chat_service = container.chat_service()
         chat_service.load()
         try:
-            result = suggest_from_history(store, chat_service, session_limit=args.sessions)
+            suggestion_result = suggest_from_history(
+                store, chat_service, session_limit=args.sessions
+            )
         except MemoryDisabledError:
             print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
             return 1
         except ValueError as exc:
             print(translator.t("memory.error", message=exc), file=sys.stderr)
             return 1
-        if result.suggestion is None:
+        if suggestion_result.suggestion is None:
             print(translator.t("memory.suggest_none"))
             return 0
         print(
             translator.t(
                 "memory.suggested",
-                path=result.suggestion.path,
-                sessions=result.session_count,
+                path=suggestion_result.suggestion.path,
+                sessions=suggestion_result.session_count,
+            )
+        )
+        return 0
+    if command == "consolidate":
+        chat_service = container.chat_service()
+        chat_service.load()
+        try:
+            pipeline_result = run_memory_pipeline(store, chat_service)
+        except MemoryDisabledError:
+            print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
+            return 1
+        except MemoryPipelineLockedError as exc:
+            print(translator.t("memory.error", message=exc), file=sys.stderr)
+            return 1
+        print(
+            translator.t(
+                "memory.consolidated",
+                records=pipeline_result.stage1_records,
+                path=store.summary_path,
             )
         )
         return 0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .pipeline import MemoryPipelineLockedError, MemoryPipelineResult, run_memory_pipeline
 from .store import (
     MemoryDisabledError,
     MemoryNote,
@@ -19,7 +20,10 @@ __all__ = [
     "MemorySuggestion",
     "MemoryStatus",
     "MemoryStore",
+    "MemoryPipelineLockedError",
+    "MemoryPipelineResult",
     "format_memory_notes",
     "format_memory_suggestions",
     "format_memory_status",
+    "run_memory_pipeline",
 ]

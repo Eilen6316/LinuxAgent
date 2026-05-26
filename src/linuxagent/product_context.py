@@ -23,7 +23,6 @@ _SLASH_COMMAND_KEYS: tuple[tuple[str, str], ...] = (
     ("/tools", "slash.commands.tools"),
     ("/trace", "slash.commands.trace"),
     ("/job", "slash.commands.job"),
-    ("/memory", "slash.commands.memory"),
     ("/exit", "slash.commands.exit"),
     ("/quit", "slash.commands.quit"),
     ("!<command>", "slash.commands.bang"),
@@ -36,10 +35,6 @@ _MODEL_SLASH_COMMANDS: tuple[SlashCommand, ...] = (
     SlashCommand("/tools", "show tool and prompt-cache status for this process"),
     SlashCommand("/trace", "toggle trace id display"),
     SlashCommand("/job", "list, inspect, follow, stop, or manage background jobs"),
-    SlashCommand(
-        "/memory",
-        "show explicit local advisory memory; suggest creates pending notes only",
-    ),
     SlashCommand("/exit", "exit the CLI"),
     SlashCommand("/quit", "exit the CLI"),
     SlashCommand("!<command>", "run an explicit direct shell command through policy and HITL"),

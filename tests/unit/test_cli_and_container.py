@@ -511,6 +511,33 @@ def test_memory_cli_suggest_and_promote(
     )
 
 
+def test_memory_cli_consolidate(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "memory": {"enabled": True, "path": tmp_path / "memories"},
+            "ui": {"history_path": tmp_path / "history.json"},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+    chat = Container(cfg).chat_service()
+    chat.replace_session("thread-1", [HumanMessage(content="Prefer staging")], title="Ops")
+    chat.save()
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+
+    code = cli.main(["memory", "consolidate"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "memory consolidation 已完成" in captured.out
+    assert "Prefer staging" in (tmp_path / "memories" / "memory_summary.md").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_main_unknown_command_routes_to_parser_error(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeParser:
         def parse_args(self, _argv: list[str] | None = None) -> argparse.Namespace:
@@ -729,7 +756,6 @@ def test_container_builds_cached_runtime(
     assert container.tools()
     assert container.build_agent().graph_runtime is container.graph_runtime()
     assert container.build_agent().context_manager is container.context_manager()
-    assert container.build_agent().memory_store is container.memory_store()
     assert captured["tool_observer"] is not None
     assert captured["translator"] is container.translator()
     assert "provider=deepseek" in str(captured["product_context"])
@@ -999,7 +1025,7 @@ def test_product_capability_context_describes_resume_and_model_source() -> None:
     assert "/resume: 列出本机保存的会话" not in context
     assert "/resume - 列出本机保存的会话" in slash_help()
     assert "/job - 列出/诊断/daemon/查看/跟随/停止后台任务" in slash_help()
-    assert "/memory - 查看或显式更新本地 advisory memory" in slash_help()
+    assert "/memory" not in slash_help()
     assert "/wizard" not in slash_help()
 
 
@@ -1007,7 +1033,7 @@ def test_slash_help_can_render_english() -> None:
     rendered = slash_help(Translator(LanguageCode.EN_US))
 
     assert "/resume - List saved local sessions" in rendered
-    assert "/memory - Show explicit local advisory memory" in rendered
+    assert "/memory" not in rendered
     assert "/wizard" not in rendered
 
 
@@ -1429,6 +1455,9 @@ def test_chat_command_runs_agent(
         def chat_service(self) -> _FakeChatService:
             return self._chat
 
+        def memory_store(self) -> SimpleNamespace:
+            return SimpleNamespace(config=SimpleNamespace(enabled=False))
+
         def build_agent(self) -> _FakeAgent:
             return _FakeAgent()
 
@@ -1461,6 +1490,66 @@ def test_chat_command_runs_agent(
     assert dependency_calls == [True]
 
 
+def test_chat_command_triggers_startup_memory_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeAgent:
+        async def run(self, *, thread_id: str = "default") -> None:
+            del thread_id
+
+    class _FakeChatService:
+        def load(self) -> None:
+            return None
+
+        def save(self) -> None:
+            return None
+
+    memory = SimpleNamespace(config=SimpleNamespace(enabled=True))
+    chat = _FakeChatService()
+    calls: list[tuple[object, object]] = []
+
+    class _FakeContainer:
+        def __init__(
+            self,
+            config: SimpleNamespace,
+            *,
+            config_path: Path | None = None,
+        ) -> None:
+            del config, config_path
+
+        def chat_service(self) -> _FakeChatService:
+            return chat
+
+        def memory_store(self) -> SimpleNamespace:
+            return memory
+
+        def build_agent(self) -> _FakeAgent:
+            return _FakeAgent()
+
+    cfg = SimpleNamespace(
+        api=SimpleNamespace(require_key=lambda: "key"),
+        logging=SimpleNamespace(level="INFO", format="console"),
+    )
+
+    monkeypatch.setattr(cli, "load_config", lambda cli_path=None: cfg)
+    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "configure_dependency_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "Container", _FakeContainer)
+    monkeypatch.setattr(
+        cli,
+        "maybe_run_startup_pipeline",
+        lambda store, service: calls.append((store, service)),
+    )
+
+    def _run(coro):
+        return asyncio.new_event_loop().run_until_complete(coro)
+
+    monkeypatch.setattr(cli.asyncio, "run", _run)
+
+    assert cli.main(["chat"]) == 0
+    assert calls == [(memory, chat)]
+
+
 def test_chat_verbose_leaves_dependency_info_logs_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1486,6 +1575,9 @@ def test_chat_verbose_leaves_dependency_info_logs_enabled(
 
         def chat_service(self) -> _FakeChatService:
             return _FakeChatService()
+
+        def memory_store(self) -> SimpleNamespace:
+            return SimpleNamespace(config=SimpleNamespace(enabled=False))
 
         def build_agent(self) -> _FakeAgent:
             return _FakeAgent()

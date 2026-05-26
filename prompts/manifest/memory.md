@@ -5,11 +5,12 @@ patterns after redaction in learner memory. Learner memory is advisory only: it 
 first-use HITL confirmation, destructive-command confirmation, or audit logging.
 
 When `memory.enabled` is true, LinuxAgent can maintain an opt-in filesystem memory under
-`memory.path`. Manual `/memory add <text>` and `linuxagent memory add <text>` writes are redacted
-before persistence; the generated summary can be injected into prompts as operator/project
-background. This memory is advisory only and never changes command policy, sandbox enforcement,
-execution approval, or audit records.
+`memory.path`. The generated summary can be injected into prompts as operator/project background.
+This memory is advisory only and never changes command policy, sandbox enforcement, execution
+approval, or audit records.
 
-`/memory suggest` and `linuxagent memory suggest` create reviewable candidates under `pending/`
-from local chat history. Candidates do not affect prompts until the operator explicitly promotes
-one with `memory promote <pending-filename>`.
+When `auto_consolidate_on_startup` is true, chat startup automatically runs a local deterministic
+two-stage pipeline: stage1 writes redacted history records under `stage1/`, and stage2 refreshes
+`raw_memories.md` plus `memory_summary.md`. It performs no shell execution, network calls, or LLM
+calls. `linuxagent memory ...` is a maintenance/debug CLI for inspecting, suggesting, promoting,
+or manually adding notes; it is not the runtime memory trigger.
