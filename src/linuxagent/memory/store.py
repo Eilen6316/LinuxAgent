@@ -398,8 +398,16 @@ def _stage1_summary(path: Path) -> str:
     if not isinstance(payload, dict):
         return _read_limited(path, 800).strip()
     title = str(payload.get("title") or path.stem)
+    rollout_summary = str(payload.get("rollout_summary") or "").strip()
+    raw_memory = str(payload.get("raw_memory") or "").strip()
     snippets = payload.get("snippets")
     lines = [f"session: {title}"]
+    if raw_memory:
+        lines.extend(["", raw_memory[:1200].rstrip()])
+        return "\n".join(lines)
+    if rollout_summary:
+        lines.extend(["", rollout_summary[:1200].rstrip()])
+        return "\n".join(lines)
     if isinstance(snippets, list):
         for item in snippets[:4]:
             if isinstance(item, dict):

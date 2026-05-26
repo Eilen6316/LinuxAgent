@@ -7,12 +7,13 @@ import asyncio
 import json
 import logging
 import runpy
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage, messages_to_dict
 
 import linuxagent.cli as cli
 import linuxagent.container as container_module
@@ -523,10 +524,19 @@ def test_memory_cli_consolidate(
             "telemetry": {"enabled": False, "exporter": "none"},
         }
     )
-    chat = Container(cfg).chat_service()
-    chat.replace_session("thread-1", [HumanMessage(content="Prefer staging")], title="Ops")
-    chat.save()
+    _write_memory_history(
+        cfg.ui.history_path,
+        [
+            _history_session_record(
+                "thread-1",
+                [HumanMessage(content="Prefer staging")],
+                title="Ops",
+                updated_at=datetime.now(tz=UTC) - timedelta(hours=8),
+            )
+        ],
+    )
     monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+    monkeypatch.setattr(cli.Container, "provider", lambda self: None)
 
     code = cli.main(["memory", "consolidate"])
     captured = capsys.readouterr()
@@ -1506,7 +1516,8 @@ def test_chat_command_triggers_startup_memory_pipeline(
 
     memory = SimpleNamespace(config=SimpleNamespace(enabled=True))
     chat = _FakeChatService()
-    calls: list[tuple[object, object]] = []
+    provider = object()
+    calls: list[tuple[object, object, object]] = []
 
     class _FakeContainer:
         def __init__(
@@ -1523,6 +1534,9 @@ def test_chat_command_triggers_startup_memory_pipeline(
         def memory_store(self) -> SimpleNamespace:
             return memory
 
+        def provider(self) -> object:
+            return provider
+
         def build_agent(self) -> _FakeAgent:
             return _FakeAgent()
 
@@ -1538,7 +1552,7 @@ def test_chat_command_triggers_startup_memory_pipeline(
     monkeypatch.setattr(
         cli,
         "maybe_run_startup_pipeline",
-        lambda store, service: calls.append((store, service)),
+        lambda store, service, **kwargs: calls.append((store, service, kwargs["provider"])),
     )
 
     def _run(coro):
@@ -1547,7 +1561,7 @@ def test_chat_command_triggers_startup_memory_pipeline(
     monkeypatch.setattr(cli.asyncio, "run", _run)
 
     assert cli.main(["chat"]) == 0
-    assert calls == [(memory, chat)]
+    assert calls == [(memory, chat, provider)]
 
 
 def test_chat_verbose_leaves_dependency_info_logs_enabled(
@@ -1657,3 +1671,26 @@ def test_module_entrypoint_raises_system_exit_with_main_code(
     with pytest.raises(SystemExit) as exc:
         runpy.run_module("linuxagent.__main__", run_name="__main__")
     assert exc.value.code == 7
+
+
+def _write_memory_history(path: Path, sessions: list[dict[str, object]]) -> None:
+    path.write_text(
+        json.dumps({"version": 2, "sessions": sessions}),
+        encoding="utf-8",
+    )
+
+
+def _history_session_record(
+    thread_id: str,
+    messages: list[BaseMessage],
+    *,
+    title: str,
+    updated_at: datetime,
+) -> dict[str, object]:
+    return {
+        "thread_id": thread_id,
+        "title": title,
+        "created_at": (updated_at - timedelta(minutes=10)).isoformat(),
+        "updated_at": updated_at.isoformat(),
+        "messages": messages_to_dict(messages),
+    }

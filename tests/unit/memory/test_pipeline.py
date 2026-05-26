@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, messages_to_dict
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, messages_to_dict
 
 from linuxagent.config.models import MemoryConfig
 from linuxagent.memory import MemoryPipelineLockedError, MemoryStore, run_memory_pipeline
@@ -150,6 +151,53 @@ def test_memory_consolidation_limits_and_prunes_unused_raw_inputs(tmp_path: Path
     assert "old signal" not in summary
 
 
+def test_memory_pipeline_uses_ai_stage1_output_and_allows_noop(tmp_path: Path) -> None:
+    chat = ChatService(tmp_path / "history.json", max_messages=10)
+    now = datetime.now(tz=UTC)
+    _write_history(
+        chat,
+        [
+            _history_session(
+                "keep",
+                [HumanMessage(content="Prefer staging before production changes")],
+                title="Keep",
+                updated_at=now - timedelta(hours=8),
+            ),
+            _history_session(
+                "noop",
+                [HumanMessage(content="What time is it?")],
+                title="Noop",
+                updated_at=now - timedelta(hours=9),
+            ),
+        ],
+    )
+    provider = _FakeMemoryProvider(
+        [
+            json.dumps(
+                {
+                    "raw_memory": "Reusable knowledge:\n- Prefer staging first; token=abc123",
+                    "rollout_summary": "User preference about staging",
+                    "rollout_slug": "staging-preference",
+                }
+            ),
+            json.dumps({"raw_memory": "", "rollout_summary": "", "rollout_slug": ""}),
+        ]
+    )
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+
+    result = run_memory_pipeline(store, chat, provider=provider)
+
+    assert result.stage1_records == 1
+    assert len(provider.messages) == 2
+    stage1_files = sorted(store.stage1_dir.glob("*.json"))
+    payload = json.loads(stage1_files[0].read_text(encoding="utf-8"))
+    assert payload["thread_id"] == "keep"
+    assert payload["rollout_slug"] == "staging-preference"
+    assert "token=***redacted***" in payload["raw_memory"]
+    assert "abc123" not in payload["raw_memory"]
+    assert "Prefer staging first" in store.read_summary()
+
+
 def _write_history(chat: ChatService, sessions: list[dict[str, object]]) -> None:
     chat.history_path.write_text(
         json.dumps({"version": 2, "sessions": sessions}),
@@ -191,3 +239,27 @@ def _write_stage1(
     }
     path = store.stage1_dir / f"{thread_id}.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+class _FakeMemoryProvider:
+    def __init__(self, responses: list[str]) -> None:
+        self._responses = list(responses)
+        self.messages: list[list[BaseMessage]] = []
+
+    async def complete(self, messages: list[BaseMessage], **kwargs: Any) -> str:
+        del kwargs
+        self.messages.append(messages)
+        return self._responses.pop(0)
+
+    async def complete_with_tools(
+        self,
+        messages: list[BaseMessage],
+        tools: list[Any],
+        **kwargs: Any,
+    ) -> str:
+        del messages, tools, kwargs
+        raise AssertionError("memory pipeline must not call tools")
+
+    def stream(self, messages: list[BaseMessage], **kwargs: Any) -> Any:
+        del messages, kwargs
+        raise AssertionError("memory pipeline must not stream")

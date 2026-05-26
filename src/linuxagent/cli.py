@@ -209,7 +209,12 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     container = Container(cfg, config_path=args.config)
     chat_service = container.chat_service()
     chat_service.load()
-    maybe_run_startup_pipeline(container.memory_store(), chat_service)
+    memory_store = container.memory_store()
+    maybe_run_startup_pipeline(
+        memory_store,
+        chat_service,
+        provider=container.provider() if memory_store.config.enabled else None,
+    )
     try:
         asyncio.run(container.build_agent().run(thread_id=f"cli-{uuid4().hex}"))
     except ProviderError as exc:
@@ -439,7 +444,11 @@ def _cmd_memory(args: argparse.Namespace) -> int:
         chat_service = container.chat_service()
         chat_service.load()
         try:
-            pipeline_result = run_memory_pipeline(store, chat_service)
+            pipeline_result = run_memory_pipeline(
+                store,
+                chat_service,
+                provider=container.provider(),
+            )
         except MemoryDisabledError:
             print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
             return 1
