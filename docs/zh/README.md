@@ -420,6 +420,9 @@ linuxagent check
 | `cluster.hosts[].remote_profile` | `environment` | `inherit` | `inherit` 保持旧行为；`clean` 只传递最小 PATH 环境 |
 | `cluster.hosts[].remote_profile` | `allow_sudo` | `false` | 仅在同时配置非空 `sudo_allowlist` 时允许 sudo |
 | `audit` | `path` | `~/.linuxagent/audit.log` | 审计日志位置；**审计无法关闭** |
+| `memory` | `enabled` | `true` | 启用 `~/.linuxagent/memories` 下的本地文件系统记忆 |
+| `memory` | `inject_summary` | `true` | 存在 `memory_summary.md` 时注入模型可见 product context |
+| `memory` | `auto_consolidate_on_startup` | `true` | chat 启动时自动刷新脱敏 stage1 记录和 `memory_summary.md` |
 | `telemetry` | `exporter` | `local` | 默认本地 JSONL span；`none` 禁用写入 |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | 本地 telemetry 路径 |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
@@ -431,6 +434,21 @@ linuxagent check
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | 语义检索模型；**禁止本地 PyTorch 模型** |
 
 完整样例见 [`configs/example.yaml`](../../configs/example.yaml)。
+
+### 本地文件系统记忆
+
+本地记忆默认开启，数据位于 `~/.linuxagent/memories`。`linuxagent chat`
+启动时，LinuxAgent 会读取本机保存的会话，运行确定性的两阶段 consolidation，
+并把 `memory_summary.md` 作为 advisory 的操作者/项目上下文注入当前运行时。该流程只写
+memory root 内的文件，并在持久化前做脱敏。
+
+memory 不是安全边界，不能降低 policy 决策、跳过 HITL、改变 sandbox enforcement、
+执行命令或修改 audit 记录。需要完全关闭 memory 读写时：
+
+```yaml
+memory:
+  enabled: false
+```
 
 ### 运行时语言
 

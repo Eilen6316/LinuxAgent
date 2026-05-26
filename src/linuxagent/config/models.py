@@ -476,7 +476,7 @@ class SkillsConfig(BaseModel):
 class MemoryConfig(BaseModel):
     model_config = _FROZEN
 
-    enabled: bool = False
+    enabled: bool = True
     path: UserPath = Field(default_factory=lambda: Path.home() / ".linuxagent" / "memories")
     inject_summary: bool = True
     max_summary_chars: int = Field(default=12000, ge=0, le=100000)

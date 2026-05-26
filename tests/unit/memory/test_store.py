@@ -27,7 +27,7 @@ def test_memory_store_add_note_redacts_and_refreshes_summary(tmp_path: Path) -> 
 
 
 def test_memory_store_disabled_blocks_writes(tmp_path: Path) -> None:
-    store = MemoryStore(MemoryConfig(path=tmp_path / "memories"))
+    store = MemoryStore(MemoryConfig(enabled=False, path=tmp_path / "memories"))
 
     with pytest.raises(MemoryDisabledError):
         store.add_note("remember this")

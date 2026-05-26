@@ -179,7 +179,7 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.mcp.resources == ("linuxagent://skills/summary", "linuxagent://memory/summary")
     assert cfg.skills.enabled is False
     assert cfg.skills.manifests == ()
-    assert cfg.memory.enabled is False
+    assert cfg.memory.enabled is True
     assert cfg.memory.path.name == "memories"
     assert cfg.memory.inject_summary is True
     assert cfg.memory.auto_consolidate_on_startup is True

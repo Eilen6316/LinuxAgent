@@ -222,10 +222,11 @@ skills:
   #   - ./skills/disk-inspection.yaml
 
 memory:
-  # Opt-in local advisory memory. Manual notes are redacted and written under
-  # extensions/ad_hoc/notes. The summary may be injected into prompts, but never
-  # participates in policy, HITL, sandbox, execution, or audit decisions.
-  enabled: false
+  # Local advisory memory is enabled by default. Manual notes are redacted and
+  # written under extensions/ad_hoc/notes. The summary may be injected into
+  # prompts, but never participates in policy, HITL, sandbox, execution, or
+  # audit decisions. Set enabled: false to disable all memory reads/writes.
+  enabled: true
   path: ~/.linuxagent/memories
   inject_summary: true
   max_summary_chars: 12000

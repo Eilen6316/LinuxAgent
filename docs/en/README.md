@@ -430,6 +430,9 @@ linuxagent check
 | `cluster.hosts[].remote_profile` | `environment` | `inherit` | `inherit` preserves current behavior; `clean` sends a minimal PATH environment |
 | `cluster.hosts[].remote_profile` | `allow_sudo` | `false` | Allows sudo only when paired with a non-empty `sudo_allowlist` |
 | `audit` | `path` | `~/.linuxagent/audit.log` | Audit log location; **audit cannot be disabled** |
+| `memory` | `enabled` | `true` | Enable local filesystem memory under `~/.linuxagent/memories` |
+| `memory` | `inject_summary` | `true` | Inject `memory_summary.md` into model-facing product context when present |
+| `memory` | `auto_consolidate_on_startup` | `true` | Refresh redacted stage1 records and `memory_summary.md` on chat startup |
 | `telemetry` | `exporter` | `local` | `local`, `console`, `otlp`, or `none` |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | Local telemetry path |
 | `telemetry` | `otlp_endpoint` | null | Required when `exporter: otlp` |
@@ -442,6 +445,23 @@ linuxagent check
 | `intelligence` | `embedding_model` | `text-embedding-3-small` | Semantic search model; **local PyTorch models are disallowed** |
 
 Full example: [`configs/example.yaml`](../../configs/example.yaml).
+
+### Local filesystem memory
+
+Local memory is enabled by default and lives under `~/.linuxagent/memories`.
+When `linuxagent chat` starts, LinuxAgent loads saved local sessions, runs a
+deterministic two-stage consolidation pass, and injects `memory_summary.md` as
+advisory operator/project context for the new runtime. The pipeline writes only
+inside the memory root and uses redaction before persistence.
+
+Memory is not a safety boundary and cannot lower policy decisions, skip HITL,
+change sandbox enforcement, execute commands, or edit audit records. Disable
+all memory reads and writes with:
+
+```yaml
+memory:
+  enabled: false
+```
 
 ### Runtime language
 

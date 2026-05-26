@@ -106,9 +106,10 @@ skills:
   manifests: []
 
 memory:
-  # Opt-in local advisory memory. It is never used for policy, HITL, sandbox,
+  # Local advisory memory is enabled by default. It writes only under
+  # ~/.linuxagent/memories and is never used for policy, HITL, sandbox,
   # execution, or audit decisions.
-  enabled: false
+  enabled: true
   path: ~/.linuxagent/memories
   inject_summary: true
   max_summary_chars: 12000
