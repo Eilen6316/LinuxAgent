@@ -432,6 +432,52 @@ def test_mcp_command_rejects_disabled_server(
     assert "mcp.enabled 为 false" in captured.err
 
 
+def test_memory_cli_add_and_list(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "memory": {"enabled": True, "path": tmp_path / "memories"},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+
+    code = cli.main(["memory", "add", "Prefer", "df", "before", "du"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "已写入 memory note" in captured.out
+
+    code = cli.main(["memory", "list"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "Prefer df before du" in captured.out
+
+
+def test_memory_cli_rejects_add_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "memory": {"enabled": False, "path": tmp_path / "memories"},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+    monkeypatch.setattr(cli, "load_config", lambda **_: cfg)
+
+    code = cli.main(["memory", "add", "remember", "this"])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert "memory.enabled 为 false" in captured.err
+
+
 def test_main_unknown_command_routes_to_parser_error(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeParser:
         def parse_args(self, _argv: list[str] | None = None) -> argparse.Namespace:
@@ -650,10 +696,27 @@ def test_container_builds_cached_runtime(
     assert container.tools()
     assert container.build_agent().graph_runtime is container.graph_runtime()
     assert container.build_agent().context_manager is container.context_manager()
+    assert container.build_agent().memory_store is container.memory_store()
     assert captured["tool_observer"] is not None
     assert captured["translator"] is container.translator()
     assert "provider=deepseek" in str(captured["product_context"])
     assert "/resume 是 LinuxAgent 内置命令" in str(captured["product_context"])
+
+
+def test_container_appends_memory_prompt_context(tmp_path: Path) -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "memory": {"enabled": True, "path": tmp_path / "memories"},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+    runtime = Container(cfg)
+    runtime.memory_store().add_note("Always check fleet staging first", title="Fleet")
+
+    context = runtime.product_context()
+
+    assert "Local Memory (advisory)" in context
+    assert "Always check fleet staging first" in context
 
 
 def test_tool_event_message_formats_workspace_tools() -> None:
@@ -903,6 +966,7 @@ def test_product_capability_context_describes_resume_and_model_source() -> None:
     assert "/resume: 列出本机保存的会话" not in context
     assert "/resume - 列出本机保存的会话" in slash_help()
     assert "/job - 列出/诊断/daemon/查看/跟随/停止后台任务" in slash_help()
+    assert "/memory - 查看或显式更新本地 advisory memory" in slash_help()
     assert "/wizard" not in slash_help()
 
 
@@ -910,6 +974,7 @@ def test_slash_help_can_render_english() -> None:
     rendered = slash_help(Translator(LanguageCode.EN_US))
 
     assert "/resume - List saved local sessions" in rendered
+    assert "/memory - Show or explicitly update local advisory memory" in rendered
     assert "/wizard" not in rendered
 
 

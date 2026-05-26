@@ -28,6 +28,7 @@ from .graph.agent_graph import AgentGraph
 from .graph.checkpoint import PersistentMemorySaver
 from .i18n import Translator
 from .interfaces import ExecutionResult, LLMProvider, UserInterface
+from .memory import MemoryStore
 from .operating_manifest import operating_manifest_context
 from .policy import PolicyEngine, runtime_policy_config
 from .sandbox import SandboxRunner
@@ -110,6 +111,7 @@ class Container:
             background_jobs=self.background_jobs(),
             job_daemon_unit=self.job_daemon_unit(),
             telemetry=self.telemetry(),
+            memory_store=self.memory_store(),
             tool_names=tuple(item.name for item in self.tool_catalog().items),
             prompt_cache_enabled=self._config.api.prompt_cache,
             translator=self.translator(),
@@ -315,6 +317,9 @@ class Container:
 
         return self._cached("skill_manifests", factory)
 
+    def memory_store(self) -> MemoryStore:
+        return self._cached("memory_store", lambda: MemoryStore(self._config.memory))
+
     def knowledge_base(self) -> KnowledgeBase:
         return self._cached("knowledge_base", lambda: KnowledgeBase(self.nlp_enhancer()))
 
@@ -385,7 +390,11 @@ class Container:
         return build_tool_runtime_limits(self._config)
 
     def product_context(self) -> str:
-        return build_product_context(self._config, self.tool_catalog())
+        base = build_product_context(self._config, self.tool_catalog())
+        memory_context = self.memory_store().prompt_context()
+        if not memory_context:
+            return base
+        return f"{base}\n\n{memory_context}"
 
     def operating_manifest(self) -> str:
         return self._cached("operating_manifest", operating_manifest_context)

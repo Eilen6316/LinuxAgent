@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from .jobs import handle_jobs_command
+from .memory import agent_memory_store, handle_memory_command
 from .slash import slash_help, tools_help
 from .trace import handle_trace_command
 
@@ -42,6 +43,14 @@ async def handle_slash(agent: LinuxAgent, line: str, thread_id: str) -> str | No
                 agent.background_jobs,
                 rest.strip(),
                 daemon_unit=agent.job_daemon_unit,
+                translator=translator,
+            )
+            return thread_id
+        case "/memory":
+            await handle_memory_command(
+                agent.ui,
+                agent_memory_store(agent),
+                rest.strip(),
                 translator=translator,
             )
             return thread_id

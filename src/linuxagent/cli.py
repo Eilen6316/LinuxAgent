@@ -18,6 +18,7 @@ from .container import Container
 from .i18n import Translator, default_translator
 from .logger import configure_dependency_logging, configure_logging
 from .mcp_server import McpServer, serve_stdio
+from .memory import MemoryDisabledError, format_memory_notes, format_memory_status
 from .providers.errors import ProviderError
 from .services import MonitoringAlert, collect_system_snapshot, evaluate_alerts
 from .tools import format_tool_catalog_check
@@ -80,6 +81,19 @@ def _add_subcommands(parser: argparse.ArgumentParser) -> None:
         "mcp",
         help="Run the read-only stdio MCP server.",
     )
+    memory_parser = subparsers.add_parser(
+        "memory",
+        help="Manage opt-in local advisory memory.",
+    )
+    memory_subparsers = memory_parser.add_subparsers(
+        dest="memory_command",
+        metavar="MEMORY_COMMAND",
+    )
+    memory_subparsers.add_parser("status", help="Show memory status.")
+    memory_subparsers.add_parser("list", help="List manual memory notes.")
+    memory_subparsers.add_parser("summary", help="Print the memory summary used in prompts.")
+    memory_add = memory_subparsers.add_parser("add", help="Add an explicit manual memory note.")
+    memory_add.add_argument("text", nargs="+", help="Memory text to store after redaction.")
     subparsers.add_parser(
         "job-daemon",
         help="Run the local background job supervisor.",
@@ -344,6 +358,40 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
     return serve_stdio(server)
 
 
+def _cmd_memory(args: argparse.Namespace) -> int:
+    try:
+        cfg = load_config(cli_path=args.config)
+    except ConfigError as exc:
+        print(default_translator().t("cli.error", message=exc), file=sys.stderr)
+        return 1
+    translator = Translator(cfg.language)
+    container = Container(cfg, config_path=args.config)
+    store = container.memory_store()
+    command = args.memory_command or "status"
+    if command == "status":
+        print(format_memory_status(store.status(), translator=translator))
+        return 0
+    if command == "list":
+        print(format_memory_notes(store.list_notes(), translator=translator))
+        return 0
+    if command == "summary":
+        print(store.read_summary().strip() or translator.t("memory.summary_empty"))
+        return 0
+    if command == "add":
+        try:
+            note = store.add_note(" ".join(args.text))
+        except MemoryDisabledError:
+            print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
+            return 1
+        except ValueError as exc:
+            print(translator.t("memory.error", message=exc), file=sys.stderr)
+            return 1
+        print(translator.t("memory.added", path=note.path))
+        return 0
+    print(translator.t("memory.usage"), file=sys.stderr)
+    return 2
+
+
 def _cmd_job_daemon(args: argparse.Namespace) -> int:
     try:
         cfg = load_config(cli_path=args.config)
@@ -369,6 +417,7 @@ _COMMANDS = {
     "check": _cmd_check,
     "chat": _cmd_chat,
     "job-daemon": _cmd_job_daemon,
+    "memory": _cmd_memory,
     "mcp": _cmd_mcp,
 }
 

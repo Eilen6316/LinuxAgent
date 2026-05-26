@@ -22,6 +22,7 @@ slash:
     tools: "查看启用的本地功能和 LLM 可用工具"
     trace: "显示或隐藏活动状态；用法：/trace on 或 /trace off"
     job: "列出/诊断/daemon/查看/跟随/停止后台任务；用法：/job [status|daemon|<job_id>|follow <job_id>|stop <job_id>]"
+    memory: "查看或显式更新本地 advisory memory；用法：/memory [status|list|summary|add <text>]"
     exit: "退出 LinuxAgent"
     quit: "等同于 /exit"
     bang: "直接执行操作者输入的命令，并把输出加入当前上下文"
@@ -36,6 +37,16 @@ trace:
   usage: "用法：/trace on 或 /trace off"
   visible: "Trace/activity 输出现在可见。"
   hidden: "Trace/activity 输出现在已隐藏。"
+memory:
+  disabled: "memory.enabled 为 false；路径：{path}"
+  status: "memory 已启用：path={path}，notes={notes}，summary_chars={summary_chars}"
+  empty: "没有 memory notes。"
+  notes_title: "Memory notes："
+  summary_empty: "memory summary 为空。"
+  add_usage: "用法：/memory add <text>"
+  added: "已写入 memory note：{path}"
+  error: "memory 错误：{message}"
+  usage: "用法：/memory [status|list|summary|add <text>]"
 cli:
   error: "错误：{message}"
   check:

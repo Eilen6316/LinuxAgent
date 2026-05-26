@@ -473,6 +473,16 @@ class SkillsConfig(BaseModel):
         return self
 
 
+class MemoryConfig(BaseModel):
+    model_config = _FROZEN
+
+    enabled: bool = False
+    path: UserPath = Field(default_factory=lambda: Path.home() / ".linuxagent" / "memories")
+    inject_summary: bool = True
+    max_summary_chars: int = Field(default=12000, ge=0, le=100000)
+    max_note_bytes: int = Field(default=20000, ge=1, le=200000)
+
+
 class UIConfig(BaseModel):
     model_config = _FROZEN
 
@@ -578,6 +588,7 @@ class AppConfig(BaseModel):
     audit: AuditConfig = Field(default_factory=AuditConfig)
     mcp: McpConfig = Field(default_factory=McpConfig)
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)

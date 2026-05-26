@@ -220,6 +220,16 @@ skills:
   # manifests:
   #   - ./skills/disk-inspection.yaml
 
+memory:
+  # Opt-in local advisory memory. Manual notes are redacted and written under
+  # extensions/ad_hoc/notes. The summary may be injected into prompts, but never
+  # participates in policy, HITL, sandbox, execution, or audit decisions.
+  enabled: false
+  path: ~/.linuxagent/memories
+  inject_summary: true
+  max_summary_chars: 12000
+  max_note_bytes: 20000
+
 telemetry:
   # Default is local JSONL spans. Set exporter: console for local stdout
   # development, otlp for an HTTP collector, or none to disable telemetry.

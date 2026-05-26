@@ -19,9 +19,11 @@ from linuxagent.app.pending_requests import (
     resume_status_for_request,
 )
 from linuxagent.audit import AuditLog
+from linuxagent.config.models import MemoryConfig
 from linuxagent.event_replay import RuntimeEventStore
 from linuxagent.graph.runtime import GraphInterrupt, GraphRuntime
 from linuxagent.interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
+from linuxagent.memory import MemoryStore
 from linuxagent.pending_request import (
     PendingRequestType,
     build_pending_request,
@@ -705,6 +707,18 @@ async def test_history_slash_command_is_removed(tmp_path) -> None:
 
     assert graph.calls == []
     assert "未知命令" in "\n".join(agent.ui.printed)  # type: ignore[attr-defined]
+
+
+async def test_memory_slash_adds_manual_note(tmp_path) -> None:
+    ui = _FakeUI(inputs=["/memory add Prefer journalctl -u app.service", "/exit"])
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+    agent = _agent(tmp_path, graph=_FakeGraph([]), ui=ui)
+    agent.memory_store = store
+
+    await agent.run(thread_id="cli")
+
+    assert "已写入 memory note" in "\n".join(ui.printed)
+    assert "Prefer journalctl -u app.service" in store.read_summary()
 
 
 async def test_trace_slash_command_toggles_activity_output(tmp_path) -> None:

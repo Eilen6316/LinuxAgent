@@ -31,6 +31,7 @@ from .turn_state import new_turn_state
 
 if TYPE_CHECKING:
     from .. import services as service_types
+    from ..memory import MemoryStore
 
 
 @dataclass
@@ -46,6 +47,7 @@ class LinuxAgent:
     background_jobs: service_types.BackgroundJobController | None = None
     job_daemon_unit: service_types.JobDaemonUnit | None = None
     telemetry: TelemetryRecorder | None = None
+    memory_store: MemoryStore | None = None
     tool_names: tuple[str, ...] = ()
     prompt_cache_enabled: bool = False
     translator: Translator = field(default_factory=default_translator)

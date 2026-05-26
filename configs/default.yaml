@@ -104,6 +104,15 @@ skills:
   enabled: false
   manifests: []
 
+memory:
+  # Opt-in local advisory memory. It is never used for policy, HITL, sandbox,
+  # execution, or audit decisions.
+  enabled: false
+  path: ~/.linuxagent/memories
+  inject_summary: true
+  max_summary_chars: 12000
+  max_note_bytes: 20000
+
 ui:
   theme: auto
   max_chat_history: 20

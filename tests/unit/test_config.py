@@ -72,6 +72,11 @@ CONFIG_REQUIRED_PATHS = (
     ("mcp", "resources"),
     ("skills", "enabled"),
     ("skills", "manifests"),
+    ("memory", "enabled"),
+    ("memory", "path"),
+    ("memory", "inject_summary"),
+    ("memory", "max_summary_chars"),
+    ("memory", "max_note_bytes"),
     ("telemetry", "enabled"),
     ("telemetry", "exporter"),
     ("telemetry", "path"),
@@ -171,6 +176,9 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.mcp.resources == ("linuxagent://skills/summary",)
     assert cfg.skills.enabled is False
     assert cfg.skills.manifests == ()
+    assert cfg.memory.enabled is False
+    assert cfg.memory.path.name == "memories"
+    assert cfg.memory.inject_summary is True
     assert cfg.ui.max_chat_history == 20
     assert cfg.jobs.daemon_enabled is True
     assert cfg.jobs.max_history == 200

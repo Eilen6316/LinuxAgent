@@ -22,6 +22,7 @@ slash:
     tools: "Show enabled local capabilities and LLM tools"
     trace: "Show or hide activity status; usage: /trace on or /trace off"
     job: "List/diagnose/view/follow/stop background jobs; usage: /job [status|daemon|<job_id>|follow <job_id>|stop <job_id>]"
+    memory: "Show or explicitly update local advisory memory; usage: /memory [status|list|summary|add <text>]"
     exit: "Exit LinuxAgent"
     quit: "Same as /exit"
     bang: "Run an operator-entered command directly and add the output to the current context"
@@ -36,6 +37,16 @@ trace:
   usage: "Usage: /trace on or /trace off"
   visible: "Trace/activity output is now visible."
   hidden: "Trace/activity output is now hidden."
+memory:
+  disabled: "memory.enabled is false; path: {path}"
+  status: "memory enabled: path={path}, notes={notes}, summary_chars={summary_chars}"
+  empty: "No memory notes."
+  notes_title: "Memory notes:"
+  summary_empty: "memory summary is empty."
+  add_usage: "Usage: /memory add <text>"
+  added: "Wrote memory note: {path}"
+  error: "memory error: {message}"
+  usage: "Usage: /memory [status|list|summary|add <text>]"
 cli:
   error: "error: {message}"
   check:
