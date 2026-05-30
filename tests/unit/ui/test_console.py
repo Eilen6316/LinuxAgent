@@ -1015,6 +1015,8 @@ async def test_console_print_active_view_renders_plan_and_token_usage(monkeypatc
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
     assert Translator(LanguageCode.ZH_CN).t("runtime.group.task_plan") in rendered
+    assert "LinuxAgent · 处理中" in rendered
+    assert "─" * 12 in rendered
     assert "复杂任务" in rendered
     assert "✓ 收集上下文" in rendered
     assert "□ 生成答案" in rendered

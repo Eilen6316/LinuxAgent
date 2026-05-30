@@ -24,6 +24,7 @@ ACTIVITY_INTERVAL_MS = 600
 MAX_ACTIVE_VIEW_ITEMS = 8
 MAX_STATUS_DETAIL_LINES = 3
 MAX_PENDING_INPUTS = 5
+STATUS_RULE_WIDTH = 72
 
 
 class WorkingStatus:
@@ -127,6 +128,7 @@ class WorkingStatus:
     def _render_active_view(self, view: ActiveTurnView) -> Text:
         items = _active_view_items(view)
         text = self._render_title()
+        _append_status_rule(text, self._accent_style())
         for item in items:
             text.append("\n")
             _append_active_item(text, item, self._translator)
@@ -142,6 +144,8 @@ class WorkingStatus:
         return Text.assemble(
             (indicator, self._accent_style()),
             " ",
+            ("LinuxAgent", "bold"),
+            (" · ", "dim"),
             (self._working_title(), "bold"),
             (suffix, "dim"),
         )
@@ -196,8 +200,8 @@ def _append_detail_item(text: Text, item: str) -> None:
 
 
 def _append_render_item(text: Text, item: str, *, current: bool) -> None:
-    marker = "•" if current else "✓"
-    style = "bold" if current else "dim"
+    marker = "▸" if current else "✓"
+    style = "bold" if current else "green"
     lines = item.splitlines() or [""]
     text.append(f"  {marker} ", style=style)
     text.append(lines[0], style=style)
@@ -228,8 +232,16 @@ def _append_plan_item(text: Text, item: ActiveWorkItemView, translator: Translat
 
 
 def _append_token_usage(text: Text, usage: ActiveTokenUsageView, translator: Translator) -> None:
+    text.append("\n")
+    _append_status_rule(text, "dim")
+    text.append("\n")
     text.append("  ⎿ ", style="dim")
     text.append(token_usage_text(usage, translator), style="dim")
+
+
+def _append_status_rule(text: Text, style: str) -> None:
+    text.append("\n")
+    text.append("─" * STATUS_RULE_WIDTH, style=style)
 
 
 def _active_view_items(view: ActiveTurnView) -> list[ActiveWorkItemView]:
