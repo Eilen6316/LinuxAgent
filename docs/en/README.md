@@ -445,6 +445,7 @@ linuxagent check
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | Local telemetry path |
 | `telemetry` | `otlp_endpoint` | null | Required when `exporter: otlp` |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
+| `ui` | `tui_layout` | `compact` | `compact` keeps the terse active view; `wide` adds a read-only context sidebar on wide terminals |
 | `ui` | `max_chat_history` | `20` | Max retained messages per saved session; new sessions do not load them automatically |
 | `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | Local LangGraph checkpoint store for pending HITL resume |
 | `logging` | `level` | `WARNING` | `DEBUG` / `INFO` / `WARNING` / ... |

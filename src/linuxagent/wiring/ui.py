@@ -18,6 +18,7 @@ def build_ui(
     return WizardAwareUserInterface(
         ConsoleUI(
             theme=config.theme,
+            tui_layout=config.tui_layout,
             prompt_symbol=config.prompt_symbol,
             history_path=config.history_path.with_name("prompt_history"),
             translator=translator,

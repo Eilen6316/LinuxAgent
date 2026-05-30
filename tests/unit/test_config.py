@@ -93,6 +93,7 @@ CONFIG_REQUIRED_PATHS = (
     ("telemetry", "exporter"),
     ("telemetry", "path"),
     ("ui", "theme"),
+    ("ui", "tui_layout"),
     ("ui", "max_chat_history"),
     ("ui", "history_path"),
     ("ui", "checkpoint_path"),
@@ -202,6 +203,7 @@ def test_defaults_populate_every_section() -> None:
     assert cfg.memory.extract_model is None
     assert cfg.memory.consolidation_model is None
     assert cfg.memory.pipeline_lock_ttl_seconds == 600
+    assert cfg.ui.tui_layout == "compact"
     assert cfg.ui.max_chat_history == 20
     assert cfg.jobs.daemon_enabled is True
     assert cfg.jobs.max_history == 200

@@ -256,6 +256,7 @@ telemetry:
 
 ui:
   theme: auto                  # auto | light | dark
+  tui_layout: compact          # compact | wide
   max_chat_history: 20
   history_path: ~/.linuxagent/history.json
   checkpoint_path: ~/.linuxagent/checkpoints.json

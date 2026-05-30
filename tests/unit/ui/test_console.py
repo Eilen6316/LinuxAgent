@@ -1024,6 +1024,46 @@ async def test_console_print_active_view_renders_plan_and_token_usage(monkeypatc
     ui.clear_activity()
 
 
+async def test_console_print_active_view_can_render_wide_sidebar(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=132, force_terminal=True)
+    ui = ConsoleUI(console=console, tui_layout="wide")
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread-1234567890",
+            turn_id="turn-abcdef",
+            status="running",
+            token_usage=ActiveTokenUsageView(total_tokens=13700),
+            items=(
+                ActiveWorkItemView(
+                    item_id="intent",
+                    category="graph",
+                    status="completed",
+                    label="分类意图",
+                ),
+                ActiveWorkItemView(
+                    item_id="read",
+                    category="tool",
+                    status="running",
+                    label="读取文件",
+                    summary="/LinuxAgent/README.md",
+                ),
+            ),
+        )
+    )
+
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=132)
+    render_console.print(ui._working_status._render())
+    rendered = render_console.export_text()
+    assert "Context" in rendered
+    assert "status  running" in rendered
+    assert "thread  thread-1..." in rendered
+    assert "tokens  ↓ 13.7k tokens" in rendered
+    ui.clear_activity()
+
+
 def test_working_status_plan_item_marker_colors_completed_green() -> None:
     assert _plan_item_marker(ActivePlanItemView("done", "completed")) == ("✓", "green")
     assert _plan_item_marker(ActivePlanItemView("failed", "failed")) == ("✗", "red")

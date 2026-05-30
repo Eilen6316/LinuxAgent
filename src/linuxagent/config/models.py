@@ -525,6 +525,7 @@ class UIConfig(BaseModel):
     model_config = _FROZEN
 
     theme: Literal["auto", "light", "dark"] = "auto"
+    tui_layout: Literal["compact", "wide"] = "compact"
     max_chat_history: int = Field(default=20, ge=1, le=1000)
     history_path: UserPath = Field(
         default_factory=lambda: Path.home() / ".linuxagent" / "history.json"

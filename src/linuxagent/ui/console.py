@@ -44,6 +44,7 @@ class ConsoleUI(UserInterface):
         *,
         console: Console | None = None,
         theme: str = "auto",
+        tui_layout: str = "compact",
         prompt_symbol: str = "❯",
         history_path: Path | None = None,
         session_factory: Any | None = None,
@@ -53,6 +54,7 @@ class ConsoleUI(UserInterface):
     ) -> None:
         self._console = console or Console()
         self._theme = theme
+        self._tui_layout = tui_layout
         self._prompt_symbol = prompt_symbol
         self._history_path = history_path or (Path.home() / ".linuxagent" / "prompt_history")
         self._translator = translator or default_translator()
@@ -199,6 +201,7 @@ class ConsoleUI(UserInterface):
             self._working_status = WorkingStatus(
                 self._console,
                 theme=self._theme,
+                layout=self._tui_layout,
                 translator=self._translator,
                 started_at=self._activity_started_at,
             )
@@ -219,6 +222,7 @@ class ConsoleUI(UserInterface):
             self._working_status = WorkingStatus(
                 self._console,
                 theme=self._theme,
+                layout=self._tui_layout,
                 translator=self._translator,
                 started_at=self._activity_started_at,
             )

@@ -25,6 +25,9 @@ MAX_ACTIVE_VIEW_ITEMS = 8
 MAX_STATUS_DETAIL_LINES = 3
 MAX_PENDING_INPUTS = 5
 STATUS_RULE_WIDTH = 72
+WIDE_LAYOUT_MIN_WIDTH = 110
+WIDE_LAYOUT_MAIN_WIDTH = 72
+WIDE_LAYOUT_SIDEBAR_WIDTH = 30
 
 
 class WorkingStatus:
@@ -33,11 +36,13 @@ class WorkingStatus:
         console: Console,
         *,
         theme: str = "auto",
+        layout: str = "compact",
         translator: Translator | None = None,
         started_at: float | None = None,
     ) -> None:
         self._console = console
         self._theme = theme
+        self._layout = layout
         self._translator = translator or default_translator()
         self._live: Live | None = None
         self._started_at = started_at or 0.0
@@ -135,6 +140,8 @@ class WorkingStatus:
         if view.token_usage is not None:
             text.append("\n")
             _append_token_usage(text, view.token_usage, self._translator)
+        if self._wide_layout_enabled():
+            return _with_wide_sidebar(text, _wide_sidebar(view, self._translator))
         return text
 
     def _render_title(self) -> Text:
@@ -160,6 +167,9 @@ class WorkingStatus:
 
     def _periodic_refresh_allowed(self) -> bool:
         return not self._pending_inputs
+
+    def _wide_layout_enabled(self) -> bool:
+        return self._layout == "wide" and self._console.width >= WIDE_LAYOUT_MIN_WIDTH
 
 
 def _working_label(message: str, translator: Translator) -> str:
@@ -242,6 +252,66 @@ def _append_token_usage(text: Text, usage: ActiveTokenUsageView, translator: Tra
 def _append_status_rule(text: Text, style: str) -> None:
     text.append("\n")
     text.append("─" * STATUS_RULE_WIDTH, style=style)
+
+
+def _with_wide_sidebar(main: Text, sidebar: Text) -> Text:
+    main_lines = list(main.split(allow_blank=True))
+    sidebar_lines = list(sidebar.split(allow_blank=True))
+    line_count = max(len(main_lines), len(sidebar_lines))
+    output = Text()
+    for index in range(line_count):
+        if index > 0:
+            output.append("\n")
+        output.append_text(_fixed_width_line(_line_at(main_lines, index), WIDE_LAYOUT_MAIN_WIDTH))
+        output.append("  ")
+        output.append_text(
+            _fixed_width_line(_line_at(sidebar_lines, index), WIDE_LAYOUT_SIDEBAR_WIDTH)
+        )
+    return output
+
+
+def _fixed_width_line(line: Text, width: int) -> Text:
+    fixed = line.copy()
+    fixed.truncate(width, overflow="ellipsis", pad=True)
+    if fixed.cell_len < width:
+        fixed.pad_right(width - fixed.cell_len)
+    return fixed
+
+
+def _line_at(lines: list[Text], index: int) -> Text:
+    if index >= len(lines):
+        return Text()
+    return lines[index]
+
+
+def _wide_sidebar(view: ActiveTurnView, translator: Translator) -> Text:
+    text = Text()
+    text.append("Context", style="bold")
+    _append_sidebar_row(text, "status", view.status)
+    _append_sidebar_row(text, "thread", _short_id(view.thread_id))
+    _append_sidebar_row(text, "turn", _short_id(view.turn_id))
+    _append_sidebar_row(text, "items", str(len(view.items)))
+    if view.pending_request is not None:
+        request = view.pending_request
+        _append_sidebar_row(text, "request", f"{request.request_type}:{request.status}")
+    if view.token_usage is not None:
+        _append_sidebar_row(text, "tokens", token_usage_text(view.token_usage, translator))
+    return text
+
+
+def _append_sidebar_row(text: Text, label: str, value: str) -> None:
+    if not value:
+        return
+    text.append("\n")
+    text.append(f"{label:<7}", style="dim")
+    text.append(" ")
+    text.append(value, style="dim")
+
+
+def _short_id(value: str) -> str:
+    if len(value) <= 12:
+        return value
+    return f"{value[:8]}..."
 
 
 def _active_view_items(view: ActiveTurnView) -> list[ActiveWorkItemView]:

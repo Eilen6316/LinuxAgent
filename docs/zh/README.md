@@ -434,6 +434,7 @@ linuxagent check
 | `telemetry` | `exporter` | `local` | 默认本地 JSONL span；`none` 禁用写入 |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | 本地 telemetry 路径 |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
+| `ui` | `tui_layout` | `compact` | `compact` 保持紧凑活动视图；`wide` 在宽终端显示只读上下文侧栏 |
 | `ui` | `max_chat_history` | `20` | 每个已保存会话最多保留的消息数；新会话不会自动加载 |
 | `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | 本地 LangGraph checkpoint 文件，用于恢复未完成的 HITL 确认 |
 | `logging` | `level` | `WARNING` | `DEBUG` / `INFO` / `WARNING` / ... |
