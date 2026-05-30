@@ -1033,7 +1033,7 @@ async def test_console_print_active_view_renders_plan_and_token_usage(monkeypatc
     ui.clear_activity()
 
 
-async def test_console_print_active_view_defaults_to_wide_sidebar(monkeypatch) -> None:
+async def test_console_print_active_view_default_has_no_context_sidebar(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     console = Console(record=True, width=132, force_terminal=True)
     ui = ConsoleUI(console=console)
@@ -1063,10 +1063,13 @@ async def test_console_print_active_view_defaults_to_wide_sidebar(monkeypatch) -
     )
 
     rendered = _render_working_status(ui, width=132)
-    assert "Context" in rendered
-    assert "status  running" in rendered
-    assert "thread  thread-1..." in rendered
-    assert "tokens  ↓ 13.7k tokens" in rendered
+    assert "Context" not in rendered
+    assert "status  running" not in rendered
+    assert "thread  thread-1..." not in rendered
+    assert "tokens  ↓ 13.7k tokens" not in rendered
+    assert "分类意图" in rendered
+    assert "读取文件" in rendered
+    assert "↓ 13.7k tokens" in rendered
     ui.clear_activity()
 
 
@@ -1099,7 +1102,7 @@ async def test_console_print_active_view_falls_back_on_narrow_terminal(monkeypat
     ui.clear_activity()
 
 
-async def test_console_print_active_view_compact_layout_disables_sidebar(monkeypatch) -> None:
+async def test_console_print_active_view_compact_layout_matches_default(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     console = Console(record=True, width=132, force_terminal=True)
     ui = ConsoleUI(console=console, tui_layout="compact")
@@ -1131,7 +1134,9 @@ def test_working_status_plan_item_marker_colors_completed_green() -> None:
     assert _plan_item_marker(ActivePlanItemView("failed", "failed")) == ("✗", "red")
 
 
-async def test_console_keeps_token_usage_visible_after_terminal_active_view(monkeypatch) -> None:
+async def test_console_token_only_active_view_updates_prompt_without_status_block(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     console = Console(record=True, width=120, force_terminal=True)
     ui = ConsoleUI(console=console)
@@ -1149,12 +1154,8 @@ async def test_console_keeps_token_usage_visible_after_terminal_active_view(monk
         )
     )
 
-    rendered = _render_working_status(ui, width=120)
-    assert "↓ 13.7k tokens" in rendered
-    assert len(_rule_lines(rendered)) == 1
-    assert "\n\n\n" not in rendered
+    assert ui._working_status is None
     assert any("↓ 13.7k tokens" in fragment for _style, fragment in ui._build_prompt())
-    ui.clear_activity()
 
 
 async def test_console_print_active_view_clears_on_terminal_status(monkeypatch) -> None:

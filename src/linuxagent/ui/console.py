@@ -180,6 +180,9 @@ class ConsoleUI(UserInterface):
         if await self._run_on_owner_loop(lambda: self.print_active_view(view)):
             return
         self._prompt_session.set_token_usage(view.token_usage)
+        if _token_only_active_view(view):
+            self._clear_activity(reset_timer=False)
+            return
         if _terminal_active_view(view):
             self._clear_activity(reset_timer=False)
             return
@@ -575,6 +578,10 @@ def _execution_result_display(result: ExecutionResult, *, include_output: bool) 
 
 def _terminal_active_view(view: ActiveTurnView) -> bool:
     return view.status in {"completed", "failed", "cancelled"} and view.token_usage is None
+
+
+def _token_only_active_view(view: ActiveTurnView) -> bool:
+    return view.token_usage is not None and not view.items and view.pending_request is None
 
 
 def _approval_summary(
