@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
-from contextvars import copy_context
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar, copy_context
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -13,18 +16,30 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
-from ..runtime_control import CancellationToken, cancellation_scope
+from ..runtime_control import CancellationToken, cancellation_scope, current_cancellation_token
 from ..sandbox import SandboxProfile
 from ..security import redact_record, redact_text
 from .runtime_context import tool_trace_context
 
 SANDBOX_METADATA_KEY = "linuxagent_sandbox"
+_CURRENT_TOOL_DEADLINE: ContextVar[float | None] = ContextVar(
+    "linuxagent_tool_deadline",
+    default=None,
+)
 
 
 class ToolHITLMode(StrEnum):
     NONE = "none"
     POLICY_GATED = "policy_gated"
     REQUIRED = "required"
+
+
+class ToolExecutionCancelledError(RuntimeError):
+    """Raised by cooperative tools when the active turn is cancelled."""
+
+
+class ToolDeadlineExceededError(TimeoutError):
+    """Raised by cooperative tools when their configured runtime deadline expires."""
 
 
 @dataclass(frozen=True)
@@ -87,6 +102,21 @@ def attach_tool_sandbox(tool: BaseTool, spec: ToolSandboxSpec) -> BaseTool:
     return tool
 
 
+def current_tool_deadline() -> float | None:
+    """Return the active tool deadline as ``time.monotonic()`` seconds."""
+
+    return _CURRENT_TOOL_DEADLINE.get()
+
+
+def raise_if_tool_runtime_cancelled(*, deadline: float | None = None) -> None:
+    token = current_cancellation_token()
+    if token is not None and token.is_cancelled():
+        raise ToolExecutionCancelledError(token.reason or "tool call cancelled")
+    active_deadline = current_tool_deadline() if deadline is None else deadline
+    if active_deadline is not None and time.monotonic() >= active_deadline:
+        raise ToolDeadlineExceededError("tool exceeded configured timeout")
+
+
 async def invoke_tool_with_sandbox(
     tool: BaseTool,
     args: dict[str, Any],
@@ -136,7 +166,8 @@ async def _invoke_tool_result(
 ) -> ToolRunResult | Any:
     timeout = _tool_timeout(tool, limits)
     try:
-        return await asyncio.wait_for(_invoke_tool(tool, args, trace_id), timeout=timeout)
+        with _tool_deadline_scope(time.monotonic() + timeout):
+            return await asyncio.wait_for(_invoke_tool(tool, args, trace_id), timeout=timeout)
     except TimeoutError:
         return _tool_timeout_result(tool, args, limits, remaining_total_chars, timeout, trace_id)
     except Exception as exc:  # noqa: BLE001 - tool failures are returned to the model
@@ -302,6 +333,15 @@ def _notify_finished(loop: asyncio.AbstractEventLoop, callback: Any) -> None:
         return
 
 
+@contextmanager
+def _tool_deadline_scope(deadline: float | None) -> Iterator[None]:
+    token = _CURRENT_TOOL_DEADLINE.set(deadline)
+    try:
+        yield
+    finally:
+        _CURRENT_TOOL_DEADLINE.reset(token)
+
+
 def _invoke_sync_tool(tool: BaseTool, args: dict[str, Any], trace_id: str | None) -> Any:
     with tool_trace_context(trace_id):
         return tool.invoke(args)
@@ -443,6 +483,10 @@ def _structured_error(tool_name: str, status: str, message: str) -> str:
 
 
 def _error_status(exc: Exception) -> str:
+    if isinstance(exc, ToolExecutionCancelledError):
+        return "cancelled"
+    if isinstance(exc, TimeoutError):
+        return "timeout"
     if exc.__class__.__name__ in {"WorkspaceAccessError", "LogFileAccessError"}:
         return "denied"
     return "error"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 
 import pytest
@@ -17,7 +18,12 @@ from linuxagent.tools import (
     inspect_tool_catalog,
     require_valid_tool_catalog,
 )
-from linuxagent.tools.sandbox import ToolSandboxSpec, attach_tool_sandbox, invoke_tool_with_sandbox
+from linuxagent.tools.sandbox import (
+    ToolSandboxSpec,
+    attach_tool_sandbox,
+    invoke_tool_with_sandbox,
+    raise_if_tool_runtime_cancelled,
+)
 
 
 async def test_unwrapped_tool_is_denied_before_execution() -> None:
@@ -205,6 +211,33 @@ async def test_sync_tool_timeout_does_not_block_event_loop() -> None:
     assert result.event["status"] == "timeout"
 
 
+async def test_sync_tool_timeout_exposes_deadline_for_cooperative_exit() -> None:
+    worker_done = threading.Event()
+
+    @tool
+    def cooperative_sync_tool() -> str:
+        """Loop until the active tool deadline cancels this sync worker."""
+        try:
+            while True:
+                raise_if_tool_runtime_cancelled()
+                time.sleep(0.005)
+        finally:
+            worker_done.set()
+
+    result = await invoke_tool_with_sandbox(
+        attach_tool_sandbox(
+            cooperative_sync_tool,
+            ToolSandboxSpec(profile=SandboxProfile.READ_ONLY, timeout_seconds=0.03),
+        ),
+        {},
+        limits=ToolRuntimeLimits(timeout_seconds=0.03, max_output_chars=200),
+        remaining_total_chars=200,
+    )
+
+    assert result.event["status"] == "timeout"
+    assert await _wait_for_event(worker_done, deadline_seconds=0.2)
+
+
 async def test_tool_event_redacts_sensitive_args() -> None:
     @tool
     def echo_secret(api_key: str, authorization: str, query: str) -> str:
@@ -226,3 +259,12 @@ async def test_tool_event_redacts_sensitive_args() -> None:
     assert result.event["args"]["api_key"] == "***redacted***"
     assert result.event["args"]["authorization"] == "***redacted***"
     assert result.event["args"]["query"] == "token=***redacted***"
+
+
+async def _wait_for_event(event: threading.Event, *, deadline_seconds: float) -> bool:
+    deadline = time.monotonic() + deadline_seconds
+    while time.monotonic() < deadline:
+        if event.is_set():
+            return True
+        await asyncio.sleep(0.005)
+    return event.is_set()

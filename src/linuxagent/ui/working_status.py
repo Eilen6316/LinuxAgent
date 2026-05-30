@@ -20,7 +20,9 @@ from ..active_view import (
 from ..i18n import CatalogError, Translator, default_translator
 
 WORKING_REFRESH_PER_SECOND = 1
-ACTIVITY_INTERVAL_MS = 600
+ACTIVITY_INTERVAL_MS = 1000
+MIN_FORCED_REFRESH_SECONDS = 0.12
+MIN_UNCHANGED_REFRESH_SECONDS = 1.0
 MAX_ACTIVE_VIEW_ITEMS = 8
 MAX_STATUS_DETAIL_LINES = 3
 MAX_PENDING_INPUTS = 5
@@ -46,6 +48,8 @@ class WorkingStatus:
         self._message = self._working_title()
         self._pending_inputs: tuple[str, ...] = ()
         self._active_view: ActiveTurnView | None = None
+        self._last_rendered: str | None = None
+        self._last_refresh_at = 0.0
 
     def set_started_at(self, started_at: float) -> None:
         self._started_at = started_at
@@ -100,9 +104,11 @@ class WorkingStatus:
         if self._live is None or not self._live.is_started:
             if self._started_at <= 0.0:
                 self._started_at = time.monotonic()
+            renderable = self._render()
+            self._record_refresh(renderable)
             with _console_stdout(self._console):
                 self._live = Live(
-                    get_renderable=self._render,
+                    renderable,
                     console=self._console,
                     transient=True,
                     auto_refresh=False,
@@ -112,7 +118,12 @@ class WorkingStatus:
                 )
                 self._live.start(refresh=True)
             return
+        renderable = self._render()
+        if not self._should_refresh(renderable):
+            return
+        self._record_refresh(renderable)
         with _console_stdout(self._console):
+            self._live.update(renderable, refresh=False)
             self._live.refresh()
 
     def _render_legacy_items(self) -> Text:
@@ -162,6 +173,18 @@ class WorkingStatus:
 
     def _periodic_refresh_allowed(self) -> bool:
         return not self._pending_inputs
+
+    def _should_refresh(self, renderable: Text) -> bool:
+        now = time.monotonic()
+        rendered = renderable.plain
+        elapsed = now - self._last_refresh_at
+        if rendered == self._last_rendered and elapsed < MIN_UNCHANGED_REFRESH_SECONDS:
+            return False
+        return elapsed >= MIN_FORCED_REFRESH_SECONDS
+
+    def _record_refresh(self, renderable: Text) -> None:
+        self._last_rendered = renderable.plain
+        self._last_refresh_at = time.monotonic()
 
 
 def _working_label(message: str, translator: Translator) -> str:

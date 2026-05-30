@@ -140,6 +140,21 @@ async def test_console_print_user_input_follows_current_stdout(monkeypatch) -> N
     assert console._file is original_file
 
 
+async def test_console_print_user_input_leaves_line_for_live_status(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=80, force_terminal=True)
+    ui = _english_console_ui(console)
+
+    await ui.print_user_input("hello")
+    await ui.print_activity("LinuxAgent is classifying intent")
+
+    rendered = console.export_text()
+    assert "hello" in rendered
+    assert "╰" in rendered
+    assert "\n\n" in rendered
+    ui.clear_activity()
+
+
 async def test_wait_for_cancel_uses_prompt_cancel_event(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     ui = ConsoleUI(console=Console(force_terminal=True))
@@ -706,6 +721,42 @@ async def test_console_activity_from_worker_loop_runs_on_owner_loop() -> None:
     rendered = console.export_text()
     assert "owner-ready" in rendered
     assert "from-worker" in rendered
+    ui.clear_activity()
+
+
+async def test_console_activity_from_worker_loop_does_not_block_owner_loop() -> None:
+    console = Console(record=True, width=120)
+    ui = ConsoleUI(console=console)
+    await ui.print_activity("owner-ready")
+
+    done = threading.Event()
+    worker_error: list[BaseException] = []
+
+    async def worker_call() -> None:
+        await ui.print_activity("from-worker")
+
+    def run_worker() -> None:
+        try:
+            asyncio.run(worker_call())
+        except BaseException as exc:
+            worker_error.append(exc)
+        finally:
+            done.set()
+
+    threading.Thread(target=run_worker, daemon=True).start()
+    await asyncio.sleep(0.02)
+
+    assert await _wait_for_event(done, deadline_seconds=1.0)
+    if worker_error:
+        raise worker_error[0]
+    for _ in range(20):
+        if "from-worker" in console.export_text(clear=False):
+            break
+        await asyncio.sleep(0.01)
+
+    rendered = console.export_text(clear=False)
+    assert "from-worker" in rendered
+    ui.clear_activity()
 
 
 async def _wait_for_event(event: threading.Event, *, deadline_seconds: float) -> bool:
@@ -1187,6 +1238,46 @@ async def test_console_print_active_view_clears_on_terminal_status(monkeypatch) 
     assert ui._working_status is None
 
 
+async def test_console_print_active_view_clears_completed_status_with_token_usage(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread",
+            turn_id="turn",
+            status="running",
+            items=(
+                ActiveWorkItemView(
+                    item_id="tool:list_dir",
+                    category="tool",
+                    status="completed",
+                    label="list_dir",
+                    summary="allowed · 9ms",
+                ),
+            ),
+        )
+    )
+    assert ui._working_status is not None
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread",
+            turn_id="turn",
+            status="completed",
+            token_usage=ActiveTokenUsageView(
+                input_tokens=23000, output_tokens=3300, total_tokens=26300
+            ),
+        )
+    )
+
+    assert ui._working_status is None
+    assert any("↓ 26.3k tokens" in fragment for _style, fragment in ui._build_prompt())
+
+
 def test_working_status_cancel_skips_live_stop(monkeypatch) -> None:
     console = Console(record=True, width=120, force_terminal=True)
     status = WorkingStatus(console)
@@ -1274,6 +1365,7 @@ def test_working_status_refreshes_multiline_view_timer(monkeypatch) -> None:
         refreshes += 1
 
     monkeypatch.setattr(live, "refresh", fake_refresh)
+    status._last_refresh_at -= working_status_module.MIN_UNCHANGED_REFRESH_SECONDS
 
     status.refresh()
 
@@ -1295,8 +1387,35 @@ def test_working_status_keeps_periodic_refresh_for_single_line(monkeypatch) -> N
         refreshes += 1
 
     monkeypatch.setattr(live, "refresh", fake_refresh)
+    status._last_refresh_at -= working_status_module.MIN_UNCHANGED_REFRESH_SECONDS
 
     status.refresh()
+
+    assert refreshes == 1
+    status.cancel()
+
+
+def test_working_status_debounces_high_frequency_updates(monkeypatch) -> None:
+    console = Console(record=True, width=120, force_terminal=True)
+    status = WorkingStatus(console)
+    status.update("LinuxAgent 正在分类意图")
+    live = status._live
+    assert live is not None
+
+    refreshes = 0
+
+    def fake_refresh() -> None:
+        nonlocal refreshes
+        refreshes += 1
+
+    monkeypatch.setattr(live, "refresh", fake_refresh)
+
+    status.update("LinuxAgent 正在读取文件 README.md")
+
+    assert refreshes == 0
+
+    status._last_refresh_at -= working_status_module.MIN_FORCED_REFRESH_SECONDS
+    status.update("LinuxAgent 正在读取文件 README.md")
 
     assert refreshes == 1
     status.cancel()

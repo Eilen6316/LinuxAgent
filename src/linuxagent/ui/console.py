@@ -63,6 +63,7 @@ class ConsoleUI(UserInterface):
         self._activity_visible = True
         self._working_status: WorkingStatus | None = None
         self._activity_started_at: float | None = None
+        self._activity_generation = 0
         self._pending_inputs: tuple[str, ...] = ()
         self._owner_loop: asyncio.AbstractEventLoop | None = None
         self._cancel_event: asyncio.Event = asyncio.Event()
@@ -137,6 +138,7 @@ class ConsoleUI(UserInterface):
                 border_style="bright_black",
             )
         )
+        self._print_to_current_stdout()
 
     async def update_pending_inputs(self, inputs: tuple[str, ...]) -> None:
         if await self._run_on_owner_loop(lambda: self.update_pending_inputs(inputs)):
@@ -239,9 +241,10 @@ class ConsoleUI(UserInterface):
         self._clear_activity(reset_timer=True)
 
     def _clear_activity(self, *, reset_timer: bool) -> None:
+        self._activity_generation += 1
         self._stop_working_refresh_task()
         if self._working_status is not None:
-            self._working_status.stop()
+            self._working_status.cancel()
             self._working_status = None
         if reset_timer:
             self._activity_started_at = None
@@ -278,6 +281,7 @@ class ConsoleUI(UserInterface):
         self._working_refresh_task = None
         if task is not None and not task.done():
             task.cancel()
+            task.add_done_callback(_consume_async_task_result)
 
     async def _refresh_working_status(self) -> None:
         delay = 1 / WORKING_REFRESH_PER_SECOND
@@ -300,6 +304,7 @@ class ConsoleUI(UserInterface):
     async def cancel_activity(self, reason: str) -> None:
         if await self._run_on_owner_loop(lambda: self.cancel_activity(reason)):
             return
+        self._activity_generation += 1
         self._stop_working_refresh_task()
         if self._working_status is not None:
             self._working_status.cancel()
@@ -365,9 +370,27 @@ class ConsoleUI(UserInterface):
             return False
         if owner_loop is loop:
             return False
-        future: ConcurrentFuture[None] = asyncio.run_coroutine_threadsafe(action(), owner_loop)
-        future.result()
+        action_coro = action()
+        try:
+            future: ConcurrentFuture[None] = asyncio.run_coroutine_threadsafe(
+                self._run_posted_ui_action(action_coro, self._activity_generation),
+                owner_loop,
+            )
+        except RuntimeError:
+            action_coro.close()
+            return True
+        future.add_done_callback(_consume_threadsafe_ui_result)
         return True
+
+    async def _run_posted_ui_action(
+        self,
+        action_coro: Coroutine[Any, Any, None],
+        generation: int,
+    ) -> None:
+        if generation != self._activity_generation:
+            action_coro.close()
+            return
+        await action_coro
 
     def _print_hero(self) -> None:
         self.clear_activity()
@@ -576,8 +599,24 @@ def _execution_result_display(result: ExecutionResult, *, include_output: bool) 
     return execution_summary_text(result)
 
 
+def _consume_threadsafe_ui_result(future: ConcurrentFuture[None]) -> None:
+    try:
+        future.result()
+    except (RuntimeError, asyncio.CancelledError):
+        return
+    except Exception:  # noqa: BLE001 - UI refresh failures must not fail worker execution
+        return
+
+
+def _consume_async_task_result(task: asyncio.Task[None]) -> None:
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        return
+
+
 def _terminal_active_view(view: ActiveTurnView) -> bool:
-    return view.status in {"completed", "failed", "cancelled"} and view.token_usage is None
+    return view.status in {"completed", "failed", "cancelled"}
 
 
 def _token_only_active_view(view: ActiveTurnView) -> bool:

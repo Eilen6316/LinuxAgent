@@ -9,7 +9,12 @@ from langchain_core.tools import BaseTool, tool
 from ..config.models import FilePatchConfig, SandboxToolConfig
 from ..sandbox import SandboxProfile
 from ..security import redact_text
-from .sandbox import ToolSandboxSpec, attach_tool_sandbox
+from .sandbox import (
+    ToolSandboxSpec,
+    attach_tool_sandbox,
+    current_tool_deadline,
+    raise_if_tool_runtime_cancelled,
+)
 
 MAX_READ_CHARS = 120_000
 MAX_SEARCH_FILE_BYTES = 1_048_576
@@ -217,7 +222,9 @@ def _search_tree(
     max_file_bytes: int,
 ) -> list[str]:
     matches: list[str] = []
-    for path in sorted(root.rglob("*")):
+    deadline = current_tool_deadline()
+    for path in root.rglob("*"):
+        raise_if_tool_runtime_cancelled(deadline=deadline)
         if len(matches) >= max_matches:
             break
         try:
@@ -225,14 +232,23 @@ def _search_tree(
         except WorkspaceAccessError:
             continue
         if searchable:
-            matches.extend(_search_file(query, root, path, max_matches - len(matches)))
-    return matches
+            matches.extend(_search_file(query, root, path, max_matches - len(matches), deadline))
+            if len(matches) >= max_matches:
+                break
+    return sorted(matches)
 
 
-def _search_file(query: str, root: Path, path: Path, remaining: int) -> list[str]:
+def _search_file(
+    query: str,
+    root: Path,
+    path: Path,
+    remaining: int,
+    deadline: float | None,
+) -> list[str]:
     matches: list[str] = []
     with path.open("r", encoding="utf-8", errors="replace") as handle:
         for line_number, line in enumerate(handle, start=1):
+            raise_if_tool_runtime_cancelled(deadline=deadline)
             if query in line.casefold():
                 relpath = path.relative_to(root)
                 redacted = redact_text(line.rstrip())

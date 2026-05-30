@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .ssh_manager import (
     SSHAuthError,
+    SSHCommandTimeoutError,
     SSHConnectionError,
     SSHError,
     SSHManager,
@@ -13,6 +14,7 @@ from .ssh_manager import (
 
 __all__ = [
     "SSHAuthError",
+    "SSHCommandTimeoutError",
     "SSHConnectionError",
     "SSHError",
     "SSHManager",

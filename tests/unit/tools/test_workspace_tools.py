@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from linuxagent.config.models import FilePatchConfig, SandboxToolConfig
@@ -118,6 +120,34 @@ def test_search_files_applies_configured_match_limit(tmp_path) -> None:
     output = tool.invoke({"root": str(tmp_path), "pattern": "needle", "max_matches": 50})
 
     assert output == ["a.txt:1:needle", "a.txt:2:needle"]
+
+
+def test_search_files_stops_scanning_after_match_limit(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = tmp_path / "first.txt"
+    first.write_text("needle\n", encoding="utf-8")
+    second = tmp_path / "second.txt"
+    second.write_text("needle\n", encoding="utf-8")
+    original_rglob = Path.rglob
+
+    def fake_rglob(path: Path, pattern: str):
+        if path != tmp_path:
+            yield from original_rglob(path, pattern)
+            return
+        del pattern
+        yield first
+        raise AssertionError("search_files consumed entries after reaching max_matches")
+
+    monkeypatch.setattr(Path, "rglob", fake_rglob)
+    tool = make_search_files_tool(
+        FilePatchConfig(allow_roots=(tmp_path,)),
+        SandboxToolConfig(max_matches=1),
+    )
+
+    output = tool.invoke({"root": str(tmp_path), "pattern": "needle", "max_matches": 50})
+
+    assert output == ["first.txt:1:needle"]
 
 
 def test_search_files_treats_regex_metacharacters_as_literal_text(tmp_path) -> None:

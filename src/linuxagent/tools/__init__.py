@@ -19,7 +19,16 @@ from .intelligence_tools import (
     make_similar_commands_tool,
 )
 from .network_tools import build_network_tools, make_fetch_url_tool
-from .sandbox import ToolHITLMode, ToolRuntimeLimits, ToolSandboxSpec, attach_tool_sandbox
+from .sandbox import (
+    ToolDeadlineExceededError,
+    ToolExecutionCancelledError,
+    ToolHITLMode,
+    ToolRuntimeLimits,
+    ToolSandboxSpec,
+    attach_tool_sandbox,
+    current_tool_deadline,
+    raise_if_tool_runtime_cancelled,
+)
 from .system_tools import (
     LogFileAccessError,
     build_system_tools,
@@ -41,6 +50,8 @@ __all__ = [
     "ToolCatalogError",
     "ToolCatalogItem",
     "ToolCatalogReport",
+    "ToolDeadlineExceededError",
+    "ToolExecutionCancelledError",
     "ToolHITLMode",
     "ToolRuntimeLimits",
     "ToolSandboxSpec",
@@ -65,5 +76,7 @@ __all__ = [
     "make_search_logs_tool",
     "make_search_files_tool",
     "make_similar_commands_tool",
+    "current_tool_deadline",
+    "raise_if_tool_runtime_cancelled",
     "require_valid_tool_catalog",
 ]

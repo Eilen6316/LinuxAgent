@@ -19,6 +19,7 @@ import pytest
 
 from linuxagent.cluster.ssh_manager import (
     SSHAuthError,
+    SSHCommandTimeoutError,
     SSHConnectionError,
     SSHManager,
     SSHRemoteCommandError,
@@ -38,18 +39,56 @@ def _host() -> ClusterHost:
 
 
 class _ExitChannel:
+    def __init__(
+        self,
+        *,
+        stdout_chunks: tuple[bytes, ...] = (),
+        stderr_chunks: tuple[bytes, ...] = (),
+        exit_status: int = 0,
+    ) -> None:
+        self._stdout = list(stdout_chunks)
+        self._stderr = list(stderr_chunks)
+        self._exit_status = exit_status
+        self.closed = False
+
+    def recv_ready(self) -> bool:
+        return bool(self._stdout)
+
+    def recv_stderr_ready(self) -> bool:
+        return bool(self._stderr)
+
+    def recv(self, _size: int) -> bytes:
+        return self._stdout.pop(0)
+
+    def recv_stderr(self, _size: int) -> bytes:
+        return self._stderr.pop(0)
+
+    def exit_status_ready(self) -> bool:
+        return True
+
     def recv_exit_status(self) -> int:
-        return 0
+        return self._exit_status
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class _RemoteOutput:
-    channel = _ExitChannel()
-
-    def __init__(self, payload: bytes = b"") -> None:
+    def __init__(self, payload: bytes = b"", channel: object | None = None) -> None:
         self._payload = payload
+        stdout_chunks = (payload,) if payload else ()
+        self.channel = _ExitChannel(stdout_chunks=stdout_chunks) if channel is None else channel
 
     def read(self) -> bytes:
         return self._payload
+
+
+class _RemoteInput:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class _RecordingClient(paramiko.SSHClient):
@@ -59,9 +98,9 @@ class _RecordingClient(paramiko.SSHClient):
 
     def exec_command(
         self, command: str, **_kwargs: Any
-    ) -> tuple[None, _RemoteOutput, _RemoteOutput]:  # type: ignore[override]
+    ) -> tuple[_RemoteInput, _RemoteOutput, _RemoteOutput]:  # type: ignore[override]
         self.commands.append(command)
-        return None, _RemoteOutput(b"ok"), _RemoteOutput()
+        return _RemoteInput(), _RemoteOutput(b"ok"), _RemoteOutput()
 
 
 def _install_recording_client(monkeypatch: pytest.MonkeyPatch, mgr: SSHManager) -> _RecordingClient:
@@ -260,6 +299,125 @@ def test_remote_profile_rejects_sudo_outside_allowlist() -> None:
 
     with pytest.raises(SSHRemoteCommandError, match="allowlist"):
         mgr._execute_sync(host, "sudo -n reboot")
+
+
+class _BufferedChannel:
+    def __init__(
+        self,
+        *,
+        stdout_chunks: tuple[bytes, ...] = (),
+        stderr_chunks: tuple[bytes, ...] = (),
+        exit_status: int = 0,
+        ready_after_drains: int = 1,
+    ) -> None:
+        self._stdout = list(stdout_chunks)
+        self._stderr = list(stderr_chunks)
+        self._exit_status = exit_status
+        self._ready_after_drains = ready_after_drains
+        self._drains = 0
+        self.closed = False
+
+    def recv_ready(self) -> bool:
+        return bool(self._stdout)
+
+    def recv_stderr_ready(self) -> bool:
+        return bool(self._stderr)
+
+    def recv(self, _size: int) -> bytes:
+        self._drains += 1
+        return self._stdout.pop(0)
+
+    def recv_stderr(self, _size: int) -> bytes:
+        self._drains += 1
+        return self._stderr.pop(0)
+
+    def exit_status_ready(self) -> bool:
+        return self._drains >= self._ready_after_drains
+
+    def recv_exit_status(self) -> int:
+        return self._exit_status
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _HangingChannel:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def recv_ready(self) -> bool:
+        return False
+
+    def recv_stderr_ready(self) -> bool:
+        return False
+
+    def recv(self, _size: int) -> bytes:
+        raise AssertionError("stdout should not be read when nothing is ready")
+
+    def recv_stderr(self, _size: int) -> bytes:
+        raise AssertionError("stderr should not be read when nothing is ready")
+
+    def exit_status_ready(self) -> bool:
+        return False
+
+    def recv_exit_status(self) -> int:
+        raise AssertionError("recv_exit_status must not be called before status is ready")
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _ChannelClient(paramiko.SSHClient):
+    def __init__(self, channel: object) -> None:
+        super().__init__()
+        self.channel = channel
+        self.closed = False
+
+    def exec_command(
+        self, command: str, **_kwargs: Any
+    ) -> tuple[_RemoteInput, _RemoteOutput, _RemoteOutput]:  # type: ignore[override]
+        del command
+        return _RemoteInput(), _RemoteOutput(channel=self.channel), _RemoteOutput()
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_remote_command_drains_stdout_and_stderr_before_exit_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mgr = SSHManager(ClusterConfig(timeout=1.0))
+    channel = _BufferedChannel(
+        stdout_chunks=(b"line 1\n", b"line 2\n"),
+        stderr_chunks=(b"warn\n",),
+        exit_status=7,
+        ready_after_drains=3,
+    )
+    monkeypatch.setattr(mgr, "_get_or_connect", lambda _host: _ChannelClient(channel))
+
+    result = mgr._execute_sync(_host(), "uptime")
+
+    assert result.exit_code == 7
+    assert result.stdout == "line 1\nline 2\n"
+    assert result.stderr == "warn\n"
+
+
+def test_remote_command_timeout_closes_channel_and_discards_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mgr = SSHManager(ClusterConfig(timeout=0.01))
+    channel = _HangingChannel()
+    client = _ChannelClient(channel)
+    host = _host()
+    mgr._pool[(host.hostname, host.port, host.username)] = client
+    monkeypatch.setattr(mgr, "_get_or_connect", lambda _host: client)
+
+    with pytest.raises(SSHCommandTimeoutError, match="timed out after"):
+        mgr._execute_sync(host, "tail -f /var/log/syslog")
+
+    assert channel.closed is True
+    assert client.closed is True
+    assert mgr._pool == {}
 
 
 # ---------------------------------------------------------------------------
