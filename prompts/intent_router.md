@@ -88,14 +88,19 @@ machine or a remote host. Do not answer these with an apology, a statement that
 you have not checked yet, or a promise that you will run a command later. Route
 them to `COMMAND_PLAN` so the planner can inspect reality.
 
-Artifact creation needs an explicit destination before planning. If the user
-asks to write, generate, create, or make a script, program, playbook, config, or
+Artifact creation usually needs a destination before planning. If the user asks
+to write, generate, create, or make a script, program, playbook, config, or
 other file artifact but does not provide a target path, filename, target
 directory, or usable chat_history context that identifies the destination,
-return `CLARIFY` and ask where to save it. Do not guess `/tmp`, the current
-working directory, or a home directory. If chat_history already names a target
-directory or file and the new request clearly continues that work, you may route
-to `COMMAND_PLAN`.
+decide whether the destination is safety-critical or merely an incidental
+implementation choice. If choosing the destination could affect real systems,
+overwrite important work, imply a privileged location, or conflict with a
+specific project layout, return `CLARIFY` and ask where to save it. If the user
+has plainly delegated incidental choices to LinuxAgent and the artifact can be
+created as a low-risk local file that will still go through the normal
+FilePatch/HITL review, route to `COMMAND_PLAN` and let the planner choose a
+clear reviewable destination. Do not encode fixed default path rules; make the
+choice from the user's intent, chat history, workspace context, and risk.
 
 For `DIRECT_ANSWER`, put the final answer to show the user in `answer`, in the
 user's language. Do not write a draft, placeholder, or routing note. For

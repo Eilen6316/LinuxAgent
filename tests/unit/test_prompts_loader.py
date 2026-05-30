@@ -79,8 +79,10 @@ def test_build_intent_router_prompt_has_user_input_variable() -> None:
     assert "user_input" in tmpl.input_variables
     assert "product_context" in tmpl.input_variables
     body = str(tmpl.messages[0].prompt.template)
-    assert "Artifact creation needs an explicit destination" in body
-    assert "Do not guess `/tmp`" in body
+    assert "Artifact creation usually needs a destination" in body
+    assert "safety-critical or merely an incidental" in body
+    assert "Do not encode fixed default path rules" in body
+    assert "FilePatch/HITL review" in body
     assert "LinuxAgent self-description" in body
     assert "conversational deliverable" in body
     assert "internal execution strategy" in body
@@ -117,7 +119,9 @@ def test_build_planner_prompt_has_user_input_variable() -> None:
     body = str(tmpl.messages[0].prompt.template)
     assert "available read-only workspace tools" in body
     assert "Follow each tool's declared input semantics" in body
-    assert "do not invent one" in body
+    assert "delegated incidental choices to LinuxAgent" in body
+    assert "Do not encode fixed default path rules" in body
+    assert "return a FilePatchPlan for" in body
     assert "NoChangePlan" in body
     assert "smallest diff" in body
     assert "runtime command output" in body
