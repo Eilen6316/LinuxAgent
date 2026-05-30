@@ -445,7 +445,7 @@ linuxagent check
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | Local telemetry path |
 | `telemetry` | `otlp_endpoint` | null | Required when `exporter: otlp` |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
-| `ui` | `tui_layout` | `compact` | `compact` keeps the terse active view; `wide` adds a read-only context sidebar on wide terminals |
+| `ui` | `tui_layout` | `wide` | `wide` adds a read-only context sidebar on wide terminals and falls back on narrow terminals; `compact` forces the older terse view |
 | `ui` | `max_chat_history` | `20` | Max retained messages per saved session; new sessions do not load them automatically |
 | `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | Local LangGraph checkpoint store for pending HITL resume |
 | `logging` | `level` | `WARNING` | `DEBUG` / `INFO` / `WARNING` / ... |
@@ -534,9 +534,10 @@ linuxagent
 ```
 
 `linuxagent chat` remains available as an explicit equivalent.
-Use `linuxagent tui` for the same chat runtime with `ui.tui_layout` forced to
-`wide`; policy checks, HITL confirmation, sandboxing, memory, and audit behavior
-are unchanged.
+The default terminal experience now uses the wide TUI active view when the
+terminal has room, and automatically falls back on narrow terminals. Use
+`linuxagent tui` as an explicit TUI entry point; policy checks, HITL
+confirmation, sandboxing, memory, and audit behavior are unchanged.
 
 You'll see a welcome panel followed by the prompt:
 

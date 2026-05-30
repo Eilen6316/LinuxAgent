@@ -37,6 +37,18 @@ def _english_console_ui(console: Console | None = None) -> ConsoleUI:
     return ConsoleUI(console=console, translator=EN_TRANSLATOR)
 
 
+def _render_working_status(ui: ConsoleUI, *, width: int) -> str:
+    assert ui._working_status is not None
+    render_console = Console(record=True, width=width)
+    render_console.print(ui._working_status._render())
+    return render_console.export_text()
+
+
+def _rule_lines(rendered: str) -> list[str]:
+    rule = "─" * 72
+    return [line for line in rendered.splitlines() if rule in line]
+
+
 async def test_console_ui_non_tty_auto_denies(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
     ui = ConsoleUI()
@@ -1010,10 +1022,7 @@ async def test_console_print_active_view_renders_plan_and_token_usage(monkeypatc
         )
     )
 
-    assert ui._working_status is not None
-    render_console = Console(record=True, width=120)
-    render_console.print(ui._working_status._render())
-    rendered = render_console.export_text()
+    rendered = _render_working_status(ui, width=120)
     assert Translator(LanguageCode.ZH_CN).t("runtime.group.task_plan") in rendered
     assert "LinuxAgent · 处理中" in rendered
     assert "─" * 12 in rendered
@@ -1024,10 +1033,10 @@ async def test_console_print_active_view_renders_plan_and_token_usage(monkeypatc
     ui.clear_activity()
 
 
-async def test_console_print_active_view_can_render_wide_sidebar(monkeypatch) -> None:
+async def test_console_print_active_view_defaults_to_wide_sidebar(monkeypatch) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     console = Console(record=True, width=132, force_terminal=True)
-    ui = ConsoleUI(console=console, tui_layout="wide")
+    ui = ConsoleUI(console=console)
 
     await ui.print_active_view(
         ActiveTurnView(
@@ -1053,14 +1062,67 @@ async def test_console_print_active_view_can_render_wide_sidebar(monkeypatch) ->
         )
     )
 
-    assert ui._working_status is not None
-    render_console = Console(record=True, width=132)
-    render_console.print(ui._working_status._render())
-    rendered = render_console.export_text()
+    rendered = _render_working_status(ui, width=132)
     assert "Context" in rendered
     assert "status  running" in rendered
     assert "thread  thread-1..." in rendered
     assert "tokens  ↓ 13.7k tokens" in rendered
+    ui.clear_activity()
+
+
+async def test_console_print_active_view_falls_back_on_narrow_terminal(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=80, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread-1234567890",
+            turn_id="turn-abcdef",
+            status="running",
+            items=(
+                ActiveWorkItemView(
+                    item_id="read",
+                    category="tool",
+                    status="running",
+                    label="读取文件",
+                    summary="/LinuxAgent/README.md",
+                ),
+            ),
+        )
+    )
+
+    rendered = _render_working_status(ui, width=80)
+    assert "读取文件" in rendered
+    assert "Context" not in rendered
+    assert all(len(line) <= 80 for line in rendered.splitlines())
+    ui.clear_activity()
+
+
+async def test_console_print_active_view_compact_layout_disables_sidebar(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=132, force_terminal=True)
+    ui = ConsoleUI(console=console, tui_layout="compact")
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread-1234567890",
+            turn_id="turn-abcdef",
+            status="running",
+            items=(
+                ActiveWorkItemView(
+                    item_id="read",
+                    category="tool",
+                    status="running",
+                    label="读取文件",
+                ),
+            ),
+        )
+    )
+
+    rendered = _render_working_status(ui, width=132)
+    assert "读取文件" in rendered
+    assert "Context" not in rendered
     ui.clear_activity()
 
 
@@ -1087,13 +1149,10 @@ async def test_console_keeps_token_usage_visible_after_terminal_active_view(monk
         )
     )
 
-    assert ui._working_status is not None
-    render_console = Console(record=True, width=120)
-    render_console.print(ui._working_status._render())
-    rendered = render_console.export_text()
+    rendered = _render_working_status(ui, width=120)
     assert "↓ 13.7k tokens" in rendered
-    rule_lines = [line for line in rendered.splitlines() if line == "─" * 72]
-    assert len(rule_lines) == 1
+    assert len(_rule_lines(rendered)) == 1
+    assert "\n\n\n" not in rendered
     assert any("↓ 13.7k tokens" in fragment for _style, fragment in ui._build_prompt())
     ui.clear_activity()
 

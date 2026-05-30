@@ -44,7 +44,7 @@ class ConsoleUI(UserInterface):
         *,
         console: Console | None = None,
         theme: str = "auto",
-        tui_layout: str = "compact",
+        tui_layout: str = "wide",
         prompt_symbol: str = "❯",
         history_path: Path | None = None,
         session_factory: Any | None = None,

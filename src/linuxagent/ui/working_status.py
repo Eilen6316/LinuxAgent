@@ -242,7 +242,6 @@ def _append_plan_item(text: Text, item: ActiveWorkItemView, translator: Translat
 
 
 def _append_token_usage(text: Text, usage: ActiveTokenUsageView, translator: Translator) -> None:
-    text.append("\n")
     _append_status_rule(text, "dim")
     text.append("\n")
     text.append("  ⎿ ", style="dim")

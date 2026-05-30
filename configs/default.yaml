@@ -129,7 +129,7 @@ memory:
 
 ui:
   theme: auto
-  tui_layout: compact
+  tui_layout: wide
   max_chat_history: 20
   history_path: ~/.linuxagent/history.json
   checkpoint_path: ~/.linuxagent/checkpoints.json

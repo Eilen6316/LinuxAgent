@@ -434,7 +434,7 @@ linuxagent check
 | `telemetry` | `exporter` | `local` | 默认本地 JSONL span；`none` 禁用写入 |
 | `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | 本地 telemetry 路径 |
 | `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
-| `ui` | `tui_layout` | `compact` | `compact` 保持紧凑活动视图；`wide` 在宽终端显示只读上下文侧栏 |
+| `ui` | `tui_layout` | `wide` | `wide` 在宽终端显示只读上下文侧栏；窄终端自动退回紧凑活动视图，`compact` 可强制旧紧凑模式 |
 | `ui` | `max_chat_history` | `20` | 每个已保存会话最多保留的消息数；新会话不会自动加载 |
 | `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | 本地 LangGraph checkpoint 文件，用于恢复未完成的 HITL 确认 |
 | `logging` | `level` | `WARNING` | `DEBUG` / `INFO` / `WARNING` / ... |
@@ -511,8 +511,9 @@ linuxagent
 ```
 
 `linuxagent chat` 仍可作为显式等价命令使用。
-`linuxagent tui` 会使用同一套 chat 运行时，并把 `ui.tui_layout` 覆盖为
-`wide`；策略检查、HITL 确认、sandbox、memory 和审计行为不变。
+默认终端体验使用新的宽屏 TUI 活动视图；窄终端会自动退回紧凑显示。
+`linuxagent tui` 是显式 TUI 入口，复用同一套 chat 运行时；策略检查、HITL
+确认、sandbox、memory 和审计行为不变。
 
 启动后终端会展示一个欢迎面板，然后进入 prompt：
 
