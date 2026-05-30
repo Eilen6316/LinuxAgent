@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -235,8 +236,6 @@ def _session_transcript(session: ChatSession) -> str:
 
 
 def _complete_stage1_sync(provider: LLMProvider, messages: list[BaseMessage]) -> str:
-    import asyncio
-
     return asyncio.run(provider.complete(messages))
 
 

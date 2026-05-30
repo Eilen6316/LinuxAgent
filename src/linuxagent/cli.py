@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
@@ -18,7 +19,13 @@ from .container import Container
 from .i18n import Translator, default_translator
 from .logger import configure_dependency_logging, configure_logging
 from .mcp_server import McpServer, serve_stdio
-from .memory import MemoryDisabledError, format_memory_notes, format_memory_status
+from .memory import (
+    MemoryDisabledError,
+    MemoryStore,
+    format_memory_notes,
+    format_memory_status,
+    format_memory_suggestions,
+)
 from .memory.pipeline import (
     MemoryPipelineLockedError,
     run_memory_pipeline,
@@ -75,21 +82,26 @@ def _add_global_options(parser: argparse.ArgumentParser) -> None:
 
 def _add_subcommands(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
-    subparsers.add_parser(
-        "check",
-        help="Load + validate configuration and exit.",
-    )
-    subparsers.add_parser(
-        "chat",
-        help="Start an interactive chat session (default).",
-    )
-    subparsers.add_parser(
-        "mcp",
-        help="Run the read-only stdio MCP server.",
-    )
+    _add_simple_subcommands(subparsers)
+    _add_memory_subcommands(subparsers)
+    _add_audit_subcommands(subparsers)
+
+
+def _add_simple_subcommands(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    subparsers.add_parser("check", help="Load + validate configuration and exit.")
+    subparsers.add_parser("chat", help="Start an interactive chat session (default).")
+    subparsers.add_parser("mcp", help="Run the read-only stdio MCP server.")
+    subparsers.add_parser("job-daemon", help="Run the local background job supervisor.")
+
+
+def _add_memory_subcommands(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     memory_parser = subparsers.add_parser(
         "memory",
-        help="Manage opt-in local advisory memory.",
+        help="Manage configurable local advisory memory.",
     )
     memory_subparsers = memory_parser.add_subparsers(
         dest="memory_command",
@@ -121,10 +133,11 @@ def _add_subcommands(parser: argparse.ArgumentParser) -> None:
         "consolidate",
         help="Run the locked two-stage local memory consolidation pipeline.",
     )
-    subparsers.add_parser(
-        "job-daemon",
-        help="Run the local background job supervisor.",
-    )
+
+
+def _add_audit_subcommands(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     audit_parser = subparsers.add_parser(
         "audit",
         help="Audit log utilities.",
@@ -400,93 +413,130 @@ def _cmd_memory(args: argparse.Namespace) -> int:
         return 1
     translator = Translator(cfg.language)
     container = Container(cfg, config_path=args.config)
-    store = container.memory_store()
     command = args.memory_command or "status"
-    if command == "status":
-        print(format_memory_status(store.status(), translator=translator))
-        return 0
-    if command == "list":
-        print(format_memory_notes(store.list_notes(), translator=translator))
-        return 0
-    if command == "pending":
-        from .memory import format_memory_suggestions
-
-        print(format_memory_suggestions(store.list_suggestions(), translator=translator))
-        return 0
-    if command == "summary":
-        print(store.read_summary().strip() or translator.t("memory.summary_empty"))
-        return 0
-    if command == "suggest":
-        chat_service = container.chat_service()
-        chat_service.load()
-        try:
-            suggestion_result = suggest_from_history(
-                store, chat_service, session_limit=args.sessions
-            )
-        except MemoryDisabledError:
-            print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
-            return 1
-        except ValueError as exc:
-            print(translator.t("memory.error", message=exc), file=sys.stderr)
-            return 1
-        if suggestion_result.suggestion is None:
-            print(translator.t("memory.suggest_none"))
-            return 0
-        print(
-            translator.t(
-                "memory.suggested",
-                path=suggestion_result.suggestion.path,
-                sessions=suggestion_result.session_count,
-            )
-        )
-        return 0
-    if command == "consolidate":
-        chat_service = container.chat_service()
-        chat_service.load()
-        try:
-            pipeline_result = run_memory_pipeline(
-                store,
-                chat_service,
-                provider=container.provider(),
-            )
-        except MemoryDisabledError:
-            print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
-            return 1
-        except MemoryPipelineLockedError as exc:
-            print(translator.t("memory.error", message=exc), file=sys.stderr)
-            return 1
-        print(
-            translator.t(
-                "memory.consolidated",
-                records=pipeline_result.stage1_records,
-                path=store.summary_path,
-            )
-        )
-        return 0
-    if command == "promote":
-        try:
-            note = store.promote_suggestion(args.name)
-        except MemoryDisabledError:
-            print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
-            return 1
-        except (FileNotFoundError, ValueError) as exc:
-            print(translator.t("memory.error", message=exc), file=sys.stderr)
-            return 1
-        print(translator.t("memory.promoted", path=note.path))
-        return 0
-    if command == "add":
-        try:
-            note = store.add_note(" ".join(args.text))
-        except MemoryDisabledError:
-            print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
-            return 1
-        except ValueError as exc:
-            print(translator.t("memory.error", message=exc), file=sys.stderr)
-            return 1
-        print(translator.t("memory.added", path=note.path))
-        return 0
+    simple = _memory_simple_commands(args, container, translator)
+    if command in simple:
+        return simple[command]()
     print(translator.t("memory.usage"), file=sys.stderr)
     return 2
+
+
+def _memory_simple_commands(
+    args: argparse.Namespace,
+    container: Container,
+    translator: Translator,
+) -> dict[str, Callable[[], int]]:
+    store = container.memory_store()
+    return {
+        "add": lambda: _cmd_memory_add(args, store, translator),
+        "consolidate": lambda: _cmd_memory_consolidate(container, store, translator),
+        "list": lambda: _print_memory_notes(store, translator),
+        "pending": lambda: _print_memory_pending(store, translator),
+        "promote": lambda: _cmd_memory_promote(args, store, translator),
+        "status": lambda: _print_memory_status(store, translator),
+        "suggest": lambda: _cmd_memory_suggest(args, container, store, translator),
+        "summary": lambda: _print_memory_summary(store, translator),
+    }
+
+
+def _print_memory_status(store: MemoryStore, translator: Translator) -> int:
+    print(format_memory_status(store.status(), translator=translator))
+    return 0
+
+
+def _print_memory_notes(store: MemoryStore, translator: Translator) -> int:
+    print(format_memory_notes(store.list_notes(), translator=translator))
+    return 0
+
+
+def _print_memory_pending(store: MemoryStore, translator: Translator) -> int:
+    print(format_memory_suggestions(store.list_suggestions(), translator=translator))
+    return 0
+
+
+def _print_memory_summary(store: MemoryStore, translator: Translator) -> int:
+    print(store.read_summary().strip() or translator.t("memory.summary_empty"))
+    return 0
+
+
+def _cmd_memory_suggest(
+    args: argparse.Namespace,
+    container: Container,
+    store: MemoryStore,
+    translator: Translator,
+) -> int:
+    chat_service = container.chat_service()
+    chat_service.load()
+    try:
+        suggestion_result = suggest_from_history(store, chat_service, session_limit=args.sessions)
+    except MemoryDisabledError:
+        print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(translator.t("memory.error", message=exc), file=sys.stderr)
+        return 1
+    if suggestion_result.suggestion is None:
+        print(translator.t("memory.suggest_none"))
+        return 0
+    print(
+        translator.t(
+            "memory.suggested",
+            path=suggestion_result.suggestion.path,
+            sessions=suggestion_result.session_count,
+        )
+    )
+    return 0
+
+
+def _cmd_memory_consolidate(
+    container: Container, store: MemoryStore, translator: Translator
+) -> int:
+    chat_service = container.chat_service()
+    chat_service.load()
+    try:
+        pipeline_result = run_memory_pipeline(store, chat_service, provider=container.provider())
+    except MemoryDisabledError:
+        print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
+        return 1
+    except MemoryPipelineLockedError as exc:
+        print(translator.t("memory.error", message=exc), file=sys.stderr)
+        return 1
+    print(
+        translator.t(
+            "memory.consolidated",
+            records=pipeline_result.stage1_records,
+            path=store.summary_path,
+        )
+    )
+    return 0
+
+
+def _cmd_memory_promote(
+    args: argparse.Namespace, store: MemoryStore, translator: Translator
+) -> int:
+    try:
+        note = store.promote_suggestion(args.name)
+    except MemoryDisabledError:
+        print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
+        return 1
+    except (FileNotFoundError, ValueError) as exc:
+        print(translator.t("memory.error", message=exc), file=sys.stderr)
+        return 1
+    print(translator.t("memory.promoted", path=note.path))
+    return 0
+
+
+def _cmd_memory_add(args: argparse.Namespace, store: MemoryStore, translator: Translator) -> int:
+    try:
+        note = store.add_note(" ".join(args.text))
+    except MemoryDisabledError:
+        print(translator.t("memory.disabled", path=store.root), file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(translator.t("memory.error", message=exc), file=sys.stderr)
+        return 1
+    print(translator.t("memory.added", path=note.path))
+    return 0
 
 
 def _cmd_job_daemon(args: argparse.Namespace) -> int:

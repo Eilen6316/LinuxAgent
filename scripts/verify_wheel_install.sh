@@ -91,6 +91,7 @@ if mcp.get("tools") != [
     raise SystemExit(f"packaged mcp.tools is wrong: {mcp.get('tools')}")
 if mcp.get("resources") != [
     "linuxagent://skills/summary",
+    "linuxagent://memory/summary",
 ]:
     raise SystemExit(f"packaged mcp.resources is wrong: {mcp.get('resources')}")
 skills = config["skills"]
