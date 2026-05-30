@@ -133,12 +133,12 @@ class WorkingStatus:
     def _render_active_view(self, view: ActiveTurnView) -> Text:
         items = _active_view_items(view)
         text = self._render_title()
-        _append_status_rule(text, self._accent_style())
-        for item in items:
-            text.append("\n")
-            _append_active_item(text, item, self._translator)
+        if items:
+            _append_status_rule(text, self._accent_style())
+            for item in items:
+                text.append("\n")
+                _append_active_item(text, item, self._translator)
         if view.token_usage is not None:
-            text.append("\n")
             _append_token_usage(text, view.token_usage, self._translator)
         if self._wide_layout_enabled():
             return _with_wide_sidebar(text, _wide_sidebar(view, self._translator))

@@ -1092,6 +1092,8 @@ async def test_console_keeps_token_usage_visible_after_terminal_active_view(monk
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
     assert "↓ 13.7k tokens" in rendered
+    rule_lines = [line for line in rendered.splitlines() if line == "─" * 72]
+    assert len(rule_lines) == 1
     assert any("↓ 13.7k tokens" in fragment for _style, fragment in ui._build_prompt())
     ui.clear_activity()
 
