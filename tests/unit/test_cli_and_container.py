@@ -1651,6 +1651,59 @@ def test_chat_command_triggers_startup_memory_pipeline(
     assert calls == [(memory, chat, provider)]
 
 
+def test_tui_command_runs_chat_with_wide_layout(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeAgent:
+        async def run(self, *, thread_id: str = "default") -> None:
+            assert thread_id.startswith("cli-")
+
+    class _FakeChatService:
+        def load(self) -> None:
+            return None
+
+        def save(self) -> None:
+            return None
+
+    captured_layouts: list[str] = []
+
+    class _FakeContainer:
+        def __init__(
+            self,
+            config: AppConfig,
+            *,
+            config_path: Path | None = None,
+        ) -> None:
+            del config_path
+            captured_layouts.append(config.ui.tui_layout)
+
+        def chat_service(self) -> _FakeChatService:
+            return _FakeChatService()
+
+        def memory_store(self) -> SimpleNamespace:
+            return SimpleNamespace(config=SimpleNamespace(enabled=False))
+
+        def build_agent(self) -> _FakeAgent:
+            return _FakeAgent()
+
+    cfg = AppConfig.model_validate({"api": {"api_key": "key"}})
+    monkeypatch.setattr(cli, "load_config", lambda cli_path=None: cfg)
+    monkeypatch.setattr(cli, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "configure_dependency_logging", lambda **_: None)
+    monkeypatch.setattr(cli, "Container", _FakeContainer)
+    monkeypatch.setattr(
+        cli,
+        "start_startup_pipeline_task",
+        lambda store, service, **kwargs: None,
+    )
+
+    def _run(coro):
+        return asyncio.new_event_loop().run_until_complete(coro)
+
+    monkeypatch.setattr(cli.asyncio, "run", _run)
+
+    assert cli.main(["tui"]) == 0
+    assert captured_layouts == ["wide"]
+
+
 def test_chat_verbose_leaves_dependency_info_logs_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

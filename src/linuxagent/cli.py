@@ -92,6 +92,7 @@ def _add_simple_subcommands(
 ) -> None:
     subparsers.add_parser("check", help="Load + validate configuration and exit.")
     subparsers.add_parser("chat", help="Start an interactive chat session (default).")
+    subparsers.add_parser("tui", help="Start chat with the wide terminal UI layout.")
     subparsers.add_parser("mcp", help="Run the read-only stdio MCP server.")
     subparsers.add_parser("job-daemon", help="Run the local background job supervisor.")
 
@@ -208,12 +209,21 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
 
 def _cmd_chat(args: argparse.Namespace) -> int:
+    return _run_chat(args)
+
+
+def _cmd_tui(args: argparse.Namespace) -> int:
+    return _run_chat(args, tui_layout="wide")
+
+
+def _run_chat(args: argparse.Namespace, *, tui_layout: str | None = None) -> int:
     try:
         cfg = load_config(cli_path=args.config)
         cfg.api.require_key()
     except (ConfigError, ValueError) as exc:
         print(default_translator().t("cli.error", message=exc), file=sys.stderr)
         return 1
+    cfg = _with_tui_layout(cfg, tui_layout)
 
     level: int | str = _verbose_to_level(args.verbose) if args.verbose > 0 else cfg.logging.level
     configure_logging(level=level, fmt=cfg.logging.format)
@@ -236,6 +246,13 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     finally:
         chat_service.save()
     return 0
+
+
+def _with_tui_layout(config: AppConfig, layout: str | None) -> AppConfig:
+    if layout is None:
+        return config
+    ui = config.ui.model_copy(update={"tui_layout": layout})
+    return config.model_copy(update={"ui": ui})
 
 
 def _cmd_audit(args: argparse.Namespace) -> int:
@@ -566,6 +583,7 @@ _COMMANDS = {
     "job-daemon": _cmd_job_daemon,
     "memory": _cmd_memory,
     "mcp": _cmd_mcp,
+    "tui": _cmd_tui,
 }
 
 

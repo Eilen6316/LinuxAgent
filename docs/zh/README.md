@@ -511,6 +511,8 @@ linuxagent
 ```
 
 `linuxagent chat` 仍可作为显式等价命令使用。
+`linuxagent tui` 会使用同一套 chat 运行时，并把 `ui.tui_layout` 覆盖为
+`wide`；策略检查、HITL 确认、sandbox、memory 和审计行为不变。
 
 启动后终端会展示一个欢迎面板，然后进入 prompt：
 

@@ -534,6 +534,9 @@ linuxagent
 ```
 
 `linuxagent chat` remains available as an explicit equivalent.
+Use `linuxagent tui` for the same chat runtime with `ui.tui_layout` forced to
+`wide`; policy checks, HITL confirmation, sandboxing, memory, and audit behavior
+are unchanged.
 
 You'll see a welcome panel followed by the prompt:
 
