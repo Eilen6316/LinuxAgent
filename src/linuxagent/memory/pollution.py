@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from ..security import redact_text
+from .files import ensure_private_dir, write_private_text
 
 
 @dataclass(frozen=True)
@@ -73,8 +73,7 @@ def _record_from_payload(payload: dict[str, Any]) -> MemoryPollutionRecord | Non
 
 
 def _write_records(path: Path, records: tuple[MemoryPollutionRecord, ...]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
+    ensure_private_dir(path.parent)
     payload = [
         {
             "thread_id": record.thread_id,
@@ -85,16 +84,7 @@ def _write_records(path: Path, records: tuple[MemoryPollutionRecord, ...]) -> No
         for record in sorted(records, key=lambda item: item.thread_id)
     ]
     text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    if path.exists():
-        path.write_text(text, encoding="utf-8")
-        os.chmod(path, 0o600)
-        return
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(text)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.chmod(path, 0o600)
+    write_private_text(path, text)
 
 
 def _parse_time(value: object) -> datetime | None:

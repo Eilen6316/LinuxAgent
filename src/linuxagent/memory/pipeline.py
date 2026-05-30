@@ -18,6 +18,7 @@ from ..interfaces import LLMProvider
 from ..prompts_loader import load_prompt
 from ..security import redact_text
 from ..services import ChatService, ChatSession
+from .files import ensure_private_dir, write_private_text
 from .pollution import MemoryPollutionRegistry
 from .store import MemoryDisabledError, MemoryStore
 
@@ -330,19 +331,9 @@ def _message_text(message: BaseMessage) -> str:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
+    ensure_private_dir(path.parent)
     text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    if path.exists():
-        path.write_text(text, encoding="utf-8")
-        os.chmod(path, 0o600)
-        return
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(text)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.chmod(path, 0o600)
+    write_private_text(path, text)
 
 
 def _acquire_lock(path: Path, *, ttl_seconds: int) -> int:

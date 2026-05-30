@@ -1,4 +1,4 @@
-"""Opt-in local advisory memory for LinuxAgent."""
+"""Configurable local advisory memory for LinuxAgent."""
 
 from __future__ import annotations
 

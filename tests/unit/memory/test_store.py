@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import stat
 from pathlib import Path
 
@@ -29,6 +30,20 @@ def test_memory_store_add_note_redacts_and_refreshes_summary(tmp_path: Path) -> 
     assert "token=***redacted***" in summary
     assert stat.S_IMODE(note.path.stat().st_mode) == 0o600
     assert stat.S_IMODE(store.root.stat().st_mode) == 0o700
+
+
+def test_memory_store_overwrites_private_files_without_temp_leftovers(tmp_path: Path) -> None:
+    store = MemoryStore(MemoryConfig(enabled=True, path=tmp_path / "memories"))
+    store.add_note("Prefer staging", title="First")
+    summary_path = store.summary_path
+    os.chmod(summary_path, 0o644)
+
+    store.add_note("Prefer dry-run first", title="Second")
+
+    summary = summary_path.read_text(encoding="utf-8")
+    assert "Prefer dry-run first" in summary
+    assert stat.S_IMODE(summary_path.stat().st_mode) == 0o600
+    assert list(store.root.glob(f".{summary_path.name}.*.tmp")) == []
 
 
 def test_memory_store_disabled_blocks_writes(tmp_path: Path) -> None:
