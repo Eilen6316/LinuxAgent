@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -45,19 +46,30 @@ from .wizard_gate import _apply_wizard_hard_gates
 
 async def _plan_after_intent(
     context: Any,
+    state: AgentState,
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
 ) -> AgentState:
     gate = await _plan_gate(context, messages, user_text, current_trace_id)
     if gate is not None:
-        return direct_response_update(current_trace_id, gate.answer)
+        return await _planner_direct_answer_update(
+            context,
+            state,
+            messages,
+            user_text,
+            current_trace_id,
+            gate,
+            [],
+            allow_planner_direct_answer_retry=True,
+        )
     await notify_event(context.runtime_observer, {"type": "activity", "phase": "plan"})
-    return await _command_planning_update(context, messages, user_text, current_trace_id, [])
+    return await _command_planning_update(context, state, messages, user_text, current_trace_id, [])
 
 
 async def _command_planning_update(
     context: Any,
+    state: AgentState,
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
@@ -67,7 +79,7 @@ async def _command_planning_update(
         context, messages, user_text, current_trace_id, observed_tool_outputs
     )
     return await _planned_outcome_update(
-        context, messages, user_text, current_trace_id, outcome, observed_tool_outputs
+        context, state, messages, user_text, current_trace_id, outcome, observed_tool_outputs
     )
 
 
@@ -161,6 +173,7 @@ async def _notify_context_event(
 
 async def _planned_outcome_update(
     context: Any,
+    state: AgentState,
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
@@ -168,9 +181,19 @@ async def _planned_outcome_update(
     observed_tool_outputs: list[str],
     *,
     allow_file_patch_misroute_retry: bool = True,
+    allow_planner_direct_answer_retry: bool = True,
 ) -> AgentState:
     if isinstance(outcome, DirectAnswerPlan):
-        return direct_response_update(current_trace_id, outcome.answer)
+        return await _planner_direct_answer_update(
+            context,
+            state,
+            messages,
+            user_text,
+            current_trace_id,
+            outcome,
+            observed_tool_outputs,
+            allow_planner_direct_answer_retry=allow_planner_direct_answer_retry,
+        )
     if isinstance(outcome, CommandPlan):
         update = plan_update(current_trace_id, outcome, context.cluster_service)
         await notify_command_plan_items(context, current_trace_id, update)
@@ -188,19 +211,163 @@ async def _planned_outcome_update(
             )
             return await _planned_outcome_update(
                 context,
+                state,
                 messages,
                 user_text,
                 current_trace_id,
                 recovered,
                 observed_tool_outputs,
                 allow_file_patch_misroute_retry=False,
+                allow_planner_direct_answer_retry=allow_planner_direct_answer_retry,
             )
         return file_patch_update(current_trace_id, outcome)
     if isinstance(outcome, NoChangePlan):
         return await _no_change_update(
-            context, messages, user_text, current_trace_id, outcome, observed_tool_outputs
+            context, state, messages, user_text, current_trace_id, outcome, observed_tool_outputs
         )
     return outcome
+
+
+async def _planner_direct_answer_update(
+    context: Any,
+    state: AgentState,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    plan: DirectAnswerPlan,
+    observed_tool_outputs: list[str],
+    *,
+    allow_planner_direct_answer_retry: bool,
+) -> AgentState:
+    retry_error = _planner_direct_answer_retry_error(user_text, plan)
+    if allow_planner_direct_answer_retry and retry_error is not None:
+        recovered = await _retry_plan_or_error(
+            context,
+            messages,
+            user_text,
+            current_trace_id,
+            retry_error,
+            plan.model_dump_json(),
+        )
+        return await _planned_outcome_update(
+            context,
+            state,
+            messages,
+            user_text,
+            current_trace_id,
+            recovered,
+            observed_tool_outputs,
+            allow_planner_direct_answer_retry=False,
+        )
+    if _planner_answer_requests_structured_input(plan.answer):
+        return await _planner_questionnaire_update(
+            context, state, messages, user_text, current_trace_id, plan
+        )
+    return direct_response_update(current_trace_id, plan.answer)
+
+
+async def _planner_questionnaire_update(
+    context: Any,
+    state: AgentState,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    plan: DirectAnswerPlan,
+) -> AgentState:
+    reviewed_intent = await _apply_wizard_hard_gates(
+        context,
+        IntentDecision(
+            IntentMode.WIZARD_NEEDED,
+            "",
+            f"planner direct answer asked multiple independent questions: {plan.reason}",
+        ),
+        state,
+        messages,
+        user_text,
+        current_trace_id,
+    )
+    if reviewed_intent.mode is IntentMode.WIZARD_NEEDED:
+        return wizard_needed_update(current_trace_id, user_text)
+    if reviewed_intent.mode is IntentMode.CLARIFY:
+        return direct_response_update(current_trace_id, reviewed_intent.answer)
+    return direct_response_update(current_trace_id, plan.answer)
+
+
+def _planner_direct_answer_retry_error(user_text: str, plan: DirectAnswerPlan) -> str | None:
+    if not _artifact_creation_requires_plan(user_text):
+        return None
+    return (
+        "Planner returned a DirectAnswerPlan for an artifact creation request that should be "
+        "represented as a FilePatchPlan. The user either supplied a destination or delegated "
+        "incidental choices to LinuxAgent. Choose a clear low-risk local file target, do not "
+        "ask a preference questionnaire, do not infer the current working directory from failed "
+        "tool access, and return a FilePatchPlan for human diff review. Rejected answer: "
+        f"{plan.answer[:1000]}"
+    )
+
+
+def _artifact_creation_requires_plan(user_text: str) -> bool:
+    return _looks_like_artifact_creation_request(user_text) and (
+        _delegates_incidental_artifact_choices(user_text)
+        or _mentions_artifact_destination(user_text)
+    )
+
+
+def _looks_like_artifact_creation_request(user_text: str) -> bool:
+    text = user_text.casefold()
+    action = re.search(
+        r"(写|生成|创建|新建|做一个|make|create|write|generate)",
+        text,
+    )
+    artifact = re.search(
+        r"(脚本|程序|代码|文件|配置|playbook|script|program|code|file|config)",
+        text,
+    )
+    return action is not None and artifact is not None
+
+
+def _delegates_incidental_artifact_choices(user_text: str) -> bool:
+    text = user_text.casefold()
+    return any(
+        marker in text
+        for marker in (
+            "随便",
+            "都行",
+            "任选",
+            "你决定",
+            "你看着",
+            "测试一下你的能力",
+            "whatever",
+            "anywhere",
+            "your choice",
+            "you choose",
+            "up to you",
+        )
+    )
+
+
+def _mentions_artifact_destination(user_text: str) -> bool:
+    text = user_text.casefold()
+    return bool(
+        re.search(r"(^|\s|['\"])(?:/|~|\.)[^\s'\"，。；;]*", text)
+        or re.search(r"(放在|保存到|目录|路径)", text)
+        or re.search(r"\b(path|directory|folder|under|save (?:it )?to)\b", text)
+    )
+
+
+def _planner_answer_requests_structured_input(answer: str) -> bool:
+    return _question_count(answer) >= 2
+
+
+def _question_count(text: str) -> int:
+    punctuation_count = text.count("?") + text.count("？")
+    numbered_question_count = len(
+        re.findall(
+            r"(?m)^\s*(?:[-*•]\s*)?(?:\d+[\s.)、]|[一二三四五六七八九十]+[、.])\s*.+(?:\?|？)",
+            text,
+        )
+    )
+    return max(punctuation_count, numbered_question_count)
 
 
 def _ansible_runtime_file_patch_misroute(user_text: str, plan: FilePatchPlan) -> str | None:
@@ -223,6 +390,7 @@ def _ansible_runtime_file_patch_misroute(user_text: str, plan: FilePatchPlan) ->
 
 async def _no_change_update(
     context: Any,
+    state: AgentState,
     messages: list[BaseMessage],
     user_text: str,
     current_trace_id: str,
@@ -253,7 +421,7 @@ async def _no_change_update(
                 )
             return parse_error_update(current_trace_id, retry_error)
     return await _planned_outcome_update(
-        context, messages, user_text, current_trace_id, recovered, observed_tool_outputs
+        context, state, messages, user_text, current_trace_id, recovered, observed_tool_outputs
     )
 
 

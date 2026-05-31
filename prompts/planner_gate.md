@@ -27,6 +27,12 @@ mutation, return:
 }}
 ```
 
+Artifact creation is a mutation. If the user asks LinuxAgent to write,
+generate, create, or make a script, program, playbook, config, or other file
+artifact, return `continue_planning` unless the message is only a conceptual
+question about how to write one. Do not return `direct_answer` with a
+questionnaire about path, scope, or language.
+
 Current-state inspection requests require planning. This includes asking what
 files, directories, scripts, logs, processes, ports, packages, services, disks,
 users, or system resources exist right now on the machine or a remote host. Do

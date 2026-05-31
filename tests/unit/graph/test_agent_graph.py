@@ -3395,6 +3395,94 @@ async def test_graph_retries_tool_planning_parse_errors_into_file_patch_plan(
     assert "+echo CPU" in interrupts[0].value["unified_diff"]
 
 
+async def test_graph_retries_delegated_script_questionnaire_into_file_patch_plan(
+    tmp_path,
+) -> None:
+    target = tmp_path / "linuxagent_capability_check.sh"
+    questionnaire = _direct_answer_plan_json(
+        "好的，我来写一个测试脚本。\n\n1. 脚本放在哪里？\n2. 测试范围偏好？\n3. 脚本语言偏好？",
+        reason="needs preferences",
+    )
+    plan = file_patch_plan_json(
+        str(target),
+        "#!/bin/sh\nuname -a\nfree -h\n",
+        goal="Create capability test script",
+    )
+    graph, provider = _graph(
+        tmp_path,
+        [_continue_planning_plan_json(), questionnaire, plan],
+        tools=(SimpleNamespace(name="list_dir"), SimpleNamespace(name="get_system_info")),
+    )
+    config = {"configurable": {"thread_id": "delegated-script-questionnaire-retry"}}
+
+    await graph.ainvoke(
+        initial_state("随便写一个脚本吧 测试一下你的能力", source=CommandSource.USER),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    interrupt_payload = snapshot.tasks[0].interrupts[0].value
+    assert interrupt_payload["type"] == "confirm_file_patch"
+    assert str(target) in interrupt_payload["files_changed"]
+    assert _llm_call_count(provider, node="parse_intent", mode="planner_retry") == 1
+    assert snapshot.values["direct_response"] is False
+
+
+async def test_graph_retries_delegated_script_gate_questionnaire_into_file_patch_plan(
+    tmp_path,
+) -> None:
+    target = tmp_path / "linuxagent_capability_check.sh"
+    questionnaire = _direct_answer_plan_json(
+        "好的，我来写一个测试脚本。\n\n1. 脚本放在哪里？\n2. 测试范围偏好？\n3. 脚本语言偏好？",
+        reason="needs preferences",
+    )
+    plan = file_patch_plan_json(
+        str(target),
+        "#!/bin/sh\nuname -a\nfree -h\n",
+        goal="Create capability test script",
+    )
+    graph, provider = _graph(tmp_path, [questionnaire, plan])
+    config = {"configurable": {"thread_id": "delegated-script-gate-questionnaire-retry"}}
+
+    await graph.ainvoke(
+        initial_state("随便写一个脚本吧 测试一下你的能力", source=CommandSource.USER),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    interrupt_payload = snapshot.tasks[0].interrupts[0].value
+    assert interrupt_payload["type"] == "confirm_file_patch"
+    assert str(target) in interrupt_payload["files_changed"]
+    assert _llm_call_count(provider, node="parse_intent", mode="planner_retry") == 1
+    assert snapshot.values["direct_response"] is False
+
+
+async def test_graph_routes_planner_questionnaire_to_wizard(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _continue_planning_plan_json(),
+            _direct_answer_plan_json(
+                "需要确认几个信息：\n1. 目标数据库是什么？\n2. 部署到哪个环境？",
+                reason="needs multiple deployment inputs",
+            ),
+            _wizard_plan_json(),
+        ],
+    )
+    config = {"configurable": {"thread_id": "planner-questionnaire-wizard"}}
+
+    await graph.ainvoke(
+        initial_state("帮我部署一套数据库", source=CommandSource.USER, ui_interactive=True),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    payload = snapshot.tasks[0].interrupts[0].value
+    assert payload["type"] == "wizard"
+    assert snapshot.values["wizard_context"] == "帮我部署一套数据库"
+    assert _has_llm_call(provider, node="wizard_planner", mode="plan")
+
+
 async def test_graph_notifies_repair_activity_during_tool_planning_parse_retry(
     tmp_path,
 ) -> None:

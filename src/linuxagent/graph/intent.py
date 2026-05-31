@@ -143,7 +143,7 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
     user_text = last_message_text(messages)
     if state.get("wizard_completed") or state.get("user_input_completed"):
         return await _command_planning_update(
-            context, messages, user_text, current_trace_id, observed_tool_outputs
+            context, state, messages, user_text, current_trace_id, observed_tool_outputs
         )
     await notify_event(context.runtime_observer, {"type": "activity", "phase": "classify"})
     intent = await _route_intent(
@@ -177,4 +177,4 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
         if update := user_input_request_update(current_trace_id, intent, state):
             return update
         return direct_response_update(current_trace_id, intent.answer)
-    return await _plan_after_intent(context, messages, user_text, current_trace_id)
+    return await _plan_after_intent(context, state, messages, user_text, current_trace_id)
