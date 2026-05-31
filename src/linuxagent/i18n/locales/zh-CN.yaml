@@ -79,6 +79,7 @@ cli:
     disabled: "错误：mcp.enabled 为 false"
 app:
   cancelled: "已终止当前 AI 工作。"
+  empty_turn_result: "LinuxAgent 没有生成可显示的回复或待确认操作。本轮已结束，请重试；如果连续出现，请反馈上一条 trace。"
 direct:
   usage: "用法：!<command>，例如 !git status"
   blocked: "已阻止执行：{reason}"

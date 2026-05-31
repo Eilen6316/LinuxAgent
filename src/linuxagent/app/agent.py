@@ -138,6 +138,8 @@ class LinuxAgent:
                 self._persist_active_history(thread_id)
                 await print_execution_results(self.ui, result.state)
                 await print_assistant_response(self.ui, str(result.state["messages"][-1].content))
+            elif not result.interrupts:
+                await print_assistant_response(self.ui, self.translator.t("app.empty_turn_result"))
             return result.state
         finally:
             self.ui.clear_activity()

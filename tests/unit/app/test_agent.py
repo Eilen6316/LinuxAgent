@@ -442,6 +442,20 @@ async def test_run_turn_adds_only_new_messages(tmp_path) -> None:
     ]
 
 
+async def test_run_turn_reports_empty_graph_result(tmp_path) -> None:
+    graph = _FakeGraph([{}])
+    ui = _FakeUI()
+    agent = _agent(tmp_path, graph=graph, ui=ui)
+
+    result = await agent.run_turn("now", thread_id="t1")
+
+    assert result == {}
+    assert ui.printed == ["user:now"]
+    assert ui.markdown_printed == [
+        "LinuxAgent 没有生成可显示的回复或待确认操作。本轮已结束，请重试；如果连续出现，请反馈上一条 trace。"
+    ]
+
+
 async def test_run_turn_adds_prompt_cache_key_when_enabled(tmp_path) -> None:
     graph = _FakeGraph([{"messages": [HumanMessage(content="hi"), AIMessage(content="done")]}])
     agent = _agent(tmp_path, graph=graph, prompt_cache_enabled=True)

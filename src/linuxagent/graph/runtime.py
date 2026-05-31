@@ -230,7 +230,8 @@ class GraphRuntime:
             if interrupts and _interrupt_signature(interrupts) != baseline:
                 task.cancel()
                 task.add_done_callback(_consume_task_exception)
-                return {}
+                await asyncio.sleep(0)
+                return _interrupt_result(interrupts)
 
     async def _snapshot(self, thread_id: str) -> Any:
         return await self._graph.aget_state(graph_config(thread_id))
@@ -307,6 +308,10 @@ def _is_cancelled(cancellation_token: CancellationToken | None) -> bool:
 
 def _interrupt_signature(interrupts: tuple[GraphInterrupt, ...]) -> tuple[str, ...]:
     return tuple(repr(interrupt.payload) for interrupt in interrupts)
+
+
+def _interrupt_result(interrupts: tuple[GraphInterrupt, ...]) -> dict[str, Any]:
+    return {"__interrupt__": [interrupt.payload for interrupt in interrupts]}
 
 
 def _consume_task_exception(task: asyncio.Task[Any]) -> None:

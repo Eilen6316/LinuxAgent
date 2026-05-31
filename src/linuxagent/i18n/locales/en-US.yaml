@@ -79,6 +79,7 @@ cli:
     disabled: "error: mcp.enabled is false"
 app:
   cancelled: "Stopped the current AI work."
+  empty_turn_result: "LinuxAgent did not produce a visible reply or pending approval. This turn has ended; retry once, and report the previous trace if it repeats."
 direct:
   usage: "Usage: !<command>, for example !git status"
   blocked: "Execution blocked: {reason}"

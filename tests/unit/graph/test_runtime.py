@@ -102,6 +102,31 @@ class _SlowSnapshotGraph(_FakeGraph):
         return await super().aget_state(config)
 
 
+class _InterruptAfterPollGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__()
+        self.snapshot_calls = 0
+        self.cancelled = False
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del state, config
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+
+    async def aget_state(self, config: Any) -> Any:
+        del config
+        self.snapshot_calls += 1
+        interrupts: list[Any] = []
+        if self.snapshot_calls > 1:
+            interrupts = [
+                Interrupt(value={"type": "confirm_command", "command": "ls"}, resumable=True)
+            ]
+        return SimpleNamespace(values={}, tasks=[SimpleNamespace(interrupts=interrupts)])
+
+
 async def test_run_returns_inline_interrupts_without_app_langgraph_access() -> None:
     graph = _FakeGraph(
         result={
@@ -132,6 +157,20 @@ async def test_run_falls_back_to_checkpoint_interrupts() -> None:
     assert result.interrupts[0].payload == {"type": "wizard"}
     assert result.interrupts[0].request is not None
     assert result.interrupts[0].request.request_type == "wizard"
+
+
+async def test_run_preserves_interrupt_detected_while_graph_is_waiting() -> None:
+    graph = _InterruptAfterPollGraph()
+
+    result = await GraphRuntime(graph).run({"messages": []}, thread_id="thread")  # type: ignore[arg-type]
+
+    assert result.state == {
+        "__interrupt__": [{"type": "confirm_command", "command": "ls"}],
+    }
+    assert result.interrupts[0].legacy_payload == {"type": "confirm_command", "command": "ls"}
+    assert result.interrupts[0].request is not None
+    assert result.interrupts[0].request.request_type == "confirm_command"
+    assert graph.cancelled is True
 
 
 async def test_run_emits_pending_request_event_for_interrupt() -> None:
