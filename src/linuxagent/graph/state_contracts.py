@@ -135,12 +135,6 @@ STATE_SECTIONS: tuple[StateSection, ...] = (
         producers=("app", "parse_intent", "confirm", "execute", "file_patch"),
         consumers=("all graph nodes", "audit", "telemetry"),
     ),
-    StateSection(
-        name="runtime correlation",
-        fields=("runtime_thread_id", "runtime_turn_id"),
-        producers=("app", "runtime"),
-        consumers=("HITL nodes", "runtime"),
-    ),
 )
 
 

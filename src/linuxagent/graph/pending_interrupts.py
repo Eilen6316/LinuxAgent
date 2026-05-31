@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from threading import RLock
 from typing import Any
 
+import langgraph.errors
 from langgraph.config import get_config
 from langgraph.types import interrupt
 
@@ -46,12 +47,12 @@ def interrupt_with_pending_payload(
     turn_id: str | None = None,
 ) -> Any:
     context = _current_publish_context(state=state, thread_id=thread_id, turn_id=turn_id)
-    if context is not None:
-        _publish_pending_interrupt(context, payload)
-    response = interrupt(payload)
-    if context is not None:
-        clear_pending_interrupt_payloads(thread_id=context.thread_id, turn_id=context.turn_id)
-    return response
+    try:
+        return interrupt(payload)
+    except langgraph.errors.GraphInterrupt:
+        if context is not None:
+            _publish_pending_interrupt(context, payload)
+        raise
 
 
 def _current_publish_context(
@@ -82,16 +83,9 @@ def _explicit_context(
     thread_id: str | None,
     turn_id: str | None,
 ) -> RuntimeTurnContext | None:
+    del state
     raw_thread_id = thread_id
     raw_turn_id = turn_id
-    if state is not None:
-        raw_thread_id = raw_thread_id or _state_text(state, "runtime_thread_id")
-        raw_turn_id = raw_turn_id or _state_text(state, "runtime_turn_id")
     if raw_thread_id and raw_turn_id:
         return RuntimeTurnContext(thread_id=raw_thread_id, turn_id=raw_turn_id)
     return None
-
-
-def _state_text(state: Mapping[str, Any], key: str) -> str | None:
-    value = state.get(key)
-    return value if isinstance(value, str) and value else None

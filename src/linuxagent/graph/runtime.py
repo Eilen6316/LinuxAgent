@@ -189,11 +189,7 @@ class GraphRuntime:
             runtime_context = RuntimeTurnContext(thread_id=thread_id, turn_id=active_turn_id)
             with cancellation_scope(cancellation_token), turn_context_scope(runtime_context):
                 result = await self._invoke_graph_with_interrupt_fallback(
-                    _input_with_runtime_context(
-                        graph_input,
-                        thread_id=thread_id,
-                        turn_id=active_turn_id,
-                    ),
+                    graph_input,
                     thread_id=thread_id,
                     turn_id=active_turn_id,
                     cancellation_token=cancellation_token,
@@ -356,21 +352,6 @@ def graph_config(thread_id: str, *, turn_id: str | None = None) -> RunnableConfi
     if turn_id is not None:
         configurable["linuxagent_turn_id"] = turn_id
     return {"configurable": configurable, "recursion_limit": GRAPH_LIMIT}
-
-
-def _input_with_runtime_context(graph_input: Any, *, thread_id: str, turn_id: str) -> Any:
-    update = {"runtime_thread_id": thread_id, "runtime_turn_id": turn_id}
-    if isinstance(graph_input, Command):
-        existing = graph_input.update if isinstance(graph_input.update, dict) else {}
-        return Command(
-            graph=graph_input.graph,
-            update={**existing, **update},
-            resume=graph_input.resume,
-            goto=graph_input.goto,
-        )
-    if isinstance(graph_input, dict):
-        return {**graph_input, **update}
-    return graph_input
 
 
 def _active_turn_id(turn_id: str | None, cancellation_token: CancellationToken | None) -> str:

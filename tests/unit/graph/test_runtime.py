@@ -375,23 +375,24 @@ async def test_run_exposes_turn_context_in_runtime_scope() -> None:
     assert graph.seen_turn_id == "turn-1"
 
 
-async def test_run_injects_runtime_context_into_state() -> None:
+async def test_run_does_not_checkpoint_runtime_context_in_state() -> None:
     graph = _FakeGraph(result={"messages": []})
+    state = {"messages": []}
 
-    await GraphRuntime(graph).run({"messages": []}, thread_id="thread", turn_id="turn-1")  # type: ignore[arg-type]
+    await GraphRuntime(graph).run(state, thread_id="thread", turn_id="turn-1")  # type: ignore[arg-type]
 
-    assert graph.calls[0]["runtime_thread_id"] == "thread"
-    assert graph.calls[0]["runtime_turn_id"] == "turn-1"
+    assert graph.calls[0] is state
+    assert "runtime_thread_id" not in graph.calls[0]
+    assert "runtime_turn_id" not in graph.calls[0]
 
 
-async def test_resume_injects_runtime_context_into_command_update() -> None:
+async def test_resume_does_not_checkpoint_runtime_context_in_command_update() -> None:
     graph = _FakeGraph(result={"messages": []})
 
     await GraphRuntime(graph).resume({"decision": "yes"}, thread_id="thread", turn_id="turn-1")  # type: ignore[arg-type]
 
     assert isinstance(graph.calls[0], Command)
-    assert graph.calls[0].update["runtime_thread_id"] == "thread"
-    assert graph.calls[0].update["runtime_turn_id"] == "turn-1"
+    assert graph.calls[0].update is None
 
 
 async def test_run_throttles_interrupt_snapshot_polling() -> None:
