@@ -25,6 +25,7 @@ def _parse_file_patches(diff_text: str) -> tuple[_FilePatch, ...]:
             raise FilePatchApplyError("unified diff missing +++ header")
         new_path = _clean_diff_path(lines[index][4:])
         index += 1
+        create_patch = old_path == "/dev/null"
         hunks: list[list[str]] = []
         while index < len(lines) and not lines[index].startswith("--- "):
             if not lines[index].startswith("@@ "):
@@ -33,13 +34,28 @@ def _parse_file_patches(diff_text: str) -> tuple[_FilePatch, ...]:
             hunk = [lines[index]]
             index += 1
             while index < len(lines) and not lines[index].startswith(("@@ ", "--- ")):
-                hunk.append(lines[index])
+                hunk.append(_normalize_create_hunk_line(lines[index], create_patch=create_patch))
                 index += 1
             hunks.append(hunk)
         patches.append(_FilePatch(old_path=old_path, new_path=new_path, hunks=tuple(hunks)))
     if not patches:
         raise FilePatchApplyError("unified diff contains no file patches")
     return tuple(patches)
+
+
+def _normalize_unified_diff(diff_text: str) -> str:
+    try:
+        return _format_file_patches(_parse_file_patches(diff_text))
+    except FilePatchApplyError:
+        return diff_text
+
+
+def _normalize_create_hunk_line(line: str, *, create_patch: bool) -> str:
+    if not create_patch:
+        return line
+    if line.startswith("+") or line.startswith("\\ No newline"):
+        return line
+    return f"+{line}"
 
 
 def _select_patches(

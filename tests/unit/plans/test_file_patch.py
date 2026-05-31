@@ -43,6 +43,52 @@ def test_apply_unified_diff_creates_file(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8") == "#!/bin/sh\necho hi\n"
 
 
+def test_create_diff_normalizes_missing_addition_markers(tmp_path: Path) -> None:
+    path = tmp_path / "sysinfo.sh"
+    payload = {
+        "plan_type": "file_patch",
+        "goal": "create sysinfo script",
+        "request_intent": "create",
+        "files_changed": [str(path)],
+        "unified_diff": "\n".join(
+            [
+                "--- /dev/null",
+                f"+++ {path}",
+                "@@ -0,0 +1,3 @@",
+                "#!/bin/bash",
+                "df -h",
+                "uname -a",
+                "",
+            ]
+        ),
+    }
+
+    plan = parse_file_patch_plan(json.dumps(payload))
+    result = apply_file_patch_plan(plan, FilePatchConfig(allow_roots=(tmp_path,)))
+
+    assert result.files_changed == (path,)
+    assert "+df -h" in plan.unified_diff
+    assert path.read_text(encoding="utf-8") == "#!/bin/bash\ndf -h\nuname -a\n"
+
+
+def test_update_diff_still_rejects_missing_hunk_markers(tmp_path: Path) -> None:
+    path = tmp_path / "sysinfo.sh"
+    path.write_text("#!/bin/bash\n", encoding="utf-8")
+    diff = "\n".join(
+        [
+            f"--- {path}",
+            f"+++ {path}",
+            "@@ -1,1 +1,2 @@",
+            " #!/bin/bash",
+            "df -h",
+            "",
+        ]
+    )
+
+    with pytest.raises(FilePatchApplyError, match="invalid hunk marker"):
+        apply_unified_diff(diff, config=FilePatchConfig(allow_roots=(tmp_path,)))
+
+
 def test_create_diff_rejects_existing_file_before_writing(tmp_path: Path) -> None:
     path = tmp_path / "hello.sh"
     path.write_text("existing\n", encoding="utf-8")

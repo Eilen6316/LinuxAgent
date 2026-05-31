@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
+from .file_patch_apply import _normalize_unified_diff
 from .file_patch_models import FilePatchPlan, FilePatchPlanParseError
 
 
@@ -21,6 +22,7 @@ def parse_file_patch_plan(text: str) -> FilePatchPlan:
         raise FilePatchPlanParseError("LLM response JSON must be an object")
     if "unified_diff" not in raw and raw.get("plan_type") != "file_patch":
         raise FilePatchPlanParseError("LLM response is not a FilePatchPlan object")
+    _normalize_file_patch_payload(raw)
     try:
         return FilePatchPlan.model_validate(raw)
     except ValidationError as exc:
@@ -60,6 +62,12 @@ def _extract_json_payload(text: str) -> str:
     if match is None:
         raise FilePatchPlanParseError("LLM response must be a JSON FilePatchPlan object")
     return match.group(1)
+
+
+def _normalize_file_patch_payload(raw: dict[str, Any]) -> None:
+    unified_diff = raw.get("unified_diff")
+    if isinstance(unified_diff, str):
+        raw["unified_diff"] = _normalize_unified_diff(unified_diff)
 
 
 def _format_validation_error(exc: ValidationError) -> str:

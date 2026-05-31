@@ -2106,6 +2106,35 @@ async def test_graph_repairs_create_request_that_updates_existing_file(tmp_path)
     assert alternate.read_text(encoding="utf-8") == "#!/bin/sh\necho disk\n"
 
 
+async def test_graph_normalizes_create_diff_missing_addition_markers(tmp_path) -> None:
+    target = tmp_path / "sysinfo.sh"
+    malformed_create = _file_patch_plan_from_diff(
+        target,
+        [
+            "--- /dev/null",
+            f"+++ {target}",
+            "@@ -0,0 +1,3 @@",
+            "#!/bin/bash",
+            "df -h",
+            "uname -a",
+        ],
+        request_intent="create",
+    )
+    graph, _provider = _graph(tmp_path, [malformed_create, "analysis ok"])
+    config = {"configurable": {"thread_id": "normalize-create-diff"}}
+
+    await graph.ainvoke(
+        initial_state("随便写一个脚本吧 测试一下你的能力", source=CommandSource.USER),
+        config=config,
+    )
+    snapshot = await graph.aget_state(config)
+    interrupts = snapshot.tasks[0].interrupts
+
+    assert interrupts[0].value["type"] == "confirm_file_patch"
+    assert "+df -h" in interrupts[0].value["unified_diff"]
+    assert not target.exists()
+
+
 async def test_graph_blocks_file_patch_outside_allow_roots(tmp_path) -> None:
     target = tmp_path / "blocked" / "demo.sh"
     graph, _provider = _graph(
