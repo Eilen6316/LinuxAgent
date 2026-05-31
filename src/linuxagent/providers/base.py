@@ -178,6 +178,7 @@ class BaseLLMProvider(LLMProvider):
         history = list(messages)
         tool_map = {tool.name: tool for tool in tools}
         total_tool_output_chars = 0
+        tool_call_round_seen = False
         self._last_usage = None
 
         for _ in range(tool_limits.max_rounds):
@@ -186,8 +187,14 @@ class BaseLLMProvider(LLMProvider):
             self._last_usage = merge_usage(self._last_usage, usage_from_message(ai_message))
             history.append(ai_message)
             if not ai_message.tool_calls:
-                return _content_to_str(ai_message.content)
+                response = _content_to_str(ai_message.content)
+                if tool_call_round_seen and not response.strip():
+                    raise ProviderError(
+                        "tool loop ended without a model follow-up after tool results"
+                    )
+                return response
 
+            tool_call_round_seen = True
             tool_messages, total_tool_output_chars = await _execute_tool_calls(
                 ai_message,
                 tool_map,

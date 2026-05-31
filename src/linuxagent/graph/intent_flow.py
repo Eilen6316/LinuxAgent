@@ -317,11 +317,13 @@ def _artifact_creation_requires_plan(user_text: str, answer: str) -> bool:
 def _looks_like_artifact_creation_request(user_text: str) -> bool:
     text = user_text.casefold()
     action = re.search(
-        r"(写|生成|创建|新建|做一个|make|create|write|generate)",
+        r"(\u5199|\u751f\u6210|\u521b\u5efa|\u65b0\u5efa|"
+        r"\u505a\u4e00\u4e2a|make|create|write|generate)",
         text,
     )
     artifact = re.search(
-        r"(脚本|程序|代码|文件|配置|playbook|script|program|code|file|config)",
+        r"(\u811a\u672c|\u7a0b\u5e8f|\u4ee3\u7801|\u6587\u4ef6|"
+        r"\u914d\u7f6e|playbook|script|program|code|file|config)",
         text,
     )
     return action is not None and artifact is not None
@@ -330,8 +332,8 @@ def _looks_like_artifact_creation_request(user_text: str) -> bool:
 def _mentions_artifact_destination(user_text: str) -> bool:
     text = user_text.casefold()
     return bool(
-        re.search(r"(^|\s|['\"])(?:/|~|\.)[^\s'\"，。；;]*", text)
-        or re.search(r"(放在|保存到|目录|路径)", text)
+        re.search(r"(^|\s|['\"])(?:/|~|\.)[^\s'\"\u3002\uff0c\uff1b;]*", text)
+        or re.search(r"(\u653e\u5728|\u4fdd\u5b58\u5230|\u76ee\u5f55|\u8def\u5f84)", text)
         or re.search(r"\b(path|directory|folder|under|save (?:it )?to)\b", text)
     )
 
@@ -344,7 +346,9 @@ def _question_count(text: str) -> int:
     punctuation_count = text.count("?") + text.count("？")
     numbered_question_count = len(
         re.findall(
-            r"(?m)^\s*(?:[-*•]\s*)?(?:\d+[\s.)、]|[一二三四五六七八九十]+[、.])\s*.+(?:\?|？)",
+            r"(?m)^\s*(?:[-*\u2022]\s*)?"
+            r"(?:\d+[\s.)\u3001]|[\u4e00\u4e8c\u4e09\u56db\u4e94"
+            r"\u516d\u4e03\u516b\u4e5d\u5341]+[\u3001.])\s*.+(?:\?|\uff1f)",
             text,
         )
     )

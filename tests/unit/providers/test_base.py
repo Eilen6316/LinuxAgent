@@ -1235,6 +1235,36 @@ async def test_complete_with_tools_uses_configured_max_rounds() -> None:
         )
 
 
+async def test_complete_with_tools_rejects_empty_followup_after_tool_results() -> None:
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "lookup_status",
+                        "args": {"service": "nginx"},
+                        "id": "1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content=""),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    with pytest.raises(ProviderError, match="without a model follow-up"):
+        await provider.complete_with_tools(
+            [HumanMessage(content="check nginx")], [_sandboxed(lookup_status)]
+        )
+
+
 class _RetryingToolModel(_ToolCallingModel):
     def __init__(self, responses: list[AIMessage], failures: int) -> None:
         super().__init__(responses)

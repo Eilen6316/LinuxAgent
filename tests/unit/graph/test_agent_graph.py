@@ -140,7 +140,8 @@ class _ScriptedToolProvider(_FakeProvider):
         if not isinstance(limits, ToolRuntimeLimits):
             limits = ToolRuntimeLimits()
         remaining = limits.max_total_output_chars
-        for call in scripted.get("tool_calls", []):
+        tool_calls = list(scripted.get("tool_calls", []))
+        for call in tool_calls:
             tool = tool_map[str(call["tool"])]
             result = await invoke_tool_with_sandbox(
                 tool,
@@ -151,7 +152,10 @@ class _ScriptedToolProvider(_FakeProvider):
             remaining -= result.output_chars
             if observer is not None:
                 await observer(result.event)
-        return str(scripted.get("response", ""))
+        response = str(scripted.get("response", ""))
+        if tool_calls and not response.strip():
+            raise ProviderError("tool loop ended without a model follow-up after tool results")
+        return response
 
     def __init__(self, responses: list[Any]) -> None:
         super().__init__(responses)
@@ -3218,6 +3222,49 @@ async def test_graph_retries_json_plan_after_tool_loop_error(tmp_path) -> None:
     snapshot = await graph.aget_state(config)
     assert provider.tool_calls == 1
     assert snapshot.values["pending_command"] == "/bin/echo packages"
+
+
+async def test_graph_recovers_from_empty_followup_after_workspace_tool(tmp_path) -> None:
+    target = tmp_path / "linuxagent_capability_check.sh"
+    provider = _ScriptedToolProvider(
+        [
+            {
+                "tool_calls": [{"tool": "list_dir", "args": {"path": str(tmp_path)}}],
+                "response": "",
+            },
+            file_patch_plan_json(
+                str(target),
+                "#!/bin/sh\nuname -a\nfree -h\n",
+                goal="Create capability test script",
+            ),
+        ]
+    )
+    graph = build_agent_graph(
+        GraphDependencies(
+            provider=provider,  # type: ignore[arg-type]
+            command_service=CommandService(
+                LinuxCommandExecutor(
+                    SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+                )
+            ),
+            audit=AuditLog(tmp_path / "audit.log"),
+            tools=tuple(build_workspace_tools(FilePatchConfig(allow_roots=(tmp_path,)))),
+            file_patch_config=FilePatchConfig(allow_roots=(tmp_path,)),
+        )
+    )
+    config = {"configurable": {"thread_id": "empty-tool-followup-retry"}}
+
+    await graph.ainvoke(
+        initial_state("随便写一个脚本吧 测试一下你的能力", source=CommandSource.USER),
+        config=config,
+    )
+
+    snapshot = await graph.aget_state(config)
+    interrupt_payload = snapshot.tasks[0].interrupts[0].value
+    assert provider.tool_calls == 1
+    assert interrupt_payload["type"] == "confirm_file_patch"
+    assert str(target) in interrupt_payload["files_changed"]
+    assert _llm_call_count(provider, node="parse_intent", mode="planner_retry") == 1
 
 
 async def test_graph_redacts_execution_output_before_analysis(tmp_path) -> None:
