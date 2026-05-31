@@ -23,6 +23,7 @@ from linuxagent.runtime_events import (
     plan_legacy_event,
     plan_work_item_event,
     runtime_event,
+    tool_work_item_event,
     work_item_runtime_event,
     worker_lifecycle_events,
 )
@@ -246,6 +247,34 @@ def test_llm_usage_runtime_event_builds_status_payload() -> None:
     assert payload["phase"] == "usage"
     assert payload["payload"]["usage"] == {"total_tokens": 42}
     assert payload["payload"]["attributes"] == {"node": "parse_intent"}
+
+
+def test_tool_work_item_uses_tool_call_id_for_stable_updates() -> None:
+    started = tool_work_item_event(
+        {
+            "phase": "start",
+            "status": "started",
+            "tool_name": "list_dir",
+            "trace_id": "trace-1",
+            "tool_call_id": "call-1",
+        },
+        thread_id="thread-1",
+        turn_id="turn-1",
+    )
+    completed = tool_work_item_event(
+        {
+            "phase": "end",
+            "status": "allowed",
+            "tool_name": "list_dir",
+            "trace_id": "trace-1",
+            "tool_call_id": "call-1",
+        },
+        thread_id="thread-1",
+        turn_id="turn-1",
+    )
+
+    assert started.payload["item_id"] == "tool:call-1"
+    assert completed.payload["item_id"] == "tool:call-1"
 
 
 def test_legacy_work_item_event_maps_worker_group_progress() -> None:

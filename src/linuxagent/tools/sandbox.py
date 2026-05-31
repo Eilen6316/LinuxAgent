@@ -22,6 +22,7 @@ from ..security import redact_record, redact_text
 from .runtime_context import tool_trace_context
 
 SANDBOX_METADATA_KEY = "linuxagent_sandbox"
+SYNC_TOOL_POLL_SECONDS = 0.01
 _CURRENT_TOOL_DEADLINE: ContextVar[float | None] = ContextVar(
     "linuxagent_tool_deadline",
     default=None,
@@ -294,14 +295,9 @@ async def _invoke_tool(tool: BaseTool, args: dict[str, Any], trace_id: str | Non
 async def _invoke_sync_tool_off_loop(
     tool: BaseTool, args: dict[str, Any], trace_id: str | None
 ) -> Any:
-    loop = asyncio.get_running_loop()
-    finished = loop.create_future()
+    finished = threading.Event()
     result: dict[str, Any] = {}
     context = copy_context()
-
-    def mark_finished() -> None:
-        if not finished.done():
-            finished.set_result(None)
 
     def run() -> None:
         try:
@@ -309,7 +305,7 @@ async def _invoke_sync_tool_off_loop(
         except BaseException as exc:  # noqa: BLE001 - propagated to tool error handling
             result["error"] = exc
         finally:
-            _notify_finished(loop, mark_finished)
+            finished.set()
 
     thread = threading.Thread(
         target=lambda: context.run(run),
@@ -317,20 +313,12 @@ async def _invoke_sync_tool_off_loop(
         daemon=True,
     )
     thread.start()
-    await finished
+    while not finished.is_set():  # noqa: ASYNC110 - completion comes from a worker thread.
+        await asyncio.sleep(SYNC_TOOL_POLL_SECONDS)
     error = result.get("error")
     if isinstance(error, BaseException):
         raise error
     return result.get("value")
-
-
-def _notify_finished(loop: asyncio.AbstractEventLoop, callback: Any) -> None:
-    if loop.is_closed():
-        return
-    try:
-        loop.call_soon_threadsafe(callback)
-    except RuntimeError:
-        return
 
 
 @contextmanager

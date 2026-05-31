@@ -211,6 +211,29 @@ async def test_sync_tool_timeout_does_not_block_event_loop() -> None:
     assert result.event["status"] == "timeout"
 
 
+async def test_fast_sync_tool_returns_before_timeout() -> None:
+    @tool
+    def fast_sync_tool() -> str:
+        """Return immediately."""
+        return "ok"
+
+    started = time.monotonic()
+    result = await invoke_tool_with_sandbox(
+        attach_tool_sandbox(
+            fast_sync_tool,
+            ToolSandboxSpec(profile=SandboxProfile.READ_ONLY, timeout_seconds=1.0),
+        ),
+        {},
+        limits=ToolRuntimeLimits(timeout_seconds=1.0, max_output_chars=200),
+        remaining_total_chars=200,
+    )
+
+    assert time.monotonic() - started < 0.2
+    assert result.event["phase"] == "end"
+    assert result.event["status"] == "allowed"
+    assert result.content == "ok"
+
+
 async def test_sync_tool_timeout_exposes_deadline_for_cooperative_exit() -> None:
     worker_done = threading.Event()
 

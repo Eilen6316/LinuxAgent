@@ -26,6 +26,7 @@ from langchain_core.tools import tool
 
 from linuxagent.app.graph_invocation import start_graph_invocation
 from linuxagent.config.models import APIConfig
+from linuxagent.graph.tool_loop import tool_event_observer
 from linuxagent.interfaces import LLM_CALL_METADATA_KEY
 from linuxagent.pending_input import (
     PendingInputDrainResult,
@@ -630,6 +631,8 @@ async def test_complete_with_tools_emits_tool_observer_events() -> None:
     assert [event["phase"] for event in events] == ["start", "end"]
     assert [event["type"] for event in events] == ["tool", "tool"]
     assert events[0]["tool_name"] == "lookup_status"
+    assert events[0]["tool_call_id"] == "1"
+    assert events[1]["tool_call_id"] == "1"
     assert events[0]["args"] == {"service": "nginx"}
     assert events[0]["sandbox"]["profile"] == "read_only"
     assert events[0]["sandbox"]["permissions"]["read_files"] is False
@@ -638,6 +641,57 @@ async def test_complete_with_tools_emits_tool_observer_events() -> None:
     assert events[1]["output_chars"] == len(events[1]["output_text"])
     assert events[1]["truncated"] is False
     assert "nginx is active" in events[1]["output_preview"]
+
+
+async def test_complete_with_tools_runtime_events_update_same_tool_item() -> None:
+    runtime_events: list[dict[str, Any]] = []
+
+    @tool
+    async def lookup_status(service: str) -> str:
+        """Return a fake service status."""
+        return f"{service} is active"
+
+    model = _ToolCallingModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "lookup_status",
+                        "args": {"service": "nginx"},
+                        "id": "lookup-call-1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="systemctl status nginx"),
+        ]
+    )
+    provider = BaseLLMProvider(_cfg(), model)  # type: ignore[arg-type]
+
+    with turn_context_scope(RuntimeTurnContext(thread_id="thread-1", turn_id="turn-1")):
+        await provider.complete_with_tools(
+            [HumanMessage(content="check nginx")],
+            [_sandboxed(lookup_status)],
+            tool_observer=tool_event_observer(
+                telemetry=None,
+                observer=None,
+                current_trace_id="trace-1",
+                runtime_observer=runtime_events.append,
+            ),
+            **{LLM_CALL_METADATA_KEY: {"trace_id": "trace-1"}},
+        )
+
+    tool_items = [
+        event
+        for event in runtime_events
+        if event.get("kind") == "work_item" and event.get("payload", {}).get("category") == "tool"
+    ]
+    assert [event["phase"] for event in tool_items] == ["started", "completed"]
+    assert [event["payload"]["item_id"] for event in tool_items] == [
+        "tool:lookup-call-1",
+        "tool:lookup-call-1",
+    ]
 
 
 async def test_complete_with_tools_truncates_tool_output() -> None:

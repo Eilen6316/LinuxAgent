@@ -617,6 +617,9 @@ def _tool_runtime_phase(event: Mapping[str, Any]) -> RuntimeEventPhase:
 
 
 def _tool_item_id(event: Mapping[str, Any]) -> str:
+    tool_call_id = _optional_str(event.get("tool_call_id"))
+    if tool_call_id:
+        return f"tool:{tool_call_id}"
     trace_id = _optional_str(event.get("trace_id"))
     tool_name = _optional_str(event.get("tool_name")) or "tool"
     if trace_id:

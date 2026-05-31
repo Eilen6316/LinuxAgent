@@ -21,6 +21,7 @@ from linuxagent.runtime_events import (
     llm_usage_runtime_event,
     plan_work_item_event,
     runtime_event,
+    tool_work_item_event,
     work_item_runtime_event,
 )
 
@@ -109,6 +110,52 @@ def test_active_view_ignores_invalid_and_repeated_events() -> None:
     snapshot = view.to_snapshot()
     assert len(snapshot["items"]) == 1
     assert snapshot["items"][0]["item_id"] == "tool"
+
+
+def test_active_view_updates_tool_start_and_end_as_single_item() -> None:
+    view = ActiveTurnView()
+    for event in (
+        tool_work_item_event(
+            {
+                "phase": "start",
+                "status": "started",
+                "tool_name": "list_dir",
+                "tool_call_id": "call-1",
+            },
+            thread_id="thread-1",
+            turn_id="turn-1",
+        ),
+        tool_work_item_event(
+            {
+                "phase": "end",
+                "status": "allowed",
+                "tool_name": "list_dir",
+                "tool_call_id": "call-1",
+                "duration_ms": 13,
+                "truncated": False,
+            },
+            thread_id="thread-1",
+            turn_id="turn-1",
+        ),
+    ):
+        view = apply_event(view, event)
+
+    snapshot = view.to_snapshot()
+    assert snapshot["items"] == [
+        {
+            "item_id": "tool:call-1",
+            "category": "tool",
+            "status": "completed",
+            "label": "list_dir",
+            "label_params": {"tool_name": "list_dir", "args": {}, "sandbox": {}},
+            "summary": "allowed · 13ms",
+            "summary_params": {
+                "status": "allowed",
+                "duration_ms": 13,
+                "truncated": False,
+            },
+        }
+    ]
 
 
 def test_minimal_consumer_uses_public_view_contract() -> None:

@@ -760,6 +760,7 @@ async def _execute_tool_batch(
             _execute_one_tool_call(
                 tool=_resolved_tool(planned),
                 tool_name=planned.tool_name,
+                tool_call_id=planned.tool_call_id,
                 args=planned.args,
                 observer=observer,
                 limits=limits,
@@ -923,6 +924,7 @@ async def _execute_one_tool_call(
     *,
     tool: BaseTool,
     tool_name: str,
+    tool_call_id: str,
     args: dict[str, Any],
     observer: ToolObserver | None,
     limits: ToolRuntimeLimits,
@@ -931,7 +933,17 @@ async def _execute_one_tool_call(
     cancellation_token: CancellationToken | None,
 ) -> ToolRunResult:
     started = time.monotonic()
-    await _notify_tool_observer(observer, _tool_event("start", tool_name, args, tool=tool))
+    await _notify_tool_observer(
+        observer,
+        _tool_event(
+            "start",
+            tool_name,
+            args,
+            tool=tool,
+            trace_id=trace_id,
+            tool_call_id=tool_call_id,
+        ),
+    )
     result = await invoke_tool_with_sandbox(
         tool,
         args,
@@ -942,8 +954,14 @@ async def _execute_one_tool_call(
     )
     event = dict(result.event)
     event["duration_ms"] = int((time.monotonic() - started) * 1000)
+    event["tool_call_id"] = tool_call_id
     if event.get("phase") == "error":
         logger.debug("tool call failed for %s: %s", tool_name, event.get("output_preview"))
+    result = ToolRunResult(
+        content=result.content,
+        event=event,
+        output_chars=result.output_chars,
+    )
     await _notify_tool_observer(observer, event)
     return result
 
@@ -1010,6 +1028,8 @@ def _tool_event(
     *,
     started: float | None = None,
     tool: BaseTool | None = None,
+    trace_id: str | None = None,
+    tool_call_id: str | None = None,
 ) -> dict[str, Any]:
     redacted_args = redact_record({"args": args}).get("args", {})
     event: dict[str, Any] = {
@@ -1021,6 +1041,10 @@ def _tool_event(
     }
     if tool is not None:
         event["sandbox"] = tool_sandbox_record(tool)
+    if trace_id is not None:
+        event["trace_id"] = trace_id
+    if tool_call_id is not None:
+        event["tool_call_id"] = tool_call_id
     if output is not None:
         event["output_preview"] = output[:500]
     if started is not None:
