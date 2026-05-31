@@ -294,22 +294,23 @@ async def _planner_questionnaire_update(
 
 
 def _planner_direct_answer_retry_error(user_text: str, plan: DirectAnswerPlan) -> str | None:
-    if not _artifact_creation_requires_plan(user_text):
+    if not _artifact_creation_requires_plan(user_text, plan.answer):
         return None
     return (
         "Planner returned a DirectAnswerPlan for an artifact creation request that should be "
-        "represented as a FilePatchPlan. The user either supplied a destination or delegated "
-        "incidental choices to LinuxAgent. Choose a clear low-risk local file target, do not "
-        "ask a preference questionnaire, do not infer the current working directory from failed "
-        "tool access, and return a FilePatchPlan for human diff review. Rejected answer: "
+        "represented as a FilePatchPlan. The user either supplied a destination or the rejected "
+        "answer is a preference questionnaire for choices that should be resolved by planning or "
+        "a structured input flow. Choose a clear low-risk local file target when the choice is "
+        "incidental, do not infer the current working directory from failed tool access, and "
+        "return a FilePatchPlan for human diff review. Rejected answer: "
         f"{plan.answer[:1000]}"
     )
 
 
-def _artifact_creation_requires_plan(user_text: str) -> bool:
+def _artifact_creation_requires_plan(user_text: str, answer: str) -> bool:
     return _looks_like_artifact_creation_request(user_text) and (
-        _delegates_incidental_artifact_choices(user_text)
-        or _mentions_artifact_destination(user_text)
+        _mentions_artifact_destination(user_text)
+        or _planner_answer_requests_structured_input(answer)
     )
 
 
@@ -324,26 +325,6 @@ def _looks_like_artifact_creation_request(user_text: str) -> bool:
         text,
     )
     return action is not None and artifact is not None
-
-
-def _delegates_incidental_artifact_choices(user_text: str) -> bool:
-    text = user_text.casefold()
-    return any(
-        marker in text
-        for marker in (
-            "随便",
-            "都行",
-            "任选",
-            "你决定",
-            "你看着",
-            "测试一下你的能力",
-            "whatever",
-            "anywhere",
-            "your choice",
-            "you choose",
-            "up to you",
-        )
-    )
 
 
 def _mentions_artifact_destination(user_text: str) -> bool:

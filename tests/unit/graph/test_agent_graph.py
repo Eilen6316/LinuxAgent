@@ -3425,6 +3425,10 @@ async def test_graph_retries_delegated_script_questionnaire_into_file_patch_plan
     assert interrupt_payload["type"] == "confirm_file_patch"
     assert str(target) in interrupt_payload["files_changed"]
     assert _llm_call_count(provider, node="parse_intent", mode="planner_retry") == 1
+    retry_prompt = str(provider.complete_messages[-1][-1].content)
+    retry_instruction = retry_prompt.split("The previous planning response was rejected:", 1)[1]
+    assert "测试一下你的能力" not in retry_instruction
+    assert "whatever" not in retry_instruction
     assert snapshot.values["direct_response"] is False
 
 
@@ -3454,6 +3458,10 @@ async def test_graph_retries_delegated_script_gate_questionnaire_into_file_patch
     assert interrupt_payload["type"] == "confirm_file_patch"
     assert str(target) in interrupt_payload["files_changed"]
     assert _llm_call_count(provider, node="parse_intent", mode="planner_retry") == 1
+    retry_prompt = str(provider.complete_messages[-1][-1].content)
+    retry_instruction = retry_prompt.split("The previous planning response was rejected:", 1)[1]
+    assert "测试一下你的能力" not in retry_instruction
+    assert "whatever" not in retry_instruction
     assert snapshot.values["direct_response"] is False
 
 

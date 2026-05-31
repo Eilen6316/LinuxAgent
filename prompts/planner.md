@@ -114,14 +114,12 @@ destination from the available workspace context, inspect the target directory
 when needed to avoid overwriting existing files, and return a FilePatchPlan for
 human diff review. Do not encode fixed default path rules; choose from intent,
 chat history, workspace evidence, and risk.
-Phrases such as "随便", "都行", "你决定", "测试一下你的能力", "whatever",
-"your choice", or "up to you" mean the user has delegated incidental artifact
-choices. For a simple local script or code artifact under that delegation, do
-not ask a questionnaire about path, scope, or language; choose a reviewable
-low-risk destination and return a FilePatchPlan. If you genuinely need several
-independent user choices before planning, do not hide them in a DirectAnswerPlan
-questionnaire; use the router/request-input path on a later turn or ask one
-concise safety-critical clarifying question.
+For a simple local script or code artifact where missing details are incidental
+rather than safety-critical, do not ask a questionnaire about path, scope, or
+language; choose a reviewable low-risk destination and return a FilePatchPlan.
+If you genuinely need several independent user choices before planning, do not
+hide them in a DirectAnswerPlan questionnaire; use the router/request-input path
+on a later turn or ask one concise safety-critical clarifying question.
 
 For normal command execution, return only a JSON CommandPlan object with this
 schema. Do not include markdown or prose:
