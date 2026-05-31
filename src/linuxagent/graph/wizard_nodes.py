@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from langchain_core.messages import AIMessage, SystemMessage
-from langgraph.types import Command, interrupt
+from langgraph.types import Command
 from pydantic import ValidationError
 
 from ..audit import AuditLog
@@ -27,6 +27,7 @@ from ..wizard.models import (
 from ..wizard.planner import WizardPlanner
 from .common import trace_id
 from .llm_calls import complete_llm
+from .pending_interrupts import interrupt_with_pending_payload
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -103,7 +104,8 @@ async def _resume_wizard(
     audit: AuditLog,
     telemetry: TelemetryRecorder | None,
 ) -> AgentState | Command[Any]:
-    response = interrupt(_wizard_payload(current_trace_id, user_intent, plan, state))
+    payload = _wizard_payload(current_trace_id, user_intent, plan, state)
+    response = interrupt_with_pending_payload(payload, state=state)
     stable_state = _parse_wizard_stable_state(response, plan)
     if _is_wizard_checkpoint_response(response):
         return _wizard_checkpoint_command(current_trace_id, plan, stable_state)

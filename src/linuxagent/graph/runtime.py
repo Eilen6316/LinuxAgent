@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,6 +23,10 @@ from ..runtime_events import RuntimeEventKind, RuntimeEventPhase, runtime_event
 from ..turn_context import RuntimeTurnContext, turn_context_scope
 from .agent_graph import AgentGraph
 from .events import RuntimeEventObserver, notify_event
+from .pending_interrupts import (
+    clear_pending_interrupt_payloads,
+    pending_interrupt_payloads,
+)
 from .state import AgentState
 
 GRAPH_LIMIT = 100
@@ -84,12 +88,15 @@ class GraphRuntime:
         thread_id: str,
         turn_id: str | None = None,
         cancellation_token: CancellationToken | None = None,
+        pending_interrupt: GraphInterrupt | None = None,
     ) -> GraphRunResult:
         active_turn_id = _active_turn_id(turn_id, cancellation_token)
-        pending_request = await self._first_pending_request(
-            thread_id=thread_id,
-            turn_id=active_turn_id,
-        )
+        pending_request = pending_interrupt.request if pending_interrupt is not None else None
+        if pending_request is None:
+            pending_request = await self._first_pending_request(
+                thread_id=thread_id,
+                turn_id=active_turn_id,
+            )
         if pending_request is not None:
             await self._notify_pending_request_resolved(
                 thread_id=thread_id,
@@ -114,6 +121,24 @@ class GraphRuntime:
             await self._snapshot(thread_id),
             turn_id=turn_id or thread_id,
         )
+
+    async def pending_interrupt_result_probe(
+        self, *, thread_id: str, turn_id: str
+    ) -> Callable[[], Awaitable[GraphRunResult | None]]:
+        memory_baseline = _payload_signature(
+            pending_interrupt_payloads(thread_id=thread_id, turn_id=turn_id)
+        )
+
+        async def probe() -> GraphRunResult | None:
+            memory_payloads = pending_interrupt_payloads(thread_id=thread_id, turn_id=turn_id)
+            if memory_payloads and _payload_signature(memory_payloads) != memory_baseline:
+                interrupts = _interrupts_from_payloads(memory_payloads, turn_id=turn_id)
+                clear_pending_interrupt_payloads(thread_id=thread_id, turn_id=turn_id)
+                await self._notify_pending_requests(thread_id, interrupts)
+                return GraphRunResult(state=_interrupt_result(interrupts), interrupts=interrupts)
+            return None
+
+        return probe
 
     def latest_replay_snapshot(self, *, thread_id: str) -> TurnReplaySnapshot | None:
         if self._replay_snapshot_provider is None:
@@ -164,7 +189,11 @@ class GraphRuntime:
             runtime_context = RuntimeTurnContext(thread_id=thread_id, turn_id=active_turn_id)
             with cancellation_scope(cancellation_token), turn_context_scope(runtime_context):
                 result = await self._invoke_graph_with_interrupt_fallback(
-                    graph_input,
+                    _input_with_runtime_context(
+                        graph_input,
+                        thread_id=thread_id,
+                        turn_id=active_turn_id,
+                    ),
                     thread_id=thread_id,
                     turn_id=active_turn_id,
                     cancellation_token=cancellation_token,
@@ -194,6 +223,8 @@ class GraphRuntime:
             )
             await self._notify_turn(active_turn_id, thread_id, phase, reason=str(exc))
             raise
+        finally:
+            clear_pending_interrupt_payloads(thread_id=thread_id, turn_id=active_turn_id)
 
     async def _run_result(
         self,
@@ -205,6 +236,8 @@ class GraphRuntime:
         state = result if isinstance(result, dict) else {}
         interrupts = _interrupts_from_result(state, turn_id=turn_id)
         if not interrupts:
+            interrupts = self._pending_memory_interrupts(thread_id=thread_id, turn_id=turn_id)
+        if not interrupts and not state.get("messages"):
             interrupts = await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
         return GraphRunResult(state=state, interrupts=interrupts)
 
@@ -219,19 +252,47 @@ class GraphRuntime:
         baseline = _interrupt_signature(
             await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
         )
-        task = asyncio.create_task(self._graph.ainvoke(graph_input, config=graph_config(thread_id)))
+        memory_baseline = _payload_signature(
+            pending_interrupt_payloads(thread_id=thread_id, turn_id=turn_id)
+        )
+        config = graph_config(thread_id, turn_id=turn_id)
+        task = asyncio.create_task(self._graph.ainvoke(graph_input, config=config))
         while True:
             if _is_cancelled(cancellation_token):
                 return await task
             done, _ = await asyncio.wait({task}, timeout=INTERRUPT_POLL_SECONDS)
             if task in done:
                 return await task
+            memory_interrupts = self._pending_memory_interrupts(
+                thread_id=thread_id,
+                turn_id=turn_id,
+                baseline=memory_baseline,
+            )
+            if memory_interrupts:
+                task.cancel()
+                task.add_done_callback(_consume_task_exception)
+                await asyncio.sleep(0)
+                return _interrupt_result(memory_interrupts)
             interrupts = await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
             if interrupts and _interrupt_signature(interrupts) != baseline:
                 task.cancel()
                 task.add_done_callback(_consume_task_exception)
                 await asyncio.sleep(0)
                 return _interrupt_result(interrupts)
+
+    def _pending_memory_interrupts(
+        self,
+        *,
+        thread_id: str,
+        turn_id: str,
+        baseline: tuple[str, ...] = (),
+    ) -> tuple[GraphInterrupt, ...]:
+        payloads = pending_interrupt_payloads(thread_id=thread_id, turn_id=turn_id)
+        if not payloads:
+            return ()
+        if baseline and _payload_signature(payloads) == baseline:
+            return ()
+        return _interrupts_from_payloads(payloads, turn_id=turn_id)
 
     async def _snapshot(self, thread_id: str) -> Any:
         return await self._graph.aget_state(graph_config(thread_id))
@@ -290,8 +351,26 @@ class GraphRuntime:
         return interrupts[0].request
 
 
-def graph_config(thread_id: str) -> RunnableConfig:
-    return {"configurable": {"thread_id": thread_id}, "recursion_limit": GRAPH_LIMIT}
+def graph_config(thread_id: str, *, turn_id: str | None = None) -> RunnableConfig:
+    configurable = {"thread_id": thread_id}
+    if turn_id is not None:
+        configurable["linuxagent_turn_id"] = turn_id
+    return {"configurable": configurable, "recursion_limit": GRAPH_LIMIT}
+
+
+def _input_with_runtime_context(graph_input: Any, *, thread_id: str, turn_id: str) -> Any:
+    update = {"runtime_thread_id": thread_id, "runtime_turn_id": turn_id}
+    if isinstance(graph_input, Command):
+        existing = graph_input.update if isinstance(graph_input.update, dict) else {}
+        return Command(
+            graph=graph_input.graph,
+            update={**existing, **update},
+            resume=graph_input.resume,
+            goto=graph_input.goto,
+        )
+    if isinstance(graph_input, dict):
+        return {**graph_input, **update}
+    return graph_input
 
 
 def _active_turn_id(turn_id: str | None, cancellation_token: CancellationToken | None) -> str:
@@ -308,6 +387,10 @@ def _is_cancelled(cancellation_token: CancellationToken | None) -> bool:
 
 def _interrupt_signature(interrupts: tuple[GraphInterrupt, ...]) -> tuple[str, ...]:
     return tuple(repr(interrupt.payload) for interrupt in interrupts)
+
+
+def _payload_signature(payloads: tuple[dict[str, Any], ...]) -> tuple[str, ...]:
+    return tuple(repr(payload) for payload in payloads)
 
 
 def _interrupt_result(interrupts: tuple[GraphInterrupt, ...]) -> dict[str, Any]:
@@ -340,6 +423,12 @@ def _interrupts_from_snapshot(snapshot: Any, *, turn_id: str) -> tuple[GraphInte
         for interrupt in getattr(task, "interrupts", ()):
             interrupts.append(_graph_interrupt(interrupt, turn_id=turn_id))
     return tuple(interrupts)
+
+
+def _interrupts_from_payloads(
+    payloads: tuple[dict[str, Any], ...], *, turn_id: str
+) -> tuple[GraphInterrupt, ...]:
+    return tuple(_graph_interrupt(payload, turn_id=turn_id) for payload in payloads)
 
 
 def _graph_interrupt(interrupt: Any, *, turn_id: str) -> GraphInterrupt:

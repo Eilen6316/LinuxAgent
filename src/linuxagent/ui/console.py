@@ -7,6 +7,7 @@ import sys
 import time
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from concurrent.futures import Future as ConcurrentFuture
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,11 @@ class ConsoleUI(UserInterface):
         self._cancel_event: asyncio.Event = asyncio.Event()
         self._cancel_reason = "escape"
         self._working_refresh_task: asyncio.Task[None] | None = None
+        self._input_paused: asyncio.Event = asyncio.Event()
+        self._input_paused.set()
+        self._input_prompt_idle: asyncio.Event = asyncio.Event()
+        self._input_prompt_idle.set()
+        self._input_resume_requested: asyncio.Event = asyncio.Event()
         self._prompt_session = PromptSessionManager(
             theme=theme,
             prompt_symbol=prompt_symbol,
@@ -90,25 +96,41 @@ class ConsoleUI(UserInterface):
         self._print_hero()
         session = self._prompt_session.create_session()
         while True:
-            with patch_stdout(raw=True):
-                try:
-                    line = await session.prompt_async(self._prompt_session.dynamic_prompt(session))
-                except (EOFError, KeyboardInterrupt):
-                    return
+            await self._input_paused.wait()
+            self._input_prompt_idle.clear()
+            try:
+                with patch_stdout(raw=True):
+                    try:
+                        line = await session.prompt_async(
+                            self._prompt_session.dynamic_prompt(session)
+                        )
+                    except (EOFError, KeyboardInterrupt):
+                        return
+            finally:
+                self._input_prompt_idle.set()
+            resume_requested = self._input_resume_requested.is_set()
+            if resume_requested:
+                self._input_resume_requested.clear()
+            if resume_requested and not line.strip():
+                continue
             if line.strip():
                 yield line
 
     async def handle_interrupt(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._bind_owner_loop()
         started = time.monotonic()
+        await self._pause_input_stream()
         self.clear_activity()
-        if not sys.stdin.isatty():
-            return {"decision": "non_tty_auto_deny", "latency_ms": 0}
-        self._confirmation_renderer.render(payload)
-        response = self._approval_response(payload)
-        response["latency_ms"] = int((time.monotonic() - started) * 1000)
-        self._print_approval_summary(payload, response)
-        return response
+        try:
+            if not sys.stdin.isatty():
+                return {"decision": "non_tty_auto_deny", "latency_ms": 0}
+            self._confirmation_renderer.render(payload)
+            response = self._approval_response(payload)
+            response["latency_ms"] = int((time.monotonic() - started) * 1000)
+            self._print_approval_summary(payload, response)
+            return response
+        finally:
+            self._resume_input_stream()
 
     def is_interactive(self) -> bool:
         return sys.stdin.isatty() and self._console.is_terminal
@@ -300,6 +322,18 @@ class ConsoleUI(UserInterface):
             self._console.print(*objects, **kwargs)
         finally:
             self._console._file = original
+
+    async def _pause_input_stream(self) -> None:
+        self._input_paused.clear()
+        prompt_active = not self._input_prompt_idle.is_set()
+        aborted = self._prompt_session.abort_active_prompt()
+        if aborted or prompt_active:
+            self._input_resume_requested.set()
+            with suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self._input_prompt_idle.wait(), timeout=0.5)
+
+    def _resume_input_stream(self) -> None:
+        self._input_paused.set()
 
     async def cancel_activity(self, reason: str) -> None:
         if await self._run_on_owner_loop(lambda: self.cancel_activity(reason)):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import os
 import sys
@@ -77,6 +78,43 @@ class _FakeSession:
         return response
 
 
+class _FakePromptApp:
+    def __init__(self, session: _InterruptibleSession | None = None) -> None:
+        self.exits: list[str] = []
+        self._session = session
+
+    def exit(self, result: str = "") -> None:
+        self.exits.append(result)
+        if self._session is not None:
+            self._session.exit_active_prompt(result)
+
+
+class _InterruptibleSession:
+    def __init__(self, responses: list[str]) -> None:
+        self._responses = list(responses)
+        self._active_prompt: asyncio.Future[str] | None = None
+        self._blocked_once = False
+        self.default_buffer = SimpleNamespace(text="")
+        self.app = _FakePromptApp(self)
+
+    async def prompt_async(self, prompt: Any) -> str:
+        del prompt
+        if not self._blocked_once:
+            self._blocked_once = True
+            self._active_prompt = asyncio.get_running_loop().create_future()
+            try:
+                return await self._active_prompt
+            finally:
+                self._active_prompt = None
+        if not self._responses:
+            raise EOFError
+        return self._responses.pop(0)
+
+    def exit_active_prompt(self, result: str) -> None:
+        if self._active_prompt is not None and not self._active_prompt.done():
+            self._active_prompt.set_result(result)
+
+
 async def test_console_ui_input_stream_uses_prompt_session(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     session = _FakeSession(["", "status", ""])
@@ -124,6 +162,39 @@ async def test_console_ui_input_stream_patches_stdout(monkeypatch, tmp_path: Pat
     assert items == ["status"]
     assert captured
     assert all(captured)
+
+
+async def test_console_ui_handle_interrupt_pauses_active_prompt(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    session = _InterruptibleSession(["after"])
+    ui = ConsoleUI(history_path=tmp_path / "prompt_history", session_factory=lambda: session)
+    rendered: list[dict[str, Any]] = []
+    responses: list[dict[str, Any]] = []
+
+    def fake_render(payload: dict[str, Any]) -> None:
+        rendered.append(payload)
+        assert ui._input_paused.is_set() is False
+        assert ui._input_prompt_idle.is_set() is True
+
+    ui._confirmation_renderer.render = fake_render
+    ui._approval_response = lambda payload: responses.pop(0)
+    responses.append({"decision": "no"})
+
+    stream = ui.input_stream()
+    first = asyncio.create_task(anext(stream))
+    await asyncio.sleep(0)
+
+    result = await ui.handle_interrupt({"type": "confirm_file_patch"})
+
+    assert result["decision"] == "no"
+    assert session.app.exits == [""]
+    assert rendered == [{"type": "confirm_file_patch"}]
+    assert ui._input_paused.is_set() is True
+    with contextlib.suppress(StopAsyncIteration):
+        assert await first == "after"
+    await stream.aclose()
 
 
 async def test_console_print_user_input_follows_current_stdout(monkeypatch) -> None:

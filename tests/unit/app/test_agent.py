@@ -20,6 +20,7 @@ from linuxagent.app.pending_requests import (
 )
 from linuxagent.audit import AuditLog
 from linuxagent.event_replay import RuntimeEventStore
+from linuxagent.graph.pending_interrupts import publish_pending_interrupt
 from linuxagent.graph.runtime import GraphInterrupt, GraphRuntime
 from linuxagent.interfaces import CommandSource, ExecutionResult, SafetyLevel, SafetyResult
 from linuxagent.pending_request import (
@@ -230,6 +231,18 @@ class _YieldsForPendingInputUI(_FakeUI):
         return "pending_input"
 
 
+class _UnblocksSnapshotsOnInterruptUI(_FakeUI):
+    def __init__(self, graph: Any, *, interrupt_response: dict[str, Any]) -> None:
+        super().__init__(interrupt_response=interrupt_response)
+        self._graph = graph
+        self.interrupt_seen = threading.Event()
+
+    async def handle_interrupt(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.interrupt_seen.set()
+        self._graph.block_snapshots = False
+        return await super().handle_interrupt(payload)
+
+
 class _FakeGraph:
     def __init__(
         self,
@@ -290,6 +303,33 @@ class _BlockingGraph(_FakeGraph):
         self.started.set()
         _blocking_pause(0.25)
         return {}
+
+
+class _BlockingInterruptGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.started = threading.Event()
+        self.block_snapshots = False
+        self._interrupts: list[Interrupt] = []
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del config
+        self.calls.append(state)
+        if isinstance(state, Command):
+            self._interrupts = []
+            return {}
+        payload = {"type": "confirm_file_patch", "audit_id": "audit-1"}
+        publish_pending_interrupt(payload)
+        self._interrupts = [Interrupt(value=payload, resumable=True)]
+        self.started.set()
+        _blocking_pause(0.25)
+        return {}
+
+    async def aget_state(self, config: Any) -> Any:
+        del config
+        if self.block_snapshots and self.started.is_set():
+            _blocking_pause(0.25)
+        return SimpleNamespace(values={}, tasks=[SimpleNamespace(interrupts=self._interrupts)])
 
 
 def _blocking_pause(delay: float) -> None:
@@ -527,6 +567,56 @@ async def test_run_turn_escape_cancels_when_graph_blocks_event_loop(tmp_path) ->
     assert time.monotonic() - started < 0.2
     assert result == {}
     assert ui.cancelled == ["escape"]
+
+
+async def test_run_turn_surfaces_checkpoint_interrupt_when_graph_blocks_event_loop(
+    tmp_path,
+) -> None:
+    graph = _BlockingInterruptGraph()
+    ui = _FakeUI(interrupt_response={"decision": "no", "latency_ms": 1})
+    agent = _agent(tmp_path, graph=graph, ui=ui)
+
+    result = await asyncio.wait_for(
+        agent.run_turn("write a script", thread_id="patch-thread"), timeout=0.2
+    )
+
+    assert result == {}
+    assert graph.started.is_set()
+    assert ui.interrupts == [{"type": "confirm_file_patch", "audit_id": "audit-1"}]
+
+
+async def test_run_turn_surfaces_memory_interrupt_when_checkpoint_poll_blocks(
+    tmp_path,
+) -> None:
+    graph = _BlockingInterruptGraph()
+    graph.block_snapshots = True
+    ui = _UnblocksSnapshotsOnInterruptUI(
+        graph, interrupt_response={"decision": "no", "latency_ms": 1}
+    )
+    agent = _agent(tmp_path, graph=graph, ui=ui)
+
+    run_task = asyncio.create_task(agent.run_turn("write a script", thread_id="patch-thread"))
+
+    assert await _wait_for_event(ui.interrupt_seen, deadline_seconds=0.2)
+    result = await asyncio.wait_for(run_task, timeout=0.5)
+    assert result == {}
+    assert ui.interrupts == [{"type": "confirm_file_patch", "audit_id": "audit-1"}]
+
+
+async def test_run_turn_surfaces_interrupt_before_pending_history_snapshot(
+    tmp_path,
+) -> None:
+    graph = _BlockingInterruptGraph()
+    graph.block_snapshots = True
+    ui = _UnblocksSnapshotsOnInterruptUI(
+        graph, interrupt_response={"decision": "no", "latency_ms": 1}
+    )
+    agent = _agent(tmp_path, graph=graph, ui=ui)
+
+    await asyncio.wait_for(agent.run_turn("write a script", thread_id="patch-thread"), timeout=0.5)
+
+    assert ui.interrupt_seen.is_set()
+    assert ui.interrupts == [{"type": "confirm_file_patch", "audit_id": "audit-1"}]
 
 
 async def test_run_turn_escape_does_not_wait_for_slow_graph_cleanup(tmp_path) -> None:

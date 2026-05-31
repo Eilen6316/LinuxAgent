@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from langchain_core.messages import AIMessage, SystemMessage
-from langgraph.types import Command, interrupt
+from langgraph.types import Command
 from pydantic import ValidationError
 
 from ..user_input import (
@@ -17,6 +17,7 @@ from ..user_input import (
     render_user_input_context,
 )
 from .common import trace_id
+from .pending_interrupts import interrupt_with_pending_payload
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -34,7 +35,8 @@ async def _user_input_request_node(state: AgentState) -> AgentState | Command[An
     request = _request_from_state(state)
     if request is None:
         return _request_cancel_command(current_trace_id)
-    response = interrupt(_request_payload(current_trace_id, request, state))
+    payload = _request_payload(current_trace_id, request, state)
+    response = interrupt_with_pending_payload(payload, state=state)
     if _is_checkpoint_response(response):
         return _checkpoint_command(current_trace_id, request, _stable_state_payload(response))
     result = _parse_result(response, request)

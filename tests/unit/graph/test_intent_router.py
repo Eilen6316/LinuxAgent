@@ -6,7 +6,9 @@ import json
 
 from linuxagent.graph.intent_router import (
     AnswerContext,
+    IntentDecision,
     IntentMode,
+    _normalize_incidental_artifact_clarification,
     _parse_intent_decision,
 )
 
@@ -90,3 +92,42 @@ def test_parse_intent_decision_invalid_user_input_request_falls_back_to_clarify(
 
     assert decision.mode is IntentMode.CLARIFY
     assert decision.answer == "请补充必要信息。"
+
+
+def test_incidental_artifact_question_routes_to_command_plan() -> None:
+    decision = _normalize_incidental_artifact_clarification(
+        "随便写一个脚本吧 测试一下你的能力",
+        IntentDecision(
+            IntentMode.CLARIFY,
+            "请告诉我你想把脚本保存到哪个路径或文件名？另外，这个脚本主要想测试什么功能？",
+            "missing incidental details",
+        ),
+    )
+
+    assert decision.mode is IntentMode.COMMAND_PLAN
+    assert decision.answer == ""
+
+
+def test_incidental_path_question_with_overwrite_avoidance_routes_to_command_plan() -> None:
+    decision = _normalize_incidental_artifact_clarification(
+        "随便写一个脚本吧 测试一下你的能力",
+        IntentDecision(
+            IntentMode.CLARIFY,
+            "你想让我把脚本保存到哪个路径或文件名？这样我可以直接创建在合适的位置，避免覆盖重要文件。",
+            "missing destination",
+        ),
+    )
+
+    assert decision.mode is IntentMode.COMMAND_PLAN
+
+
+def test_safety_critical_artifact_question_stays_clarify() -> None:
+    original = IntentDecision(
+        IntentMode.CLARIFY,
+        "这个脚本会部署到生产服务器吗？是否需要覆盖已有文件或提升权限？",
+        "missing safety-critical details",
+    )
+
+    decision = _normalize_incidental_artifact_clarification("写一个部署脚本到生产服务器", original)
+
+    assert decision is original

@@ -10,23 +10,16 @@ from ..graph.runtime import GraphRunResult, GraphRuntime
 from ..i18n import Translator, default_translator
 from ..interfaces import UserInterface
 from ..pending_input import PendingInput, PendingInputQueue
-from ..runtime_control import CancellationController
 from ..telemetry import TelemetryRecorder
 from ..usage_insights import ContextManager
+from . import resume as resume_ui
 from .direct_command import DirectCommandRunner
 from .execution_visibility import print_execution_results
 from .output import print_assistant_response, print_user_input, start_working, update_pending_inputs
 from .pending_loop import run_pending_input_loop
 from .pending_requests import resume_status_for_thread
-from .resume import (
-    ResumeSessionItem,
-    render_resumed_session,
-    resume_item,
-    resume_list,
-    session_title,
-)
 from .slash_router import handle_slash
-from .turn_runtime import invoke_with_cancel
+from .turn_runtime import resume_graph_turn, run_graph_turn
 from .turn_state import new_turn_state
 
 if TYPE_CHECKING:
@@ -90,9 +83,7 @@ class LinuxAgent:
             queue.close()
 
     async def _handle_pending_input(
-        self,
-        pending: PendingInput,
-        active_thread_id: str,
+        self, pending: PendingInput, active_thread_id: str
     ) -> tuple[str, bool]:
         line = pending.content.strip()
         resume_result = await self._handle_pending_resume_selection(line)
@@ -123,12 +114,20 @@ class LinuxAgent:
                 ui_interactive=self.ui.is_interactive(),
                 previous_values=await self.graph_runtime.values(thread_id=thread_id),
             )
+            pending_history = _pending_history(self.context_manager.snapshot(), user_input)
             result = await self._run_with_cancel(state, thread_id)
             while result is not None and result.interrupts:
-                await self._persist_pending_history(thread_id)
+                self._persist_pending_history(thread_id, pending_history)
                 interrupt = result.interrupts[0]
                 response = await self.ui.handle_interrupt(interrupt.legacy_payload)
-                result = await self._resume_with_cancel(response, thread_id)
+                result = await resume_graph_turn(
+                    self.graph_runtime,
+                    response,
+                    thread_id=thread_id,
+                    ui=self.ui,
+                    translator=self.translator,
+                    interrupt=interrupt,
+                )
             if result is None:
                 return {}
             if result.state.get("messages"):
@@ -145,45 +144,12 @@ class LinuxAgent:
             self.ui.clear_activity()
 
     async def _run_with_cancel(self, state: Any, thread_id: str) -> GraphRunResult | None:
-        controller = CancellationController.create()
-        return await invoke_with_cancel(
-            lambda: self.graph_runtime.run(
-                state,
-                thread_id=thread_id,
-                turn_id=controller.turn_id,
-                cancellation_token=controller.token,
-            ),
+        return await run_graph_turn(
+            self.graph_runtime,
+            state,
+            thread_id=thread_id,
             ui=self.ui,
             translator=self.translator,
-            controller=controller,
-            thread_id=thread_id,
-            publish_cancelled=lambda reason: self.graph_runtime.notify_turn_cancelled(
-                thread_id=thread_id,
-                turn_id=controller.turn_id,
-                reason=reason,
-            ),
-        )
-
-    async def _resume_with_cancel(
-        self, response: dict[str, Any], thread_id: str
-    ) -> GraphRunResult | None:
-        controller = CancellationController.create()
-        return await invoke_with_cancel(
-            lambda: self.graph_runtime.resume(
-                response,
-                thread_id=thread_id,
-                turn_id=controller.turn_id,
-                cancellation_token=controller.token,
-            ),
-            ui=self.ui,
-            translator=self.translator,
-            controller=controller,
-            thread_id=thread_id,
-            publish_cancelled=lambda reason: self.graph_runtime.notify_turn_cancelled(
-                thread_id=thread_id,
-                turn_id=controller.turn_id,
-                reason=reason,
-            ),
         )
 
     async def _history(self, thread_id: str) -> list[Any]:
@@ -207,7 +173,7 @@ class LinuxAgent:
             return None
         sessions = self.chat_service.list_sessions()
         if not sessions:
-            await self.ui.print(resume_list([], translator=self.translator))
+            await self.ui.print(resume_ui.resume_list([], translator=self.translator))
             return None
         items = await self._resume_items(sessions)
         if self.ui.supports_resume_selector():
@@ -215,7 +181,7 @@ class LinuxAgent:
             if selected_thread_id is not None:
                 return await self._resume_and_continue(selected_thread_id)
             return None
-        await self.ui.print(resume_list(items, translator=self.translator))
+        await self.ui.print(resume_ui.resume_list(items, translator=self.translator))
         self._pending_resume_thread_id = ""
         return None
 
@@ -244,7 +210,7 @@ class LinuxAgent:
             return None
         self.context_manager.replace(list(selected.messages))
         self._history_threads.add(selected.thread_id)
-        await self.ui.print(render_resumed_session(selected, translator=self.translator))
+        await self.ui.print(resume_ui.render_resumed_session(selected, translator=self.translator))
         return selected.thread_id
 
     async def _resume_and_continue(self, thread_id: str) -> str | None:
@@ -253,10 +219,12 @@ class LinuxAgent:
             await self._resume_pending_work(selected_thread_id)
         return selected_thread_id
 
-    async def _resume_items(self, sessions: list[Any]) -> list[ResumeSessionItem]:
-        items: list[ResumeSessionItem] = []
+    async def _resume_items(self, sessions: list[Any]) -> list[resume_ui.ResumeSessionItem]:
+        items: list[resume_ui.ResumeSessionItem] = []
         for session in sessions:
-            items.append(resume_item(session, status=await self._resume_status(session.thread_id)))
+            items.append(
+                resume_ui.resume_item(session, status=await self._resume_status(session.thread_id))
+            )
         return items
 
     async def _resume_status(self, thread_id: str) -> str:
@@ -269,9 +237,16 @@ class LinuxAgent:
             interrupts = await self.graph_runtime.pending_interrupts(thread_id=thread_id)
             if not interrupts:
                 return
-            await self._persist_pending_history(thread_id)
+            self._persist_pending_history(thread_id)
             response = await self.ui.handle_interrupt(interrupts[0].legacy_payload)
-            result = await self._resume_with_cancel(response, thread_id)
+            result = await resume_graph_turn(
+                self.graph_runtime,
+                response,
+                thread_id=thread_id,
+                ui=self.ui,
+                translator=self.translator,
+                interrupt=interrupts[0],
+            )
             if result is None:
                 return
             if await self._complete_if_no_interrupts(result, thread_id):
@@ -289,12 +264,24 @@ class LinuxAgent:
 
     def _persist_active_history(self, thread_id: str) -> None:
         active = self.context_manager.snapshot()
-        self.chat_service.replace_session(thread_id, active, title=session_title(active))
+        self.chat_service.replace_session(thread_id, active, title=resume_ui.session_title(active))
 
-    async def _persist_pending_history(self, thread_id: str) -> None:
-        history = await self._history(thread_id)
-        if not history:
+    def _persist_pending_history(self, thread_id: str, history: list[Any] | None = None) -> None:
+        messages = list(history) if history is not None else self.context_manager.snapshot()
+        if not messages:
+            messages = self.chat_service.snapshot(thread_id)
+        if not messages:
             return
-        self.context_manager.replace(history)
+        self.context_manager.replace(messages)
         self._persist_active_history(thread_id)
         self.chat_service.save()
+
+
+def _pending_history(history: list[Any], user_input: str) -> list[Any]:
+    if (
+        history
+        and getattr(history[-1], "type", None) == "human"
+        and history[-1].content == user_input
+    ):
+        return list(history)
+    return [*history, HumanMessage(content=user_input)]

@@ -73,6 +73,8 @@ def test_initial_state_seeds_human_message() -> None:
     assert state["background_job_id"] is None
     assert state["skip_command_repair"] is False
     assert state["audit_id"] is None
+    assert state["runtime_thread_id"] is None
+    assert state["runtime_turn_id"] is None
 
 
 def test_initial_state_respects_source() -> None:

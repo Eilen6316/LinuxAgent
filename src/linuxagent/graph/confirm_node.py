@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from langgraph.types import Command, interrupt
+from langgraph.types import Command
 
 from ..audit import AuditLog
 from ..interfaces import CommandSource
@@ -15,6 +15,7 @@ from .command_permissions import updated_command_permissions
 from .common import span, trace_id
 from .events import RuntimeEventObserver, notify_event
 from .payloads import build_confirm_payload, decision, latency_ms, permissions
+from .pending_interrupts import interrupt_with_pending_payload
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -63,7 +64,7 @@ async def _confirm_node(
         ),
     )
     await _notify_waiting_confirm(runtime_observer, command)
-    response = interrupt(payload)
+    response = interrupt_with_pending_payload(payload, state=state)
     user_decision = await _record_confirm_decision(
         audit, telemetry, state, response, audit_id, current_trace_id
     )

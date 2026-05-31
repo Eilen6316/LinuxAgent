@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -114,7 +115,8 @@ async def _route_intent(
             runtime_observer=context.runtime_observer,
         )
     ).strip()
-    return _parse_intent_decision(raw, max_parallel_tasks=context.parallel_direct_answer_tasks)
+    decision = _parse_intent_decision(raw, max_parallel_tasks=context.parallel_direct_answer_tasks)
+    return _normalize_incidental_artifact_clarification(user_text, decision)
 
 
 def _parse_intent_decision(raw: str, *, max_parallel_tasks: int | None = None) -> IntentDecision:
@@ -207,3 +209,85 @@ def _parse_user_input_request(
 
 def _has_execution_fields(item: Mapping[str, Any]) -> bool:
     return any(key in item for key in _PARALLEL_TASK_EXECUTION_KEYS)
+
+
+def _normalize_incidental_artifact_clarification(
+    user_text: str, decision: IntentDecision
+) -> IntentDecision:
+    if decision.mode is not IntentMode.CLARIFY:
+        return decision
+    if not _delegates_incidental_artifact_choices(user_text):
+        return decision
+    if not _asks_only_incidental_artifact_choices(decision.answer):
+        return decision
+    return IntentDecision(
+        IntentMode.COMMAND_PLAN,
+        "",
+        f"incidental artifact choices delegated by user; router asked: {decision.answer[:200]}",
+    )
+
+
+def _delegates_incidental_artifact_choices(user_text: str) -> bool:
+    text = user_text.casefold()
+    return _looks_like_artifact_creation_request(text) and _delegates_choice_to_agent(text)
+
+
+def _looks_like_artifact_creation_request(text: str) -> bool:
+    action = re.search(
+        r"(\u5199|\u7f16\u5199|\u751f\u6210|\u521b\u5efa|\u65b0\u5efa|"
+        r"\u505a\u4e00\u4e2a|make|create|write|generate)",
+        text,
+    )
+    artifact = re.search(
+        r"(\u811a\u672c|\u7a0b\u5e8f|\u4ee3\u7801|\u6587\u4ef6|"
+        r"\u914d\u7f6e|playbook|script|program|code|file|config)",
+        text,
+    )
+    return action is not None and artifact is not None
+
+
+def _delegates_choice_to_agent(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(\u968f\u4fbf|\u4f60\u51b3\u5b9a|\u4f60\u770b\u7740\u529e|"
+            r"\u4efb\u610f|\u6d4b\u8bd5\u4e00\u4e0b\u4f60\u7684\u80fd\u529b|"
+            r"\b(?:whatever|any|your choice|you decide|up to you)\b)",
+            text,
+        )
+    )
+
+
+def _requires_safety_critical_destination(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(\b(?:prod|production|remote|server|cluster|system|root|sudo|"
+            r"/etc|/usr|/var|/opt)\b|\u751f\u4ea7|\u8fdc\u7a0b|\u670d\u52a1\u5668|"
+            r"\u96c6\u7fa4|\u7cfb\u7edf\u76ee\u5f55|\u6839\u76ee\u5f55)",
+            text,
+        )
+    )
+
+
+def _asks_only_incidental_artifact_choices(answer: str) -> bool:
+    if not answer.strip():
+        return False
+    text = answer.casefold()
+    safety_text = _drop_overwrite_avoidance_reason(text)
+    incidental_terms = (
+        r"\u8def\u5f84|\u4fdd\u5b58|\u653e\u5728|\u6587\u4ef6\u540d|"
+        r"\u76ee\u5f55|\u8bed\u8a00|\u8303\u56f4|\u529f\u80fd|"
+        r"path|filename|file name|directory|folder|save|language|scope|function"
+    )
+    if not re.search(incidental_terms, text):
+        return False
+    safety_terms = (
+        r"\u751f\u4ea7|\u8fdc\u7a0b|\u670d\u52a1\u5668|\u96c6\u7fa4|"
+        r"\u8986\u76d6|\u5220\u9664|\u6743\u9650|"
+        r"production|remote|server|cluster|overwrite|delete|permission"
+    )
+    return re.search(safety_terms, safety_text) is None
+
+
+def _drop_overwrite_avoidance_reason(text: str) -> str:
+    text = re.sub(r"\uff0c?\s*\u907f\u514d\u8986\u76d6[^?？。.!]*", "", text)
+    return re.sub(r",?\s*to avoid overwrit(?:e|ing)[^?!.]*", "", text)

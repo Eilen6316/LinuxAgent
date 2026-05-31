@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from contextlib import suppress
 from types import SimpleNamespace
 from typing import Any
@@ -11,6 +12,10 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command, Interrupt
 
 from linuxagent.app.graph_invocation import start_graph_invocation
+from linuxagent.graph.pending_interrupts import (
+    clear_pending_interrupt_payloads,
+    publish_pending_interrupt,
+)
 from linuxagent.graph.runtime import GraphRuntime
 from linuxagent.runtime_control import CancellationToken, current_cancellation_token
 from linuxagent.turn_context import (
@@ -127,6 +132,32 @@ class _InterruptAfterPollGraph(_FakeGraph):
         return SimpleNamespace(values={}, tasks=[SimpleNamespace(interrupts=interrupts)])
 
 
+class _MemoryInterruptBeforeSnapshotGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__()
+        self.snapshot_started = threading.Event()
+        self.cancelled = False
+        self.snapshot_calls = 0
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del state, config
+        publish_pending_interrupt({"type": "confirm_file_patch", "audit_id": "audit-1"})
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+
+    async def aget_state(self, config: Any) -> Any:
+        del config
+        self.snapshot_calls += 1
+        if self.snapshot_calls == 1:
+            return SimpleNamespace(values={}, tasks=[])
+        self.snapshot_started.set()
+        await asyncio.sleep(10)
+        return SimpleNamespace(values={}, tasks=[])
+
+
 async def test_run_returns_inline_interrupts_without_app_langgraph_access() -> None:
     graph = _FakeGraph(
         result={
@@ -171,6 +202,40 @@ async def test_run_preserves_interrupt_detected_while_graph_is_waiting() -> None
     assert result.interrupts[0].request is not None
     assert result.interrupts[0].request.request_type == "confirm_command"
     assert graph.cancelled is True
+
+
+async def test_run_preserves_memory_interrupt_before_checkpoint_poll() -> None:
+    graph = _MemoryInterruptBeforeSnapshotGraph()
+
+    result = await GraphRuntime(graph).run(
+        {"messages": []},
+        thread_id="thread",
+        turn_id="turn-1",  # type: ignore[arg-type]
+    )
+
+    assert result.state == {
+        "__interrupt__": [{"type": "confirm_file_patch", "audit_id": "audit-1"}],
+    }
+    assert result.interrupts[0].request is not None
+    assert result.interrupts[0].request.request_type == "confirm_file_patch"
+    assert graph.cancelled is True
+    assert not graph.snapshot_started.is_set()
+
+
+async def test_run_result_preserves_memory_interrupt_with_messages() -> None:
+    graph = _FakeGraph(result={"messages": [AIMessage(content="done")]})
+    runtime = GraphRuntime(graph)  # type: ignore[arg-type]
+
+    try:
+        with turn_context_scope(RuntimeTurnContext(thread_id="thread", turn_id="turn-1")):
+            publish_pending_interrupt({"type": "confirm_command", "command": "ls"})
+        result = await runtime._run_result(
+            {"messages": [AIMessage(content="done")]}, thread_id="thread", turn_id="turn-1"
+        )
+    finally:
+        clear_pending_interrupt_payloads(thread_id="thread", turn_id="turn-1")
+
+    assert result.interrupts[0].payload == {"type": "confirm_command", "command": "ls"}
 
 
 async def test_run_emits_pending_request_event_for_interrupt() -> None:
@@ -308,6 +373,25 @@ async def test_run_exposes_turn_context_in_runtime_scope() -> None:
 
     assert graph.seen_thread_id == "thread"
     assert graph.seen_turn_id == "turn-1"
+
+
+async def test_run_injects_runtime_context_into_state() -> None:
+    graph = _FakeGraph(result={"messages": []})
+
+    await GraphRuntime(graph).run({"messages": []}, thread_id="thread", turn_id="turn-1")  # type: ignore[arg-type]
+
+    assert graph.calls[0]["runtime_thread_id"] == "thread"
+    assert graph.calls[0]["runtime_turn_id"] == "turn-1"
+
+
+async def test_resume_injects_runtime_context_into_command_update() -> None:
+    graph = _FakeGraph(result={"messages": []})
+
+    await GraphRuntime(graph).resume({"decision": "yes"}, thread_id="thread", turn_id="turn-1")  # type: ignore[arg-type]
+
+    assert isinstance(graph.calls[0], Command)
+    assert graph.calls[0].update["runtime_thread_id"] == "thread"
+    assert graph.calls[0].update["runtime_turn_id"] == "turn-1"
 
 
 async def test_run_throttles_interrupt_snapshot_polling() -> None:

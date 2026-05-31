@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from langgraph.types import Command, interrupt
+from langgraph.types import Command
 
 from ..audit import AuditLog
 from ..config.models import FilePatchConfig
@@ -23,6 +23,7 @@ from .file_patch_common import (
     should_repair_patch_safety_failure,
 )
 from .payloads import decision, latency_ms
+from .pending_interrupts import interrupt_with_pending_payload
 from .state import AgentState
 
 Node = Callable[[AgentState], Awaitable[AgentState | Command[Any]]]
@@ -44,9 +45,8 @@ def make_file_patch_confirm_node(audit: AuditLog, config: FilePatchConfig) -> No
             command_source=CommandSource.LLM.value,
             trace_id=current_trace_id,
         )
-        response = interrupt(
-            _patch_payload(plan, audit_id, safety, state.get("file_patch_repair_attempts", 0))
-        )
+        payload = _patch_payload(plan, audit_id, safety, state.get("file_patch_repair_attempts", 0))
+        response = interrupt_with_pending_payload(payload, state=state)
         user_decision = decision(response)
         await audit.record_decision(
             audit_id,

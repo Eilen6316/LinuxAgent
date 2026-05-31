@@ -40,11 +40,12 @@ async def test_confirm_node_refusal_routes_to_respond_refused_and_records_audit(
     node = make_confirm_node(audit, _CommandService())  # type: ignore[arg-type]
     captured_payload: dict[str, Any] = {}
 
-    def fake_interrupt(payload: dict[str, Any]) -> dict[str, Any]:
+    def fake_interrupt(payload: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        del kwargs
         captured_payload.update(payload)
         return {"decision": "no", "latency_ms": 7}
 
-    monkeypatch.setattr(confirm_node_module, "interrupt", fake_interrupt)
+    monkeypatch.setattr(confirm_node_module, "interrupt_with_pending_payload", fake_interrupt)
 
     result = await node(_state())
 

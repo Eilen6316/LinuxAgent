@@ -67,6 +67,17 @@ class PromptSessionManager:
         self._token_usage = usage
         self._invalidate_active_session()
 
+    def abort_active_prompt(self) -> bool:
+        app = getattr(self._active_session, "app", None)
+        exit_prompt = getattr(app, "exit", None)
+        if not callable(exit_prompt):
+            return False
+        try:
+            exit_prompt(result="")
+        except Exception:  # noqa: BLE001 - prompt-toolkit raises when no app is active
+            return False
+        return True
+
     def dynamic_prompt(self, session: Any) -> Callable[[], list[tuple[str, str]]]:
         def prompt() -> list[tuple[str, str]]:
             return self.build_prompt(session.default_buffer.text)

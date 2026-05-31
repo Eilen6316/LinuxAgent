@@ -98,6 +98,10 @@ class AgentState(TypedDict, total=False):
     # Audit correlation ID — one per HITL round-trip.
     audit_id: str | None
 
+    # Runtime correlation for app-side graph turn handoff. Not authored by LLM.
+    runtime_thread_id: str | None
+    runtime_turn_id: str | None
+
 
 def initial_state(
     user_input: str,
@@ -119,6 +123,7 @@ def initial_state(
         **_initial_user_input_state(),
         **_initial_safety_state(command_permissions),
         **_initial_execution_state(),
+        **_initial_runtime_state(),
     )
 
 
@@ -217,6 +222,13 @@ def reset_execution_for_pending_work() -> AgentState:
         "background_job_id": None,
         "skip_command_repair": False,
         "audit_id": None,
+    }
+
+
+def _initial_runtime_state() -> AgentState:
+    return {
+        "runtime_thread_id": None,
+        "runtime_turn_id": None,
     }
 
 
