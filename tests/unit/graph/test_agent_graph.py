@@ -3395,6 +3395,41 @@ async def test_graph_retries_tool_planning_parse_errors_into_file_patch_plan(
     assert "+echo CPU" in interrupts[0].value["unified_diff"]
 
 
+async def test_graph_notifies_repair_activity_during_tool_planning_parse_retry(
+    tmp_path,
+) -> None:
+    events: list[dict[str, Any]] = []
+    target = tmp_path / "disk_info.sh"
+    target.write_text("#!/bin/sh\n", encoding="utf-8")
+    plan = _file_patch_plan_from_diff(
+        target,
+        [
+            f"--- {target}",
+            f"+++ {target}",
+            "@@ -1,1 +1,3 @@",
+            " #!/bin/sh",
+            "+echo CPU",
+            "+echo MEM",
+        ],
+    )
+    graph, _provider = _graph(
+        tmp_path,
+        ["I checked the file.", plan],
+        tools=(SimpleNamespace(name="read_file"),),
+        runtime_observer=events.append,
+    )
+    config = {"configurable": {"thread_id": "tool-plan-parse-retry-activity"}}
+
+    await graph.ainvoke(
+        initial_state("add CPU and MEM collection to this script", source=CommandSource.USER),
+        config=config,
+    )
+
+    activity_phases = [event.get("phase") for event in events if event.get("type") == "activity"]
+    assert "repair_plan" in activity_phases
+    assert activity_phases.index("repair_plan") > activity_phases.index("plan")
+
+
 async def test_graph_falls_back_to_direct_answer_for_empty_command_plan(tmp_path) -> None:
     empty_plan = json.dumps(
         {

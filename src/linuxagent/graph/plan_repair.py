@@ -21,6 +21,7 @@ from ..plans import (
 )
 from ..telemetry import TelemetryRecorder
 from .direct_answer import _fallback_direct_answer
+from .events import notify_event
 from .llm_calls import complete_llm
 from .plan_parsing import PlannedWork, _parse_planned_work
 from .state import AgentState, reset_planning_for_parse_error
@@ -215,6 +216,7 @@ async def _retry_command_plan(
     current_error = error
     current_response = rejected_response
     for attempt in range(1, MAX_PLAN_PARSE_RETRIES + 1):
+        await notify_event(runtime_observer, {"type": "activity", "phase": "repair_plan"})
         retry_proposed = await _complete_retry_plan(
             provider,
             prompt,
