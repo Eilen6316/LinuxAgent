@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -26,6 +25,11 @@ from .direct_answer import (
     _review_direct_answer,
 )
 from .events import notify_event
+from .intent_retry_rules import (
+    ansible_runtime_file_patch_misroute,
+    planner_answer_requests_questions,
+    planner_direct_answer_retry_error,
+)
 from .intent_router import AnswerContext, IntentDecision, IntentMode
 from .intent_updates import (
     direct_response_update,
@@ -195,37 +199,65 @@ async def _planned_outcome_update(
             allow_planner_direct_answer_retry=allow_planner_direct_answer_retry,
         )
     if isinstance(outcome, CommandPlan):
-        update = plan_update(current_trace_id, outcome, context.cluster_service)
-        await notify_command_plan_items(context, current_trace_id, update)
-        return update
+        return await _command_plan_update(context, current_trace_id, outcome)
     if isinstance(outcome, FilePatchPlan):
-        misroute_error = _ansible_runtime_file_patch_misroute(user_text, outcome)
-        if allow_file_patch_misroute_retry and misroute_error is not None:
-            recovered = await _retry_plan_or_error(
-                context,
-                messages,
-                user_text,
-                current_trace_id,
-                misroute_error,
-                outcome.model_dump_json(),
-            )
-            return await _planned_outcome_update(
-                context,
-                state,
-                messages,
-                user_text,
-                current_trace_id,
-                recovered,
-                observed_tool_outputs,
-                allow_file_patch_misroute_retry=False,
-                allow_planner_direct_answer_retry=allow_planner_direct_answer_retry,
-            )
-        return file_patch_update(current_trace_id, outcome)
+        return await _file_patch_plan_update(
+            context,
+            state,
+            messages,
+            user_text,
+            current_trace_id,
+            outcome,
+            observed_tool_outputs,
+            allow_file_patch_misroute_retry=allow_file_patch_misroute_retry,
+            allow_planner_direct_answer_retry=allow_planner_direct_answer_retry,
+        )
     if isinstance(outcome, NoChangePlan):
         return await _no_change_update(
             context, state, messages, user_text, current_trace_id, outcome, observed_tool_outputs
         )
     return outcome
+
+
+async def _command_plan_update(
+    context: Any,
+    current_trace_id: str,
+    plan: CommandPlan,
+) -> AgentState:
+    update = plan_update(current_trace_id, plan, context.cluster_service)
+    await notify_command_plan_items(context, current_trace_id, update)
+    return update
+
+
+async def _file_patch_plan_update(
+    context: Any,
+    state: AgentState,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    plan: FilePatchPlan,
+    observed_tool_outputs: list[str],
+    *,
+    allow_file_patch_misroute_retry: bool,
+    allow_planner_direct_answer_retry: bool,
+) -> AgentState:
+    misroute_error = ansible_runtime_file_patch_misroute(user_text, plan)
+    if not allow_file_patch_misroute_retry or misroute_error is None:
+        return file_patch_update(current_trace_id, plan)
+    recovered = await _retry_plan_or_error(
+        context, messages, user_text, current_trace_id, misroute_error, plan.model_dump_json()
+    )
+    return await _planned_outcome_update(
+        context,
+        state,
+        messages,
+        user_text,
+        current_trace_id,
+        recovered,
+        observed_tool_outputs,
+        allow_file_patch_misroute_retry=False,
+        allow_planner_direct_answer_retry=allow_planner_direct_answer_retry,
+    )
 
 
 async def _planner_direct_answer_update(
@@ -239,7 +271,7 @@ async def _planner_direct_answer_update(
     *,
     allow_planner_direct_answer_retry: bool,
 ) -> AgentState:
-    retry_error = _planner_direct_answer_retry_error(user_text, plan)
+    retry_error = planner_direct_answer_retry_error(user_text, plan)
     if allow_planner_direct_answer_retry and retry_error is not None:
         recovered = await _retry_plan_or_error(
             context,
@@ -259,7 +291,7 @@ async def _planner_direct_answer_update(
             observed_tool_outputs,
             allow_planner_direct_answer_retry=False,
         )
-    if _planner_answer_requests_structured_input(plan.answer):
+    if planner_answer_requests_questions(plan.answer):
         return await _planner_questionnaire_update(
             context, state, messages, user_text, current_trace_id, plan
         )
@@ -291,86 +323,6 @@ async def _planner_questionnaire_update(
     if reviewed_intent.mode is IntentMode.CLARIFY:
         return direct_response_update(current_trace_id, reviewed_intent.answer)
     return direct_response_update(current_trace_id, plan.answer)
-
-
-def _planner_direct_answer_retry_error(user_text: str, plan: DirectAnswerPlan) -> str | None:
-    if not _artifact_creation_requires_plan(user_text, plan.answer):
-        return None
-    return (
-        "Planner returned a DirectAnswerPlan for an artifact creation request that should be "
-        "represented as a FilePatchPlan. The user either supplied a destination or the rejected "
-        "answer is a preference questionnaire for choices that should be resolved by planning or "
-        "a structured input flow. Choose a clear low-risk local file target when the choice is "
-        "incidental, do not infer the current working directory from failed tool access, and "
-        "return a FilePatchPlan for human diff review. Rejected answer: "
-        f"{plan.answer[:1000]}"
-    )
-
-
-def _artifact_creation_requires_plan(user_text: str, answer: str) -> bool:
-    return _looks_like_artifact_creation_request(user_text) and (
-        _mentions_artifact_destination(user_text)
-        or _planner_answer_requests_structured_input(answer)
-    )
-
-
-def _looks_like_artifact_creation_request(user_text: str) -> bool:
-    text = user_text.casefold()
-    action = re.search(
-        r"(\u5199|\u751f\u6210|\u521b\u5efa|\u65b0\u5efa|"
-        r"\u505a\u4e00\u4e2a|make|create|write|generate)",
-        text,
-    )
-    artifact = re.search(
-        r"(\u811a\u672c|\u7a0b\u5e8f|\u4ee3\u7801|\u6587\u4ef6|"
-        r"\u914d\u7f6e|playbook|script|program|code|file|config)",
-        text,
-    )
-    return action is not None and artifact is not None
-
-
-def _mentions_artifact_destination(user_text: str) -> bool:
-    text = user_text.casefold()
-    return bool(
-        re.search(r"(^|\s|['\"])(?:/|~|\.)[^\s'\"\u3002\uff0c\uff1b;]*", text)
-        or re.search(r"(\u653e\u5728|\u4fdd\u5b58\u5230|\u76ee\u5f55|\u8def\u5f84)", text)
-        or re.search(r"\b(path|directory|folder|under|save (?:it )?to)\b", text)
-    )
-
-
-def _planner_answer_requests_structured_input(answer: str) -> bool:
-    return _question_count(answer) >= 2
-
-
-def _question_count(text: str) -> int:
-    punctuation_count = text.count("?") + text.count("？")
-    numbered_question_count = len(
-        re.findall(
-            r"(?m)^\s*(?:[-*\u2022]\s*)?"
-            r"(?:\d+[\s.)\u3001]|[\u4e00\u4e8c\u4e09\u56db\u4e94"
-            r"\u516d\u4e03\u516b\u4e5d\u5341]+[\u3001.])\s*.+(?:\?|\uff1f)",
-            text,
-        )
-    )
-    return max(punctuation_count, numbered_question_count)
-
-
-def _ansible_runtime_file_patch_misroute(user_text: str, plan: FilePatchPlan) -> str | None:
-    text = user_text.casefold()
-    if "ansible" not in text:
-        return None
-    if "playbook" in text:
-        return None
-    target_text = " ".join((*plan.files_changed, plan.unified_diff)).casefold()
-    if "/etc/ansible/playbooks" not in target_text and "playbook" not in target_text:
-        return None
-    return (
-        "Planner returned a FilePatchPlan for an Ansible runtime inspection request. "
-        "The user asked to use ansible commands against an existing inventory; treat "
-        "inventory paths such as /etc/ansible/hosts as command inputs. Do not create "
-        "or edit playbooks under /etc/ansible. Return a CommandPlan with argv-safe "
-        "ansible or ansible-inventory commands."
-    )
 
 
 async def _no_change_update(

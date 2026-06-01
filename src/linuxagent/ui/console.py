@@ -581,7 +581,7 @@ def _ask_command_approval(payload: dict[str, Any], translator: Translator) -> st
     choice_map.update({str(index): option.decision for index, option in enumerate(options, 1)})
     choice = Prompt.ask(
         _approval_prompt(options, translator),
-        choices=tuple(choice_map),
+        choices=list(choice_map),
         default="n",
         show_choices=False,
     )

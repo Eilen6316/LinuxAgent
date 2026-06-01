@@ -177,7 +177,7 @@ class BaseLLMProvider(LLMProvider):
         bound_model = self._model.bind_tools(tools)
         history = list(messages)
         tool_map = {tool.name: tool for tool in tools}
-        total_tool_output_chars = 0
+        output_chars = 0
         tool_call_round_seen = False
         self._last_usage = None
 
@@ -195,23 +195,17 @@ class BaseLLMProvider(LLMProvider):
                 return response
 
             tool_call_round_seen = True
-            tool_messages, total_tool_output_chars = await _execute_tool_calls(
+            output_chars = await _run_tool_round(
                 ai_message,
+                history,
                 tool_map,
                 tool_observer,
                 runtime_observer,
                 tool_limits,
-                total_tool_output_chars,
+                output_chars,
                 trace_id,
                 cancellation_token,
             )
-            history.extend(tool_messages)
-            failure_context = _tool_failure_context(tool_messages)
-            if failure_context is not None:
-                history.append(failure_context)
-            pending_input = _drain_pending_input_messages()
-            history.extend(HumanMessage(content=content) for content in pending_input.messages)
-            await _notify_pending_input_preview(pending_input.queued_preview)
 
         raise ProviderError("tool loop exceeded max rounds")
 
@@ -383,6 +377,37 @@ async def _notify_pending_input_preview(pending_preview: tuple[str, ...]) -> Non
     result = preview_updater(pending_preview)
     if inspect.isawaitable(result):
         await result
+
+
+async def _run_tool_round(
+    ai_message: AIMessage,
+    history: list[BaseMessage],
+    tool_map: dict[str, BaseTool],
+    tool_observer: ToolObserver | None,
+    runtime_observer: RuntimeEventObserver | None,
+    tool_limits: ToolRuntimeLimits,
+    output_chars: int,
+    trace_id: str | None,
+    cancellation_token: CancellationToken | None,
+) -> int:
+    tool_messages, total_output_chars = await _execute_tool_calls(
+        ai_message,
+        tool_map,
+        tool_observer,
+        runtime_observer,
+        tool_limits,
+        output_chars,
+        trace_id,
+        cancellation_token,
+    )
+    history.extend(tool_messages)
+    failure_context = _tool_failure_context(tool_messages)
+    if failure_context is not None:
+        history.append(failure_context)
+    pending_input = _drain_pending_input_messages()
+    history.extend(HumanMessage(content=content) for content in pending_input.messages)
+    await _notify_pending_input_preview(pending_input.queued_preview)
+    return total_output_chars
 
 
 def _invoke_model_sync(

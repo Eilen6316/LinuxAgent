@@ -50,3 +50,11 @@ def test_guard_response_text_ignores_non_shell_code_fences() -> None:
     result = guard_response_text("Python example:\n```python\ncat = '/etc/shadow'\nprint(cat)\n```")
 
     assert result.changed is False
+
+
+def test_guard_response_text_allows_capability_descriptions_with_symbols() -> None:
+    result = guard_response_text(
+        "我可以帮你排查服务、读日志、写脚本，也可以解释 shell 里的 `>` 重定向符号。"
+    )
+
+    assert result.changed is False

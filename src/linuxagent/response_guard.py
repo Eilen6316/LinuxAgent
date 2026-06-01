@@ -181,8 +181,21 @@ def _shell_command_line(line: str) -> str | None:
         return None
     if not tokens:
         return None
+    if not _looks_like_command(tokens):
+        return None
     return command
 
 
 def _normalize_command(command: str) -> str:
     return command.strip().removeprefix("sudo ").strip()
+
+
+def _looks_like_command(tokens: list[str]) -> bool:
+    head = tokens[0]
+    if head in {"sudo", "doas", "env", "command", "time"}:
+        return len(tokens) > 1 and _looks_like_command(tokens[1:])
+    if head.startswith(("/", "./", "../", "~")):
+        return True
+    if not re.fullmatch(r"[A-Za-z0-9_.+-]+", head):
+        return False
+    return any(ch.isalpha() for ch in head)
