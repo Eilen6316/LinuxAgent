@@ -172,3 +172,31 @@ async def test_route_intent_uses_router_context_not_full_product_context() -> No
     assert "ROUTER CONTEXT" in prompt_text
     assert "secret-heavy-catalog" not in prompt_text
     assert "Tool catalog summary" not in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_route_intent_budgets_chat_history() -> None:
+    provider = _Provider(
+        [
+            json.dumps(
+                {
+                    "mode": "DIRECT_ANSWER",
+                    "answer": "ok",
+                    "reason": "history budget",
+                    "answer_context": "none",
+                }
+            )
+        ]
+    )
+    context = _context(provider=provider)
+    history = [HumanMessage(content=f"history-{index}") for index in range(20)]
+    messages = [*history, HumanMessage(content="current")]
+
+    await _route_intent(context, messages, "current", "trace-1")
+
+    prompt_text = "\n".join(str(message.content) for message in provider.complete_messages[-1])
+    assert "history-0" in prompt_text
+    assert "history-1" in prompt_text
+    assert "history-11" not in prompt_text
+    assert "history-12" in prompt_text
+    assert "[history omitted: 10 earlier messages not included]" in prompt_text

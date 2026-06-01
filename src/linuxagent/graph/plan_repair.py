@@ -19,6 +19,7 @@ from ..plans import (
     NoChangePlanParseError,
     PlanParseErrorCode,
 )
+from ..prompt_history import prompt_history_before_current
 from ..telemetry import TelemetryRecorder
 from .direct_answer import _fallback_direct_answer
 from .events import notify_event
@@ -267,7 +268,7 @@ async def _complete_retry_plan(
     runtime_observer: Any | None,
 ) -> str:
     retry_messages = prompt.format_messages(
-        chat_history=messages[:-1],
+        chat_history=prompt_history_before_current(messages),
         product_context=product_context,
         user_input=_retry_intent_prompt(user_text, error, rejected_response, attempt),
     )

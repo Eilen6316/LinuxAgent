@@ -15,6 +15,7 @@ from ..plans import (
     parse_continue_planning_plan,
     parse_direct_answer_plan,
 )
+from ..prompt_history import prompt_history_before_current
 from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
 from ..tools import ToolRuntimeLimits
@@ -63,7 +64,7 @@ async def _complete_plan_candidate(
     observed_tool_outputs: list[str],
 ) -> tuple[str, str | None]:
     prompt_messages = context.planner_prompt.format_messages(
-        chat_history=messages[:-1],
+        chat_history=prompt_history_before_current(messages),
         product_context=context.product_context,
         user_input=user_text,
     )
@@ -112,7 +113,7 @@ async def _plan_gate(
     current_trace_id: str,
 ) -> DirectAnswerPlan | None:
     prompt_messages = context.planner_gate_prompt.format_messages(
-        chat_history=messages[:-1],
+        chat_history=prompt_history_before_current(messages),
         product_context=context.product_context,
         user_input=user_text,
     )

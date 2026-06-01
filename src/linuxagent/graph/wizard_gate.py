@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from langchain_core.messages import BaseMessage
 
 from ..interfaces import LLMProvider
+from ..prompt_history import prompt_history_before_current
 from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
 from .intent_router import AnswerContext, IntentDecision, IntentMode
@@ -106,7 +107,7 @@ async def _wizard_gate_response(
     reason: str,
 ) -> str:
     prompt_messages = context.wizard_response_prompt.format_messages(
-        chat_history=messages[:-1],
+        chat_history=prompt_history_before_current(messages),
         response_context=json.dumps(
             {
                 "original_user_input": user_text,

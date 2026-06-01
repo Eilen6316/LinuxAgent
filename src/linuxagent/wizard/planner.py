@@ -11,6 +11,7 @@ from langchain_core.messages import BaseMessage
 
 from ..interfaces import LLMProvider
 from ..llm_calls import complete_llm
+from ..prompt_history import prompt_chat_history
 from ..prompts_loader import build_wizard_planner_prompt
 from ..security import redact_record, redact_text
 from ..telemetry import TelemetryRecorder
@@ -58,7 +59,7 @@ class WizardPlanner:
         runtime_observer: Callable[[dict[str, Any]], Any] | None = None,
     ) -> WizardPlannerOutcome:
         messages = build_wizard_planner_prompt().format_messages(
-            chat_history=list(history or []),
+            chat_history=prompt_chat_history(list(history or [])),
             user_input=query,
         )
         try:

@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from langchain_core.messages import BaseMessage
 
 from ..interfaces import LLMProvider
+from ..prompt_history import prompt_history_before_current
 from ..telemetry import TelemetryRecorder
 from ..user_input import (
     UserInputRequest,
@@ -103,7 +104,7 @@ async def _route_intent(
     current_trace_id: str,
 ) -> IntentDecision:
     router_messages = context.intent_router_prompt.format_messages(
-        chat_history=messages[:-1],
+        chat_history=prompt_history_before_current(messages),
         product_context=context.router_context,
         user_input=user_text,
     )

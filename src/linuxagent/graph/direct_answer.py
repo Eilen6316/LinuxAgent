@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from langchain_core.messages import AIMessage, BaseMessage
 
 from ..interfaces import CommandSource, LLMProvider
+from ..prompt_history import prompt_history_before_current
 from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
 from .intent_router import IntentDecision
@@ -56,7 +57,7 @@ async def _complete_direct_answer(
     mode: str = "direct_answer",
 ) -> str:
     prompt_messages = context.direct_answer_prompt.format_messages(
-        chat_history=messages[:-1],
+        chat_history=prompt_history_before_current(messages),
         product_context=context.direct_answer_context(),
         user_input=user_text,
     )
@@ -81,7 +82,7 @@ async def _review_direct_answer(
     current_trace_id: str,
 ) -> DirectAnswerReviewDecision:
     prompt_messages = context.direct_answer_review_prompt.format_messages(
-        chat_history=messages[:-1],
+        chat_history=prompt_history_before_current(messages),
         review_context=json.dumps(
             {
                 "user_input": user_text,
@@ -145,7 +146,7 @@ async def _fallback_direct_answer(
     runtime_observer: Any | None = None,
 ) -> AgentState:
     prompt_messages = direct_answer_prompt.format_messages(
-        chat_history=messages[:-1],
+        chat_history=prompt_history_before_current(messages),
         product_context=product_context,
         user_input=(
             f"{user_text}\n\n"

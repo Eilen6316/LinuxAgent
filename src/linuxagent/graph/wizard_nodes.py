@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from ..audit import AuditLog
 from ..interfaces import LLMProvider
+from ..prompt_history import prompt_history_before_current
 from ..prompts_loader import build_wizard_response_prompt
 from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
@@ -397,7 +398,7 @@ async def _wizard_response_text(
 ) -> str:
     prompt = build_wizard_response_prompt()
     messages = prompt.format_messages(
-        chat_history=list(state.get("messages", []))[:-1],
+        chat_history=prompt_history_before_current(list(state.get("messages", []))),
         response_context=json.dumps(
             _wizard_response_context(state, plan, status, result),
             ensure_ascii=False,
