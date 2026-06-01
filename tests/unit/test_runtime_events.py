@@ -19,6 +19,7 @@ from linuxagent.runtime_events import (
     context_runtime_event,
     legacy_runtime_event,
     legacy_work_item_event,
+    llm_prompt_input_runtime_event,
     llm_usage_runtime_event,
     plan_legacy_event,
     plan_work_item_event,
@@ -247,6 +248,32 @@ def test_llm_usage_runtime_event_builds_status_payload() -> None:
     assert payload["phase"] == "usage"
     assert payload["payload"]["usage"] == {"total_tokens": 42}
     assert payload["payload"]["attributes"] == {"node": "parse_intent"}
+
+
+def test_llm_prompt_input_runtime_event_builds_status_payload() -> None:
+    event = llm_prompt_input_runtime_event(
+        thread_id="thread-1",
+        turn_id="turn-1",
+        trace_id="trace-1",
+        prompt={
+            "message_count": 2,
+            "char_count": 1200,
+            "estimated_tokens": 300,
+            "tool_count": 1,
+            "tool_schema_char_count": 200,
+            "tool_schema_estimated_tokens": 50,
+        },
+        attributes={"node": "parse_intent", "mode": "intent_router"},
+    )
+
+    payload = event.to_event()
+    assert payload["kind"] == "status"
+    assert payload["phase"] == "prompt_input"
+    assert payload["payload"]["prompt"]["char_count"] == 1200
+    assert payload["payload"]["attributes"] == {
+        "node": "parse_intent",
+        "mode": "intent_router",
+    }
 
 
 def test_tool_work_item_uses_tool_call_id_for_stable_updates() -> None:

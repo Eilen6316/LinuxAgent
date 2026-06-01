@@ -385,6 +385,30 @@ def llm_usage_runtime_event(
     )
 
 
+def llm_prompt_input_runtime_event(
+    *,
+    thread_id: str,
+    turn_id: str,
+    trace_id: str,
+    prompt: Mapping[str, Any],
+    attributes: Mapping[str, Any] | None = None,
+) -> RuntimeEvent:
+    """Build a runtime status event for LLM prompt input size."""
+
+    payload = {
+        "trace_id": trace_id,
+        "prompt": dict(prompt),
+        "attributes": dict(attributes or {}),
+    }
+    return runtime_event(
+        thread_id=thread_id,
+        turn_id=turn_id,
+        kind=RuntimeEventKind.STATUS,
+        phase="prompt_input",
+        payload=payload,
+    )
+
+
 def _plan_work_item_status(items: tuple[RuntimePlanItem, ...]) -> WorkItemStatus:
     if any(item.status is PlanItemStatus.FAILED for item in items):
         return WorkItemStatus.FAILED

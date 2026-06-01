@@ -2765,6 +2765,121 @@ async def test_graph_publishes_llm_usage_runtime_events(tmp_path) -> None:
     }
 
 
+async def test_graph_publishes_llm_prompt_input_runtime_events(tmp_path) -> None:
+    events: list[dict[str, Any]] = []
+    graph, _provider = _graph(
+        tmp_path,
+        [
+            _router_response("DIRECT_ANSWER", "router supplied direct answer"),
+            _direct_answer_review_response(),
+        ],
+        runtime_observer=events.append,
+    )
+    runtime = GraphRuntime(graph, runtime_observer=events.append)
+
+    await runtime.run(
+        initial_state("一个概念问题", source=CommandSource.USER),
+        thread_id="prompt-input-events",
+        turn_id="turn-prompt-input-events",
+    )
+
+    prompt_events = [
+        event
+        for event in events
+        if event.get("kind") == "status" and event.get("phase") == "prompt_input"
+    ]
+    assert [event["payload"]["attributes"].get("mode") for event in prompt_events] == [
+        "intent_router",
+        "direct_answer_review",
+    ]
+    assert all(event["payload"]["prompt"]["message_count"] > 0 for event in prompt_events)
+    assert all(event["payload"]["prompt"]["char_count"] > 0 for event in prompt_events)
+    assert all(event["payload"]["prompt"]["estimated_tokens"] > 0 for event in prompt_events)
+
+
+async def test_graph_prompt_input_budget_for_plain_direct_answer_is_lightweight(
+    tmp_path,
+) -> None:
+    events: list[dict[str, Any]] = []
+    full_context = product_capability_context(
+        provider="deepseek",
+        model="deepseek-chat",
+        tool_names=("read_file", "list_dir"),
+        tool_catalog="Tool catalog summary: heavy-catalog\n" + ("heavy catalog line\n" * 80),
+    )
+    direct_context = minimal_product_capability_context(
+        provider="deepseek",
+        model="deepseek-chat",
+        tool_names=("read_file", "list_dir"),
+    )
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _router_response("DIRECT_ANSWER", "router supplied direct answer"),
+            _direct_answer_review_response(),
+        ],
+        product_context=full_context,
+        router_context=direct_context,
+        direct_context=direct_context,
+        operating_manifest=operating_manifest_context(section_names=("tools", "safety")),
+        runtime_observer=events.append,
+    )
+    runtime = GraphRuntime(graph, runtime_observer=events.append)
+
+    await runtime.run(
+        initial_state("你都能干啥啊", source=CommandSource.USER),
+        thread_id="plain-direct-answer-budget",
+        turn_id="turn-plain-direct-answer-budget",
+    )
+
+    prompt_events = [
+        event
+        for event in events
+        if event.get("kind") == "status" and event.get("phase") == "prompt_input"
+    ]
+    prompt_by_mode = {
+        event["payload"]["attributes"].get("mode"): event["payload"]["prompt"]
+        for event in prompt_events
+    }
+    assert set(prompt_by_mode) == {"intent_router", "direct_answer_review"}
+    assert prompt_by_mode["intent_router"]["char_count"] < 12000
+    assert prompt_by_mode["direct_answer_review"]["char_count"] < 4000
+    assert all(prompt["tool_count"] == 0 for prompt in prompt_by_mode.values())
+    prompts = [
+        "\n".join(str(message.content) for message in call) for call in provider.complete_messages
+    ]
+    assert len(prompts) == 2
+    assert all("Tool catalog summary: heavy-catalog" not in prompt for prompt in prompts)
+    assert all("# tools" not in prompt and "# safety" not in prompt for prompt in prompts)
+
+
+async def test_graph_defers_tool_schema_prompt_input_until_planner(tmp_path) -> None:
+    events: list[dict[str, Any]] = []
+    graph, _provider = _graph(
+        tmp_path,
+        [command_plan_json("/bin/echo packages")],
+        tools=(SimpleNamespace(name="read_file", description="Read files"),),
+        runtime_observer=events.append,
+    )
+    runtime = GraphRuntime(graph, runtime_observer=events.append)
+
+    await runtime.run(
+        initial_state("inspect current packages", source=CommandSource.USER),
+        thread_id="planner-tool-schema-budget",
+        turn_id="turn-planner-tool-schema-budget",
+    )
+
+    prompt_by_mode = {
+        event["payload"]["attributes"].get("mode"): event["payload"]["prompt"]
+        for event in events
+        if event.get("kind") == "status" and event.get("phase") == "prompt_input"
+    }
+    assert prompt_by_mode["intent_router"]["tool_count"] == 0
+    assert prompt_by_mode["planner_gate"]["tool_count"] == 0
+    assert prompt_by_mode["planner"]["tool_count"] == 1
+    assert prompt_by_mode["planner"]["tool_schema_char_count"] > 0
+
+
 async def test_graph_answers_howto_without_command_panel(tmp_path) -> None:
     graph, _provider = _graph(
         tmp_path,
