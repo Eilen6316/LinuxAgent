@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from langchain_core.messages import BaseMessage
 from langgraph.types import Command
 
@@ -3819,9 +3820,37 @@ async def test_graph_replans_after_exhausted_failed_plan(tmp_path) -> None:
     assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
-async def test_graph_replans_after_nginx_config_error(tmp_path) -> None:
-    failed_command = "nginx -c /tmp/lyx_test/nginx.conf"
-    repair_command = "nginx -t -c /tmp/lyx_test/nginx.conf"
+@pytest.mark.parametrize(
+    ("case_id", "failed_command", "stderr", "repair_command"),
+    [
+        (
+            "nginx-config",
+            "nginx -c /tmp/lyx_test/nginx.conf",
+            'nginx: [emerg] "server" directive is not allowed here '
+            "in /tmp/lyx_test/nginx.conf:1",
+            "nginx -t -c /tmp/lyx_test/nginx.conf",
+        ),
+        (
+            "python-missing-module",
+            "python3 /tmp/lyx_test/app.py",
+            "ModuleNotFoundError: No module named 'flask'",
+            "python3 -m pip show flask",
+        ),
+        (
+            "systemd-missing-unit",
+            "systemctl reload demo-app",
+            "Failed to reload demo-app.service: Unit demo-app.service not found.",
+            "systemctl status demo-app",
+        ),
+    ],
+)
+async def test_graph_replans_from_generic_failure_context(
+    tmp_path,
+    case_id: str,
+    failed_command: str,
+    stderr: str,
+    repair_command: str,
+) -> None:
     graph, provider = _graph(
         tmp_path,
         [
@@ -3835,18 +3864,17 @@ async def test_graph_replans_after_nginx_config_error(tmp_path) -> None:
                         failed_command,
                         1,
                         "",
-                        'nginx: [emerg] "server" directive is not allowed here '
-                        "in /tmp/lyx_test/nginx.conf:1",
+                        stderr,
                         0.01,
                     )
                 }
             )
         ),
     )
-    config = {"configurable": {"thread_id": "nginx-config-repair"}}
+    config = {"configurable": {"thread_id": f"generic-repair-{case_id}"}}
 
     await graph.ainvoke(
-        initial_state("start nginx reverse proxy", source=CommandSource.USER),
+        initial_state("repair failed operation", source=CommandSource.USER),
         config=config,
     )
     await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
@@ -3854,7 +3882,7 @@ async def test_graph_replans_after_nginx_config_error(tmp_path) -> None:
 
     assert snapshot.tasks[0].interrupts[0].value["command"] == repair_command
     repair_prompt = str(provider.complete_messages[-1][-1].content)
-    assert '"server" directive is not allowed here' in repair_prompt
+    assert stderr in repair_prompt
     assert failed_command in repair_prompt
 
 
