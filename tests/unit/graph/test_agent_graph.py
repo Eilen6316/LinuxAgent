@@ -1959,7 +1959,7 @@ async def test_graph_file_patch_repair_falls_back_when_tool_call_times_out(tmp_p
     if not interrupts:
         interrupts = list(snapshot.tasks[0].interrupts)
 
-    assert provider.tool_calls == 2
+    assert provider.tool_calls == 1
     assert interrupts[0].value["type"] == "confirm_file_patch"
     assert "+echo cpu" in interrupts[0].value["unified_diff"]
 
@@ -2477,8 +2477,15 @@ async def test_graph_treats_localhost_target_as_local_execution(tmp_path) -> Non
     assert "analysis ok" in str(resumed["messages"][-1].content)
 
 
-async def test_graph_parse_uses_tool_calling_when_tools_are_bound(tmp_path) -> None:
-    graph, provider = _graph(tmp_path, [command_plan_json("/bin/echo hi")])
+async def test_graph_parse_uses_tool_calling_when_planner_requests_tools(tmp_path) -> None:
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _continue_planning_plan_json(),
+            _continue_planning_plan_json(),
+            command_plan_json("/bin/echo hi"),
+        ],
+    )
     graph = build_agent_graph(
         GraphDependencies(
             provider=provider,  # type: ignore[arg-type]
@@ -2876,8 +2883,39 @@ async def test_graph_defers_tool_schema_prompt_input_until_planner(tmp_path) -> 
     }
     assert prompt_by_mode["intent_router"]["tool_count"] == 0
     assert prompt_by_mode["planner_gate"]["tool_count"] == 0
-    assert prompt_by_mode["planner"]["tool_count"] == 1
-    assert prompt_by_mode["planner"]["tool_schema_char_count"] > 0
+    assert prompt_by_mode["planner"]["tool_count"] == 0
+    assert "planner_tools" not in prompt_by_mode
+
+
+async def test_graph_lazy_loads_tool_schema_when_planner_requests_tools(tmp_path) -> None:
+    events: list[dict[str, Any]] = []
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _continue_planning_plan_json("need workspace evidence"),
+            _continue_planning_plan_json("need workspace evidence"),
+            command_plan_json("/bin/echo packages"),
+        ],
+        tools=(SimpleNamespace(name="read_file", description="Read files"),),
+        runtime_observer=events.append,
+    )
+    runtime = GraphRuntime(graph, runtime_observer=events.append)
+
+    await runtime.run(
+        initial_state("inspect current packages", source=CommandSource.USER),
+        thread_id="planner-lazy-tool-schema",
+        turn_id="turn-planner-lazy-tool-schema",
+    )
+
+    prompt_by_mode = {
+        event["payload"]["attributes"].get("mode"): event["payload"]["prompt"]
+        for event in events
+        if event.get("kind") == "status" and event.get("phase") == "prompt_input"
+    }
+    assert provider.tool_calls == 1
+    assert prompt_by_mode["planner"]["tool_count"] == 0
+    assert prompt_by_mode["planner_tools"]["tool_count"] == 1
+    assert prompt_by_mode["planner_tools"]["tool_schema_char_count"] > 0
 
 
 async def test_graph_answers_howto_without_command_panel(tmp_path) -> None:
@@ -3074,6 +3112,8 @@ async def test_graph_falls_back_to_direct_answer_for_history_question_nochange(
     graph, provider = _graph(
         tmp_path,
         [
+            _continue_planning_plan_json(),
+            _continue_planning_plan_json(),
             _no_change_plan_json("没有需要修改的文件。"),
             _no_change_plan_json("仍然没有需要修改的文件。"),
             answer,
@@ -3173,10 +3213,12 @@ async def test_graph_includes_workspace_evidence_in_no_change_answer(tmp_path) -
     events: list[dict[str, Any]] = []
     provider = _ScriptedToolProvider(
         [
+            _continue_planning_plan_json(),
+            _continue_planning_plan_json(),
             {
                 "tool_calls": [{"tool": "read_file", "args": {"path": str(target)}}],
                 "response": _no_change_plan_json(answer, evidence=[evidence]),
-            }
+            },
         ]
     )
     graph = build_agent_graph(
@@ -3214,10 +3256,12 @@ async def test_graph_can_render_no_change_evidence_in_english(tmp_path) -> None:
     answer = "The script already records its start time."
     provider = _ScriptedToolProvider(
         [
+            _continue_planning_plan_json(),
+            _continue_planning_plan_json(),
             {
                 "tool_calls": [{"tool": "read_file", "args": {"path": str(target)}}],
                 "response": _no_change_plan_json(answer, evidence=[evidence]),
-            }
+            },
         ]
     )
     graph = build_agent_graph(
@@ -3268,6 +3312,8 @@ async def test_graph_rejects_no_change_without_workspace_evidence(tmp_path) -> N
     )
     provider = _ScriptedToolProvider(
         [
+            _continue_planning_plan_json(),
+            _continue_planning_plan_json(),
             {
                 "tool_calls": [{"tool": "read_file", "args": {"path": str(target)}}],
                 "response": _no_change_plan_json(answer),
@@ -3309,6 +3355,8 @@ async def test_graph_rejects_no_change_with_fake_workspace_evidence(tmp_path) ->
     answer = "现有脚本已包含执行时间和执行结束时间功能，无需修改。"
     provider = _ScriptedToolProvider(
         [
+            _continue_planning_plan_json(),
+            _continue_planning_plan_json(),
             {
                 "tool_calls": [{"tool": "read_file", "args": {"path": str(target)}}],
                 "response": _no_change_plan_json(answer, evidence=["START_TIME=$(date"]),
@@ -3370,7 +3418,14 @@ async def test_graph_keeps_current_state_query_on_command_plan_path(tmp_path) ->
 
 
 async def test_graph_retries_json_plan_without_tools_after_tool_plaintext(tmp_path) -> None:
-    provider = _FakeProvider(["当前服务器状态正常", command_plan_json("/bin/echo hi")])
+    provider = _FakeProvider(
+        [
+            _continue_planning_plan_json(),
+            _continue_planning_plan_json(),
+            "当前服务器状态正常",
+            command_plan_json("/bin/echo hi"),
+        ]
+    )
     graph = build_agent_graph(
         GraphDependencies(
             provider=provider,  # type: ignore[arg-type]
@@ -3389,12 +3444,19 @@ async def test_graph_retries_json_plan_without_tools_after_tool_plaintext(tmp_pa
 
     snapshot = await graph.aget_state(config)
     assert provider.tool_calls == 1
-    assert len(provider.complete_messages) == 4
+    assert len(provider.complete_messages) == 5
+    assert _llm_call_count(provider, node="parse_intent", mode="planner_tools") == 1
     assert snapshot.values["pending_command"] == "/bin/echo hi"
 
 
 async def test_graph_retries_json_plan_after_tool_loop_error(tmp_path) -> None:
-    provider = _ToolLoopFailingProvider([command_plan_json("/bin/echo packages")])
+    provider = _ToolLoopFailingProvider(
+        [
+            _continue_planning_plan_json(),
+            _continue_planning_plan_json(),
+            command_plan_json("/bin/echo packages"),
+        ]
+    )
     graph = build_agent_graph(
         GraphDependencies(
             provider=provider,  # type: ignore[arg-type]
@@ -3422,6 +3484,8 @@ async def test_graph_recovers_from_empty_followup_after_workspace_tool(tmp_path)
     target = tmp_path / "linuxagent_capability_check.sh"
     provider = _ScriptedToolProvider(
         [
+            _continue_planning_plan_json(),
+            _continue_planning_plan_json(),
             {
                 "tool_calls": [{"tool": "list_dir", "args": {"path": str(tmp_path)}}],
                 "response": "",
@@ -3648,7 +3712,13 @@ async def test_graph_retries_tool_planning_parse_errors_into_file_patch_plan(
     )
     graph, provider = _graph(
         tmp_path,
-        ["I checked the file.", "still not json", plan],
+        [
+            _continue_planning_plan_json(),
+            _continue_planning_plan_json(),
+            "I checked the file.",
+            "still not json",
+            plan,
+        ],
         tools=(SimpleNamespace(name="read_file"),),
     )
     config = {"configurable": {"thread_id": "tool-plan-file-patch-retry"}}

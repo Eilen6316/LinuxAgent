@@ -62,25 +62,28 @@ async def _complete_plan_candidate(
     user_text: str,
     current_trace_id: str,
     observed_tool_outputs: list[str],
+    *,
+    use_tools: bool = False,
 ) -> tuple[str, str | None]:
     prompt_messages = context.planner_prompt.format_messages(
         chat_history=prompt_history_before_current(messages),
         product_context=context.product_context,
         user_input=user_text,
     )
-    if not context.tools:
-        return (
-            await complete_llm(
-                context.provider,
-                prompt_messages,
-                telemetry=context.telemetry,
-                trace_id=current_trace_id,
-                attributes={"node": "parse_intent", "mode": "planner"},
-                prompt_cache_key=context.prompt_cache_key,
-                runtime_observer=context.runtime_observer,
-            )
-        ).strip(), None
+    mode = "planner_tools" if use_tools else "planner"
     try:
+        if not use_tools or not context.tools:
+            return (
+                await complete_llm(
+                    context.provider,
+                    prompt_messages,
+                    telemetry=context.telemetry,
+                    trace_id=current_trace_id,
+                    attributes={"node": "parse_intent", "mode": mode},
+                    prompt_cache_key=context.prompt_cache_key,
+                    runtime_observer=context.runtime_observer,
+                )
+            ).strip(), None
         proposed = await complete_llm_with_tools(
             context.provider,
             prompt_messages,
@@ -88,7 +91,7 @@ async def _complete_plan_candidate(
             options=LLMCallOptions(
                 telemetry=context.telemetry,
                 trace_id=current_trace_id,
-                attributes={"node": "parse_intent", "mode": "planner"},
+                attributes={"node": "parse_intent", "mode": mode},
                 prompt_cache_key=context.prompt_cache_key,
                 runtime_observer=context.runtime_observer,
             ),
@@ -104,6 +107,40 @@ async def _complete_plan_candidate(
     except ProviderError as exc:
         return "", str(exc)
     return proposed.strip(), None
+
+
+async def _complete_plain_plan_candidate(
+    context: PlannerContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    observed_tool_outputs: list[str],
+) -> tuple[str, str | None]:
+    return await _complete_plan_candidate(
+        context,
+        messages,
+        user_text,
+        current_trace_id,
+        observed_tool_outputs,
+        use_tools=False,
+    )
+
+
+async def _complete_tool_plan_candidate(
+    context: PlannerContext,
+    messages: list[BaseMessage],
+    user_text: str,
+    current_trace_id: str,
+    observed_tool_outputs: list[str],
+) -> tuple[str, str | None]:
+    return await _complete_plan_candidate(
+        context,
+        messages,
+        user_text,
+        current_trace_id,
+        observed_tool_outputs,
+        use_tools=True,
+    )
 
 
 async def _plan_gate(

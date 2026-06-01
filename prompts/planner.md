@@ -34,6 +34,18 @@ Return only this JSON object:
 }}
 ```
 
+If the request does need current workspace, machine, or remote evidence before
+you can safely produce a specific CommandPlan, FilePatchPlan, or NoChangePlan,
+return only this JSON object so LinuxAgent can run a second planner pass with
+the available read-only tools:
+
+```json
+{{
+  "plan_type": "continue_planning",
+  "reason": "what evidence is needed before planning"
+}}
+```
+
 If the user asks what files, directories, scripts, logs, processes, ports,
 packages, services, disks, users, or system resources exist right now, that is
 runtime inspection and must be planned with the minimum read-only command or

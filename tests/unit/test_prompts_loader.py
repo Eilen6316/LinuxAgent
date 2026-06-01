@@ -140,6 +140,8 @@ def test_build_planner_prompt_has_user_input_variable() -> None:
     assert "necessary and" in body
     assert "readable in the confirmation panel" in body
     assert "Before calling any tool" in body
+    assert "continue_planning" in body
+    assert "what evidence is needed before planning" in body
     assert "direct_answer" in body
     assert "runtime inspection and must be planned" in body
     assert "Do not return a DirectAnswerPlan that says you have not checked" in body
