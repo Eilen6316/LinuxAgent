@@ -8,7 +8,7 @@ from langchain_core.tools import BaseTool
 
 from ..config.models import AppConfig
 from ..executors import LinuxCommandExecutor
-from ..product_context import product_capability_context
+from ..product_context import minimal_product_capability_context, product_capability_context
 from ..tools import (
     ToolCatalogReport,
     ToolRuntimeLimits,
@@ -97,6 +97,14 @@ def build_product_context(config: AppConfig, catalog: ToolCatalogReport) -> str:
         model=config.api.model,
         tool_names=tuple(item.name for item in catalog.items),
         tool_catalog=compact_tool_catalog_summary(catalog),
+    )
+
+
+def build_minimal_product_context(config: AppConfig, catalog: ToolCatalogReport) -> str:
+    return minimal_product_capability_context(
+        provider=config.api.provider.value,
+        model=config.api.model,
+        tool_names=tuple(item.name for item in catalog.items),
     )
 
 

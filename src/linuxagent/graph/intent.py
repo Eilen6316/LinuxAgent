@@ -85,6 +85,7 @@ class IntentNodeContext:
     runtime_observer: RuntimeEventObserver | None
     tool_runtime_limits: ToolRuntimeLimits
     product_context: str
+    router_context: str
     prompt_cache_key: str | None
     parallel_direct_answer_tasks: int
     translator: Translator = field(default_factory=default_translator)
@@ -103,6 +104,7 @@ def make_parse_intent_node(
     runtime_observer: RuntimeEventObserver | None = None,
     tool_runtime_limits: ToolRuntimeLimits | None = None,
     product_context: str = "",
+    router_context: str = "",
     operating_manifest: str = "",
     prompt_cache_key: str | None = None,
     parallel_direct_answer_tasks: int = 8,
@@ -123,6 +125,7 @@ def make_parse_intent_node(
         runtime_observer=runtime_observer,
         tool_runtime_limits=tool_runtime_limits or ToolRuntimeLimits(),
         product_context=product_context,
+        router_context=router_context or product_context,
         prompt_cache_key=prompt_cache_key,
         parallel_direct_answer_tasks=parallel_direct_answer_tasks,
         translator=translator or default_translator(),

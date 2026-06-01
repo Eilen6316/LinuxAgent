@@ -35,6 +35,7 @@ def build_graph(
     runtime_observer: Callable[[dict[str, Any]], Any],
     tool_runtime_limits: ToolRuntimeLimits,
     product_context: str,
+    router_context: str,
     operating_manifest: str,
     translator: Translator,
 ) -> AgentGraph:
@@ -54,6 +55,7 @@ def build_graph(
             runtime_observer=runtime_observer,
             tool_runtime_limits=tool_runtime_limits,
             product_context=product_context,
+            router_context=router_context,
             operating_manifest=operating_manifest,
             parallel_direct_answer_tasks=config.command_plan.parallel_direct_answer_tasks,
             translator=translator,

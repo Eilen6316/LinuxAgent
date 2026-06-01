@@ -68,6 +68,7 @@ def _add_planning_nodes(graph: Any, deps: GraphDependencies) -> None:
                 runtime_observer=deps.runtime_observer,
                 tool_runtime_limits=deps.tool_runtime_limits,
                 product_context=deps.product_context,
+                router_context=deps.router_context,
                 operating_manifest=deps.operating_manifest,
                 parallel_direct_answer_tasks=deps.parallel_direct_answer_tasks,
                 translator=deps.translator,

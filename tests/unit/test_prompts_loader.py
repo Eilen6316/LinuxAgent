@@ -30,6 +30,7 @@ def test_find_prompts_dir_resolves_for_editable_install() -> None:
     assert (path / "intent_router.md").is_file()
     assert (path / "planner.md").is_file()
     assert (path / "planner_gate.md").is_file()
+    assert (path / "product_context_minimal.md").is_file()
     assert (path / "repair.md").is_file()
     assert (path / "file_patch_repair.md").is_file()
     assert (path / "wizard_planner.md").is_file()

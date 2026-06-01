@@ -55,6 +55,7 @@ class GraphDependencies:
     runtime_observer: RuntimeEventObserver | None = None
     tool_runtime_limits: ToolRuntimeLimits = field(default_factory=ToolRuntimeLimits)
     product_context: str = ""
+    router_context: str = ""
     operating_manifest: str = ""
     parallel_direct_answer_tasks: int = 8
     translator: Translator = field(default_factory=default_translator)

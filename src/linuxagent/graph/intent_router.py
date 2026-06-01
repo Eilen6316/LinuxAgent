@@ -81,6 +81,9 @@ class IntentRouterContext(Protocol):
     def product_context(self) -> str: ...
 
     @property
+    def router_context(self) -> str: ...
+
+    @property
     def telemetry(self) -> TelemetryRecorder | None: ...
 
     @property
@@ -101,7 +104,7 @@ async def _route_intent(
 ) -> IntentDecision:
     router_messages = context.intent_router_prompt.format_messages(
         chat_history=messages[:-1],
-        product_context=context.product_context,
+        product_context=context.router_context,
         user_input=user_text,
     )
     raw = (

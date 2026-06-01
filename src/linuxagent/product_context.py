@@ -75,3 +75,22 @@ def product_capability_context(
         tool_names=tools,
         tool_catalog=tool_catalog or tools,
     )
+
+
+def minimal_product_capability_context(
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    tool_names: Iterable[str] = (),
+) -> str:
+    """Return compact product facts suitable for routing prompts."""
+    runtime = "当前运行时模型由 config.yaml 的 api.provider/api.model 决定"
+    if provider and model:
+        runtime = f"当前配置 provider={provider}, model={model}"
+    tools = ", ".join(name for name in tool_names if name) or "未启用额外 LLM 工具"
+    commands = "; ".join(f"{item.command}: {item.description}" for item in _MODEL_SLASH_COMMANDS)
+    return load_prompt("product_context_minimal.md").format(
+        runtime=runtime,
+        slash_commands=commands,
+        tool_names=tools,
+    )

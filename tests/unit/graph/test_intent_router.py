@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import json
 
+import pytest
+from langchain_core.messages import HumanMessage
+
 from linuxagent.graph.intent_router import (
     AnswerContext,
     IntentDecision,
     IntentMode,
     _normalize_incidental_artifact_clarification,
     _parse_intent_decision,
+    _route_intent,
 )
+from tests.unit.graph.test_intent_wizard import _context, _Provider
 
 
 def test_parse_intent_decision_invalid_json_falls_back_to_command_plan() -> None:
@@ -131,3 +136,39 @@ def test_safety_critical_artifact_question_stays_clarify() -> None:
     decision = _normalize_incidental_artifact_clarification("写一个部署脚本到生产服务器", original)
 
     assert decision is original
+
+
+@pytest.mark.asyncio
+async def test_route_intent_uses_router_context_not_full_product_context() -> None:
+    provider = _Provider(
+        [
+            json.dumps(
+                {
+                    "mode": "DIRECT_ANSWER",
+                    "answer": "可以帮你做 Linux 运维操作。",
+                    "reason": "capability question",
+                    "answer_context": "none",
+                }
+            )
+        ]
+    )
+    context = _context(provider=provider)
+    context = context.__class__(
+        **{
+            **context.__dict__,
+            "product_context": "FULL CONTEXT\nTool catalog summary: secret-heavy-catalog",
+            "router_context": "ROUTER CONTEXT\nLLM-visible tool names: read_file",
+        }
+    )
+
+    await _route_intent(
+        context,
+        [HumanMessage(content="你都能干啥啊")],
+        "你都能干啥啊",
+        "trace-1",
+    )
+
+    prompt_text = "\n".join(str(message.content) for message in provider.complete_messages[-1])
+    assert "ROUTER CONTEXT" in prompt_text
+    assert "secret-heavy-catalog" not in prompt_text
+    assert "Tool catalog summary" not in prompt_text

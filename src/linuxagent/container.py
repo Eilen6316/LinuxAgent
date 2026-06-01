@@ -65,6 +65,7 @@ from .wiring.providers import build_embeddings, build_provider
 from .wiring.sandbox import build_sandbox_runner
 from .wiring.tools import (
     build_intelligence_tool_list,
+    build_minimal_product_context,
     build_product_context,
     build_system_tool_list,
     build_tool_catalog,
@@ -251,6 +252,7 @@ class Container:
                 runtime_observer=self._runtime_event_observer(),
                 tool_runtime_limits=self.tool_runtime_limits(),
                 product_context=self.product_context(),
+                router_context=self.router_context(),
                 operating_manifest=self.operating_manifest(),
                 translator=self.translator(),
             ),
@@ -404,6 +406,12 @@ class Container:
         if not memory_context:
             return base
         return f"{base}\n\n{memory_context}"
+
+    def router_context(self) -> str:
+        return self._cached(
+            "router_context",
+            lambda: build_minimal_product_context(self._config, self.tool_catalog()),
+        )
 
     def operating_manifest(self) -> str:
         return self._cached("operating_manifest", operating_manifest_context)
