@@ -20,9 +20,7 @@ from ..active_view import (
 from ..i18n import CatalogError, Translator, default_translator
 
 WORKING_REFRESH_PER_SECOND = 1
-ACTIVITY_INTERVAL_MS = 1000
 MIN_FORCED_REFRESH_SECONDS = 0.12
-MIN_UNCHANGED_REFRESH_SECONDS = 1.0
 MAX_ACTIVE_VIEW_ITEMS = 8
 MAX_STATUS_DETAIL_LINES = 3
 MAX_PENDING_INPUTS = 5
@@ -50,6 +48,7 @@ class WorkingStatus:
         self._active_view: ActiveTurnView | None = None
         self._last_rendered: str | None = None
         self._last_refresh_at = 0.0
+        self._pending_renderable: Text | None = None
 
     def set_started_at(self, started_at: float) -> None:
         self._started_at = started_at
@@ -64,9 +63,9 @@ class WorkingStatus:
         self._refresh()
 
     def refresh(self) -> None:
-        if not self._periodic_refresh_allowed():
+        if self._pending_renderable is None:
             return
-        self._refresh()
+        self._apply_pending_refresh()
 
     def update_pending_inputs(self, inputs: tuple[str, ...]) -> None:
         if inputs == self._pending_inputs:
@@ -82,6 +81,7 @@ class WorkingStatus:
             self._live.stop()
         self._live = None
         self._active_view = None
+        self._pending_renderable = None
 
     def cancel(self) -> None:
         if self._live is None:
@@ -89,6 +89,7 @@ class WorkingStatus:
         live = self._live
         self._live = None
         self._active_view = None
+        self._pending_renderable = None
         _cancel_live_without_final_refresh(live)
 
     def _render(self) -> Text:
@@ -120,7 +121,22 @@ class WorkingStatus:
             return
         renderable = self._render()
         if not self._should_refresh(renderable):
+            if renderable.plain != self._last_rendered:
+                self._pending_renderable = renderable
             return
+        self._pending_renderable = None
+        self._record_refresh(renderable)
+        with _console_stdout(self._console):
+            self._live.update(renderable, refresh=False)
+            self._live.refresh()
+
+    def _apply_pending_refresh(self) -> None:
+        renderable = self._pending_renderable
+        if renderable is None or self._live is None or not self._live.is_started:
+            return
+        if not self._should_refresh(renderable):
+            return
+        self._pending_renderable = None
         self._record_refresh(renderable)
         with _console_stdout(self._console):
             self._live.update(renderable, refresh=False)
@@ -151,16 +167,13 @@ class WorkingStatus:
         return text
 
     def _render_title(self) -> Text:
-        indicator = _activity_indicator()
-        elapsed = max(0, int(time.monotonic() - self._started_at))
-        suffix = self._translator.t("ui.working.suffix", elapsed=elapsed)
         return Text.assemble(
-            (indicator, self._accent_style()),
+            ("•", self._accent_style()),
             " ",
             ("LinuxAgent", "bold"),
             (" · ", "dim"),
             (self._working_title(), "bold"),
-            (suffix, "dim"),
+            (self._translator.t("ui.working.stable_suffix"), "dim"),
         )
 
     def _accent_style(self) -> str:
@@ -171,14 +184,11 @@ class WorkingStatus:
     def _working_title(self) -> str:
         return self._translator.t("ui.working.title")
 
-    def _periodic_refresh_allowed(self) -> bool:
-        return not self._pending_inputs
-
     def _should_refresh(self, renderable: Text) -> bool:
         now = time.monotonic()
         rendered = renderable.plain
         elapsed = now - self._last_refresh_at
-        if rendered == self._last_rendered and elapsed < MIN_UNCHANGED_REFRESH_SECONDS:
+        if rendered == self._last_rendered:
             return False
         return elapsed >= MIN_FORCED_REFRESH_SECONDS
 
@@ -197,11 +207,6 @@ def _working_label(message: str, translator: Translator) -> str:
     if not normalized:
         return translator.t("ui.working.title")
     return normalized
-
-
-def _activity_indicator() -> str:
-    tick = int(time.monotonic() * 1000 / ACTIVITY_INTERVAL_MS)
-    return "•" if tick % 2 == 0 else "◦"
 
 
 def _split_activity_message(message: str) -> tuple[str, list[str]]:

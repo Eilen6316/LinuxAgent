@@ -22,6 +22,8 @@ from linuxagent.services import (
     CommandBlockedByPolicyError,
     CommandConfirmationRequiredError,
     CommandService,
+    FallbackBackgroundJobController,
+    JobDaemonUnavailableError,
     JobStatus,
     MonitoringService,
     evaluate_alerts,
@@ -450,6 +452,63 @@ async def test_job_daemon_client_status_reports_unavailable_daemon(tmp_path) -> 
     assert status.running_jobs == 0
     assert status.socket_path == tmp_path / "missing.sock"
     assert "job daemon is not running" in (status.error or "")
+
+
+class _UnavailableBackgroundController(BackgroundJobService):
+    async def start(
+        self,
+        command: str,
+        *,
+        goal: str,
+        timeout_seconds: float | None = None,
+        artifact_paths: tuple[str, ...] = (),
+    ) -> BackgroundJobSnapshot:
+        del command, goal, timeout_seconds, artifact_paths
+        raise JobDaemonUnavailableError("job daemon is not running")
+
+
+async def test_fallback_background_jobs_start_locally_when_daemon_is_unavailable(
+    tmp_path,
+) -> None:
+    fallback = BackgroundJobService(
+        CommandService(_FakeExecutor()),  # type: ignore[arg-type]
+        path=tmp_path / "fallback.json",
+    )
+    controller = FallbackBackgroundJobController(
+        _UnavailableBackgroundController(
+            CommandService(_FakeExecutor()),  # type: ignore[arg-type]
+            path=tmp_path / "primary.json",
+        ),
+        fallback,
+    )
+
+    snapshot = await controller.start("/bin/echo ok", goal="fallback start", timeout_seconds=5)
+
+    assert snapshot.command == "/bin/echo ok"
+    assert fallback.get(snapshot.job_id) is not None
+
+
+def test_fallback_background_jobs_list_deduplicates_shared_store(tmp_path) -> None:
+    path = tmp_path / "jobs.json"
+    snapshot = _background_snapshot("shared-job")
+    path.write_text(
+        json.dumps(
+            {"version": JOBS_STORE_VERSION, "jobs": [snapshot_to_record(snapshot)]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    primary = BackgroundJobService(
+        CommandService(_FakeExecutor()),  # type: ignore[arg-type]
+        path=path,
+    )
+    fallback = BackgroundJobService(
+        CommandService(_FakeExecutor()),  # type: ignore[arg-type]
+        path=path,
+    )
+    controller = FallbackBackgroundJobController(primary, fallback)
+
+    assert [item.job_id for item in controller.list()] == ["shared-job"]
 
 
 async def test_job_daemon_server_dispatches_start_and_stop(tmp_path) -> None:

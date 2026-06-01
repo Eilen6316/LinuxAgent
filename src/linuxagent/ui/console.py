@@ -15,7 +15,7 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 from rich.text import Text
 
 from .. import __version__
@@ -23,7 +23,7 @@ from ..active_view import ActiveTurnView
 from ..execution_display import execution_display_text, execution_summary_text
 from ..i18n import Translator, default_translator
 from ..interfaces import ExecutionResult, UserInterface
-from .approval_selector import ApprovalOption, ApprovalSelector
+from .approval_selector import ApprovalOption
 from .confirmation_renderer import ConfirmationRenderer
 from .diff_renderer import (
     DiffRenderer,
@@ -414,6 +414,7 @@ class ConsoleUI(UserInterface):
             action_coro.close()
             return True
         future.add_done_callback(_consume_threadsafe_ui_result)
+        await asyncio.wrap_future(future)
         return True
 
     async def _run_posted_ui_action(
@@ -563,9 +564,7 @@ def _command_approval_response(
     payload: dict[str, Any], translator: Translator | None = None
 ) -> dict[str, Any]:
     translator = translator or default_translator()
-    decision = ApprovalSelector(
-        _approval_options(payload, translator), translator=translator
-    ).choose()
+    decision = _ask_command_approval(payload, translator)
     if decision == "yes_all":
         return {
             "decision": "yes_all",
@@ -574,6 +573,24 @@ def _command_approval_response(
             },
         }
     return {"decision": "yes" if decision == "yes" else "no"}
+
+
+def _ask_command_approval(payload: dict[str, Any], translator: Translator) -> str:
+    options = _approval_options(payload, translator)
+    choice_map = {option.key: option.decision for option in options}
+    choice_map.update({str(index): option.decision for index, option in enumerate(options, 1)})
+    choice = Prompt.ask(
+        _approval_prompt(options, translator),
+        choices=tuple(choice_map),
+        default="n",
+        show_choices=False,
+    )
+    return choice_map.get(str(choice).lower(), "no")
+
+
+def _approval_prompt(options: tuple[ApprovalOption, ...], translator: Translator) -> str:
+    labels = " / ".join(f"[{option.key}] {option.label}" for option in options)
+    return f"[bold]{translator.t('ui.approval.title')}[/] {labels}"
 
 
 def _approval_options(

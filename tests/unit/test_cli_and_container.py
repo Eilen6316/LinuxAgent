@@ -40,7 +40,11 @@ from linuxagent.runtime_events import (
     worker_group_event,
 )
 from linuxagent.sandbox import BubblewrapSandboxRunner, LocalProcessSandboxRunner, SandboxProfile
-from linuxagent.services import MonitoringAlert
+from linuxagent.services import (
+    BackgroundJobService,
+    FallbackBackgroundJobController,
+    MonitoringAlert,
+)
 from linuxagent.tools import (
     ToolCatalogReport,
     ToolSandboxSpec,
@@ -628,6 +632,25 @@ def test_container_builds_job_daemon_unit() -> None:
     assert "ExecStart=" in unit.content
     assert "job-daemon" in unit.content
     assert "--config config.yaml" in unit.content
+
+
+def test_container_background_jobs_falls_back_when_daemon_is_enabled() -> None:
+    container = Container(AppConfig.model_validate({"telemetry": {"enabled": False}}))
+
+    controller = container.background_jobs()
+
+    assert isinstance(controller, FallbackBackgroundJobController)
+    assert isinstance(container.local_jobs(), BackgroundJobService)
+
+
+def test_container_background_jobs_uses_local_service_when_daemon_is_disabled() -> None:
+    container = Container(
+        AppConfig.model_validate(
+            {"jobs": {"daemon_enabled": False}, "telemetry": {"enabled": False}}
+        )
+    )
+
+    assert container.background_jobs() is container.local_jobs()
 
 
 def test_container_builds_configured_sandbox_runner() -> None:

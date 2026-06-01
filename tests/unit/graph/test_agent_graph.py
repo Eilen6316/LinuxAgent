@@ -28,7 +28,13 @@ from linuxagent.graph.checkpoint import PersistentMemorySaver
 from linuxagent.graph.intent_router import _parse_intent_decision
 from linuxagent.graph.runtime import GraphRuntime
 from linuxagent.i18n import Translator
-from linuxagent.interfaces import LLM_CALL_METADATA_KEY, CommandSource, ExecutionResult
+from linuxagent.interfaces import (
+    LLM_CALL_METADATA_KEY,
+    CommandSource,
+    ExecutionResult,
+    SafetyLevel,
+    SafetyResult,
+)
 from linuxagent.operating_manifest import operating_manifest_context
 from linuxagent.plans import command_plan_json, file_patch_plan_json
 from linuxagent.product_context import product_capability_context
@@ -274,6 +280,33 @@ class _UnavailableBackgroundJobs(_FakeBackgroundJobs):
         raise JobDaemonUnavailableError("job daemon is not running")
 
 
+class _ScriptedExecutor:
+    def __init__(self, results: dict[str, ExecutionResult]) -> None:
+        self._results = results
+
+    async def execute(self, command: str) -> ExecutionResult:
+        return self._results.get(command, ExecutionResult(command, 0, "ok\n", "", 0.01))
+
+    async def execute_interactive(self, command: str) -> ExecutionResult:
+        return await self.execute(command)
+
+    def is_safe(
+        self,
+        command: str,
+        *,
+        source: CommandSource = CommandSource.USER,
+    ) -> SafetyResult:
+        del command
+        return SafetyResult(
+            SafetyLevel.CONFIRM,
+            reason="LLM-generated command",
+            matched_rule="LLM_FIRST_RUN",
+            command_source=source,
+            risk_score=30,
+            capabilities=("llm.generated",),
+        )
+
+
 def _graph(
     tmp_path: Path,
     responses: list[str],
@@ -287,17 +320,20 @@ def _graph(
     checkpointer: Any | None = None,
     security_config: SecurityConfig | None = None,
     telemetry: TelemetryRecorder | None = None,
+    command_service: CommandService | None = None,
     product_context: str = "",
     operating_manifest: str = "",
     provider_factory: Any = _FakeProvider,
 ):
     provider = provider_factory(responses)
-    executor = LinuxCommandExecutor(
-        security_config or SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
-    )
+    if command_service is None:
+        executor = LinuxCommandExecutor(
+            security_config or SecurityConfig(command_timeout=5.0), whitelist=SessionWhitelist()
+        )
+        command_service = CommandService(executor)
     deps = GraphDependencies(
         provider=provider,  # type: ignore[arg-type]
-        command_service=CommandService(executor),
+        command_service=command_service,
         audit=AuditLog(tmp_path / "audit.log"),
         checkpointer=checkpointer,
         cluster_service=cluster_service,
@@ -3781,6 +3817,45 @@ async def test_graph_replans_after_exhausted_failed_plan(tmp_path) -> None:
         "/bin/echo repaired",
     ]
     assert "analysis ok" in str(resumed["messages"][-1].content)
+
+
+async def test_graph_replans_after_nginx_config_error(tmp_path) -> None:
+    failed_command = "nginx -c /tmp/lyx_test/nginx.conf"
+    repair_command = "nginx -t -c /tmp/lyx_test/nginx.conf"
+    graph, provider = _graph(
+        tmp_path,
+        [
+            _multi_command_plan_json([failed_command]),
+            _multi_command_plan_json([repair_command]),
+        ],
+        command_service=CommandService(
+            _ScriptedExecutor(
+                {
+                    failed_command: ExecutionResult(
+                        failed_command,
+                        1,
+                        "",
+                        'nginx: [emerg] "server" directive is not allowed here '
+                        "in /tmp/lyx_test/nginx.conf:1",
+                        0.01,
+                    )
+                }
+            )
+        ),
+    )
+    config = {"configurable": {"thread_id": "nginx-config-repair"}}
+
+    await graph.ainvoke(
+        initial_state("start nginx reverse proxy", source=CommandSource.USER),
+        config=config,
+    )
+    await graph.ainvoke(Command(resume={"decision": "yes", "latency_ms": 1}), config=config)
+    snapshot = await graph.aget_state(config)
+
+    assert snapshot.tasks[0].interrupts[0].value["command"] == repair_command
+    repair_prompt = str(provider.complete_messages[-1][-1].content)
+    assert '"server" directive is not allowed here' in repair_prompt
+    assert failed_command in repair_prompt
 
 
 async def test_graph_retries_invalid_repair_command_plan(tmp_path) -> None:

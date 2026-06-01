@@ -38,6 +38,7 @@ from .services import (
     ChatService,
     ClusterService,
     CommandService,
+    FallbackBackgroundJobController,
     JobDaemonClient,
     JobDaemonServer,
     JobDaemonUnit,
@@ -187,9 +188,12 @@ class Container:
 
     def _build_background_jobs(self) -> BackgroundJobController:
         if self._config.jobs.daemon_enabled:
-            return JobDaemonClient(
-                socket_path=self.job_daemon_socket_path(),
-                store_path=self.job_store_path(),
+            return FallbackBackgroundJobController(
+                JobDaemonClient(
+                    socket_path=self.job_daemon_socket_path(),
+                    store_path=self.job_store_path(),
+                ),
+                self.local_jobs(),
             )
         return self.local_jobs()
 

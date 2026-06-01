@@ -197,6 +197,26 @@ async def test_console_ui_handle_interrupt_pauses_active_prompt(
     await stream.aclose()
 
 
+async def test_console_ui_handle_command_interrupt_renders_panel_once(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120)
+    ui = _english_console_ui(console)
+    renders = 0
+
+    def fake_render(payload: dict[str, Any]) -> None:
+        nonlocal renders
+        assert payload["type"] == "confirm_command"
+        renders += 1
+
+    monkeypatch.setattr(ui._confirmation_renderer, "render", fake_render)
+    monkeypatch.setattr("linuxagent.ui.console.Prompt.ask", lambda *_, **__: "y")
+
+    result = await ui.handle_interrupt({"type": "confirm_command", "command": "ls -la"})
+
+    assert result["decision"] == "yes"
+    assert renders == 1
+
+
 async def test_console_print_user_input_follows_current_stdout(monkeypatch) -> None:
     console = Console(record=True, width=40)
     ui = _english_console_ui(console)
@@ -605,16 +625,13 @@ def test_file_patch_approval_does_not_reexpand_full_diff(monkeypatch) -> None:
 
 
 def test_command_approval_can_allow_all_in_conversation(monkeypatch) -> None:
-    seen_options: list[tuple[str, str]] = []
+    prompts: list[dict[str, Any]] = []
 
-    class FakeSelector:
-        def __init__(self, options: tuple[Any, ...], **_: Any) -> None:
-            seen_options.extend((option.decision, option.label) for option in options)
+    def fake_prompt(message: str, **kwargs: Any) -> str:
+        prompts.append({"message": message, **kwargs})
+        return "a"
 
-        def choose(self) -> str:
-            return "yes_all"
-
-    monkeypatch.setattr("linuxagent.ui.console.ApprovalSelector", FakeSelector)
+    monkeypatch.setattr("linuxagent.ui.console.Prompt.ask", fake_prompt)
     ui = _english_console_ui()
 
     response = ui._approval_response(
@@ -628,32 +645,26 @@ def test_command_approval_can_allow_all_in_conversation(monkeypatch) -> None:
         }
     )
 
+    assert prompts
+    assert "[a] Yes, don't ask again in this conversation/resume" in prompts[0]["message"]
     assert response == {
         "decision": "yes_all",
         "permissions": {
             "allow": ["Bash(cat /etc/os-release)", "Bash(nginx -v)"],
         },
     }
-    assert seen_options == [
-        ("yes", "Yes"),
-        ("yes_all", "Yes, don't ask again in this conversation/resume"),
-        ("no", "No"),
-    ]
 
 
 def test_command_approval_does_not_offer_allow_all_for_destructive_command(
     monkeypatch,
 ) -> None:
-    seen_decisions: list[str] = []
+    prompts: list[dict[str, Any]] = []
 
-    class FakeSelector:
-        def __init__(self, options: tuple[Any, ...], **_: Any) -> None:
-            seen_decisions.extend(option.decision for option in options)
+    def fake_prompt(message: str, **kwargs: Any) -> str:
+        prompts.append({"message": message, **kwargs})
+        return "y"
 
-        def choose(self) -> str:
-            return "yes"
-
-    monkeypatch.setattr("linuxagent.ui.console.ApprovalSelector", FakeSelector)
+    monkeypatch.setattr("linuxagent.ui.console.Prompt.ask", fake_prompt)
     ui = _english_console_ui()
 
     response = ui._approval_response(
@@ -666,22 +677,20 @@ def test_command_approval_does_not_offer_allow_all_for_destructive_command(
     )
 
     assert response == {"decision": "yes"}
-    assert seen_decisions == ["yes", "no"]
+    assert prompts[0]["choices"] == ("y", "n", "1", "2")
+    assert "don't ask again" not in prompts[0]["message"]
 
 
 def test_command_approval_does_not_offer_allow_all_when_policy_forbids_whitelist(
     monkeypatch,
 ) -> None:
-    seen_decisions: list[str] = []
+    prompts: list[dict[str, Any]] = []
 
-    class FakeSelector:
-        def __init__(self, options: tuple[Any, ...], **_: Any) -> None:
-            seen_decisions.extend(option.decision for option in options)
+    def fake_prompt(message: str, **kwargs: Any) -> str:
+        prompts.append({"message": message, **kwargs})
+        return "y"
 
-        def choose(self) -> str:
-            return "yes"
-
-    monkeypatch.setattr("linuxagent.ui.console.ApprovalSelector", FakeSelector)
+    monkeypatch.setattr("linuxagent.ui.console.Prompt.ask", fake_prompt)
     ui = _english_console_ui()
 
     response = ui._approval_response(
@@ -694,7 +703,8 @@ def test_command_approval_does_not_offer_allow_all_when_policy_forbids_whitelist
     )
 
     assert response == {"decision": "yes"}
-    assert seen_decisions == ["yes", "no"]
+    assert prompts[0]["choices"] == ("y", "n", "1", "2")
+    assert "don't ask again" not in prompts[0]["message"]
 
 
 def test_file_patch_approval_applies_all_when_all_files_confirmed(monkeypatch) -> None:
@@ -864,7 +874,7 @@ async def test_console_print_activity_uses_transient_working_status(monkeypatch)
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（0s • esc 中断）" in rendered
+    assert "处理中（esc 中断）" in rendered
     assert "规划命令" in rendered
     assert "esc 中断" in rendered
     assert "╭" not in rendered
@@ -894,7 +904,7 @@ async def test_console_print_activity_keeps_current_working_status(
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（0s • esc 中断）" in rendered
+    assert "处理中（esc 中断）" in rendered
     assert "规划命令" in rendered
     assert "分类意图" not in rendered
     assert "esc 中断" in rendered
@@ -935,7 +945,7 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（0s • esc 中断）" in rendered
+    assert "处理中（esc 中断）" in rendered
     assert "esc 中断" in rendered
     assert "整理文件 workspace/disk_info.sh" in rendered
     assert "read_file · 95 lines" in rendered
@@ -981,7 +991,7 @@ async def test_console_print_activity_shows_parallel_agent_group(monkeypatch) ->
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（0s • esc 中断）" in rendered
+    assert "处理中（esc 中断）" in rendered
     assert "esc 中断" in rendered
     assert "并发处理 只读批次：2/2" in rendered
     assert "agent A: running - 查 systemctl 状态" in rendered
@@ -1011,7 +1021,7 @@ async def test_console_print_activity_preserves_elapsed_after_tool_status_clear(
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（3s • esc 中断）" in rendered
+    assert "处理中（esc 中断）" in rendered
     assert "整理目录 /LinuxAgent" in rendered
     ui.clear_activity()
 
@@ -1034,7 +1044,7 @@ async def test_console_print_activity_keeps_tool_failure_in_working_status(
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（2s • esc 中断）" in rendered
+    assert "处理中（esc 中断）" in rendered
     assert "无法读取文件 /etc/ansible/hosts" in rendered
     assert "denied" in rendered
     ui.clear_activity()
@@ -1073,7 +1083,7 @@ async def test_console_print_active_view_renders_work_items(monkeypatch) -> None
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（0s • esc 中断）" in rendered
+    assert "处理中（esc 中断）" in rendered
     assert "分类意图" in rendered
     assert "读取文件" in rendered
     assert "/LinuxAgent/.work/plan/PlanC.md" in rendered
@@ -1422,7 +1432,7 @@ def test_working_status_does_not_render_prompt_line() -> None:
     status.cancel()
 
 
-def test_working_status_refreshes_multiline_view_timer(monkeypatch) -> None:
+def test_working_status_skips_periodic_refresh_when_content_is_unchanged(monkeypatch) -> None:
     console = Console(record=True, width=120, force_terminal=True)
     status = WorkingStatus(console)
     status.update("LinuxAgent 正在整理目录 /root/.linuxagent\n  list_dir · 17 items")
@@ -1436,15 +1446,14 @@ def test_working_status_refreshes_multiline_view_timer(monkeypatch) -> None:
         refreshes += 1
 
     monkeypatch.setattr(live, "refresh", fake_refresh)
-    status._last_refresh_at -= working_status_module.MIN_UNCHANGED_REFRESH_SECONDS
 
     status.refresh()
 
-    assert refreshes == 1
+    assert refreshes == 0
     status.cancel()
 
 
-def test_working_status_keeps_periodic_refresh_for_single_line(monkeypatch) -> None:
+def test_working_status_flushes_debounced_content_change(monkeypatch) -> None:
     console = Console(record=True, width=120, force_terminal=True)
     status = WorkingStatus(console)
     status.update("LinuxAgent 正在分类意图")
@@ -1458,7 +1467,10 @@ def test_working_status_keeps_periodic_refresh_for_single_line(monkeypatch) -> N
         refreshes += 1
 
     monkeypatch.setattr(live, "refresh", fake_refresh)
-    status._last_refresh_at -= working_status_module.MIN_UNCHANGED_REFRESH_SECONDS
+    status.update("LinuxAgent 正在读取文件 README.md")
+    assert refreshes == 0
+
+    status._last_refresh_at -= working_status_module.MIN_FORCED_REFRESH_SECONDS
 
     status.refresh()
 

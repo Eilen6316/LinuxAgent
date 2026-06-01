@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .background_fallback import FallbackBackgroundJobController
 from .background_jobs import (
     BackgroundJobController,
     BackgroundJobRuntimeStatus,
@@ -47,6 +48,7 @@ __all__ = [
     "CommandRunResult",
     "CommandSafetyError",
     "CommandService",
+    "FallbackBackgroundJobController",
     "JobStatus",
     "JobDaemonClient",
     "JobDaemonError",
