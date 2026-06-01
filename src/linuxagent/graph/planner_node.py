@@ -71,6 +71,7 @@ async def _complete_plan_candidate(
         user_input=user_text,
     )
     mode = "planner_tools" if use_tools else "planner"
+    options = _plan_call_options(context, current_trace_id, mode)
     try:
         if not use_tools or not context.tools:
             return (
@@ -79,7 +80,7 @@ async def _complete_plan_candidate(
                     prompt_messages,
                     telemetry=context.telemetry,
                     trace_id=current_trace_id,
-                    attributes={"node": "parse_intent", "mode": mode},
+                    attributes=options.attributes,
                     prompt_cache_key=context.prompt_cache_key,
                     runtime_observer=context.runtime_observer,
                 )
@@ -88,13 +89,7 @@ async def _complete_plan_candidate(
             context.provider,
             prompt_messages,
             list(context.tools),
-            options=LLMCallOptions(
-                telemetry=context.telemetry,
-                trace_id=current_trace_id,
-                attributes={"node": "parse_intent", "mode": mode},
-                prompt_cache_key=context.prompt_cache_key,
-                runtime_observer=context.runtime_observer,
-            ),
+            options=options,
             tool_runtime_limits=context.tool_runtime_limits,
             tool_observer=tool_event_observer(
                 context.telemetry,
@@ -107,6 +102,20 @@ async def _complete_plan_candidate(
     except ProviderError as exc:
         return "", str(exc)
     return proposed.strip(), None
+
+
+def _plan_call_options(
+    context: PlannerContext,
+    current_trace_id: str,
+    mode: str,
+) -> LLMCallOptions:
+    return LLMCallOptions(
+        telemetry=context.telemetry,
+        trace_id=current_trace_id,
+        attributes={"node": "parse_intent", "mode": mode},
+        prompt_cache_key=context.prompt_cache_key,
+        runtime_observer=context.runtime_observer,
+    )
 
 
 async def _complete_plain_plan_candidate(
