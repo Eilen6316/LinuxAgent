@@ -10,7 +10,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
 from linuxagent.config.models import LanguageCode
-from linuxagent.graph.plan_repair import _retry_plan_or_error
+from linuxagent.graph.plan_repair import _recover_plan_parse_error, _retry_plan_or_error
 from linuxagent.i18n import Translator
 from linuxagent.interfaces import LLMProvider
 from linuxagent.plans import CommandPlanParseError, PlanParseErrorCode, command_plan_json
@@ -18,7 +18,13 @@ from linuxagent.plans import CommandPlanParseError, PlanParseErrorCode, command_
 
 class _Prompt:
     def format_messages(self, **kwargs: Any) -> list[HumanMessage]:
-        return [HumanMessage(content=str(kwargs["user_input"]))]
+        return [
+            HumanMessage(
+                content="\n".join(
+                    str(value) for value in (kwargs.get("product_context"), kwargs["user_input"])
+                )
+            )
+        ]
 
 
 class _RetryProvider(LLMProvider):
@@ -89,3 +95,26 @@ async def test_retry_prompt_tells_model_to_split_shell_style_config_lookup() -> 
     assert "Do not add `2>/dev/null`" in retry_prompt
     assert "put each check in its own CommandPlan.commands entry" in retry_prompt
     assert "printenv LINUXAGENT_CONFIG" in retry_prompt
+
+
+async def test_parse_repair_fallback_uses_direct_answer_context() -> None:
+    provider = _RetryProvider(["fallback answer"])
+    context = SimpleNamespace(
+        provider=provider,
+        planner_prompt=_Prompt(),
+        direct_answer_prompt=_Prompt(),
+        product_context="FULL PRODUCT\nTool catalog summary: heavy-catalog",
+        direct_answer_context=lambda: "DIRECT LIGHTWEIGHT CONTEXT",
+        telemetry=None,
+        prompt_cache_key=None,
+        translator=Translator(LanguageCode.ZH_CN),
+        tools=(),
+    )
+    error = CommandPlanParseError("empty command list", code=PlanParseErrorCode.EMPTY_COMMANDS)
+
+    result = await _recover_plan_parse_error(context, [], "普通问题", "trace-1", error, "")
+
+    assert "fallback answer" in str(result["messages"][-1].content)
+    prompt = str(provider.complete_messages[-1][-1].content)
+    assert "DIRECT LIGHTWEIGHT CONTEXT" in prompt
+    assert "heavy-catalog" not in prompt

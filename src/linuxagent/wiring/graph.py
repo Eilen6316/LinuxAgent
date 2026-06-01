@@ -36,6 +36,7 @@ def build_graph(
     tool_runtime_limits: ToolRuntimeLimits,
     product_context: str,
     router_context: str,
+    direct_context: str,
     operating_manifest: str,
     translator: Translator,
 ) -> AgentGraph:
@@ -56,6 +57,7 @@ def build_graph(
             tool_runtime_limits=tool_runtime_limits,
             product_context=product_context,
             router_context=router_context,
+            direct_context=direct_context,
             operating_manifest=operating_manifest,
             parallel_direct_answer_tasks=config.command_plan.parallel_direct_answer_tasks,
             translator=translator,

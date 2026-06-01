@@ -253,6 +253,7 @@ class Container:
                 tool_runtime_limits=self.tool_runtime_limits(),
                 product_context=self.product_context(),
                 router_context=self.router_context(),
+                direct_context=self.direct_answer_context(),
                 operating_manifest=self.operating_manifest(),
                 translator=self.translator(),
             ),
@@ -412,6 +413,9 @@ class Container:
             "router_context",
             lambda: build_minimal_product_context(self._config, self.tool_catalog()),
         )
+
+    def direct_answer_context(self) -> str:
+        return self.router_context()
 
     def operating_manifest(self) -> str:
         return self._cached("operating_manifest", operating_manifest_context)

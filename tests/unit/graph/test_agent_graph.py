@@ -38,7 +38,10 @@ from linuxagent.interfaces import (
 )
 from linuxagent.operating_manifest import operating_manifest_context
 from linuxagent.plans import command_plan_json, file_patch_plan_json
-from linuxagent.product_context import product_capability_context
+from linuxagent.product_context import (
+    minimal_product_capability_context,
+    product_capability_context,
+)
 from linuxagent.providers.errors import ProviderError
 from linuxagent.services import BackgroundJobSnapshot, ClusterService, CommandService, JobStatus
 from linuxagent.services.job_daemon import JobDaemonUnavailableError
@@ -323,6 +326,8 @@ def _graph(
     telemetry: TelemetryRecorder | None = None,
     command_service: CommandService | None = None,
     product_context: str = "",
+    router_context: str = "",
+    direct_context: str = "",
     operating_manifest: str = "",
     provider_factory: Any = _FakeProvider,
 ):
@@ -345,6 +350,8 @@ def _graph(
         tool_observer=tool_observer,
         runtime_observer=runtime_observer,
         product_context=product_context,
+        router_context=router_context,
+        direct_context=direct_context,
         operating_manifest=operating_manifest,
     )
     return build_agent_graph(deps), provider
@@ -2583,15 +2590,32 @@ async def test_graph_accepts_planner_direct_answer_when_router_misroutes(tmp_pat
     assert snapshot.values["direct_response"] is True
 
 
-async def test_graph_passes_product_context_to_direct_answer_paths(tmp_path) -> None:
+async def test_graph_uses_lightweight_context_for_direct_answer_fallback(tmp_path) -> None:
+    empty_plan = json.dumps(
+        {
+            "goal": "meta question",
+            "commands": [],
+            "risk_summary": "",
+            "preflight_checks": [],
+            "verification_commands": [],
+            "rollback_commands": [],
+            "requires_root": False,
+            "expected_side_effects": [],
+        }
+    )
     answer = "这是 /resume 的说明。"
     graph, provider = _graph(
         tmp_path,
         [
-            _router_response("COMMAND_PLAN"),
-            _direct_answer_plan_json(answer),
+            empty_plan,
+            answer,
         ],
-        product_context=product_capability_context(provider="deepseek", model="deepseek-chat"),
+        product_context="FULL PRODUCT\nTool catalog summary: heavy-catalog",
+        direct_context=minimal_product_capability_context(
+            provider="deepseek",
+            model="deepseek-chat",
+            tool_names=("read_file",),
+        ),
     )
     config = {"configurable": {"thread_id": "resume-meta"}}
 
@@ -2601,12 +2625,14 @@ async def test_graph_passes_product_context_to_direct_answer_paths(tmp_path) -> 
     )
 
     assert answer in str(result["messages"][-1].content)
-    assert len(provider.complete_messages) == 2
+    assert len(provider.complete_messages) == 4
     prompts = [
         "\n".join(str(message.content) for message in call) for call in provider.complete_messages
     ]
-    assert all("LinuxAgent product facts" in prompt for prompt in prompts)
-    assert "/resume 是 LinuxAgent 内置命令" in prompts[-1]
+    assert len(prompts) == 4
+    assert any("Tool catalog summary: heavy-catalog" in prompt for prompt in prompts[:-1])
+    assert "LinuxAgent quick product facts" in prompts[-1]
+    assert "Tool catalog summary: heavy-catalog" not in prompts[-1]
     snapshot = await graph.aget_state(config)
     assert snapshot.values.get("pending_command") is None
     assert snapshot.values["direct_response"] is True
@@ -2620,6 +2646,9 @@ async def test_graph_loads_operating_manifest_only_for_self_manual_direct_answer
         tmp_path,
         [_router_response("DIRECT_ANSWER", answer_context="self_manual"), "manual answer"],
         product_context=product_capability_context(provider="deepseek", model="deepseek-chat"),
+        direct_context=minimal_product_capability_context(
+            provider="deepseek", model="deepseek-chat"
+        ),
         runtime_observer=events.append,
     )
 
@@ -2636,6 +2665,8 @@ async def test_graph_loads_operating_manifest_only_for_self_manual_direct_answer
     assert "# tools" not in prompts[0]
     assert "# safety" not in prompts[0]
     assert "# cache" not in prompts[0]
+    assert "LinuxAgent product facts" in prompts[1]
+    assert "/resume 是 LinuxAgent 内置命令" in prompts[1]
     assert "# tools" in prompts[1]
     assert "# safety" in prompts[1]
     assert "# cache" in prompts[1]
@@ -2801,6 +2832,8 @@ async def test_graph_runs_parallel_direct_answer_tasks(tmp_path) -> None:
             "第一个笑话正文。",
             "第二个笑话正文。",
         ],
+        product_context="FULL PRODUCT\nTool catalog summary: heavy-catalog",
+        direct_context="DIRECT LIGHTWEIGHT CONTEXT",
         runtime_observer=events.append,
     )
     config = {"configurable": {"thread_id": "parallel-direct-answer"}}
@@ -2839,6 +2872,16 @@ async def test_graph_runs_parallel_direct_answer_tasks(tmp_path) -> None:
         "finished",
     ]
     assert _llm_call_count(provider, node="parse_intent", mode="parallel_direct_answer") == 2
+    parallel_prompts = [
+        "\n".join(str(message.content) for message in call)
+        for call, metadata in zip(
+            provider.complete_messages, provider.complete_metadata, strict=True
+        )
+        if _metadata_matches(metadata, node="parse_intent", mode="parallel_direct_answer")
+    ]
+    assert parallel_prompts
+    assert all("DIRECT LIGHTWEIGHT CONTEXT" in prompt for prompt in parallel_prompts)
+    assert all("heavy-catalog" not in prompt for prompt in parallel_prompts)
     plan_events = [event for event in events if event.get("type") == "plan"]
     assert len(plan_events) == 2
     assert [item["status"] for item in plan_events[0]["plan"]] == [

@@ -141,7 +141,7 @@ async def _self_manual_direct_answer_update(
     answer = await _complete_direct_answer(
         replace(
             context,
-            product_context=manual_prompt_context(context.product_context, injection),
+            direct_context=manual_prompt_context(context.product_context, injection),
         ),
         messages,
         user_text,
@@ -352,7 +352,7 @@ async def _no_change_update(
                     current_trace_id,
                     retry_error,
                     context.telemetry,
-                    context.product_context,
+                    context.direct_answer_context(),
                     context.prompt_cache_key,
                     context.runtime_observer,
                 )

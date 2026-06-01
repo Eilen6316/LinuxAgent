@@ -42,6 +42,8 @@ class PlanRepairContext(Protocol):
     @property
     def product_context(self) -> str: ...
 
+    def direct_answer_context(self) -> str: ...
+
     @property
     def telemetry(self) -> TelemetryRecorder | None: ...
 
@@ -79,7 +81,7 @@ async def _recover_plan_parse_error(
             current_trace_id,
             str(error),
             context.telemetry,
-            context.product_context,
+            context.direct_answer_context(),
             context.prompt_cache_key,
             getattr(context, "runtime_observer", None),
         )
@@ -139,7 +141,7 @@ async def _retry_plan_or_error(
             current_trace_id,
             retry_plan,
             context.telemetry,
-            context.product_context,
+            context.direct_answer_context(),
             context.prompt_cache_key,
             getattr(context, "runtime_observer", None),
         )

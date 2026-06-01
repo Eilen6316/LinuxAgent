@@ -257,6 +257,7 @@ def _context(
         tool_runtime_limits=ToolRuntimeLimits(),
         product_context="",
         router_context="",
+        direct_context="",
         prompt_cache_key=None,
         parallel_direct_answer_tasks=8,
     )

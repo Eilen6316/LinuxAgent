@@ -86,12 +86,13 @@ class IntentNodeContext:
     tool_runtime_limits: ToolRuntimeLimits
     product_context: str
     router_context: str
+    direct_context: str
     prompt_cache_key: str | None
     parallel_direct_answer_tasks: int
     translator: Translator = field(default_factory=default_translator)
 
     def direct_answer_context(self) -> str:
-        return self.product_context
+        return self.direct_context
 
 
 def make_parse_intent_node(
@@ -105,6 +106,7 @@ def make_parse_intent_node(
     tool_runtime_limits: ToolRuntimeLimits | None = None,
     product_context: str = "",
     router_context: str = "",
+    direct_context: str = "",
     operating_manifest: str = "",
     prompt_cache_key: str | None = None,
     parallel_direct_answer_tasks: int = 8,
@@ -126,6 +128,7 @@ def make_parse_intent_node(
         tool_runtime_limits=tool_runtime_limits or ToolRuntimeLimits(),
         product_context=product_context,
         router_context=router_context or product_context,
+        direct_context=direct_context or router_context or product_context,
         prompt_cache_key=prompt_cache_key,
         parallel_direct_answer_tasks=parallel_direct_answer_tasks,
         translator=translator or default_translator(),
