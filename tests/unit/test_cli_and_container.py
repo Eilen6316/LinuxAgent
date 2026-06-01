@@ -828,7 +828,9 @@ def test_container_builds_cached_runtime(
     assert captured["tool_observer"] is not None
     assert captured["translator"] is container.translator()
     assert "provider=deepseek" in str(captured["product_context"])
-    assert "/resume 是 LinuxAgent 内置命令" in str(captured["product_context"])
+    assert "LinuxAgent quick product facts" in str(captured["product_context"])
+    assert "Tool catalog summary" not in str(captured["product_context"])
+    assert "profile=system_inspect" not in str(captured["product_context"])
 
 
 def test_container_appends_memory_prompt_context(tmp_path: Path) -> None:
@@ -843,6 +845,25 @@ def test_container_appends_memory_prompt_context(tmp_path: Path) -> None:
 
     context = runtime.product_context()
 
+    assert "Local Memory (advisory)" in context
+    assert "Always check fleet staging first" in context
+
+
+def test_container_appends_memory_prompt_context_to_planner_context(tmp_path: Path) -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "memory": {"enabled": True, "path": tmp_path / "memories"},
+            "telemetry": {"enabled": False, "exporter": "none"},
+        }
+    )
+    runtime = Container(cfg)
+    runtime.memory_store().add_note("Always check fleet staging first", title="Fleet")
+
+    context = runtime.planner_product_context()
+
+    assert "LinuxAgent quick product facts" in context
+    assert "Tool catalog summary" not in context
+    assert "profile=system_inspect" not in context
     assert "Local Memory (advisory)" in context
     assert "Always check fleet staging first" in context
 

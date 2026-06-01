@@ -251,7 +251,7 @@ class Container:
                 tool_observer=self._tool_event_observer(),
                 runtime_observer=self._runtime_event_observer(),
                 tool_runtime_limits=self.tool_runtime_limits(),
-                product_context=self.product_context(),
+                product_context=self.planner_product_context(),
                 router_context=self.router_context(),
                 direct_context=self.direct_answer_context(),
                 operating_manifest=self.operating_manifest(),
@@ -403,6 +403,13 @@ class Container:
 
     def product_context(self) -> str:
         base = build_product_context(self._config, self.tool_catalog())
+        return self._with_memory_prompt_context(base)
+
+    def planner_product_context(self) -> str:
+        base = build_minimal_product_context(self._config, self.tool_catalog())
+        return self._with_memory_prompt_context(base)
+
+    def _with_memory_prompt_context(self, base: str) -> str:
         memory_context = self.memory_store().prompt_context()
         if not memory_context:
             return base
