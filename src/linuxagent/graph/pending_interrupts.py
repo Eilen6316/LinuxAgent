@@ -25,8 +25,12 @@ def publish_pending_interrupt(payload: dict[str, Any]) -> None:
 
 def _publish_pending_interrupt(context: RuntimeTurnContext, payload: dict[str, Any]) -> None:
     key = (context.thread_id, context.turn_id)
+    item = dict(payload)
     with _LOCK:
-        _PENDING[key] = (*_PENDING.get(key, ()), dict(payload))
+        current = _PENDING.get(key, ())
+        if item in current:
+            return
+        _PENDING[key] = (*current, item)
 
 
 def pending_interrupt_payloads(*, thread_id: str, turn_id: str) -> tuple[dict[str, Any], ...]:

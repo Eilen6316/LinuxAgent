@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -395,7 +395,9 @@ def _interrupts_from_result(
     raw_interrupts = result.get("__interrupt__")
     if not isinstance(raw_interrupts, Sequence):
         return ()
-    return tuple(_graph_interrupt(interrupt, turn_id=turn_id) for interrupt in raw_interrupts)
+    return _dedupe_interrupts(
+        _graph_interrupt(interrupt, turn_id=turn_id) for interrupt in raw_interrupts
+    )
 
 
 def _interrupts_from_snapshot(snapshot: Any, *, turn_id: str) -> tuple[GraphInterrupt, ...]:
@@ -403,13 +405,13 @@ def _interrupts_from_snapshot(snapshot: Any, *, turn_id: str) -> tuple[GraphInte
     for task in getattr(snapshot, "tasks", ()):
         for interrupt in getattr(task, "interrupts", ()):
             interrupts.append(_graph_interrupt(interrupt, turn_id=turn_id))
-    return tuple(interrupts)
+    return _dedupe_interrupts(interrupts)
 
 
 def _interrupts_from_payloads(
     payloads: tuple[dict[str, Any], ...], *, turn_id: str
 ) -> tuple[GraphInterrupt, ...]:
-    return tuple(_graph_interrupt(payload, turn_id=turn_id) for payload in payloads)
+    return _dedupe_interrupts(_graph_interrupt(payload, turn_id=turn_id) for payload in payloads)
 
 
 def _graph_interrupt(interrupt: Any, *, turn_id: str) -> GraphInterrupt:
@@ -417,3 +419,8 @@ def _graph_interrupt(interrupt: Any, *, turn_id: str) -> GraphInterrupt:
     legacy_payload = payload if isinstance(payload, dict) else {"value": payload}
     request = pending_request_from_interrupt(legacy_payload, turn_id=turn_id)
     return GraphInterrupt(payload=legacy_payload, request=request)
+
+
+def _dedupe_interrupts(interrupts: Iterable[GraphInterrupt]) -> tuple[GraphInterrupt, ...]:
+    deduped = {repr(interrupt.payload): interrupt for interrupt in interrupts}
+    return tuple(deduped.values())

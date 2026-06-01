@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from langchain_core.tools import BaseTool
 
-from .active_view import ActiveTurnView, apply_event
+from .active_view import ActiveTurnView, ActiveWorkItemView, apply_event
 from .app import LinuxAgent
 from .app.runtime_messages import command_event_key, runtime_event_message, tool_activity_message
 from .app.runtime_telemetry import record_runtime_event
@@ -457,6 +457,8 @@ class Container:
             self._request_pending_input_at_safe_point(event)
             if await self._render_active_runtime_event(event):
                 return
+            if _legacy_plan_for_active_ui(event, self._active_turn_view):
+                return
             message = runtime_event_message(event, self.translator())
             if message:
                 if message != self._last_activity_message:
@@ -554,6 +556,14 @@ def _active_runtime_event(event: dict[str, Any]) -> bool:
     if event.get("kind") in {"turn", "work_item", "request"}:
         return True
     return event.get("kind") == "status" and event.get("phase") == "usage"
+
+
+def _legacy_plan_for_active_ui(event: dict[str, Any], view: ActiveTurnView) -> bool:
+    return event.get("type") == "plan" and any(_active_plan_item(item) for item in view.items)
+
+
+def _active_plan_item(item: ActiveWorkItemView) -> bool:
+    return item.category == "plan" and item.status in {"queued", "running", "completed"}
 
 
 def _event_thread_id(event: dict[str, Any]) -> str | None:

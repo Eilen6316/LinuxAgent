@@ -67,6 +67,32 @@ def test_interrupt_with_pending_payload_uses_explicit_context(
     clear_pending_interrupt_payloads(thread_id="thread", turn_id="turn")
 
 
+def test_interrupt_with_pending_payload_deduplicates_same_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeGraphInterrupt(langgraph.errors.GraphInterrupt):
+        pass
+
+    def fake_interrupt(payload: dict[str, Any]) -> None:
+        del payload
+        raise FakeGraphInterrupt(())
+
+    monkeypatch.setattr(pending_interrupts_module, "interrupt", fake_interrupt)
+    monkeypatch.setattr(langgraph.errors, "GraphInterrupt", FakeGraphInterrupt)
+
+    for _ in range(2):
+        with (
+            turn_context_scope(RuntimeTurnContext(thread_id="thread", turn_id="turn")),
+            pytest.raises(FakeGraphInterrupt),
+        ):
+            interrupt_with_pending_payload({"type": "confirm_command", "command": "ls"})
+
+    assert pending_interrupt_payloads(thread_id="thread", turn_id="turn") == (
+        {"type": "confirm_command", "command": "ls"},
+    )
+    clear_pending_interrupt_payloads(thread_id="thread", turn_id="turn")
+
+
 def test_interrupt_with_pending_payload_does_not_publish_on_resume(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

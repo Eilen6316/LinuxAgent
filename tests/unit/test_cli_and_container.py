@@ -1538,6 +1538,52 @@ async def test_runtime_observer_consolidates_active_history_once(
     assert container._active_turn_view.status == "idle"
 
 
+async def test_runtime_observer_suppresses_legacy_plan_text_for_active_ui(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeUI:
+        def __init__(self) -> None:
+            self.activities: list[str] = []
+            self.views: list[object] = []
+
+        async def print_active_view(self, view: object) -> None:
+            self.views.append(view)
+
+        async def print_activity(self, text: str) -> None:
+            self.activities.append(text)
+
+    ui = _FakeUI()
+    monkeypatch.setattr(container_module.Container, "ui", lambda self: ui)
+    container = Container(AppConfig.model_validate({"telemetry": {"enabled": False}}))
+    observer = container._runtime_event_observer()
+    typed_event = {
+        "schema_version": 1,
+        "kind": "work_item",
+        "phase": "updated",
+        "thread_id": "thread",
+        "turn_id": "turn",
+        "payload": {
+            "item_id": "plan:trace",
+            "category": "plan",
+            "status": "running",
+            "label_key": "runtime.group.task_plan",
+            "plan": [{"step": "收集上下文", "status": "completed"}],
+        },
+    }
+    legacy_event = plan_legacy_event(
+        trace_id="trace",
+        phase=RuntimeEventPhase.UPDATED,
+        explanation="复杂任务",
+        items=(RuntimePlanItem(step="收集上下文", status=PlanItemStatus.COMPLETED),),
+    )
+
+    await observer(typed_event)
+    await observer(legacy_event)
+
+    assert ui.views
+    assert ui.activities == []
+
+
 def test_container_disables_embedding_tools_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -190,7 +190,10 @@ class ConsoleUI(UserInterface):
         self._print_to_current_stdout(Panel(Text(display.text), title=title, border_style=style))
 
     async def print_activity(self, text: str) -> None:
-        if await self._run_on_owner_loop(lambda: self.print_activity(text)):
+        if await self._run_on_owner_loop(
+            lambda: self.print_activity(text),
+            drop_if_stale=True,
+        ):
             return
         if not self._activity_visible:
             return
@@ -395,7 +398,12 @@ class ConsoleUI(UserInterface):
         except RuntimeError:
             return
 
-    async def _run_on_owner_loop(self, action: Callable[[], Coroutine[Any, Any, None]]) -> bool:
+    async def _run_on_owner_loop(
+        self,
+        action: Callable[[], Coroutine[Any, Any, None]],
+        *,
+        drop_if_stale: bool = False,
+    ) -> bool:
         loop = asyncio.get_running_loop()
         owner_loop = self._owner_loop
         if owner_loop is None:
@@ -406,7 +414,11 @@ class ConsoleUI(UserInterface):
         action_coro = action()
         try:
             future: ConcurrentFuture[None] = asyncio.run_coroutine_threadsafe(
-                self._run_posted_ui_action(action_coro, self._activity_generation),
+                self._run_posted_ui_action(
+                    action_coro,
+                    self._activity_generation,
+                    drop_if_stale=drop_if_stale,
+                ),
                 owner_loop,
             )
         except RuntimeError:
@@ -420,8 +432,10 @@ class ConsoleUI(UserInterface):
         self,
         action_coro: Coroutine[Any, Any, None],
         generation: int,
+        *,
+        drop_if_stale: bool,
     ) -> None:
-        if generation != self._activity_generation:
+        if drop_if_stale and generation != self._activity_generation:
             action_coro.close()
             return
         await action_coro

@@ -181,7 +181,6 @@ async def _start_background_command(
         return await _background_error_update(
             context,
             str(exc),
-            skip_command_repair=True,
         )
     result = synthetic_result(command, 0, f"background job started: {snapshot.job_id}", "")
     return await _background_result_update(

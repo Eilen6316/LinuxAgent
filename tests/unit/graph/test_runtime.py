@@ -177,6 +177,22 @@ async def test_run_returns_inline_interrupts_without_app_langgraph_access() -> N
     assert graph.configs[0]["configurable"]["thread_id"] == "thread"
 
 
+async def test_run_deduplicates_duplicate_inline_interrupts() -> None:
+    payload = {"type": "confirm_command", "command": "ls"}
+    graph = _FakeGraph(
+        result={
+            "__interrupt__": [
+                Interrupt(value=payload, resumable=True, ns=["n"]),
+                Interrupt(value=payload, resumable=True, ns=["n"]),
+            ]
+        }
+    )
+
+    result = await GraphRuntime(graph).run({"messages": []}, thread_id="thread")  # type: ignore[arg-type]
+
+    assert [item.payload for item in result.interrupts] == [payload]
+
+
 async def test_run_falls_back_to_checkpoint_interrupts() -> None:
     graph = _FakeGraph(
         result={},

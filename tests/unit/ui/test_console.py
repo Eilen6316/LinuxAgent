@@ -805,6 +805,40 @@ async def test_console_activity_from_worker_loop_runs_on_owner_loop() -> None:
     ui.clear_activity()
 
 
+async def test_console_result_from_worker_loop_survives_activity_generation_change() -> None:
+    console = Console(record=True, width=120)
+    ui = _english_console_ui(console)
+    await ui.print_activity("owner-ready")
+
+    done = threading.Event()
+    worker_error: list[BaseException] = []
+
+    async def worker_call() -> None:
+        await ui.print_execution_result(
+            ExecutionResult("/bin/false", 1, "", "failed\n", 0.1),
+            include_output=False,
+        )
+
+    def run_worker() -> None:
+        try:
+            asyncio.run(worker_call())
+        except BaseException as exc:
+            worker_error.append(exc)
+        finally:
+            done.set()
+
+    threading.Thread(target=run_worker, daemon=True).start()
+    ui.clear_activity()
+    assert await _wait_for_event(done, deadline_seconds=1.0)
+    if worker_error:
+        raise worker_error[0]
+
+    rendered = console.export_text()
+    assert "Command result · exit 1" in rendered
+    assert "/bin/false" in rendered
+    assert "failed" in rendered
+
+
 async def test_console_activity_from_worker_loop_does_not_block_owner_loop() -> None:
     console = Console(record=True, width=120)
     ui = ConsoleUI(console=console)
