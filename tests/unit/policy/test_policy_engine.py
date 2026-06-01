@@ -160,6 +160,14 @@ def test_inline_interpreters_keep_lolbin_risk_without_interactive_rule(
     assert decision.can_whitelist is False
 
 
+@pytest.mark.parametrize("command", ["bash -n script.sh", "sh -n script.sh", "zsh -n script.sh"])
+def test_shell_syntax_checks_are_noninteractive(command: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert "INTERACTIVE" not in decision.matched_rules
+    assert "terminal.interactive" not in decision.capabilities
+
+
 def test_policy_evaluates_subshell_children() -> None:
     decision = DEFAULT_POLICY_ENGINE.evaluate("(systemctl restart nginx)")
 

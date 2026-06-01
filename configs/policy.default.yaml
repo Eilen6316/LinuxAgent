@@ -33,11 +33,11 @@ noninteractive_command_flags:
   - command: python3
     flags: [-c]
   - command: bash
-    flags: [-c]
+    flags: [-c, -n]
   - command: sh
-    flags: [-c]
+    flags: [-c, -n]
   - command: zsh
-    flags: [-c]
+    flags: [-c, -n]
   - command: perl
     flags: [-e]
   - command: ruby

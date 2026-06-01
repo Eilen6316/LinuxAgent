@@ -1481,23 +1481,22 @@ async def test_graph_confirms_and_applies_file_patch_plan(tmp_path) -> None:
     assert "patch applied" in str(resumed["messages"][-1].content)
 
 
-async def test_graph_runs_file_patch_verification_as_background_job(tmp_path) -> None:
-    target = tmp_path / "cpu_freq_monitor.py"
+async def test_graph_runs_file_patch_verification_in_foreground(tmp_path) -> None:
+    target = tmp_path / "capability_test.sh"
     payload = json.loads(
         file_patch_plan_json(
             str(target),
-            "#!/usr/bin/env python3\nprint('monitor')\n",
-            goal="Create CPU monitor",
+            "#!/usr/bin/env bash\necho capability\n",
+            goal="Create capability test script",
         )
     )
-    payload["verification_commands"] = [f"python3 {target}"]
-    jobs = _FakeBackgroundJobs()
+    payload["verification_commands"] = [f"bash -n {target}"]
     graph, _provider = _graph(
         tmp_path,
-        [json.dumps(payload)],
-        background_jobs=jobs,
+        [json.dumps(payload), "verification complete"],
+        background_jobs=_UnavailableBackgroundJobs(),
     )
-    config = {"configurable": {"thread_id": "file-patch-verify-background"}}
+    config = {"configurable": {"thread_id": "file-patch-verify-foreground"}}
 
     await graph.ainvoke(
         initial_state("monitor cpu for five minutes and plot it", source=CommandSource.USER),
@@ -1510,16 +1509,16 @@ async def test_graph_runs_file_patch_verification_as_background_job(tmp_path) ->
     second_interrupt = (await graph.aget_state(config)).tasks[0].interrupts[0].value
 
     assert second_interrupt["type"] == "confirm_command"
-    assert second_interrupt["command"] == f"python3 {target}"
+    assert second_interrupt["command"] == f"bash -n {target}"
     result = await graph.ainvoke(
         Command(resume={"decision": "yes", "latency_ms": 1}),
         config=config,
     )
 
     assert target.exists()
-    assert jobs.started[0]["command"] == f"python3 {target}"
-    assert jobs.started[0]["goal"] == "Verify file patch: Create CPU monitor"
-    assert "后台任务已启动：job-test" in str(result["messages"][-1].content)
+    assert result["plan_results"][0].command == f"bash -n {target}"
+    assert result["plan_results"][0].exit_code == 0
+    assert "verification complete" in str(result["messages"][-1].content)
 
 
 async def test_graph_applies_only_selected_file_patch_files(tmp_path) -> None:

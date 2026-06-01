@@ -47,7 +47,7 @@ def _verification_command_plan(plan: FilePatchPlan) -> CommandPlan:
                 purpose=f"Run file patch verification: {command}",
                 read_only=False,
                 target_hosts=(),
-                background=True,
+                background=False,
                 timeout_seconds=None,
             )
             for command in plan.verification_commands
