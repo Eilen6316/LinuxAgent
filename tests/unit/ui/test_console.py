@@ -677,7 +677,7 @@ def test_command_approval_does_not_offer_allow_all_for_destructive_command(
     )
 
     assert response == {"decision": "yes"}
-    assert prompts[0]["choices"] == ("y", "n", "1", "2")
+    assert prompts[0]["choices"] == ["y", "n", "1", "2"]
     assert "don't ask again" not in prompts[0]["message"]
 
 
@@ -703,7 +703,7 @@ def test_command_approval_does_not_offer_allow_all_when_policy_forbids_whitelist
     )
 
     assert response == {"decision": "yes"}
-    assert prompts[0]["choices"] == ("y", "n", "1", "2")
+    assert prompts[0]["choices"] == ["y", "n", "1", "2"]
     assert "don't ask again" not in prompts[0]["message"]
 
 
@@ -1288,6 +1288,32 @@ async def test_console_token_only_active_view_updates_prompt_without_status_bloc
 
     assert ui._working_status is None
     assert any("↓ 13.7k tokens" in fragment for _style, fragment in ui._build_prompt())
+
+
+async def test_console_token_only_running_view_preserves_working_status(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_activity("LinuxAgent 正在分类意图")
+    assert ui._working_status is not None
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread",
+            turn_id="turn",
+            status="running",
+            token_usage=ActiveTokenUsageView(
+                input_tokens=2500,
+                output_tokens=300,
+                total_tokens=2800,
+            ),
+        )
+    )
+
+    assert ui._working_status is not None
+    assert any("↓ 2.8k tokens" in fragment for _style, fragment in ui._build_prompt())
+    ui.clear_activity()
 
 
 async def test_console_print_active_view_clears_on_terminal_status(monkeypatch) -> None:

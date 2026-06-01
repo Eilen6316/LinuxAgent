@@ -204,11 +204,10 @@ class ConsoleUI(UserInterface):
         if await self._run_on_owner_loop(lambda: self.print_active_view(view)):
             return
         self._prompt_session.set_token_usage(view.token_usage)
-        if _token_only_active_view(view):
-            self._clear_activity(reset_timer=False)
-            return
         if _terminal_active_view(view):
             self._clear_activity(reset_timer=False)
+            return
+        if _token_only_active_view(view):
             return
         self._render_active_view(view)
 
