@@ -14,10 +14,14 @@ from .policy.display import policy_display_reason
 from .security import redact_text
 
 _CODE_FENCE_RE = re.compile(r"```(?P<lang>[^\n]*)\n(?P<body>.*?)```", re.DOTALL)
-_SHELL_FENCE_LANGS = frozenset({"", "bash", "console", "sh", "shell", "text", "zsh"})
+_EXPLICIT_SHELL_FENCE_LANGS = frozenset({"bash", "sh", "shell", "zsh"})
+_AMBIGUOUS_COMMAND_FENCE_LANGS = frozenset({"", "console", "text"})
 _INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 _DANGEROUS_LINE_RE = re.compile(
     r"(?im)^\s*(?:\$|#|sudo\s+)?(?:rm|mkfs(?:\.[\w-]+)?|dd|shred|curl|wget|cat)\b[^\n]*$"
+)
+_INCOMPLETE_SHELL_TAIL_TOKENS = frozenset(
+    {"|", "||", "&", "&&", ";", "<", "<<", "<<<", ">", ">>", ">|", "<>", "&>", "&>>"}
 )
 _PROMPT_INJECTION_LINE_RE = re.compile(
     r"(?im)^.*\b("
@@ -129,45 +133,63 @@ def _candidate_commands(text: str) -> tuple[str, ...]:
 def _commands_from_code_fences(text: str) -> list[str]:
     commands: list[str] = []
     for match in _CODE_FENCE_RE.finditer(text):
-        if not _is_shell_fence(match.group("lang")):
-            continue
-        for line in match.group("body").splitlines():
-            command = _shell_command_line(line)
-            if command is not None:
-                commands.append(command)
+        language = _fence_language(match.group("lang"))
+        body_lines = match.group("body").splitlines()
+        if language in _EXPLICIT_SHELL_FENCE_LANGS:
+            commands.extend(_commands_from_shell_lines(body_lines, allow_incomplete=True))
+        elif language in _AMBIGUOUS_COMMAND_FENCE_LANGS:
+            commands.extend(_commands_from_ambiguous_lines(body_lines))
     return commands
 
 
-def _is_shell_fence(language: str) -> bool:
-    normalized = language.strip().lower()
-    return normalized in _SHELL_FENCE_LANGS
+def _fence_language(language: str) -> str:
+    return language.strip().lower()
 
 
-def _without_non_shell_fences(text: str) -> str:
-    return _CODE_FENCE_RE.sub(
-        lambda match: match.group(0) if _is_shell_fence(match.group("lang")) else "",
-        text,
-    )
+def _without_code_fences(text: str) -> str:
+    return _CODE_FENCE_RE.sub("", text)
 
 
 def _commands_from_inline_code(text: str) -> list[str]:
     return [
         command
         for match in _INLINE_CODE_RE.finditer(text)
-        if (command := _shell_command_line(match.group(1))) is not None
+        if (command := _shell_command_line(match.group(1), allow_incomplete=False)) is not None
     ]
 
 
 def _commands_from_dangerous_lines(text: str) -> list[str]:
-    scan_text = _without_non_shell_fences(text)
+    scan_text = _without_code_fences(text)
     return [
         command
         for match in _DANGEROUS_LINE_RE.finditer(scan_text)
-        if (command := _shell_command_line(match.group(0))) is not None
+        if (command := _shell_command_line(match.group(0), allow_incomplete=False)) is not None
     ]
 
 
-def _shell_command_line(line: str) -> str | None:
+def _commands_from_shell_lines(lines: list[str], *, allow_incomplete: bool) -> list[str]:
+    return [
+        command
+        for line in lines
+        if (command := _shell_command_line(line, allow_incomplete=allow_incomplete)) is not None
+    ]
+
+
+def _commands_from_ambiguous_lines(lines: list[str]) -> list[str]:
+    commands: list[str] = []
+    for line in lines:
+        if line.lstrip().startswith(("$ ", "# ")):
+            command = _shell_command_line(line, allow_incomplete=True)
+        elif _DANGEROUS_LINE_RE.match(line):
+            command = _shell_command_line(line, allow_incomplete=False)
+        else:
+            command = None
+        if command is not None:
+            commands.append(command)
+    return commands
+
+
+def _shell_command_line(line: str, *, allow_incomplete: bool) -> str | None:
     command = _normalize_command(line)
     if not command:
         return None
@@ -180,6 +202,8 @@ def _shell_command_line(line: str) -> str | None:
     except ValueError:
         return None
     if not tokens:
+        return None
+    if not allow_incomplete and tokens[-1] in _INCOMPLETE_SHELL_TAIL_TOKENS:
         return None
     if not _looks_like_command(tokens):
         return None

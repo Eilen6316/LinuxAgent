@@ -58,3 +58,48 @@ def test_guard_response_text_allows_capability_descriptions_with_symbols() -> No
     )
 
     assert result.changed is False
+
+
+def test_guard_response_text_allows_chinese_capability_reply_with_markdown_symbols() -> None:
+    result = guard_response_text(
+        "\n".join(
+            (
+                "我可以做这些：",
+                "- 系统巡检 > 汇总 CPU、内存、磁盘和服务状态",
+                "- 故障排查 > 根据报错给出下一步修复建议",
+                "- 文件处理 > 帮你创建、修改、解释脚本",
+            )
+        )
+    )
+
+    assert result.changed is False
+
+
+def test_guard_response_text_allows_text_fence_capability_overview() -> None:
+    result = guard_response_text(
+        "\n".join(
+            (
+                "能力概览：",
+                "```text",
+                "LinuxAgent > 运维助手",
+                "检查 > 判断 > 建议 > HITL确认 > 执行",
+                "```",
+            )
+        )
+    )
+
+    assert result.changed is False
+
+
+def test_guard_response_text_allows_incomplete_redirect_as_prose_example() -> None:
+    result = guard_response_text("说明概念时可以提到 cat > 这种未完成的重定向写法。")
+
+    assert result.changed is False
+
+
+def test_guard_response_text_blocks_incomplete_redirect_in_explicit_shell_fence() -> None:
+    result = guard_response_text("Run this:\n```bash\ncat >\n```")
+
+    assert result.changed is True
+    assert result.blocked_reason is not None
+    assert "violates the command safety policy" in result.text
