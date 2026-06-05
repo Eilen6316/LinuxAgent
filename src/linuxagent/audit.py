@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import threading
 import uuid
 from collections.abc import Iterable
@@ -59,6 +60,8 @@ class AuditLog:
             "event": "confirm_begin",
             "audit_id": audit_id,
             "command": command,
+            "command_tokens": list(_command_tokens(command)),
+            "command_head": _command_head(command),
             "safety_level": safety_level,
             "matched_rule": matched_rule,
             "command_source": command_source,
@@ -251,6 +254,20 @@ def _last_hash(path: Path) -> str:
     with path.open("r+", encoding="utf-8") as handle:
         _lock_audit_file(handle)
         return _last_hash_from_handle(handle)
+
+
+def _command_tokens(command: str | None) -> tuple[str, ...]:
+    if command is None:
+        return ()
+    try:
+        return tuple(shlex.split(command))
+    except ValueError:
+        return ()
+
+
+def _command_head(command: str | None) -> str | None:
+    tokens = _command_tokens(command)
+    return tokens[0] if tokens else None
 
 
 def _last_hash_from_handle(handle: Any) -> str:

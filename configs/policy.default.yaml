@@ -97,6 +97,22 @@ rules:
       command: [rm, rmdir, shred, dd, mkfs, wipefs]
       args_regex: ['^/+$']
 
+  - id: environment.loader_injection
+    legacy_rule: DESTRUCTIVE
+    level: CONFIRM
+    risk_score: 75
+    capabilities: [environment.mutate]
+    reason: environment loader or clean-environment wrapper can alter execution semantics
+    never_whitelist: true
+    match:
+      command: [env]
+      args_regex:
+        - '^LD_PRELOAD='
+        - '^LD_LIBRARY_PATH='
+        - '^-i$'
+        - '^--ignore-environment$'
+        - '^--ignore-environment=.*'
+
   - id: filesystem.sensitive_path
     legacy_rule: SENSITIVE_PATH
     level: BLOCK

@@ -35,6 +35,8 @@ def test_redact_text_redacts_sql_identified_by_secret() -> None:
 def test_redact_record_keeps_command_raw_but_redacts_sensitive_fields() -> None:
     record = {
         "command": "curl -H 'Authorization: Bearer raw-command-token' https://example.invalid",
+        "command_tokens": ["curl", "-H", "Authorization: Bearer raw-command-token"],
+        "command_head": "curl",
         "headers": {"Authorization": "Bearer ghp_abcdefghijklmnopqrstuvwxyz"},
         "stderr": "token=sk-prodsecret1234567890",
     }
@@ -42,5 +44,7 @@ def test_redact_record_keeps_command_raw_but_redacts_sensitive_fields() -> None:
     redacted = redact_record(record)
 
     assert redacted["command"] == record["command"]
+    assert redacted["command_tokens"] == record["command_tokens"]
+    assert redacted["command_head"] == record["command_head"]
     assert redacted["headers"]["Authorization"] == REDACTED
     assert "sk-prodsecret" not in redacted["stderr"]

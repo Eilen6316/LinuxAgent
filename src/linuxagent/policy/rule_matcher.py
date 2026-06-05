@@ -11,6 +11,7 @@ from .argv_match import CompiledArgvPattern
 from .facts import CommandFacts
 from .interactive import is_interactive_tokens
 from .models import PolicyMatch, PolicyRule
+from .tool_grammar import candidate_subcommands
 
 
 class CompiledRule:
@@ -53,11 +54,19 @@ class CompiledRule:
             return facts.source is CommandSource.LLM
         return bool(
             match.interactive
-            and is_interactive_tokens(
-                facts.tokens,
-                interactive_commands=self._interactive_commands,
-                noninteractive_flags=self._noninteractive_flags,
-                noninteractive_command_flags=self._noninteractive_command_flags,
+            and (
+                is_interactive_tokens(
+                    facts.tokens,
+                    interactive_commands=self._interactive_commands,
+                    noninteractive_flags=self._noninteractive_flags,
+                    noninteractive_command_flags=self._noninteractive_command_flags,
+                )
+                or is_interactive_tokens(
+                    facts.effective_tokens,
+                    interactive_commands=self._interactive_commands,
+                    noninteractive_flags=self._noninteractive_flags,
+                    noninteractive_command_flags=self._noninteractive_command_flags,
+                )
             )
         )
 
@@ -65,21 +74,24 @@ class CompiledRule:
         match = self.rule.match
         if self._argv and not any(pattern.matches(facts.tokens) for pattern in self._argv):
             return False
-        if match.command and facts.head not in match.command:
+        if match.command and facts.effective_head not in match.command:
             return False
-        if match.subcommand_any and (not facts.args or facts.args[0] not in match.subcommand_any):
-            return False
-        if match.args_any and not any(arg in match.args_any for arg in facts.args):
-            return False
-        if self._args_regex and not any(
-            pattern.match(arg) for arg in facts.args for pattern in self._args_regex
+        if match.subcommand_any and not any(
+            arg in match.subcommand_any
+            for arg in candidate_subcommands(facts.effective_head, facts.effective_args)
         ):
             return False
-        if match.path_any and not any(arg in match.path_any for arg in facts.args):
+        if match.args_any and not any(arg in match.args_any for arg in facts.effective_args):
+            return False
+        if self._args_regex and not any(
+            pattern.match(arg) for arg in facts.effective_args for pattern in self._args_regex
+        ):
+            return False
+        if match.path_any and not any(arg in match.path_any for arg in facts.effective_args):
             return False
         return not self._path_regex or any(
             pattern.match(path)
-            for arg in facts.args
+            for arg in facts.effective_args
             for path in path_match_candidates(arg)
             for pattern in self._path_regex
         )

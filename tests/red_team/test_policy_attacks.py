@@ -35,6 +35,10 @@ def _decision_level(command: str) -> SafetyLevel:
     return DEFAULT_POLICY_ENGINE.evaluate(command, source=CommandSource.USER).level
 
 
+def _decision(command: str):
+    return DEFAULT_POLICY_ENGINE.evaluate(command, source=CommandSource.USER)
+
+
 def _meets_minimum(actual: SafetyLevel, expected: SafetyLevel) -> bool:
     return _LEVEL_RANK[actual] >= _LEVEL_RANK[expected]
 
@@ -216,6 +220,112 @@ def test_attack_case_minimum_policy_level(case: AttackCase) -> None:
         f"{case.command!r} was {actual.name}, expected at least {case.minimum_level.name}: "
         f"{case.rationale}"
     )
+
+
+DESTRUCTIVE_EQUIVALENCE_CASES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "systemctl stop nginx",
+        (
+            "env systemctl stop nginx",
+            "nice -n 10 systemctl stop nginx",
+            "timeout 5 systemctl stop nginx",
+            "nohup systemctl stop nginx",
+            "setsid systemctl stop nginx",
+            "FOO=bar systemctl stop nginx",
+            "sudo systemctl stop nginx",
+            "/usr/bin/systemctl stop nginx",
+            "systemctl --no-block stop nginx",
+        ),
+    ),
+    (
+        "kubectl delete deployment web",
+        (
+            "env kubectl delete deployment web",
+            "nice -n 10 kubectl delete deployment web",
+            "timeout 5 kubectl delete deployment web",
+            "nohup kubectl delete deployment web",
+            "setsid kubectl delete deployment web",
+            "FOO=bar kubectl delete deployment web",
+            "sudo kubectl delete deployment web",
+            "/usr/bin/kubectl delete deployment web",
+            "kubectl -n prod delete deployment web",
+        ),
+    ),
+    (
+        "apt-get remove openssh-server",
+        (
+            "env apt-get remove openssh-server",
+            "nice -n 10 apt-get remove openssh-server",
+            "timeout 5 apt-get remove openssh-server",
+            "nohup apt-get remove openssh-server",
+            "setsid apt-get remove openssh-server",
+            "FOO=bar apt-get remove openssh-server",
+            "sudo apt-get remove openssh-server",
+            "/usr/bin/apt-get remove openssh-server",
+            "apt-get -y remove openssh-server",
+        ),
+    ),
+    (
+        "userdel alice",
+        (
+            "env userdel alice",
+            "nice -n 10 userdel alice",
+            "timeout 5 userdel alice",
+            "nohup userdel alice",
+            "setsid userdel alice",
+            "FOO=bar userdel alice",
+            "sudo userdel alice",
+            "/usr/bin/userdel alice",
+        ),
+    ),
+    (
+        "docker rm -f c1",
+        (
+            "env docker rm -f c1",
+            "nice -n 10 docker rm -f c1",
+            "timeout 5 docker rm -f c1",
+            "nohup docker rm -f c1",
+            "setsid docker rm -f c1",
+            "FOO=bar docker rm -f c1",
+            "sudo docker rm -f c1",
+            "/usr/bin/docker rm -f c1",
+            "docker --host tcp://127.0.0.1:2375 rm -f c1",
+        ),
+    ),
+    (
+        "iptables -F",
+        (
+            "env iptables -F",
+            "nice -n 10 iptables -F",
+            "timeout 5 iptables -F",
+            "nohup iptables -F",
+            "setsid iptables -F",
+            "FOO=bar iptables -F",
+            "sudo iptables -F",
+            "/usr/bin/iptables -F",
+        ),
+    ),
+)
+
+
+@pytest.mark.red_team
+@pytest.mark.parametrize(
+    ("base_command", "transformed_commands"),
+    DESTRUCTIVE_EQUIVALENCE_CASES,
+    ids=[case[0] for case in DESTRUCTIVE_EQUIVALENCE_CASES],
+)
+def test_destructive_equivalent_rewrites_are_not_downgraded(
+    base_command: str,
+    transformed_commands: tuple[str, ...],
+) -> None:
+    baseline = _decision(base_command)
+    assert baseline.level is not SafetyLevel.SAFE, base_command
+    assert baseline.can_whitelist is False, base_command
+
+    for command in transformed_commands:
+        decision = _decision(command)
+        assert _meets_minimum(decision.level, baseline.level), command
+        assert decision.can_whitelist is False, command
 
 
 @pytest.mark.red_team

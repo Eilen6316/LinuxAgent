@@ -334,6 +334,89 @@ def test_argv_prefix_policy_distinguishes_git_shapes() -> None:
     assert decision.can_whitelist is False
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl -n prod delete deployment web",
+        "kubectl --namespace=prod delete deployment web",
+        "apt-get -y remove openssh-server",
+        "docker --host tcp://127.0.0.1:2375 rm -f c1",
+        "systemctl --no-block stop nginx",
+        "pacman -R nginx",
+    ],
+)
+def test_policy_finds_destructive_subcommands_after_global_options(command: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert "DESTRUCTIVE" in decision.matched_rules
+    assert decision.can_whitelist is False
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "env systemctl stop nginx",
+        "nice -n 10 systemctl stop nginx",
+        "timeout 5 systemctl stop nginx",
+        "nohup systemctl stop nginx",
+        "setsid systemctl stop nginx",
+        "FOO=bar /usr/bin/systemctl stop nginx",
+    ],
+)
+def test_policy_uses_effective_command_view_for_wrapper_bypasses(command: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert "service.mutate" in decision.capabilities
+    assert "DESTRUCTIVE" in decision.matched_rules
+    assert decision.can_whitelist is False
+
+
+def test_interactive_detection_uses_effective_command_view() -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate("env vim /tmp/file")
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert "INTERACTIVE" in decision.matched_rules
+    assert "terminal.interactive" in decision.capabilities
+
+
+def test_wrapper_self_risk_is_merged_with_effective_command_risk() -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate("env LD_PRELOAD=/tmp/lib.so systemctl stop nginx")
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert "environment.mutate" in decision.capabilities
+    assert "service.mutate" in decision.capabilities
+    assert "DESTRUCTIVE" in decision.matched_rules
+    assert decision.can_whitelist is False
+
+
+@pytest.mark.parametrize(
+    ("command", "capability"),
+    [
+        ("sudo systemctl stop nginx", "service.mutate"),
+        ("sudo /usr/bin/userdel alice", "identity.mutate"),
+        ("sudo -u deploy kubectl -n prod delete deployment web", "kubernetes.mutate"),
+        ("sudo env systemctl stop nginx", "service.mutate"),
+    ],
+)
+def test_sudo_evaluation_merges_inner_command_risk(command: str, capability: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert "privilege.sudo" in decision.capabilities
+    assert capability in decision.capabilities
+    assert decision.can_whitelist is False
+
+
+def test_sudo_without_inner_command_does_not_recurse() -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate("sudo -i")
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert decision.capabilities == ("privilege.sudo",)
+    assert decision.can_whitelist is False
+
+
 def test_argv_exact_policy_rejects_argument_insertion() -> None:
     engine = _single_rule_engine(
         PolicyMatch(argv=(PolicyArgvPattern(prefix=("git", "status"), exact=True),))
@@ -358,6 +441,15 @@ def test_argv_token_policy_matches_position_without_generalizing() -> None:
     assert engine.evaluate("systemctl status nginx").matched_rule == "CUSTOM_ARGV"
     assert engine.evaluate("systemctl status ssh").level is SafetyLevel.SAFE
     assert engine.evaluate("systemctl stop nginx").level is SafetyLevel.SAFE
+
+
+def test_argv_policy_keeps_original_token_positions() -> None:
+    engine = _single_rule_engine(
+        PolicyMatch(argv=(PolicyArgvPattern(prefix=("/usr/bin/systemctl", "status")),))
+    )
+
+    assert engine.evaluate("/usr/bin/systemctl status nginx").matched_rule == "CUSTOM_ARGV"
+    assert engine.evaluate("systemctl status nginx").level is SafetyLevel.SAFE
 
 
 @pytest.mark.parametrize("command", ["journalctl --unit nginx", "journalctl --unit=nginx"])

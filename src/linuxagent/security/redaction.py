@@ -42,6 +42,7 @@ _TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
     re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"),
 )
+_RAW_COMMAND_KEYS: frozenset[str] = frozenset({"command", "command_tokens", "command_head"})
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,8 @@ def _redact_value(value: Any, *, key: str | None) -> tuple[Any, int]:
             total += count
         return output_record, total
     if isinstance(value, list):
+        if key in _RAW_COMMAND_KEYS:
+            return value, 0
         total = 0
         output_list: list[Any] = []
         for item in value:
@@ -92,7 +95,7 @@ def _redact_value(value: Any, *, key: str | None) -> tuple[Any, int]:
             total += count
         return output_list, total
     if isinstance(value, str):
-        if key == "command":
+        if key in _RAW_COMMAND_KEYS:
             return value, 0
         result = redact_text(value)
         return result.text, result.count

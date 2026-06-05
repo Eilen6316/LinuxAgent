@@ -118,6 +118,8 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
         "command_executed",
     ]
     assert lines[0]["batch_hosts"] == ["a", "b"]
+    assert lines[0]["command_tokens"] == ["ls", "-la"]
+    assert lines[0]["command_head"] == "ls"
     assert lines[0]["matched_rule"] == "LLM_FIRST_RUN"
     assert lines[0]["matched_rules"] == ["LLM_FIRST_RUN", "LOLBIN_PYTHON3_EXEC"]
     assert lines[0]["capabilities"] == ["llm.generated", "interpreter.escape"]
@@ -137,6 +139,23 @@ async def test_audit_log_creates_jsonl_with_0600(tmp_path) -> None:
     assert all(line["trace_id"] is None for line in lines)
     assert lines[0]["prev_hash"] == "0" * 64
     assert verify_audit_log(path).valid is True
+
+
+async def test_audit_confirm_begin_preserves_original_command_shape(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+
+    await audit.begin(
+        command="env /usr/bin/systemctl stop nginx",
+        safety_level="CONFIRM",
+        matched_rule="DESTRUCTIVE",
+        command_source="user",
+    )
+
+    record = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["command"] == "env /usr/bin/systemctl stop nginx"
+    assert record["command_tokens"] == ["env", "/usr/bin/systemctl", "stop", "nginx"]
+    assert record["command_head"] == "env"
 
 
 def test_audit_sink_receives_redacted_hash_chained_record(tmp_path) -> None:
@@ -259,6 +278,8 @@ async def test_audit_log_redacts_sensitive_fields_but_keeps_command_raw(tmp_path
         {
             "event": "manual",
             "command": "curl -H 'Authorization: Bearer raw-command-token' https://example.invalid",
+            "command_tokens": ["curl", "-H", "Authorization: Bearer raw-command-token"],
+            "command_head": "curl",
             "api_key": "sk-prodsecret1234567890",
             "stderr": "password=hunter2",
         }
@@ -269,6 +290,8 @@ async def test_audit_log_redacts_sensitive_fields_but_keeps_command_raw(tmp_path
         line["command"]
         == "curl -H 'Authorization: Bearer raw-command-token' https://example.invalid"
     )
+    assert line["command_tokens"] == ["curl", "-H", "Authorization: Bearer raw-command-token"]
+    assert line["command_head"] == "curl"
     assert line["api_key"] == "***redacted***"
     assert "hunter2" not in line["stderr"]
 
