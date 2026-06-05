@@ -6,6 +6,7 @@ import posixpath
 import re
 import shlex
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..interfaces import CommandSource
@@ -16,6 +17,7 @@ _BIDI_CONTROLS: frozenset[str] = frozenset(
     {"LRE", "RLE", "LRO", "RLO", "LRI", "RLI", "FSI", "PDF", "PDI"}
 )
 _ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+_WrapperUnwrapper = Callable[[tuple[str, ...]], tuple[tuple[str, ...], tuple[str, ...]] | None]
 
 
 class PolicyInputError(ValueError):
@@ -107,20 +109,8 @@ def derive_effective(
 def _unwrap_wrapper_once(
     tokens: tuple[str, ...],
 ) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
-    head = _command_name(tokens[0])
-    if head == "env":
-        return _unwrap_env(tokens)
-    if head == "nice":
-        return _unwrap_nice(tokens)
-    if head == "ionice":
-        return _unwrap_ionice(tokens)
-    if head == "timeout":
-        return _unwrap_timeout(tokens)
-    if head in {"nohup", "setsid", "time"}:
-        return _unwrap_no_arg_wrapper(tokens)
-    if head == "stdbuf":
-        return _unwrap_stdbuf(tokens)
-    return None
+    handler = _WRAPPER_UNWRAPPERS.get(_command_name(tokens[0]))
+    return None if handler is None else handler(tokens)
 
 
 def _unwrap_env(tokens: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
@@ -255,6 +245,18 @@ def _stdbuf_option_width(tokens: tuple[str, ...], index: int) -> int:
     if len(token) > 2 and token[:2] in {"-i", "-o", "-e"}:
         return 1
     return 0
+
+
+_WRAPPER_UNWRAPPERS: dict[str, _WrapperUnwrapper] = {
+    "env": _unwrap_env,
+    "nice": _unwrap_nice,
+    "ionice": _unwrap_ionice,
+    "timeout": _unwrap_timeout,
+    "nohup": _unwrap_no_arg_wrapper,
+    "setsid": _unwrap_no_arg_wrapper,
+    "time": _unwrap_no_arg_wrapper,
+    "stdbuf": _unwrap_stdbuf,
+}
 
 
 def _consumed_prefix(
