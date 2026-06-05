@@ -358,9 +358,12 @@ def test_policy_finds_destructive_subcommands_after_global_options(command: str)
     [
         "env systemctl stop nginx",
         "nice -n 10 systemctl stop nginx",
+        "ionice -c 2 -n 0 systemctl stop nginx",
         "timeout 5 systemctl stop nginx",
         "nohup systemctl stop nginx",
         "setsid systemctl stop nginx",
+        "time systemctl stop nginx",
+        "stdbuf -oL systemctl stop nginx",
         "FOO=bar /usr/bin/systemctl stop nginx",
     ],
 )
@@ -371,6 +374,14 @@ def test_policy_uses_effective_command_view_for_wrapper_bypasses(command: str) -
     assert "service.mutate" in decision.capabilities
     assert "DESTRUCTIVE" in decision.matched_rules
     assert decision.can_whitelist is False
+
+
+def test_tool_global_options_do_not_make_read_only_kubectl_destructive() -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate("kubectl --context prod get pods")
+
+    assert decision.level is SafetyLevel.SAFE
+    assert "DESTRUCTIVE" not in decision.matched_rules
+    assert "kubernetes.mutate" not in decision.capabilities
 
 
 def test_interactive_detection_uses_effective_command_view() -> None:

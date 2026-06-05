@@ -280,3 +280,26 @@ def test_policy_capability_matrix(case: PolicyOracleCase) -> None:
     assert set(case.capabilities).issubset(decision.capabilities), case.rationale
     assert set(case.matched_rules).issubset(decision.matched_rules), case.rationale
     assert decision.can_whitelist is case.can_whitelist, case.rationale
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "env userdel alice",
+        "nice -n 10 docker rm -f c1",
+        "timeout 5 iptables -F",
+        "nohup kubectl delete deployment web",
+        "setsid apt-get remove openssh-server",
+        "FOO=bar /bin/systemctl stop nginx",
+        "sudo -u root /bin/userdel alice",
+        "/bin/docker rm -f c1",
+    ],
+)
+def test_capability_matrix_destructive_equivalent_rewrites_stay_non_whitelistable(
+    command: str,
+) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert _LEVEL_RANK[decision.level] >= _LEVEL_RANK[SafetyLevel.CONFIRM], command
+    assert "DESTRUCTIVE" in decision.matched_rules, command
+    assert decision.can_whitelist is False, command

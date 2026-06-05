@@ -9,6 +9,7 @@ from ..command_review import command_review
 from ..executors import is_destructive
 from ..interfaces import CommandSource, SafetyLevel, SafetyResult
 from ..plans import CommandPlan
+from ..policy.argv import command_tokens as parse_command_tokens
 from ..policy.capabilities import DESTRUCTIVE_CAPABILITY_PREFIXES
 from .state import AgentState
 
@@ -24,10 +25,13 @@ def build_confirm_payload(
     command = state.get("pending_command")
     safety_level = state.get("safety_level")
     review = command_review(command or "")
+    tokens = _command_tokens(command)
     return {
         "type": "confirm_command",
         "audit_id": audit_id,
         "command": command,
+        "command_tokens": list(tokens),
+        "command_head": tokens[0] if tokens else None,
         "command_display": review.command_display,
         "command_truncated": review.command_truncated,
         "inline_payload": review.inline_payload,
@@ -67,6 +71,12 @@ def _is_destructive(command: str, capabilities: tuple[str, ...]) -> bool:
     # Safety-related callers should populate capabilities. The fallback keeps
     # direct unit usage conservative for legacy payload construction.
     return is_destructive(command)
+
+
+def _command_tokens(command: str | None) -> tuple[str, ...]:
+    if not command:
+        return ()
+    return parse_command_tokens(command) or ()
 
 
 def _has_destructive_capability(capabilities: tuple[str, ...]) -> bool:

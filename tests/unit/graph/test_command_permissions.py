@@ -68,6 +68,26 @@ def test_yes_adds_only_current_command_when_allowed() -> None:
     )
 
 
+def test_confirm_payload_preserves_original_command_tokens_and_head() -> None:
+    command = "env /usr/bin/systemctl stop nginx"
+    state = _confirmable_state(command)
+
+    payload = build_confirm_payload(state, "audit-1")
+
+    assert payload["command"] == command
+    assert payload["command_tokens"] == ["env", "/usr/bin/systemctl", "stop", "nginx"]
+    assert payload["command_head"] == "env"
+
+
+def test_confirm_payload_handles_unparseable_command_tokens_conservatively() -> None:
+    state = _confirmable_state("unterminated 'quote")
+
+    payload = build_confirm_payload(state, "audit-1")
+
+    assert payload["command_tokens"] == []
+    assert payload["command_head"] is None
+
+
 def test_yes_does_not_duplicate_legacy_permission_shape() -> None:
     command = "/bin/echo ok"
     state = _confirmable_state(command)
