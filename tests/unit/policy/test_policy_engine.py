@@ -315,6 +315,32 @@ def test_policy_does_not_block_dd_to_regular_file() -> None:
     assert "BLOCK_DEVICE_MUTATE" not in decision.matched_rules
 
 
+def test_policy_protected_path_rules_do_not_weaken_root_path_block() -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate("rm -rf /")
+
+    assert decision.level is SafetyLevel.BLOCK
+    assert "ROOT_PATH" in decision.matched_rules
+    assert "PROTECTED_TREE_DELETE" not in decision.matched_rules
+    assert decision.can_whitelist is False
+
+
+def test_policy_protected_path_rules_keep_embedded_danger_block() -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate("rm -rf /*")
+
+    assert decision.level is SafetyLevel.BLOCK
+    assert "EMBEDDED_DANGER" in decision.matched_rules
+    assert decision.can_whitelist is False
+
+
+def test_policy_protected_rules_do_not_change_sensitive_read_classification() -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate("cat /etc/shadow")
+
+    assert decision.level is SafetyLevel.BLOCK
+    assert decision.matched_rules == ("SENSITIVE_PATH",)
+    assert "PROTECTED_TREE_DELETE" not in decision.matched_rules
+    assert "BLOCK_DEVICE_MUTATE" not in decision.matched_rules
+
+
 def test_policy_confirms_non_sensitive_write_redirect() -> None:
     decision = DEFAULT_POLICY_ENGINE.evaluate("echo ok > /tmp/linuxagent-output")
 
