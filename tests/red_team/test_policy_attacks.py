@@ -392,6 +392,28 @@ def test_protected_path_negative_cases_do_not_escalate_to_block(command: str) ->
 
 
 @pytest.mark.red_team
+@pytest.mark.parametrize(
+    ("command", "expected_rule"),
+    [
+        ("env rm -rf /etc", "PROTECTED_TREE_DELETE"),
+        ("/bin/rm -rf /usr", "PROTECTED_TREE_DELETE"),
+        ("sudo rm -rf /var", "PROTECTED_TREE_DELETE"),
+        ("FOO=bar rm --recursive --force /boot", "PROTECTED_TREE_DELETE"),
+        ("sudo mkfs.ext4 /dev/sda", "BLOCK_DEVICE_MUTATE"),
+        ("nice -n 5 wipefs /dev/sda", "BLOCK_DEVICE_MUTATE"),
+        ("env dd of=/dev/mapper/vg-root if=/tmp/image", "BLOCK_DEVICE_MUTATE"),
+        ("/usr/sbin/parted /dev/md0 mklabel gpt", "BLOCK_DEVICE_MUTATE"),
+    ],
+)
+def test_protected_path_rewrites_remain_blocked(command: str, expected_rule: str) -> None:
+    decision = _decision(command)
+
+    assert decision.level is SafetyLevel.BLOCK
+    assert expected_rule in decision.matched_rules
+    assert decision.can_whitelist is False
+
+
+@pytest.mark.red_team
 @settings(
     max_examples=300,
     deadline=None,
