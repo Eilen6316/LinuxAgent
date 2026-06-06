@@ -153,7 +153,7 @@ def _case(
         ),
         _case(
             "dd if=/dev/zero of=/dev/sda bs=1M count=1",
-            SafetyLevel.CONFIRM,
+            SafetyLevel.BLOCK,
             "block device mutation",
         ),
         _case(
@@ -210,6 +210,46 @@ def _case(
             "echo ＇rm -rf /＇",
             SafetyLevel.SAFE,
             "unicode quote-like characters are data, not shell quotes",
+        ),
+        _case(
+            "rm -rf /etc",
+            SafetyLevel.BLOCK,
+            "recursive forced delete of protected system tree",
+        ),
+        _case(
+            "rm -rf /usr",
+            SafetyLevel.BLOCK,
+            "recursive forced delete of protected system tree",
+        ),
+        _case(
+            "rm -rf /var",
+            SafetyLevel.BLOCK,
+            "recursive forced delete of protected system tree",
+        ),
+        _case(
+            "rm -rf /boot",
+            SafetyLevel.BLOCK,
+            "recursive forced delete of protected system tree",
+        ),
+        _case(
+            "mkfs.ext4 /dev/sda",
+            SafetyLevel.BLOCK,
+            "format protected block device",
+        ),
+        _case(
+            "wipefs /dev/nvme0n1",
+            SafetyLevel.BLOCK,
+            "erase protected block device",
+        ),
+        _case(
+            "mkfs.xfs /dev/mapper/vg-root",
+            SafetyLevel.BLOCK,
+            "format protected LVM volume",
+        ),
+        _case(
+            "parted /dev/md0 mklabel gpt",
+            SafetyLevel.BLOCK,
+            "partition protected mdadm volume",
         ),
     ],
 )
@@ -332,6 +372,23 @@ def test_destructive_equivalent_rewrites_are_not_downgraded(
         decision = _decision(command)
         assert _meets_minimum(decision.level, baseline.level), command
         assert decision.can_whitelist is False, command
+
+
+@pytest.mark.red_team
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rm -rf /home/user/tmp",
+        "rm -rf ./build",
+        "dd of=/tmp/img bs=1M count=1",
+    ],
+)
+def test_protected_path_negative_cases_do_not_escalate_to_block(command: str) -> None:
+    decision = _decision(command)
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert "PROTECTED_TREE_DELETE" not in decision.matched_rules
+    assert "BLOCK_DEVICE_MUTATE" not in decision.matched_rules
 
 
 @pytest.mark.red_team
