@@ -234,6 +234,57 @@ rules:
     assert rule.match.command == ("echo",)
 
 
+def test_policy_config_expands_named_pattern_sets(tmp_path: Path) -> None:
+    path = tmp_path / "policy.yaml"
+    path.write_text(
+        """
+version: 1
+x-patterns:
+  critical_paths:
+    - '^/+etc(/|$)'
+    - '^/+boot(/|$)'
+rules:
+  - id: custom.critical
+    legacy_rule: CUSTOM_CRITICAL
+    level: BLOCK
+    risk_score: 100
+    capabilities: [filesystem.delete]
+    reason: critical path mutation
+    never_whitelist: true
+    match:
+      command: [rm]
+      path_regex: ['@critical_paths']
+""",
+        encoding="utf-8",
+    )
+
+    config = load_policy_config(path)
+
+    assert config.rules[0].match.path_regex == ("^/+etc(/|$)", "^/+boot(/|$)")
+
+
+def test_policy_config_reports_unknown_pattern_reference(tmp_path: Path) -> None:
+    path = tmp_path / "policy.yaml"
+    path.write_text(
+        """
+version: 1
+x-patterns: {}
+rules:
+  - id: custom.unknown
+    legacy_rule: CUSTOM_UNKNOWN
+    level: BLOCK
+    risk_score: 100
+    reason: unknown pattern
+    match:
+      path_regex: ['@missing']
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PolicyConfigError, match="unknown policy pattern reference '@missing'"):
+        load_policy_config(path)
+
+
 def test_policy_config_reports_missing_file(tmp_path: Path) -> None:
     path = tmp_path / "missing.yaml"
 

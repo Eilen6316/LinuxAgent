@@ -1,4 +1,9 @@
 version: 1
+x-patterns:
+  protected_system_paths:
+    - '^/+(etc|usr|var|lib|lib64|bin|sbin|boot|sys|proc|dev)(/|$)'
+  protected_block_devices:
+    - '^/dev/(sd[a-z]|nvme\d+n\d+|vd[a-z]|mapper/.+|md\d+)'
 interactive_commands:
   - vim
   - vi

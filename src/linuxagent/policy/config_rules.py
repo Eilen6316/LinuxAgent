@@ -8,6 +8,7 @@ import yaml
 from pydantic import ValidationError
 
 from .builtin_rules import builtin_policy_config
+from .config_expansion import PolicyConfigExpansionError, policy_config_from_raw
 from .models import PolicyConfig
 
 
@@ -25,7 +26,9 @@ def load_policy_config(path: Path) -> PolicyConfig:
     if not isinstance(raw, dict):
         raise PolicyConfigError(f"{path}: top-level policy YAML must be a mapping")
     try:
-        return PolicyConfig.model_validate(raw)
+        return policy_config_from_raw(raw)
+    except PolicyConfigExpansionError as exc:
+        raise PolicyConfigError(str(exc)) from exc
     except ValidationError as exc:
         raise PolicyConfigError(_format_validation_error(exc)) from exc
 

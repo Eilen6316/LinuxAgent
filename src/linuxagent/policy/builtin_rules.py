@@ -6,8 +6,8 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from pydantic import ValidationError
 
+from .config_expansion import PolicyConfigExpansionError, policy_config_from_raw
 from .models import PolicyConfig
 
 
@@ -22,8 +22,8 @@ def builtin_policy_config() -> PolicyConfig:
     if not isinstance(raw, dict):  # pragma: no cover - packaging failure
         raise RuntimeError(f"packaged policy config {path} must be a mapping")
     try:
-        return PolicyConfig.model_validate(raw)
-    except ValidationError as exc:  # pragma: no cover - packaging failure
+        return policy_config_from_raw(raw)
+    except (PolicyConfigExpansionError, ValueError) as exc:  # pragma: no cover - packaging failure
         raise RuntimeError(f"packaged policy config {path} failed validation: {exc}") from exc
 
 
