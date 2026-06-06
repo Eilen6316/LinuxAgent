@@ -10,7 +10,7 @@ from ..interfaces import CommandSource
 from .argv_match import CompiledArgvPattern
 from .facts import CommandFacts
 from .interactive import is_interactive_tokens
-from .models import PolicyMatch, PolicyRule
+from .models import PolicyArgValue, PolicyMatch, PolicyRule
 from .tool_grammar import candidate_subcommands
 
 
@@ -26,8 +26,12 @@ class CompiledRule:
         self._interactive_commands = interactive_commands
         self._noninteractive_flags = noninteractive_flags
         self._noninteractive_command_flags = noninteractive_command_flags
+        self._command_regex = tuple(re.compile(pattern) for pattern in rule.match.command_regex)
         self._args_regex = tuple(re.compile(pattern) for pattern in rule.match.args_regex)
         self._args_all_regex = tuple(re.compile(pattern) for pattern in rule.match.args_all_regex)
+        self._args_values = tuple(
+            CompiledArgValue(arg_value) for arg_value in rule.match.args_values
+        )
         self._path_regex = tuple(re.compile(pattern) for pattern in rule.match.path_regex)
         self._embedded_regex = tuple(re.compile(pattern) for pattern in rule.match.embedded_regex)
         self._argv = tuple(CompiledArgvPattern(pattern) for pattern in rule.match.argv)
@@ -45,7 +49,7 @@ class CompiledRule:
             return True
         if not self._matches_command_shape(facts):
             return False
-        if match.command or self._argv:
+        if match.command or match.command_regex or self._argv:
             return True
         return _has_non_command_matcher(match)
 
@@ -75,7 +79,11 @@ class CompiledRule:
         match = self.rule.match
         if self._argv and not any(pattern.matches(facts.tokens) for pattern in self._argv):
             return False
-        if match.command and facts.effective_head not in match.command:
+        if (match.command or self._command_regex) and not _command_matches(
+            facts.effective_head,
+            match.command,
+            self._command_regex,
+        ):
             return False
         if match.subcommand_any and not any(
             arg in match.subcommand_any
@@ -93,6 +101,10 @@ class CompiledRule:
             for pattern in self._args_all_regex
         ):
             return False
+        if self._args_values and not all(
+            arg_value.matches(facts.effective_args) for arg_value in self._args_values
+        ):
+            return False
         if match.path_any and not any(arg in match.path_any for arg in facts.effective_args):
             return False
         return not self._path_regex or any(
@@ -107,6 +119,16 @@ def matched_rules(
     facts: CommandFacts, compiled_rules: tuple[CompiledRule, ...]
 ) -> list[PolicyRule]:
     return [compiled.rule for compiled in compiled_rules if compiled.matches(facts)]
+
+
+def _command_matches(
+    head: str | None,
+    commands: tuple[str, ...],
+    command_regex: tuple[re.Pattern[str], ...],
+) -> bool:
+    if head is None:
+        return False
+    return head in commands or any(pattern.match(head) for pattern in command_regex)
 
 
 def _structural_match_state(facts: CommandFacts, match: PolicyMatch) -> bool | None:
@@ -131,6 +153,7 @@ def _has_non_command_matcher(match: PolicyMatch) -> bool:
         or match.args_any
         or match.args_regex
         or match.args_all_regex
+        or match.args_values
         or match.path_any
         or match.path_regex
         or match.subcommand_any
@@ -147,6 +170,31 @@ def path_match_candidates(arg: str) -> tuple[str, ...]:
         if normalized is not None and normalized not in candidates:
             candidates.append(normalized)
     return tuple(candidates)
+
+
+class CompiledArgValue:
+    def __init__(self, arg_value: PolicyArgValue) -> None:
+        self._arg_value = arg_value
+        self._regex = tuple(re.compile(pattern) for pattern in arg_value.regex)
+
+    def matches(self, args: tuple[str, ...]) -> bool:
+        values = tuple(
+            value
+            for arg in args
+            for name, value in (_split_key_value_arg(arg),)
+            if name == self._arg_value.name
+        )
+        return any(
+            value in self._arg_value.values or any(pattern.match(value) for pattern in self._regex)
+            for value in values
+        )
+
+
+def _split_key_value_arg(arg: str) -> tuple[str, str]:
+    if "=" not in arg:
+        return "", ""
+    name, value = arg.split("=", 1)
+    return name, value
 
 
 def _expand_user_path(arg: str) -> str:

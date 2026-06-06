@@ -9,6 +9,7 @@ import pytest
 from linuxagent.interfaces import CommandSource, SafetyLevel
 from linuxagent.policy import (
     DEFAULT_POLICY_ENGINE,
+    PolicyArgValue,
     PolicyArgvPattern,
     PolicyArgvToken,
     PolicyEngine,
@@ -118,6 +119,55 @@ def test_policy_args_all_regex_requires_every_pattern() -> None:
     assert engine.evaluate("rm -rf /etc").matched_rule == "CUSTOM_ALL_ARGS"
     assert engine.evaluate("rm -r /etc").level is SafetyLevel.SAFE
     assert engine.evaluate("rm -f /etc").level is SafetyLevel.SAFE
+
+
+def test_policy_args_values_match_named_key_value_arguments() -> None:
+    engine = PolicyEngine(
+        PolicyConfig(
+            rules=(
+                PolicyRule(
+                    id="custom.arg_value",
+                    legacy_rule="CUSTOM_ARG_VALUE",
+                    level=SafetyLevel.BLOCK,
+                    risk_score=100,
+                    capabilities=("custom.block",),
+                    reason="requires protected output value",
+                    match=PolicyMatch(
+                        command=("dd",),
+                        args_values=(PolicyArgValue(name="of", regex=(r"^/dev/sd[a-z]$",)),),
+                    ),
+                    never_whitelist=True,
+                ),
+            )
+        )
+    )
+
+    assert engine.evaluate("dd if=/tmp/img of=/dev/sda").matched_rule == "CUSTOM_ARG_VALUE"
+    assert engine.evaluate("dd if=/dev/sda of=/tmp/img").level is SafetyLevel.SAFE
+    assert engine.evaluate("dd if=/tmp/img of=/tmp/out").level is SafetyLevel.SAFE
+
+
+def test_policy_command_regex_matches_effective_head() -> None:
+    engine = PolicyEngine(
+        PolicyConfig(
+            rules=(
+                PolicyRule(
+                    id="custom.command_regex",
+                    legacy_rule="CUSTOM_COMMAND_REGEX",
+                    level=SafetyLevel.BLOCK,
+                    risk_score=100,
+                    capabilities=("custom.block",),
+                    reason="matches command family",
+                    match=PolicyMatch(command_regex=(r"^mkfs(\..+)?$",)),
+                    never_whitelist=True,
+                ),
+            )
+        )
+    )
+
+    assert engine.evaluate("mkfs.ext4 /tmp/image").matched_rule == "CUSTOM_COMMAND_REGEX"
+    assert engine.evaluate("/usr/bin/mkfs.xfs /tmp/image").matched_rule == "CUSTOM_COMMAND_REGEX"
+    assert engine.evaluate("mkswap /tmp/image").level is SafetyLevel.SAFE
 
 
 @pytest.mark.parametrize(
@@ -236,6 +286,33 @@ def test_policy_does_not_block_non_recursive_protected_path_delete() -> None:
     assert decision.level is SafetyLevel.CONFIRM
     assert "PROTECTED_TREE_DELETE" not in decision.matched_rules
     assert decision.can_whitelist is False
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "mkfs.ext4 /dev/sda",
+        "dd of=/dev/sda if=/tmp/image",
+        "wipefs /dev/nvme0n1",
+        "shred /dev/sdb",
+        "mkfs.xfs /dev/mapper/vg-root",
+        "parted /dev/md0 mklabel gpt",
+        "sgdisk --zap-all /dev/vda",
+    ],
+)
+def test_policy_blocks_block_device_mutation(command: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert decision.level is SafetyLevel.BLOCK
+    assert "BLOCK_DEVICE_MUTATE" in decision.matched_rules
+    assert decision.can_whitelist is False
+
+
+def test_policy_does_not_block_dd_to_regular_file() -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate("dd of=/tmp/img.bin bs=1M count=1")
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert "BLOCK_DEVICE_MUTATE" not in decision.matched_rules
 
 
 def test_policy_confirms_non_sensitive_write_redirect() -> None:

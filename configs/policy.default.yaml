@@ -116,6 +116,66 @@ rules:
         - '^-[rRfF]*[fF][rRfF]*$|^--force$'
       path_regex: ['@protected_system_paths']
 
+  - id: block_device.format
+    legacy_rule: BLOCK_DEVICE_MUTATE
+    level: BLOCK
+    risk_score: 100
+    capabilities: [block_device.mutate]
+    reason: format command targeting protected block device
+    never_whitelist: true
+    match:
+      command: [mkswap]
+      command_regex: ['^mkfs(\..+)?$']
+      path_regex: ['@protected_block_devices']
+
+  - id: block_device.raw_write
+    legacy_rule: BLOCK_DEVICE_MUTATE
+    level: BLOCK
+    risk_score: 100
+    capabilities: [block_device.mutate]
+    reason: raw write targeting protected block device
+    never_whitelist: true
+    match:
+      command: [dd]
+      args_values:
+        - name: of
+          regex: ['@protected_block_devices']
+
+  - id: block_device.erase
+    legacy_rule: BLOCK_DEVICE_MUTATE
+    level: BLOCK
+    risk_score: 100
+    capabilities: [block_device.mutate]
+    reason: erase command targeting protected block device
+    never_whitelist: true
+    match:
+      command: [wipefs, shred]
+      path_regex: ['@protected_block_devices']
+
+  - id: block_device.partition_table
+    legacy_rule: BLOCK_DEVICE_MUTATE
+    level: BLOCK
+    risk_score: 100
+    capabilities: [block_device.partition]
+    reason: partition table mutation targeting protected block device
+    never_whitelist: true
+    match:
+      command: [parted, sgdisk]
+      subcommand_any: [mklabel, mkpart, rm, resizepart, set, toggle, zap-all, clear, delete, new]
+      path_regex: ['@protected_block_devices']
+
+  - id: block_device.partition_table_zap
+    legacy_rule: BLOCK_DEVICE_MUTATE
+    level: BLOCK
+    risk_score: 100
+    capabilities: [block_device.partition]
+    reason: partition table wipe targeting protected block device
+    never_whitelist: true
+    match:
+      command: [sgdisk]
+      args_any: [--zap-all]
+      path_regex: ['@protected_block_devices']
+
   - id: environment.loader_injection
     legacy_rule: DESTRUCTIVE
     level: CONFIRM

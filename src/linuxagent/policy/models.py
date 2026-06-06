@@ -72,6 +72,20 @@ class PolicyFlagValue(BaseModel):
         return self
 
 
+class PolicyArgValue(BaseModel):
+    model_config = _FROZEN
+
+    name: str = Field(min_length=1)
+    values: tuple[str, ...] = ()
+    regex: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _has_matcher(self) -> PolicyArgValue:
+        if not self.values and not self.regex:
+            raise ValueError("arg value matcher requires values or regex")
+        return self
+
+
 class PolicyArgvPattern(BaseModel):
     model_config = _FROZEN
 
@@ -91,11 +105,13 @@ class PolicyMatch(BaseModel):
     model_config = _FROZEN
 
     command: tuple[str, ...] = ()
+    command_regex: tuple[str, ...] = ()
     argv: tuple[PolicyArgvPattern, ...] = ()
     subcommand_any: tuple[str, ...] = ()
     args_any: tuple[str, ...] = ()
     args_regex: tuple[str, ...] = ()
     args_all_regex: tuple[str, ...] = ()
+    args_values: tuple[PolicyArgValue, ...] = ()
     path_any: tuple[str, ...] = ()
     path_regex: tuple[str, ...] = ()
     embedded_regex: tuple[str, ...] = ()
