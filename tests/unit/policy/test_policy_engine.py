@@ -268,6 +268,8 @@ def test_policy_blocks_sensitive_write_redirect() -> None:
         "rm -Rf /usr",
         "rm --recursive --force /var",
         "rm -rf /boot",
+        "rmdir -rf /etc",
+        "rmdir --recursive --force /usr",
         "shred -fR /etc",
     ],
 )
@@ -298,6 +300,8 @@ def test_policy_does_not_block_non_recursive_protected_path_delete() -> None:
         "mkfs.xfs /dev/mapper/vg-root",
         "parted /dev/md0 mklabel gpt",
         "sgdisk --zap-all /dev/vda",
+        "sgdisk --clear /dev/vda",
+        "sgdisk -Z /dev/vda",
     ],
 )
 def test_policy_blocks_block_device_mutation(command: str) -> None:

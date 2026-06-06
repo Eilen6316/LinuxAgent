@@ -110,7 +110,7 @@ rules:
     reason: recursive forced deletion targeting protected system tree
     never_whitelist: true
     match:
-      command: [rm, shred]
+      command: [rm, rmdir, shred]
       args_all_regex:
         - '^-[rRfF]*[rR][rRfF]*$|^--recursive$'
         - '^-[rRfF]*[fF][rRfF]*$|^--force$'
@@ -164,16 +164,24 @@ rules:
       subcommand_any: [mklabel, mkpart, rm, resizepart, set, toggle, zap-all, clear, delete, new]
       path_regex: ['@protected_block_devices']
 
-  - id: block_device.partition_table_zap
+  - id: block_device.partition_table_sgdisk_options
     legacy_rule: BLOCK_DEVICE_MUTATE
     level: BLOCK
     risk_score: 100
     capabilities: [block_device.partition]
-    reason: partition table wipe targeting protected block device
+    reason: partition table mutation option targeting protected block device
     never_whitelist: true
     match:
       command: [sgdisk]
-      args_any: [--zap-all]
+      args_regex:
+        - '^--zap-all$'
+        - '^-Z$'
+        - '^--clear$'
+        - '^-o$'
+        - '^--delete(=.+)?$'
+        - '^-d.+$'
+        - '^--new(=.+)?$'
+        - '^-n.+$'
       path_regex: ['@protected_block_devices']
 
   - id: environment.loader_injection

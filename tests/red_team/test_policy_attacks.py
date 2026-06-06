@@ -232,6 +232,11 @@ def _case(
             "recursive forced delete of protected system tree",
         ),
         _case(
+            "rmdir -rf /etc",
+            SafetyLevel.BLOCK,
+            "recursive forced delete of protected system tree",
+        ),
+        _case(
             "mkfs.ext4 /dev/sda",
             SafetyLevel.BLOCK,
             "format protected block device",
@@ -250,6 +255,11 @@ def _case(
             "parted /dev/md0 mklabel gpt",
             SafetyLevel.BLOCK,
             "partition protected mdadm volume",
+        ),
+        _case(
+            "sgdisk --clear /dev/vda",
+            SafetyLevel.BLOCK,
+            "partition protected block device",
         ),
     ],
 )
