@@ -93,6 +93,33 @@ def test_policy_never_whitelist_considers_all_matched_rules() -> None:
     assert decision.can_whitelist is False
 
 
+def test_policy_args_all_regex_requires_every_pattern() -> None:
+    engine = PolicyEngine(
+        PolicyConfig(
+            rules=(
+                PolicyRule(
+                    id="custom.all_args",
+                    legacy_rule="CUSTOM_ALL_ARGS",
+                    level=SafetyLevel.BLOCK,
+                    risk_score=100,
+                    capabilities=("custom.block",),
+                    reason="requires recursive force",
+                    match=PolicyMatch(
+                        command=("rm",),
+                        args_all_regex=(r"^-[rRfF]*[rR][rRfF]*$", r"^-[rRfF]*[fF][rRfF]*$"),
+                        path_regex=(r"^/+etc(/|$)",),
+                    ),
+                    never_whitelist=True,
+                ),
+            )
+        )
+    )
+
+    assert engine.evaluate("rm -rf /etc").matched_rule == "CUSTOM_ALL_ARGS"
+    assert engine.evaluate("rm -r /etc").level is SafetyLevel.SAFE
+    assert engine.evaluate("rm -f /etc").level is SafetyLevel.SAFE
+
+
 @pytest.mark.parametrize(
     ("command", "expected_rule"),
     [
@@ -182,6 +209,33 @@ def test_policy_blocks_sensitive_write_redirect() -> None:
     assert decision.level is SafetyLevel.BLOCK
     assert "SENSITIVE_REDIRECT" in decision.matched_rules
     assert "filesystem.sensitive_write" in decision.capabilities
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rm -rf /etc",
+        "rm -Rf /usr",
+        "rm --recursive --force /var",
+        "rm -rf /boot",
+        "shred -fR /etc",
+    ],
+)
+def test_policy_blocks_recursive_forced_delete_of_protected_system_tree(command: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert decision.level is SafetyLevel.BLOCK
+    assert "PROTECTED_TREE_DELETE" in decision.matched_rules
+    assert "filesystem.delete" in decision.capabilities
+    assert decision.can_whitelist is False
+
+
+def test_policy_does_not_block_non_recursive_protected_path_delete() -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate("rm /etc/single-file")
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert "PROTECTED_TREE_DELETE" not in decision.matched_rules
+    assert decision.can_whitelist is False
 
 
 def test_policy_confirms_non_sensitive_write_redirect() -> None:

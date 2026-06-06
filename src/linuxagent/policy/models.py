@@ -95,6 +95,7 @@ class PolicyMatch(BaseModel):
     subcommand_any: tuple[str, ...] = ()
     args_any: tuple[str, ...] = ()
     args_regex: tuple[str, ...] = ()
+    args_all_regex: tuple[str, ...] = ()
     path_any: tuple[str, ...] = ()
     path_regex: tuple[str, ...] = ()
     embedded_regex: tuple[str, ...] = ()

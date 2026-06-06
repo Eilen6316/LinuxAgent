@@ -102,6 +102,20 @@ rules:
       command: [rm, rmdir, shred, dd, mkfs, wipefs]
       args_regex: ['^/+$']
 
+  - id: filesystem.protected_tree_delete
+    legacy_rule: PROTECTED_TREE_DELETE
+    level: BLOCK
+    risk_score: 100
+    capabilities: [filesystem.delete]
+    reason: recursive forced deletion targeting protected system tree
+    never_whitelist: true
+    match:
+      command: [rm, shred]
+      args_all_regex:
+        - '^-[rRfF]*[rR][rRfF]*$|^--recursive$'
+        - '^-[rRfF]*[fF][rRfF]*$|^--force$'
+      path_regex: ['@protected_system_paths']
+
   - id: environment.loader_injection
     legacy_rule: DESTRUCTIVE
     level: CONFIRM

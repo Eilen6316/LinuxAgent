@@ -27,6 +27,7 @@ class CompiledRule:
         self._noninteractive_flags = noninteractive_flags
         self._noninteractive_command_flags = noninteractive_command_flags
         self._args_regex = tuple(re.compile(pattern) for pattern in rule.match.args_regex)
+        self._args_all_regex = tuple(re.compile(pattern) for pattern in rule.match.args_all_regex)
         self._path_regex = tuple(re.compile(pattern) for pattern in rule.match.path_regex)
         self._embedded_regex = tuple(re.compile(pattern) for pattern in rule.match.embedded_regex)
         self._argv = tuple(CompiledArgvPattern(pattern) for pattern in rule.match.argv)
@@ -87,6 +88,11 @@ class CompiledRule:
             pattern.match(arg) for arg in facts.effective_args for pattern in self._args_regex
         ):
             return False
+        if self._args_all_regex and not all(
+            any(pattern.match(arg) for arg in facts.effective_args)
+            for pattern in self._args_all_regex
+        ):
+            return False
         if match.path_any and not any(arg in match.path_any for arg in facts.effective_args):
             return False
         return not self._path_regex or any(
@@ -124,6 +130,7 @@ def _has_non_command_matcher(match: PolicyMatch) -> bool:
         match.argv
         or match.args_any
         or match.args_regex
+        or match.args_all_regex
         or match.path_any
         or match.path_regex
         or match.subcommand_any
