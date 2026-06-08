@@ -4,6 +4,8 @@ LinuxAgent is still a Python v4 application in production. The TypeScript v5
 work under `ts/` is an experimental rewrite track that is built beside Python,
 with Python remaining the behavior oracle until the cutover gates are met.
 
+The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
+
 Do not treat the TypeScript workspace as the default `linuxagent` runtime yet.
 It exists to make the migration measurable: each subsystem lands with tests,
 red-line checks, and parity fixtures before it can replace Python behavior.
@@ -25,7 +27,8 @@ The TypeScript workspace currently contains:
 | `@linuxagent/ssh` | Remote profile validation, remote command guard, and OpenSSH argv manager |
 
 The workspace also includes exported parity fixtures under
-`ts/parity/fixtures/` and TS red-line checks in `scripts/check_ts_redlines.mjs`.
+`ts/parity/fixtures/`, a TS parity CLI runner under `ts/parity/`, and TS
+red-line checks in `scripts/check_ts_redlines.mjs`.
 
 ## Runtime Boundary
 
@@ -59,11 +62,14 @@ make ts-lint
 make ts-type
 make ts-test
 make ts-security
+make ts-parity
 ```
 
-`make ts-parity` is reserved for TS/Python parity checks as that runner is
-expanded. Keep Python gates (`make test`, `make security`, `make harness`, and
-release checks) authoritative for the production runtime.
+`make ts-parity` runs the current TS/Python parity runner. It currently checks
+the policy fixture corpus and prints placeholder summaries for audit, harness,
+and red-team parity while those suites are expanded. Keep Python gates
+(`make test`, `make security`, `make harness`, and release checks)
+authoritative for the production runtime.
 
 ## Progress Tracker
 
@@ -98,8 +104,10 @@ release checks) authoritative for the production runtime.
 | Memory scope model | Landed |
 | Memory read path | Landed |
 | Memory write path pending candidates | Landed |
-| Harness parity runner | Next |
-| Full file patch writes, harness parity, and cutover checklist | Not yet landed |
+| Policy parity CLI runner | Landed |
+| Harness fixture export and required scenario index | Landed |
+| Experimental TS CI job | Landed |
+| Full file patch writes, harness parity execution, and cutover checklist | Not yet landed |
 
 When updating TS behavior, update this page and the relevant README/development
 links in the same change so public documentation stays aligned with the code.

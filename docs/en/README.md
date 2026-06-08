@@ -924,12 +924,15 @@ make harness   # YAML scenario harness
 make build     # wheel + sdist
 make verify-build  # build + wheel install + packaged data check
 make ts-check  # experimental TypeScript workspace gate
+make ts-parity # experimental TS/Python parity runner
 linuxagent audit verify
 ```
 
 Details in [Development Guide](development.md). The experimental TypeScript v5
 rewrite track is documented in [TypeScript v5 Experimental Kernel](typescript-v5.md);
 it does not replace the Python v4 production runtime.
+
+The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
 
 ---
 

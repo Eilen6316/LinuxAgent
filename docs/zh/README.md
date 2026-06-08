@@ -847,11 +847,14 @@ make harness   # YAML 场景 harness
 make build     # wheel + sdist
 make verify-build  # build + wheel 安装 + package data 检查
 make ts-check  # 实验 TypeScript workspace 门禁
+make ts-parity # 实验 TS/Python parity runner
 linuxagent audit verify
 ```
 
 更多细节见 [开发指南](development.md)。实验 TypeScript v5 重写线见
 [TypeScript v5 实验内核](typescript-v5.md)；它还不会替代 Python v4 生产运行时。
+
+The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
 
 ---
 

@@ -25,11 +25,14 @@ the production runtime and does not replace the default `linuxagent` command.
 Python v4 remains the behavior oracle while TS subsystems land behind parity
 fixtures and red-line checks.
 
+The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
+
 Current TS packages cover contracts, policy parity, audit hash chains, sandbox
 runner contracts, argv-based local execution, output redaction, tool gate
 integration, session permissions, approval defaults, and prompt loading. See
 [TypeScript v5 Experimental Kernel](typescript-v5.md) for the current progress
-tracker and migration boundaries.
+tracker and migration boundaries. The broader rewrite plan is documented in
+[TypeScript v5 Progressive Rewrite Design](../design/typescript-v5-progressive-rewrite.md).
 
 Useful TS commands:
 
@@ -40,11 +43,13 @@ make ts-type
 make ts-test
 make ts-security
 make ts-check
+make ts-parity
 ```
 
 When changing TS behavior, update the TS status document and any relevant
 README entry in the same change. Keep Python production gates authoritative
-until an explicit cutover checklist is satisfied.
+until an explicit cutover checklist is satisfied. CI runs the TS checks in a
+separate `ts-experimental` job; Python CI remains the release authority.
 
 ## Test Matrix
 

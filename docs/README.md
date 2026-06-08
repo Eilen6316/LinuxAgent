@@ -23,6 +23,7 @@ homepage.
 | [Landlock Sandbox Design](design/sandbox-landlock.md) | Planned kernel-native sandbox backend design and compatibility matrix |
 | [MCP Server Design](design/mcp-server.md) | Read-only MCP server prototype, threat model, and future execution boundary |
 | [TS SSH Library Decision](design/ts-ssh-library-decision.md) | Experimental TypeScript SSH transport decision and host-key boundary |
+| [TypeScript v5 Progressive Rewrite Design](design/typescript-v5-progressive-rewrite.md) | Motivation, pi adoption boundary, parity gates, cutover, and rollback strategy |
 | [Roadmap](../ROADMAP.md) | Maintainer priorities and good-first-issue areas |
 | [Why substring matching is not safety](../blog.md) | Opinionated technical essay on LLM command-agent safety |
 | [Real User Feedback](https://github.com/Eilen6316/LinuxAgent/issues/new?template=user_feedback.yml) | Share concrete usage feedback from a real machine |

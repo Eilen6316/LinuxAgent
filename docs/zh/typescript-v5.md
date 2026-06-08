@@ -3,6 +3,8 @@
 LinuxAgent 当前生产运行时仍是 Python v4。`ts/` 下的 TypeScript v5 工作线是
 旁路实验重写：在迁移门禁全部满足前，Python 继续作为行为真源和稳定运行时。
 
+The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
+
 不要把 TypeScript workspace 当成默认 `linuxagent` 运行时。它的作用是让迁移过程
 可度量：每个子系统都要带测试、红线检查和与 Python 的 parity fixture，之后才有资格
 替换 Python 行为。
@@ -23,8 +25,8 @@ TypeScript workspace 目前包含：
 | `@linuxagent/linuxagent-ts` | 实验 CLI package shell |
 | `@linuxagent/ssh` | remote profile validation、remote command guard 和 OpenSSH argv manager |
 
-导出的 parity fixture 位于 `ts/parity/fixtures/`，TS 红线检查位于
-`scripts/check_ts_redlines.mjs`。
+导出的 parity fixture 位于 `ts/parity/fixtures/`，TS parity CLI runner 位于
+`ts/parity/`，TS 红线检查位于 `scripts/check_ts_redlines.mjs`。
 
 ## 运行时边界
 
@@ -57,10 +59,13 @@ make ts-lint
 make ts-type
 make ts-test
 make ts-security
+make ts-parity
 ```
 
-`make ts-parity` 预留给逐步扩展的 TS/Python parity 检查。生产运行时仍以 Python
-门禁为准：`make test`、`make security`、`make harness` 和 release 检查仍是权威门禁。
+`make ts-parity` 运行当前 TS/Python parity runner；目前检查 policy fixture corpus，
+并为 audit、harness、red-team parity 输出占位摘要，后续逐步扩展。生产运行时仍以
+Python 门禁为准：`make test`、`make security`、`make harness` 和 release 检查仍是
+权威门禁。
 
 ## 进度表
 
@@ -95,8 +100,10 @@ make ts-security
 | memory scope model | 已落地 |
 | memory read path | 已落地 |
 | memory write path pending candidates | 已落地 |
-| harness parity runner | 下一步 |
-| 完整 file patch writes、harness parity、cutover checklist | 尚未落地 |
+| policy parity CLI runner | 已落地 |
+| harness fixture export 和必选场景索引 | 已落地 |
+| 实验 TS CI job | 已落地 |
+| 完整 file patch writes、harness parity 执行、cutover checklist | 尚未落地 |
 
 后续修改 TS 行为时，同一个小交付里要同步更新本页以及相关 README/development 链接，
 确保公开文档和代码状态一致。

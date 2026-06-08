@@ -6,9 +6,12 @@
 `linuxagent` 命令。迁移期间 Python v4 仍是行为真源，TS 子系统需要通过 parity fixture
 和红线检查逐步落地。
 
+The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
+
 当前 TS packages 已覆盖 contracts、policy parity、audit hash chain、sandbox runner
 contract、argv 本地执行、输出脱敏、tool gate 集成、会话权限、审批默认值和 prompt loading。
-当前进度和迁移边界见 [TypeScript v5 实验内核](typescript-v5.md)。
+当前进度和迁移边界见 [TypeScript v5 实验内核](typescript-v5.md)，整体迁移策略见
+[TypeScript v5 Progressive Rewrite Design](../design/typescript-v5-progressive-rewrite.md)。
 
 常用 TS 命令：
 
@@ -19,10 +22,12 @@ make ts-type
 make ts-test
 make ts-security
 make ts-check
+make ts-parity
 ```
 
 修改 TS 行为时，同一个小交付里要更新 TS 状态文档和相关 README 入口。在明确 cutover
-checklist 通过前，Python 生产门禁仍是权威门禁。
+checklist 通过前，Python 生产门禁仍是权威门禁。CI 中的 TS 检查运行在独立
+`ts-experimental` job；Python CI 仍是 release 权威。
 
 ## 架构稳定性预算
 

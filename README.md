@@ -72,11 +72,14 @@ parity fixtures, HITL/session permission primitives, audit hash-chain support,
 sandbox runner contracts, argv-based local execution, output redaction, the
 tool gate to executor boundary, and prompt loading for the agent runtime.
 
+The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
+
 This track does not replace the default `linuxagent` command yet. Future
 `linuxagent-ts` entry points must stay explicitly experimental until policy,
 HITL, audit, sandbox, SSH, file patch, output redaction, and harness parity
 gates are satisfied. See the [TypeScript v5 experimental kernel](docs/en/typescript-v5.md)
-for current status and TS development commands.
+and [progressive rewrite design](docs/design/typescript-v5-progressive-rewrite.md)
+for current status, migration boundaries, and TS development commands.
 
 ## One-Minute Start
 
@@ -338,7 +341,7 @@ Current quality gates:
 | Coverage | `--cov-fail-under=80` |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
-| TypeScript experimental track | `make ts-check` |
+| TypeScript experimental track | `make ts-check`, `make ts-parity` |
 
 Useful commands:
 
@@ -353,6 +356,7 @@ make benchmark
 make harness
 make verify-build
 make ts-check
+make ts-parity
 ```
 
 ## Install Paths
@@ -373,6 +377,7 @@ make ts-check
 | [docs/zh/README.md](docs/zh/README.md) | Full Chinese manual |
 | [docs/en/README.md](docs/en/README.md) | Full English manual |
 | [TypeScript v5 Experimental Kernel](docs/en/typescript-v5.md) | Status and commands for the experimental TS rewrite track |
+| [TypeScript v5 Progressive Rewrite Design](docs/design/typescript-v5-progressive-rewrite.md) | Motivation, pi boundary, parity gates, cutover, and rollback plan |
 | [Quick Start](docs/en/quickstart.md) | Installation and first run |
 | [Provider Matrix](docs/en/provider-matrix.md) | Provider setup paths and compatibility status |
 | [Operator Safety Model](docs/en/operator-safety.md) | Plain-language safety boundaries for users |
