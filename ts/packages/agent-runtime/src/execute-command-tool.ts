@@ -45,7 +45,10 @@ export async function executeCommandTool(
   }
   const argv = commandArgvFromToolArgs(input.args);
   const result = await input.executor.execute(argv, input.sandbox, input.signal);
-  const modelOutput = redactOutput(formatExecutionResult(argv, result), input.maxModelChars);
+  const modelOutput = redactOutput(
+    formatExecutionResultForModel(argv, result),
+    input.maxModelChars,
+  );
   return {
     executed: true,
     exitCode: result.exitCode,
@@ -80,7 +83,10 @@ function commandArgvFromToolArgs(args: unknown): string[] {
   return argv.map((value) => String(value));
 }
 
-function formatExecutionResult(argv: readonly string[], result: SandboxExecutionResult): string {
+export function formatExecutionResultForModel(
+  argv: readonly string[],
+  result: SandboxExecutionResult,
+): string {
   return [
     `argv=${JSON.stringify(argv)}`,
     `exit_code=${result.exitCode}`,
