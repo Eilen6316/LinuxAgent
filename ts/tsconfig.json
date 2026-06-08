@@ -8,6 +8,7 @@
     { "path": "./packages/agent-runtime" },
     { "path": "./packages/sandbox" },
     { "path": "./packages/executor" },
+    { "path": "./packages/ssh" },
     { "path": "./packages/tui" },
     { "path": "./apps/linuxagent-ts" }
   ]

@@ -22,6 +22,7 @@ The TypeScript workspace currently contains:
 | `@linuxagent/agent-runtime` | Session permissions, approval defaults, tool gate, executor-backed command tool, prompt loader, planner validation, minimal runtime wrapper, tool-result redaction hook, and minimal turn runner |
 | `@linuxagent/tui` | Experimental TUI package shell, chat session, direct command routing, approval selector, confirmation renderer, and slash router |
 | `@linuxagent/linuxagent-ts` | Experimental CLI package shell |
+| `@linuxagent/ssh` | Remote profile validation |
 
 The workspace also includes exported parity fixtures under
 `ts/parity/fixtures/` and TS red-line checks in `scripts/check_ts_redlines.mjs`.
@@ -86,7 +87,8 @@ release checks) authoritative for the production runtime.
 | Chat loop shell | Landed |
 | Direct command mode | Landed |
 | SSH library decision | Landed |
-| SSH execution boundary | Next |
+| Remote profile validation | Landed |
+| Remote command guard | Next |
 | SSH, file patch, memory, harness parity, and cutover checklist | Not yet landed |
 
 When updating TS behavior, update this page and the relevant README/development
