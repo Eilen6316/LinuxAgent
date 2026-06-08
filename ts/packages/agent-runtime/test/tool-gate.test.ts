@@ -22,11 +22,15 @@ class RecordingAudit implements AuditPort {
 
 class StaticApproval implements ApprovalPort {
   callCount = 0;
+  readonly requests: Parameters<ApprovalPort["requestApproval"]>[0][] = [];
 
   constructor(private readonly decision: "approve_once" | "approve_thread" | "deny") {}
 
-  async requestApproval(): Promise<"approve_once" | "approve_thread" | "deny"> {
+  async requestApproval(
+    request: Parameters<ApprovalPort["requestApproval"]>[0],
+  ): Promise<"approve_once" | "approve_thread" | "deny"> {
     this.callCount += 1;
+    this.requests.push(request);
     return this.decision;
   }
 }
@@ -101,6 +105,80 @@ describe("LinuxAgentToolGate", () => {
     expect(result).toBeUndefined();
     expect(approvals.callCount).toBe(0);
     expect(audit.events.at(-1)?.eventType).toBe("policy.allow");
+  });
+
+  it("includes remote profile metadata in approval and audit payloads", async () => {
+    const audit = new RecordingAudit();
+    const approvals = new StaticApproval("approve_once");
+    const remote = {
+      type: "ssh",
+      host: "192.0.2.10",
+      profileName: "prod-web",
+      username: "operator",
+      port: 22,
+      knownHostsPath: "/home/operator/.ssh/known_hosts",
+      allowedWorkdirs: ["/var/log"],
+      sudoPolicy: "none",
+      keyPath: "/home/operator/.ssh/id_ed25519",
+    };
+    const gate = new LinuxAgentToolGate(
+      new StubPolicy(decision("CONFIRM", true)),
+      new SessionPermissions(),
+      approvals,
+      audit,
+      "t1",
+    );
+
+    await gate.beforeToolCall({ args: { argv: ["ssh", "operator@192.0.2.10", "uptime"], remote } });
+
+    expect(approvals.requests[0]?.remote).toEqual({
+      type: "ssh",
+      host: "192.0.2.10",
+      profileName: "prod-web",
+      username: "operator",
+      port: 22,
+      knownHostsPath: "/home/operator/.ssh/known_hosts",
+      allowedWorkdirs: ["/var/log"],
+      sudoPolicy: "none",
+    });
+    expect(audit.events.at(-1)).toMatchObject({
+      eventType: "hitl.decision",
+      payload: {
+        remote: approvals.requests[0]?.remote,
+      },
+    });
+  });
+
+  it("blocks remote commands before approval while preserving audit metadata", async () => {
+    const audit = new RecordingAudit();
+    const approvals = new StaticApproval("approve_once");
+    const remote = {
+      type: "ssh",
+      host: "192.0.2.10",
+      profileName: "prod-web",
+      username: "operator",
+      port: 22,
+    };
+    const gate = new LinuxAgentToolGate(
+      new StubPolicy(decision("BLOCK", true)),
+      new SessionPermissions(),
+      approvals,
+      audit,
+      "t1",
+    );
+
+    const result = await gate.beforeToolCall({
+      args: { argv: ["ssh", "operator@192.0.2.10", "echo $(cat /etc/shadow)"], remote },
+    });
+
+    expect(result).toEqual({ block: true, reason: "blocked" });
+    expect(approvals.callCount).toBe(0);
+    expect(audit.events[0]).toMatchObject({
+      eventType: "policy.block",
+      payload: {
+        remote,
+      },
+    });
   });
 });
 

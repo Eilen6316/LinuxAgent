@@ -24,6 +24,39 @@ describe("approval request", () => {
     });
   });
 
+  it("normalizes remote approval metadata without key material paths", () => {
+    expect(
+      createApprovalRequest({
+        argv: ["ssh", "operator@192.0.2.10", "uptime"],
+        reason: "remote command requires review",
+        neverWhitelist: true,
+        threadId: "t1",
+        remote: {
+          type: "ssh",
+          host: "192.0.2.10",
+          profileName: "prod-web",
+          username: "operator",
+          port: 22,
+          knownHostsPath: "/home/operator/.ssh/known_hosts",
+          allowedWorkdirs: ["/var/log"],
+          sudoPolicy: "none",
+          keyPath: "/home/operator/.ssh/id_ed25519",
+        },
+      }),
+    ).toMatchObject({
+      remote: {
+        type: "ssh",
+        host: "192.0.2.10",
+        profileName: "prod-web",
+        username: "operator",
+        port: 22,
+        knownHostsPath: "/home/operator/.ssh/known_hosts",
+        allowedWorkdirs: ["/var/log"],
+        sudoPolicy: "none",
+      },
+    });
+  });
+
   it("rejects missing argv in approval request payloads", () => {
     expect(() => createApprovalRequest({ threadId: "t1" })).toThrow(
       "approval request requires argv",
