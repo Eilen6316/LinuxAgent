@@ -1,5 +1,6 @@
 export * from "./approval.js";
 export * from "./execute-command-tool.js";
+export * from "./linuxagent-agent.js";
 export * from "./planner.js";
 export * from "./prompt-loader.js";
 export * from "./session-permissions.js";
