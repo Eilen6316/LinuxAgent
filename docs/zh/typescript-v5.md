@@ -18,7 +18,7 @@ TypeScript workspace 目前包含：
 | `@linuxagent/audit` | hash-chained JSONL writer 和 verifier |
 | `@linuxagent/sandbox` | sandbox runner contract、noop runner、fail-closed profile selection |
 | `@linuxagent/executor` | argv 本地执行器和有界输出脱敏 |
-| `@linuxagent/agent-runtime` | 会话权限、审批默认值、tool gate、连接 executor 的 command tool、prompt loader、planner validation、最小 runtime wrapper、tool-result redaction hook、最小 turn runner、remote approval/audit metadata、file patch guards、memory scope model 和 advisory memory read path |
+| `@linuxagent/agent-runtime` | 会话权限、审批默认值、tool gate、连接 executor 的 command tool、prompt loader、planner validation、最小 runtime wrapper、tool-result redaction hook、最小 turn runner、remote approval/audit metadata、file patch guards、memory scope model、advisory memory read path 和 pending memory write path |
 | `@linuxagent/tui` | 实验 TUI package shell、chat session、direct command routing、approval selector、confirmation renderer 和 slash router |
 | `@linuxagent/linuxagent-ts` | 实验 CLI package shell |
 | `@linuxagent/ssh` | remote profile validation、remote command guard 和 OpenSSH argv manager |
@@ -94,8 +94,9 @@ make ts-security
 | file patch transaction guard | 已落地 |
 | memory scope model | 已落地 |
 | memory read path | 已落地 |
-| memory write path pending candidates | 下一步 |
-| 完整 file patch writes、memory read/write、harness parity、cutover checklist | 尚未落地 |
+| memory write path pending candidates | 已落地 |
+| harness parity runner | 下一步 |
+| 完整 file patch writes、harness parity、cutover checklist | 尚未落地 |
 
 后续修改 TS 行为时，同一个小交付里要同步更新本页以及相关 README/development 链接，
 确保公开文档和代码状态一致。
