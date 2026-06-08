@@ -81,6 +81,11 @@ gates are satisfied. See the [TypeScript v5 experimental kernel](docs/en/typescr
 and [progressive rewrite design](docs/design/typescript-v5-progressive-rewrite.md)
 for current status, migration boundaries, and TS development commands.
 
+Default-runtime cutover is a separate release decision. Maintainers must run
+`make cutover-check` or the manual CI `cutover-readiness` job before promoting
+TS as the default, and the rollback path is documented in
+[vNext release notes](docs/releases/vNext.md).
+
 ## One-Minute Start
 
 ```bash
