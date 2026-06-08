@@ -19,7 +19,7 @@ The TypeScript workspace currently contains:
 | `@linuxagent/audit` | Hash-chained JSONL writer and verifier |
 | `@linuxagent/sandbox` | Sandbox runner contracts, no-op runner, and fail-closed profile selection |
 | `@linuxagent/executor` | argv-based local executor and bounded output redaction |
-| `@linuxagent/agent-runtime` | Session permissions, approval defaults, tool gate, executor-backed command tool, prompt loader, planner validation, minimal runtime wrapper, tool-result redaction hook, minimal turn runner, and remote approval/audit metadata |
+| `@linuxagent/agent-runtime` | Session permissions, approval defaults, tool gate, executor-backed command tool, prompt loader, planner validation, minimal runtime wrapper, tool-result redaction hook, minimal turn runner, remote approval/audit metadata, and file patch path policy |
 | `@linuxagent/tui` | Experimental TUI package shell, chat session, direct command routing, approval selector, confirmation renderer, and slash router |
 | `@linuxagent/linuxagent-ts` | Experimental CLI package shell |
 | `@linuxagent/ssh` | Remote profile validation, remote command guard, and OpenSSH argv manager |
@@ -92,7 +92,8 @@ release checks) authoritative for the production runtime.
 | OpenSSH argv manager | Landed |
 | SSH approval/audit metadata integration | Landed |
 | FilePatchPlan contract | Landed |
-| File patch path policy | Next |
+| File patch path policy | Landed |
+| File patch diff validator | Next |
 | File patch, memory, harness parity, and cutover checklist | Not yet landed |
 
 When updating TS behavior, update this page and the relevant README/development
