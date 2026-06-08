@@ -80,7 +80,8 @@ release checks) authoritative for the production runtime.
 | Tool result analysis/redaction hook | Landed |
 | Minimal runtime behavior tests | Landed |
 | Experimental TUI/CLI skeleton | Landed |
-| `linuxagent-ts check` implementation | Next |
+| `linuxagent-ts check` implementation | Landed |
+| TUI approval selector and confirmation renderer | Next |
 | SSH, file patch, memory, harness parity, and cutover checklist | Not yet landed |
 
 When updating TS behavior, update this page and the relevant README/development

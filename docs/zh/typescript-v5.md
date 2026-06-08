@@ -77,7 +77,8 @@ make ts-security
 | tool result analysis/redaction hook | 已落地 |
 | 最小 runtime behavior tests | 已落地 |
 | 实验 TUI/CLI skeleton | 已落地 |
-| `linuxagent-ts check` implementation | 下一步 |
+| `linuxagent-ts check` implementation | 已落地 |
+| TUI approval selector 和 confirmation renderer | 下一步 |
 | SSH、file patch、memory、harness parity、cutover checklist | 尚未落地 |
 
 后续修改 TS 行为时，同一个小交付里要同步更新本页以及相关 README/development 链接，
