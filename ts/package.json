@@ -15,7 +15,7 @@
     "lint": "biome check .",
     "type": "tsc -b --pretty false",
     "test": "vitest run",
-    "parity": "node parity/dist/parity-runner.js",
+    "parity": "tsc -b parity --pretty false && node parity/dist/parity-runner.js",
     "redlines": "node ../scripts/check_ts_redlines.mjs"
   },
   "dependencies": {

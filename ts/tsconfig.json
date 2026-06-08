@@ -10,6 +10,7 @@
     { "path": "./packages/executor" },
     { "path": "./packages/ssh" },
     { "path": "./packages/tui" },
+    { "path": "./parity" },
     { "path": "./apps/linuxagent-ts" }
   ]
 }
