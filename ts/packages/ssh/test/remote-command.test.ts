@@ -3,6 +3,20 @@ import { describe, expect, it } from "vitest";
 import { guardRemoteCommand } from "../src/remote-command.js";
 
 describe("guardRemoteCommand", () => {
+  it("blocks empty remote commands", () => {
+    expect(guardRemoteCommand("  ")).toEqual({
+      level: "BLOCK",
+      reason: "remote command is empty",
+    });
+  });
+
+  it("requires review for newline command separators", () => {
+    expect(guardRemoteCommand("uptime\nid")).toEqual({
+      level: "CONFIRM",
+      reason: "remote shell metacharacter requires review",
+    });
+  });
+
   it("blocks remote command substitution", () => {
     expect(guardRemoteCommand("echo $(cat /etc/shadow)")).toEqual({
       level: "BLOCK",
