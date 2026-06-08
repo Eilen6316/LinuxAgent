@@ -3,7 +3,7 @@
 
 PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo python; fi)
 
-.PHONY: help install test sandbox integration optional-anthropic lint type security red-team benchmark harness build release-check release-preflight verify-build ts-install ts-lint ts-type ts-test ts-parity ts-security ts-check clean
+.PHONY: help install test sandbox integration optional-anthropic lint type security red-team benchmark harness build release-check release-preflight verify-build ts-install ts-lint ts-type ts-test ts-parity ts-security ts-check cutover-check clean
 
 help:
 	@echo "Targets:"
@@ -29,6 +29,7 @@ help:
 	@echo "  ts-parity  run TS/Python parity checks"
 	@echo "  ts-security TS red-line checks"
 	@echo "  ts-check   TS lint + type + test + security"
+	@echo "  cutover-check explicit Python+TS gate before default runtime switch"
 	@echo "  clean      remove build / cache artifacts"
 
 install:
@@ -142,6 +143,18 @@ ts-security:
 	cd ts && npm run redlines
 
 ts-check: ts-lint ts-type ts-test ts-security
+
+cutover-check:
+	$(MAKE) lint
+	$(MAKE) type
+	$(MAKE) security
+	$(MAKE) test
+	$(MAKE) sandbox
+	$(MAKE) red-team
+	$(MAKE) harness
+	$(MAKE) verify-build
+	$(MAKE) ts-check
+	$(MAKE) ts-parity
 
 clean:
 	rm -rf build/ dist/ *.egg-info src/*.egg-info \
