@@ -20,7 +20,7 @@ The TypeScript workspace currently contains:
 | `@linuxagent/sandbox` | Sandbox runner contracts, no-op runner, and fail-closed profile selection |
 | `@linuxagent/executor` | argv-based local executor and bounded output redaction |
 | `@linuxagent/agent-runtime` | Session permissions, approval defaults, tool gate, executor-backed command tool, prompt loader, planner validation, minimal runtime wrapper, tool-result redaction hook, and minimal turn runner |
-| `@linuxagent/tui` | Experimental TUI package shell, approval selector, confirmation renderer, and slash router |
+| `@linuxagent/tui` | Experimental TUI package shell, chat session, approval selector, confirmation renderer, and slash router |
 | `@linuxagent/linuxagent-ts` | Experimental CLI package shell |
 
 The workspace also includes exported parity fixtures under
@@ -83,7 +83,8 @@ release checks) authoritative for the production runtime.
 | `linuxagent-ts check` implementation | Landed |
 | TUI approval selector and confirmation renderer | Landed |
 | Slash router | Landed |
-| Chat loop and direct command mode | Next |
+| Chat loop shell | Landed |
+| Direct command mode | Next |
 | SSH, file patch, memory, harness parity, and cutover checklist | Not yet landed |
 
 When updating TS behavior, update this page and the relevant README/development
