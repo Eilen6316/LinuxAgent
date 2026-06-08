@@ -923,10 +923,13 @@ make sandbox   # sandbox boundary regression suite
 make harness   # YAML scenario harness
 make build     # wheel + sdist
 make verify-build  # build + wheel install + packaged data check
+make ts-check  # experimental TypeScript workspace gate
 linuxagent audit verify
 ```
 
-Details in [Development Guide](development.md).
+Details in [Development Guide](development.md). The experimental TypeScript v5
+rewrite track is documented in [TypeScript v5 Experimental Kernel](typescript-v5.md);
+it does not replace the Python v4 production runtime.
 
 ---
 
@@ -948,6 +951,7 @@ See [Release Guide](release.md).
 ## Docs
 
 - [Quick Start](quickstart.md)
+- [TypeScript v5 Experimental Kernel](typescript-v5.md)
 - [Provider Compatibility Matrix](provider-matrix.md)
 - [Operator Safety Model](operator-safety.md)
 - [Development Guide](development.md)

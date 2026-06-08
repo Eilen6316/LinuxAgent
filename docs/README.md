@@ -14,6 +14,8 @@ homepage.
 | [Quick Start](en/quickstart.md) | Short installation and first-run walkthrough |
 | [Development Guide](en/development.md) | Local development and test workflow |
 | [中文开发指南](zh/development.md) | 中文本地开发流程和架构稳定性门禁 |
+| [TypeScript v5 Experimental Kernel](en/typescript-v5.md) | Status, boundaries, and commands for the experimental TS rewrite track |
+| [TypeScript v5 实验内核](zh/typescript-v5.md) | TS 实验重写线的状态、边界和开发命令 |
 | [Provider Matrix](en/provider-matrix.md) | Supported provider paths, token parameters, and compatibility report format |
 | [Provider 兼容矩阵](zh/provider-matrix.md) | 中文 provider 兼容路径和反馈格式 |
 | [Red Team Baseline](en/red-team.md) | Adversarial policy test baseline and xfail semantics |

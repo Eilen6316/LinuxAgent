@@ -1,5 +1,29 @@
 # 开发
 
+## TypeScript 实验 workspace
+
+`ts/` workspace 是 TypeScript v5 实验重写线。它不是生产运行时，也不会替代默认
+`linuxagent` 命令。迁移期间 Python v4 仍是行为真源，TS 子系统需要通过 parity fixture
+和红线检查逐步落地。
+
+当前 TS packages 已覆盖 contracts、policy parity、audit hash chain、sandbox runner
+contract、argv 本地执行、输出脱敏、tool gate 集成、会话权限、审批默认值和 prompt loading。
+当前进度和迁移边界见 [TypeScript v5 实验内核](typescript-v5.md)。
+
+常用 TS 命令：
+
+```bash
+make ts-install
+make ts-lint
+make ts-type
+make ts-test
+make ts-security
+make ts-check
+```
+
+修改 TS 行为时，同一个小交付里要更新 TS 状态文档和相关 README 入口。在明确 cutover
+checklist 通过前，Python 生产门禁仍是权威门禁。
+
 ## 架构稳定性预算
 
 `make security` 和 CI 会运行 `scripts/check_architecture_budget.py`。这个门禁把

@@ -18,6 +18,34 @@ Core layers:
 - `usage_insights/`: learner, semantic helpers, recommendations
 - `ui/`: terminal UI
 
+## TypeScript Experimental Workspace
+
+The `ts/` workspace is the TypeScript v5 experimental rewrite track. It is not
+the production runtime and does not replace the default `linuxagent` command.
+Python v4 remains the behavior oracle while TS subsystems land behind parity
+fixtures and red-line checks.
+
+Current TS packages cover contracts, policy parity, audit hash chains, sandbox
+runner contracts, argv-based local execution, output redaction, tool gate
+integration, session permissions, approval defaults, and prompt loading. See
+[TypeScript v5 Experimental Kernel](typescript-v5.md) for the current progress
+tracker and migration boundaries.
+
+Useful TS commands:
+
+```bash
+make ts-install
+make ts-lint
+make ts-type
+make ts-test
+make ts-security
+make ts-check
+```
+
+When changing TS behavior, update the TS status document and any relevant
+README entry in the same change. Keep Python production gates authoritative
+until an explicit cutover checklist is satisfied.
+
 ## Test Matrix
 
 - `tests/unit/`: default CI test suite

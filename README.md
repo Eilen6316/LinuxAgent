@@ -63,6 +63,21 @@ not just a set of claims in the README:
 | Sandbox roadmap | Landlock design documents capability probes, fallback order, compatibility limits, and implementation slices |
 | Agent integration | `linuxagent mcp` exposes read-only policy classify and audit verify tools over stdio MCP |
 
+## TypeScript v5 Experimental Track
+
+The production runtime remains Python v4. A TypeScript v5 kernel is being built
+under `ts/` as an experimental, progressive rewrite with Python kept as the
+behavior oracle. The TS workspace currently covers shared contracts, policy
+parity fixtures, HITL/session permission primitives, audit hash-chain support,
+sandbox runner contracts, argv-based local execution, output redaction, the
+tool gate to executor boundary, and prompt loading for the agent runtime.
+
+This track does not replace the default `linuxagent` command yet. Future
+`linuxagent-ts` entry points must stay explicitly experimental until policy,
+HITL, audit, sandbox, SSH, file patch, output redaction, and harness parity
+gates are satisfied. See the [TypeScript v5 experimental kernel](docs/en/typescript-v5.md)
+for current status and TS development commands.
+
 ## One-Minute Start
 
 ```bash
@@ -323,6 +338,7 @@ Current quality gates:
 | Coverage | `--cov-fail-under=80` |
 | Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
 | Build verification | wheel + sdist + packaged data install check |
+| TypeScript experimental track | `make ts-check` |
 
 Useful commands:
 
@@ -336,6 +352,7 @@ make red-team
 make benchmark
 make harness
 make verify-build
+make ts-check
 ```
 
 ## Install Paths
@@ -355,6 +372,7 @@ make verify-build
 | [Documentation index](docs/README.md) | All long-form docs in one place |
 | [docs/zh/README.md](docs/zh/README.md) | Full Chinese manual |
 | [docs/en/README.md](docs/en/README.md) | Full English manual |
+| [TypeScript v5 Experimental Kernel](docs/en/typescript-v5.md) | Status and commands for the experimental TS rewrite track |
 | [Quick Start](docs/en/quickstart.md) | Installation and first run |
 | [Provider Matrix](docs/en/provider-matrix.md) | Provider setup paths and compatibility status |
 | [Operator Safety Model](docs/en/operator-safety.md) | Plain-language safety boundaries for users |

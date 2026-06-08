@@ -846,10 +846,12 @@ make sandbox   # sandbox 边界回归测试
 make harness   # YAML 场景 harness
 make build     # wheel + sdist
 make verify-build  # build + wheel 安装 + package data 检查
+make ts-check  # 实验 TypeScript workspace 门禁
 linuxagent audit verify
 ```
 
-更多细节见 [开发指南](development.md)。
+更多细节见 [开发指南](development.md)。实验 TypeScript v5 重写线见
+[TypeScript v5 实验内核](typescript-v5.md)；它还不会替代 Python v4 生产运行时。
 
 ---
 
@@ -871,6 +873,7 @@ git push origin v4.1.0     # 触发 release.yml
 ## 文档
 
 - [快速开始](../en/quickstart.md)
+- [TypeScript v5 实验内核](typescript-v5.md) / [TypeScript v5 Experimental Kernel](../en/typescript-v5.md)
 - [Provider 兼容矩阵](provider-matrix.md) / [Provider Matrix](../en/provider-matrix.md)
 - [操作员安全模型](operator-safety.md) / [Operator Safety Model](../en/operator-safety.md)
 - [开发指南](development.md)
