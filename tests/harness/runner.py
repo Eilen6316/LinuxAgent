@@ -447,6 +447,14 @@ class HarnessRunner:
             for snippet in expected["response_contains"]:
                 if snippet not in content:
                     raise AssertionError(f"{scenario.name} {label}: response missing {snippet!r}")
+        if "response_not_contains" in expected:
+            messages = result.get("messages", []) if isinstance(result, dict) else []
+            content = str(messages[-1].content) if messages else ""
+            for snippet in expected["response_not_contains"]:
+                if snippet in content:
+                    raise AssertionError(
+                        f"{scenario.name} {label}: response unexpectedly contained {snippet!r}"
+                    )
         if "audit_log_contains" in expected:
             audit_lines = [
                 json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()

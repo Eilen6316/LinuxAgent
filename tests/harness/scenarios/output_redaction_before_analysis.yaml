@@ -1,0 +1,23 @@
+scenario: "command output redaction before analysis"
+provider_responses:
+  - '{"goal":"redact output","commands":[{"command":"/bin/echo password=hunter2","purpose":"emit redaction fixture","read_only":true,"target_hosts":[]}],"risk_summary":"read-only","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - raises: ProviderError
+    node: analyze
+    mode: analysis
+    message: "analysis unavailable"
+inputs:
+  - role: human
+    content: "run redaction fixture"
+expected_interrupts:
+  - type: confirm_command
+    matched_rule: LLM_FIRST_RUN
+resume:
+  decision: "yes"
+  latency_ms: 10
+expected:
+  command_executed: true
+  exit_code: 0
+  response_contains:
+    - "***redacted***"
+  response_not_contains:
+    - "hunter2"
