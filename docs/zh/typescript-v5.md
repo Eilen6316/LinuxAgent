@@ -82,6 +82,7 @@ make ts-security
 | slash router | 已落地 |
 | chat loop shell | 已落地 |
 | direct command mode | 已落地 |
+| SSH library decision | 已落地 |
 | SSH execution boundary | 下一步 |
 | SSH、file patch、memory、harness parity、cutover checklist | 尚未落地 |
 

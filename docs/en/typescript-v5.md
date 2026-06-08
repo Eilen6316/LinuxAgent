@@ -85,6 +85,7 @@ release checks) authoritative for the production runtime.
 | Slash router | Landed |
 | Chat loop shell | Landed |
 | Direct command mode | Landed |
+| SSH library decision | Landed |
 | SSH execution boundary | Next |
 | SSH, file patch, memory, harness parity, and cutover checklist | Not yet landed |
 
