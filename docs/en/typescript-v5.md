@@ -14,7 +14,7 @@ The TypeScript workspace currently contains:
 
 | Package | Current status |
 |---|---|
-| `@linuxagent/contracts` | Shared TypeBox schemas for command plans, policy decisions, audit entries, and runtime events |
+| `@linuxagent/contracts` | Shared TypeBox schemas for command plans, file patch plans, policy decisions, audit entries, and runtime events |
 | `@linuxagent/policy` | Token/effective-command policy engine with Python fixture parity for the initial corpus |
 | `@linuxagent/audit` | Hash-chained JSONL writer and verifier |
 | `@linuxagent/sandbox` | Sandbox runner contracts, no-op runner, and fail-closed profile selection |
@@ -91,7 +91,8 @@ release checks) authoritative for the production runtime.
 | Remote command guard | Landed |
 | OpenSSH argv manager | Landed |
 | SSH approval/audit metadata integration | Landed |
-| File patch plan parity | Next |
+| FilePatchPlan contract | Landed |
+| File patch path policy | Next |
 | File patch, memory, harness parity, and cutover checklist | Not yet landed |
 
 When updating TS behavior, update this page and the relevant README/development

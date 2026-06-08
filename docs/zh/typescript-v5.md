@@ -13,7 +13,7 @@ TypeScript workspace 目前包含：
 
 | Package | 当前状态 |
 |---|---|
-| `@linuxagent/contracts` | Command plan、policy decision、audit entry、runtime event 的共享 TypeBox schema |
+| `@linuxagent/contracts` | Command plan、file patch plan、policy decision、audit entry、runtime event 的共享 TypeBox schema |
 | `@linuxagent/policy` | token/effective-command 策略引擎，已覆盖初始 Python fixture parity |
 | `@linuxagent/audit` | hash-chained JSONL writer 和 verifier |
 | `@linuxagent/sandbox` | sandbox runner contract、noop runner、fail-closed profile selection |
@@ -88,7 +88,8 @@ make ts-security
 | remote command guard | 已落地 |
 | OpenSSH argv manager | 已落地 |
 | SSH approval/audit metadata integration | 已落地 |
-| file patch plan parity | 下一步 |
+| FilePatchPlan contract | 已落地 |
+| file patch path policy | 下一步 |
 | file patch、memory、harness parity、cutover checklist | 尚未落地 |
 
 后续修改 TS 行为时，同一个小交付里要同步更新本页以及相关 README/development 链接，
