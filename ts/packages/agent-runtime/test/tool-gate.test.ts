@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PolicyDecision } from "../../contracts/src/index.js";
+import type { ApprovalPort } from "../src/approval.js";
 import { SessionPermissions } from "../src/session-permissions.js";
-import { type ApprovalPort, type AuditPort, LinuxAgentToolGate } from "../src/tool-gate.js";
+import { type AuditPort, LinuxAgentToolGate } from "../src/tool-gate.js";
 
 class StubPolicy {
   constructor(private readonly decision: PolicyDecision) {}
@@ -20,9 +21,12 @@ class RecordingAudit implements AuditPort {
 }
 
 class StaticApproval implements ApprovalPort {
+  callCount = 0;
+
   constructor(private readonly decision: "approve_once" | "approve_thread" | "deny") {}
 
   async requestApproval(): Promise<"approve_once" | "approve_thread" | "deny"> {
+    this.callCount += 1;
     return this.decision;
   }
 }
@@ -76,6 +80,27 @@ describe("LinuxAgentToolGate", () => {
     await gate.beforeToolCall({ args: { argv } });
 
     expect(permissions.isAllowed({ threadId: "t1" }, argv)).toBe(false);
+  });
+
+  it("allows already-approved same-thread commands without another approval", async () => {
+    const permissions = new SessionPermissions();
+    const audit = new RecordingAudit();
+    const approvals = new StaticApproval("deny");
+    const argv = ["uname", "-a"];
+    permissions.allow({ threadId: "t1" }, argv);
+    const gate = new LinuxAgentToolGate(
+      new StubPolicy(decision("CONFIRM", false)),
+      permissions,
+      approvals,
+      audit,
+      "t1",
+    );
+
+    const result = await gate.beforeToolCall({ args: { argv } });
+
+    expect(result).toBeUndefined();
+    expect(approvals.callCount).toBe(0);
+    expect(audit.events.at(-1)?.eventType).toBe("policy.allow");
   });
 });
 

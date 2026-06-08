@@ -1,5 +1,6 @@
 import type { PolicyDecision } from "../../contracts/src/index.js";
 import type { PolicyEngine } from "../../policy/src/index.js";
+import { type ApprovalPort, createApprovalRequest } from "./approval.js";
 import type { SessionPermissions } from "./session-permissions.js";
 
 export interface ToolCallContext {
@@ -9,19 +10,6 @@ export interface ToolCallContext {
 export interface ToolCallResult {
   block: true;
   reason: string;
-}
-
-export interface ApprovalRequest {
-  argv: string[];
-  reason: string | null;
-  neverWhitelist: boolean;
-}
-
-export interface ApprovalPort {
-  requestApproval(
-    request: ApprovalRequest,
-    signal?: AbortSignal,
-  ): Promise<"approve_once" | "approve_thread" | "deny">;
 }
 
 export interface AuditPort {
@@ -55,7 +43,15 @@ export class LinuxAgentToolGate {
     }
 
     const approval = await this.approvals.requestApproval(
-      { argv, reason: decision.reason, neverWhitelist: decision.neverWhitelist },
+      createApprovalRequest({
+        argv,
+        reason: decision.reason,
+        neverWhitelist: decision.neverWhitelist,
+        threadId: this.threadId,
+        matchedRules: decision.matchedRules,
+        capabilities: decision.capabilities,
+        riskScore: decision.riskScore,
+      }),
       signal,
     );
     await this.audit.append("hitl.decision", { argv, decision, approval });
