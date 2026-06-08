@@ -19,7 +19,7 @@ The TypeScript workspace currently contains:
 | `@linuxagent/audit` | Hash-chained JSONL writer and verifier |
 | `@linuxagent/sandbox` | Sandbox runner contracts, no-op runner, and fail-closed profile selection |
 | `@linuxagent/executor` | argv-based local executor and bounded output redaction |
-| `@linuxagent/agent-runtime` | Session permissions, approval defaults, tool gate, executor-backed command tool, prompt loader, planner validation, minimal runtime wrapper, and tool-result redaction hook |
+| `@linuxagent/agent-runtime` | Session permissions, approval defaults, tool gate, executor-backed command tool, prompt loader, planner validation, minimal runtime wrapper, tool-result redaction hook, and minimal turn runner |
 
 The workspace also includes exported parity fixtures under
 `ts/parity/fixtures/` and TS red-line checks in `scripts/check_ts_redlines.mjs`.
@@ -76,8 +76,8 @@ release checks) authoritative for the production runtime.
 | Planner validation and fake model tests | Landed |
 | Minimal runtime wrapper with sequential command tools | Landed |
 | Tool result analysis/redaction hook | Landed |
-| Minimal runtime behavior tests | Next |
-| Experimental TUI/CLI | Not yet landed |
+| Minimal runtime behavior tests | Landed |
+| Experimental TUI/CLI | Next |
 | SSH, file patch, memory, harness parity, and cutover checklist | Not yet landed |
 
 When updating TS behavior, update this page and the relevant README/development
