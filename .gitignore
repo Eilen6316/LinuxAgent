@@ -52,6 +52,8 @@ node_modules/
 ts/node_modules/
 ts/.vitest/
 ts/coverage/
+ts/**/dist/
+ts/**/*.tsbuildinfo
 
 # IDE
 .vscode/

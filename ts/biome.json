@@ -6,6 +6,9 @@
     "indentWidth": 2,
     "lineWidth": 100
   },
+  "files": {
+    "includes": ["**", "!**/dist", "!**/node_modules"]
+  },
   "linter": {
     "enabled": true,
     "rules": {
