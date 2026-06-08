@@ -5,6 +5,13 @@ on:
     branches: [master, main, 'feature/**']
   pull_request:
     branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      run_cutover_check:
+        description: 'Run explicit Python+TS default-runtime cutover gate'
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -177,3 +184,26 @@ jobs:
         run: make release-check
       - name: Verify build
         run: make verify-build
+
+  cutover-readiness:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_cutover_check }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.20.0'
+          cache: npm
+          cache-dependency-path: ts/package-lock.json
+      - name: Install Python workspace
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Install TypeScript workspace
+        run: make ts-install
+      - name: Default runtime cutover gate
+        run: make cutover-check
