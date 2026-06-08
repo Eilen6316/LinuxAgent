@@ -1,0 +1,11 @@
+{
+  "name": "@linuxagent/policy",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "dependencies": {
+    "@linuxagent/contracts": "*",
+    "yaml": "2.9.0"
+  }
+}
