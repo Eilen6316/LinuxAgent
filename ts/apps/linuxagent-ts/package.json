@@ -1,0 +1,12 @@
+{
+  "name": "@linuxagent/linuxagent-ts",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "linuxagent-ts": "dist/src/cli.js"
+  },
+  "dependencies": {
+    "@linuxagent/agent-runtime": "*",
+    "@linuxagent/tui": "*"
+  }
+}

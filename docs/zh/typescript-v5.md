@@ -19,6 +19,8 @@ TypeScript workspace 目前包含：
 | `@linuxagent/sandbox` | sandbox runner contract、noop runner、fail-closed profile selection |
 | `@linuxagent/executor` | argv 本地执行器和有界输出脱敏 |
 | `@linuxagent/agent-runtime` | 会话权限、审批默认值、tool gate、连接 executor 的 command tool、prompt loader、planner validation、最小 runtime wrapper、tool-result redaction hook、最小 turn runner |
+| `@linuxagent/tui` | 实验 TUI package shell |
+| `@linuxagent/linuxagent-ts` | 实验 CLI package shell |
 
 导出的 parity fixture 位于 `ts/parity/fixtures/`，TS 红线检查位于
 `scripts/check_ts_redlines.mjs`。
@@ -74,7 +76,8 @@ make ts-security
 | 带 sequential command tools 的最小 runtime wrapper | 已落地 |
 | tool result analysis/redaction hook | 已落地 |
 | 最小 runtime behavior tests | 已落地 |
-| 实验 TUI/CLI | 下一步 |
+| 实验 TUI/CLI skeleton | 已落地 |
+| `linuxagent-ts check` implementation | 下一步 |
 | SSH、file patch、memory、harness parity、cutover checklist | 尚未落地 |
 
 后续修改 TS 行为时，同一个小交付里要同步更新本页以及相关 README/development 链接，
