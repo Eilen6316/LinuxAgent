@@ -2,6 +2,7 @@ export * from "./analysis.js";
 export * from "./approval.js";
 export * from "./direct-command.js";
 export * from "./execute-command-tool.js";
+export * from "./file-patch/index.js";
 export * from "./linuxagent-agent.js";
 export * from "./linuxagent-turn.js";
 export * from "./planner.js";
