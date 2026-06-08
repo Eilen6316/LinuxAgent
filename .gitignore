@@ -47,6 +47,14 @@ coverage.xml
 .ruff_cache/
 .dmypy.json
 
+# Node / TypeScript
+node_modules/
+ts/node_modules/
+ts/.vitest/
+ts/coverage/
+ts/**/dist/
+ts/**/*.tsbuildinfo
+
 # IDE
 .vscode/
 .idea/
