@@ -5,6 +5,7 @@ export * from "./execute-command-tool.js";
 export * from "./file-patch/index.js";
 export * from "./linuxagent-agent.js";
 export * from "./linuxagent-turn.js";
+export * from "./memory/index.js";
 export * from "./planner.js";
 export * from "./prompt-loader.js";
 export * from "./session-permissions.js";

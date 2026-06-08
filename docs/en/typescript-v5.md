@@ -19,7 +19,7 @@ The TypeScript workspace currently contains:
 | `@linuxagent/audit` | Hash-chained JSONL writer and verifier |
 | `@linuxagent/sandbox` | Sandbox runner contracts, no-op runner, and fail-closed profile selection |
 | `@linuxagent/executor` | argv-based local executor and bounded output redaction |
-| `@linuxagent/agent-runtime` | Session permissions, approval defaults, tool gate, executor-backed command tool, prompt loader, planner validation, minimal runtime wrapper, tool-result redaction hook, minimal turn runner, remote approval/audit metadata, file patch path policy, file patch diff validation, and file patch transaction guard |
+| `@linuxagent/agent-runtime` | Session permissions, approval defaults, tool gate, executor-backed command tool, prompt loader, planner validation, minimal runtime wrapper, tool-result redaction hook, minimal turn runner, remote approval/audit metadata, file patch guards, and memory scope model |
 | `@linuxagent/tui` | Experimental TUI package shell, chat session, direct command routing, approval selector, confirmation renderer, and slash router |
 | `@linuxagent/linuxagent-ts` | Experimental CLI package shell |
 | `@linuxagent/ssh` | Remote profile validation, remote command guard, and OpenSSH argv manager |
@@ -95,8 +95,9 @@ release checks) authoritative for the production runtime.
 | File patch path policy | Landed |
 | File patch diff validator | Landed |
 | File patch transaction guard | Landed |
-| Memory advisory context | Next |
-| Full file patch writes, memory, harness parity, and cutover checklist | Not yet landed |
+| Memory scope model | Landed |
+| Memory read path | Next |
+| Full file patch writes, memory read/write, harness parity, and cutover checklist | Not yet landed |
 
 When updating TS behavior, update this page and the relevant README/development
 links in the same change so public documentation stays aligned with the code.
