@@ -1,5 +1,10 @@
 {
   "extends": "./tsconfig.base.json",
   "files": [],
-  "references": [{ "path": "./packages/contracts" }, { "path": "./packages/policy" }]
+  "references": [
+    { "path": "./packages/contracts" },
+    { "path": "./packages/policy" },
+    { "path": "./packages/audit" },
+    { "path": "./packages/agent-runtime" }
+  ]
 }
