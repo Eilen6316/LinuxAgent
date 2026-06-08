@@ -1,0 +1,34 @@
+{
+  "name": "linuxagent-ts-workspace",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "check": "npm run lint && npm run type && npm run test && npm run redlines",
+    "lint": "biome check .",
+    "type": "tsc -b --pretty false",
+    "test": "vitest run",
+    "parity": "node parity/dist/parity-runner.js",
+    "redlines": "node ../scripts/check_ts_redlines.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.78.1",
+    "@earendil-works/pi-ai": "0.78.1",
+    "@earendil-works/pi-tui": "0.78.1",
+    "typebox": "1.1.38",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.5",
+    "@types/node": "24.12.4",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
