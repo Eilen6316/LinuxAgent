@@ -77,6 +77,17 @@ describe("linuxagent-ts CLI", () => {
     expect(output.join("\n")).toContain("linuxagent-ts chat: direct_answer");
   });
 
+  it("fails closed for direct command chat input when execution is not configured", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["chat", "--input", "!printf should-not-run"], {
+      stdout: output.push.bind(output),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output.join("\n")).toContain("linuxagent-ts chat: direct_command blocked");
+  });
+
   it("rejects incomplete chat input flags", async () => {
     const errors: string[] = [];
 

@@ -63,4 +63,25 @@ describe("LinuxAgentChatSession", () => {
     expect(directCalls).toEqual(["uname -a"]);
     expect(runtimeCalls).toHaveLength(0);
   });
+
+  it("fails closed for bang-prefixed input when direct command runner is unavailable", async () => {
+    const runtimeCalls: string[] = [];
+    const session = new LinuxAgentChatSession({
+      runTurn: async (input) => {
+        runtimeCalls.push(input);
+        return { kind: "direct_answer", answer: "unexpected" };
+      },
+    });
+
+    const result = await session.handleInput("!uname -a");
+
+    expect(result).toMatchObject({
+      kind: "direct_command",
+      result: {
+        executed: false,
+        blockedReason: "direct command runner is not configured",
+      },
+    });
+    expect(runtimeCalls).toHaveLength(0);
+  });
 });

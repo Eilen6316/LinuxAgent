@@ -27,6 +27,18 @@ export class LinuxAgentChatSession {
   async handleInput(input: string, signal?: AbortSignal): Promise<ChatSessionResult> {
     const route = routeSlashCommand(input);
     if (route.kind !== "not_slash") return route;
+    if (input.startsWith("!") && !this.directRunner) {
+      return {
+        kind: "direct_command",
+        result: {
+          executed: false,
+          blockedReason: "direct command runner is not configured",
+          modelText: "blocked: direct command runner is not configured",
+          redacted: false,
+          truncated: false,
+        },
+      };
+    }
     if (input.startsWith("!") && this.directRunner) {
       return {
         kind: "direct_command",

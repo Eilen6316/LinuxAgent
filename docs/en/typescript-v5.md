@@ -95,6 +95,8 @@ It exits `0` for a valid log and `1` for missing or invalid logs.
 `linuxagent-ts chat --input <text>` exercises the experimental TUI routing
 surface for slash commands such as `/new`, `/resume`, and `/tools`. The default
 runtime port is still a safe placeholder and does not call a provider yet.
+Bang-prefixed input is recognized as direct command mode, but it fails closed
+unless a direct command runner is explicitly configured.
 
 ## Progress Tracker
 
