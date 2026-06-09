@@ -14,6 +14,10 @@ import type {
 } from "@linuxagent/audit";
 import { redactOutput } from "@linuxagent/executor";
 import type { NoopSandboxRunner as NoopSandboxRunnerClass } from "@linuxagent/sandbox";
+import type {
+  buildOpenSshArgv as buildOpenSshArgvFunction,
+  guardRemoteCommand as guardRemoteCommandFunction,
+} from "@linuxagent/ssh";
 import type { PolicyLevel } from "../../packages/contracts/src/index.js";
 import type { PolicyEngine as PolicyEngineClass } from "../../packages/policy/src/index.js";
 import { formatSummary, type ParitySummary } from "./report.js";
@@ -91,6 +95,7 @@ export async function runParitySuites(
     runOutputRedactionParity(),
     await runFilePatchParity(),
     await runHitlParity(),
+    await runSshParity(),
     emptySummary("harness"),
     emptySummary("red-team"),
   ];
@@ -194,6 +199,36 @@ export async function runHitlParity(): Promise<ParitySummary> {
   return { suite: "hitl", passed: 3 - failures.length, total: 3, failures };
 }
 
+export async function runSshParity(): Promise<ParitySummary> {
+  const { buildOpenSshArgv, guardRemoteCommand } = await loadSshModule();
+  const failures: string[] = [];
+  const argv = buildOpenSshArgv(
+    {
+      name: "prod-web",
+      host: "192.0.2.10",
+      port: 22,
+      username: "operator",
+      keyPath: "/home/operator/.ssh/id_ed25519",
+      knownHostsPath: "/home/operator/.ssh/known_hosts",
+      allowedWorkdirs: ["/var/log"],
+      sudoPolicy: "none",
+    },
+    "uptime",
+  );
+  const argvText = argv.join("\0");
+  if (
+    !argvText.includes("StrictHostKeyChecking=yes") ||
+    !argvText.includes("UserKnownHostsFile=/home/operator/.ssh/known_hosts")
+  ) {
+    failures.push("OpenSSH argv must reject unknown hosts with explicit known_hosts");
+  }
+  const guarded = guardRemoteCommand("journalctl | tail");
+  if (guarded.level !== "CONFIRM") {
+    failures.push("remote shell metacharacters must require confirmation");
+  }
+  return { suite: "ssh", passed: 2 - failures.length, total: 2, failures };
+}
+
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   const summaries = await runParitySuites(argv[0] ?? defaultPolicyFixturePath());
   const failures = summaries.flatMap((summary) => summary.failures);
@@ -280,6 +315,16 @@ async function loadHitlModule(): Promise<{
   };
 }
 
+async function loadSshModule(): Promise<{
+  buildOpenSshArgv: typeof buildOpenSshArgvFunction;
+  guardRemoteCommand: typeof guardRemoteCommandFunction;
+}> {
+  return (await import(sshModuleSpecifier())) as {
+    buildOpenSshArgv: typeof buildOpenSshArgvFunction;
+    guardRemoteCommand: typeof guardRemoteCommandFunction;
+  };
+}
+
 function policyModuleSpecifier(): string {
   if (process.env.VITEST === "true" || import.meta.url.endsWith(".ts")) {
     return "../../packages/policy/src/index.js";
@@ -313,6 +358,13 @@ function hitlModuleSpecifier(): string {
     return "../../packages/agent-runtime/src/index.js";
   }
   return "../../packages/agent-runtime/dist/src/index.js";
+}
+
+function sshModuleSpecifier(): string {
+  if (process.env.VITEST === "true" || import.meta.url.endsWith(".ts")) {
+    return "../../packages/ssh/src/index.js";
+  }
+  return "../../packages/ssh/dist/src/index.js";
 }
 
 async function filePatchApplyPasses(

@@ -12,6 +12,7 @@
     { "path": "../packages/contracts" },
     { "path": "../packages/executor" },
     { "path": "../packages/policy" },
-    { "path": "../packages/sandbox" }
+    { "path": "../packages/sandbox" },
+    { "path": "../packages/ssh" }
   ]
 }

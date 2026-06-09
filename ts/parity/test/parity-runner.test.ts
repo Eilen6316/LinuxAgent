@@ -6,6 +6,7 @@ import {
   runHitlParity,
   runOutputRedactionParity,
   runSandboxParity,
+  runSshParity,
 } from "../src/parity-runner.js";
 
 describe("parity report formatting", () => {
@@ -62,6 +63,15 @@ describe("parity report formatting", () => {
       suite: "hitl",
       passed: 3,
       total: 3,
+      failures: [],
+    });
+  });
+
+  it("checks SSH unknown-host rejection boundary", async () => {
+    await expect(runSshParity()).resolves.toEqual({
+      suite: "ssh",
+      passed: 2,
+      total: 2,
       failures: [],
     });
   });

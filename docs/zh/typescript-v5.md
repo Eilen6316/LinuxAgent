@@ -65,7 +65,8 @@ make ts-parity
 `make ts-parity` 运行当前 TS/Python parity runner；目前检查 policy fixture corpus、
 audit verifier 篡改检测、sandbox fail-closed 行为、output redaction 行为和 file patch
 transaction rollback，以及 HITL same-thread/resume-scoped session permission；并为
-harness、red-team parity 输出占位摘要，后续逐步扩展。生产运行时仍以
+SSH strict known-host 和 remote command guard 行为提供 parity 覆盖；并为 harness、
+red-team parity 输出占位摘要，后续逐步扩展。生产运行时仍以
 Python 门禁为准：`make test`、`make security`、`make harness` 和 release 检查仍是
 权威门禁。
 
