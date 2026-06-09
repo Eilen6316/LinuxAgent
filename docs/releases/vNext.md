@@ -25,6 +25,7 @@ The TypeScript runtime is experimental. Python v4 remains the default release ru
   resume-scoped approvals.
 - Added TS SSH parity coverage for strict known-host OpenSSH argv and remote
   shell metacharacter confirmation.
+- Added TS harness fixture parity coverage for the required scenario index.
 - Kept `make ts-check` and `make ts-parity` as experimental TS signals until
   parity gates are promoted.
 

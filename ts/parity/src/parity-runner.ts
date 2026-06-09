@@ -96,7 +96,7 @@ export async function runParitySuites(
     await runFilePatchParity(),
     await runHitlParity(),
     await runSshParity(),
-    emptySummary("harness"),
+    runHarnessParity(),
     emptySummary("red-team"),
   ];
 }
@@ -229,6 +229,29 @@ export async function runSshParity(): Promise<ParitySummary> {
   return { suite: "ssh", passed: 2 - failures.length, total: 2, failures };
 }
 
+export function runHarnessParity(fixturePath = defaultHarnessFixturePath()): ParitySummary {
+  const records = readHarnessFixtureRecords(fixturePath);
+  const failures: string[] = [];
+  const sources = new Set(records.map((record) => record.source));
+  for (const source of REQUIRED_HARNESS_SOURCES) {
+    if (!sources.has(source)) {
+      failures.push(`missing harness scenario: ${source}`);
+    }
+  }
+  for (const record of records) {
+    const serialized = JSON.stringify(record);
+    if (/\/home\/(?!operator\b)|\/root\/\.ssh|secret|token/i.test(serialized)) {
+      failures.push(`${record.scenarioId}: fixture must not contain private paths or secrets`);
+    }
+  }
+  return {
+    suite: "harness",
+    passed: REQUIRED_HARNESS_SOURCES.length - failures.length,
+    total: REQUIRED_HARNESS_SOURCES.length,
+    failures,
+  };
+}
+
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   const summaries = await runParitySuites(argv[0] ?? defaultPolicyFixturePath());
   const failures = summaries.flatMap((summary) => summary.failures);
@@ -247,6 +270,10 @@ function defaultPolicyFixturePath(): string {
   return resolve(process.cwd(), "parity/fixtures/command-policy.jsonl");
 }
 
+function defaultHarnessFixturePath(): string {
+  return resolve(process.cwd(), "parity/fixtures/harness-scenarios.jsonl");
+}
+
 function defaultPolicyConfigPath(): string {
   return resolve(process.cwd(), "../configs/policy.default.yaml");
 }
@@ -258,6 +285,31 @@ function readPolicyFixtureRecords(fixturePath: string): PolicyFixtureRecord[] {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as PolicyFixtureRecord);
+}
+
+interface HarnessFixtureRecord {
+  scenarioId: string;
+  source: string;
+}
+
+const REQUIRED_HARNESS_SOURCES = [
+  "tests/harness/scenarios/parallel_direct_answer_boundary.yaml",
+  "tests/harness/scenarios/hitl_llm_first_run.yaml",
+  "tests/harness/scenarios/hitl_destructive_never_wl.yaml",
+  "tests/harness/scenarios/hitl_non_tty_auto_deny.yaml",
+  "tests/harness/scenarios/file_patch_existing_script_tools.yaml",
+  "tests/harness/scenarios/sandbox_local_fail_closed.yaml",
+  "tests/harness/scenarios/output_redaction_before_analysis.yaml",
+  "tests/harness/scenarios/cluster_remote_shell_syntax.yaml",
+] as const;
+
+function readHarnessFixtureRecords(fixturePath: string): HarnessFixtureRecord[] {
+  const content = readFileSync(fixturePath, "utf8").trim();
+  if (content.length === 0) return [];
+  return content
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as HarnessFixtureRecord);
 }
 
 function emptySummary(suite: string): ParitySummary {

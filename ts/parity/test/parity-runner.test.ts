@@ -3,6 +3,7 @@ import {
   formatSummary,
   runAuditParity,
   runFilePatchParity,
+  runHarnessParity,
   runHitlParity,
   runOutputRedactionParity,
   runSandboxParity,
@@ -72,6 +73,15 @@ describe("parity report formatting", () => {
       suite: "ssh",
       passed: 2,
       total: 2,
+      failures: [],
+    });
+  });
+
+  it("checks harness fixture index parity", () => {
+    expect(runHarnessParity()).toEqual({
+      suite: "harness",
+      passed: 8,
+      total: 8,
       failures: [],
     });
   });

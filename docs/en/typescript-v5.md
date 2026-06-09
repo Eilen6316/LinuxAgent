@@ -69,10 +69,10 @@ make ts-parity
 the policy fixture corpus, audit verifier tamper detection, sandbox fail-closed
 behavior, output redaction behavior, file patch transaction rollback, and HITL
 same-thread/resume-scoped session permissions, plus SSH strict known-host and
-remote command guard behavior. It then prints placeholder summaries for harness
-and red-team parity while those suites are expanded. Keep Python gates
-(`make test`, `make security`, `make harness`, and release checks)
-authoritative for the production runtime.
+remote command guard behavior. It also verifies the required harness fixture
+index. Red-team parity remains a placeholder while that suite is expanded.
+Keep Python gates (`make test`, `make security`, `make harness`, and release
+checks) authoritative for the production runtime.
 
 The experimental CLI check command validates explicit local paths and does not
 call a model API:
@@ -137,7 +137,7 @@ unless a direct command runner is explicitly configured.
 | Policy parity CLI runner | Landed |
 | Harness fixture export and required scenario index | Landed |
 | Experimental TS CI job | Landed |
-| Full file patch writes, harness parity execution, and cutover checklist | Not yet landed |
+| File patch runtime integration, red-team parity, and cutover checklist | Not yet landed |
 
 When updating TS behavior, update this page and the relevant README/development
 links in the same change so public documentation stays aligned with the code.

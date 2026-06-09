@@ -65,8 +65,8 @@ make ts-parity
 `make ts-parity` 运行当前 TS/Python parity runner；目前检查 policy fixture corpus、
 audit verifier 篡改检测、sandbox fail-closed 行为、output redaction 行为和 file patch
 transaction rollback，以及 HITL same-thread/resume-scoped session permission；并为
-SSH strict known-host 和 remote command guard 行为提供 parity 覆盖；并为 harness、
-red-team parity 输出占位摘要，后续逐步扩展。生产运行时仍以
+SSH strict known-host、remote command guard 行为和必选 harness fixture index 提供
+parity 覆盖。red-team parity 仍是占位摘要，后续逐步扩展。生产运行时仍以
 Python 门禁为准：`make test`、`make security`、`make harness` 和 release 检查仍是
 权威门禁。
 
@@ -131,7 +131,7 @@ node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
 | policy parity CLI runner | 已落地 |
 | harness fixture export 和必选场景索引 | 已落地 |
 | 实验 TS CI job | 已落地 |
-| 完整 file patch writes、harness parity 执行、cutover checklist | 尚未落地 |
+| file patch runtime 集成、red-team parity 和 cutover checklist | 尚未落地 |
 
 后续修改 TS 行为时，同一个小交付里要同步更新本页以及相关 README/development 链接，
 确保公开文档和代码状态一致。
