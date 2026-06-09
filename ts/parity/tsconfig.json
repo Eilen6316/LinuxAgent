@@ -6,5 +6,9 @@
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../packages/contracts" }, { "path": "../packages/policy" }]
+  "references": [
+    { "path": "../packages/audit" },
+    { "path": "../packages/contracts" },
+    { "path": "../packages/policy" }
+  ]
 }

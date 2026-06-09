@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
+import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type {
+  AuditWriter as AuditWriterClass,
+  verifyAuditLog as verifyAuditLogFunction,
+} from "@linuxagent/audit";
 import type { PolicyLevel } from "../../packages/contracts/src/index.js";
 import type { PolicyEngine as PolicyEngineClass } from "../../packages/policy/src/index.js";
 import { formatSummary, type ParitySummary } from "./report.js";
@@ -73,10 +79,35 @@ export async function runParitySuites(
 ): Promise<ParitySummary[]> {
   return [
     await runPolicyParity(policyFixturePath),
-    emptySummary("audit"),
+    await runAuditParity(),
     emptySummary("harness"),
     emptySummary("red-team"),
   ];
+}
+
+export async function runAuditParity(): Promise<ParitySummary> {
+  const { AuditWriter, verifyAuditLog } = await loadAuditModule();
+  const failures: string[] = [];
+  const dir = await mkdtemp(resolve(tmpdir(), "linuxagent-audit-parity-"));
+  const validPath = resolve(dir, "valid.log");
+  const tamperedPath = resolve(dir, "tampered.log");
+
+  await new AuditWriter(validPath).append("hitl.decision", { decision: "approve" });
+  const valid = await verifyAuditLog(validPath);
+  if (valid.status !== "valid" || valid.entries.length !== 1) {
+    failures.push(`valid log: expected valid/1, got ${valid.status}`);
+  }
+
+  await writeFile(tamperedPath, await readFile(validPath, "utf8"), { mode: 0o600 });
+  await chmod(tamperedPath, 0o600);
+  const tamperedText = await readFile(tamperedPath, "utf8");
+  await writeFile(tamperedPath, tamperedText.replace("approve", "deny"), { mode: 0o600 });
+  const tampered = await verifyAuditLog(tamperedPath);
+  if (tampered.status !== "invalid" || tampered.reason !== "hash mismatch") {
+    failures.push(`tampered log: expected invalid/hash mismatch, got ${tampered.status}`);
+  }
+
+  return { suite: "audit", passed: 2 - failures.length, total: 2, failures };
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -131,11 +162,28 @@ async function loadPolicyEngine(): Promise<typeof PolicyEngineClass> {
   return module.PolicyEngine;
 }
 
+async function loadAuditModule(): Promise<{
+  AuditWriter: typeof AuditWriterClass;
+  verifyAuditLog: typeof verifyAuditLogFunction;
+}> {
+  return (await import(auditModuleSpecifier())) as {
+    AuditWriter: typeof AuditWriterClass;
+    verifyAuditLog: typeof verifyAuditLogFunction;
+  };
+}
+
 function policyModuleSpecifier(): string {
   if (process.env.VITEST === "true" || import.meta.url.endsWith(".ts")) {
     return "../../packages/policy/src/index.js";
   }
   return "../../packages/policy/dist/src/index.js";
+}
+
+function auditModuleSpecifier(): string {
+  if (process.env.VITEST === "true" || import.meta.url.endsWith(".ts")) {
+    return "../../packages/audit/src/index.js";
+  }
+  return "../../packages/audit/dist/src/index.js";
 }
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

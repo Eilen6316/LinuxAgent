@@ -62,8 +62,9 @@ make ts-security
 make ts-parity
 ```
 
-`make ts-parity` 运行当前 TS/Python parity runner；目前检查 policy fixture corpus，
-并为 audit、harness、red-team parity 输出占位摘要，后续逐步扩展。生产运行时仍以
+`make ts-parity` 运行当前 TS/Python parity runner；目前检查 policy fixture corpus
+和 audit verifier 篡改检测，并为 harness、red-team parity 输出占位摘要，后续逐步扩展。
+生产运行时仍以
 Python 门禁为准：`make test`、`make security`、`make harness` 和 release 检查仍是
 权威门禁。
 

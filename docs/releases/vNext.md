@@ -13,6 +13,8 @@ The TypeScript runtime is experimental. Python v4 remains the default release ru
   `workflow_dispatch` with `run_cutover_check=true`.
 - Kept ordinary push, pull request, and release workflows on the Python v4
   release path.
+- Expanded `make ts-parity` so audit verifier tamper detection is a real TS
+  parity check instead of a placeholder summary.
 - Kept `make ts-check` and `make ts-parity` as experimental TS signals until
   parity gates are promoted.
 
