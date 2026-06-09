@@ -19,8 +19,8 @@ The TypeScript runtime is experimental. Python v4 remains the default release ru
   `noop` passthrough metadata.
 - Added TS output-redaction parity coverage for model-facing bearer/API token
   redaction and bounded truncation.
-- Added TS file patch parity coverage for transactional apply and rollback on
-  partial failure.
+- Added TS file patch parity coverage for transactional apply, rollback on
+  partial failure, and runtime path-policy fail-closed behavior.
 - Added TS HITL session-permission parity coverage for same-thread and
   resume-scoped approvals.
 - Added TS SSH parity coverage for strict known-host OpenSSH argv and remote

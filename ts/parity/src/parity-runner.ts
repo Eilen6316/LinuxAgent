@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   applyFilePatchTransaction as applyFilePatchTransactionFunction,
+  executeFilePatchTool as executeFilePatchToolFunction,
   FilePatchTransactionResult,
   SessionPermissions as SessionPermissionsClass,
 } from "@linuxagent/agent-runtime";
@@ -166,7 +167,7 @@ export function runOutputRedactionParity(): ParitySummary {
 }
 
 export async function runFilePatchParity(): Promise<ParitySummary> {
-  const { applyFilePatchTransaction } = await loadFilePatchModule();
+  const { applyFilePatchTransaction, executeFilePatchTool } = await loadFilePatchModule();
   const failures: string[] = [];
   if (!(await filePatchApplyPasses(applyFilePatchTransaction))) {
     failures.push("approved file patch must write the expected content");
@@ -174,7 +175,10 @@ export async function runFilePatchParity(): Promise<ParitySummary> {
   if (!(await filePatchRollbackPasses(applyFilePatchTransaction))) {
     failures.push("failed file patch transaction must roll back earlier writes");
   }
-  return { suite: "file-patch", passed: 2 - failures.length, total: 2, failures };
+  if (!(await filePatchToolPathPolicyPasses(executeFilePatchTool))) {
+    failures.push("file patch tool must fail closed before approval for disallowed paths");
+  }
+  return { suite: "file-patch", passed: 3 - failures.length, total: 3, failures };
 }
 
 export async function runHitlParity(): Promise<ParitySummary> {
@@ -426,9 +430,11 @@ async function loadSandboxModule(): Promise<{
 
 async function loadFilePatchModule(): Promise<{
   applyFilePatchTransaction: typeof applyFilePatchTransactionFunction;
+  executeFilePatchTool: typeof executeFilePatchToolFunction;
 }> {
   return (await import(filePatchModuleSpecifier())) as {
     applyFilePatchTransaction: typeof applyFilePatchTransactionFunction;
+    executeFilePatchTool: typeof executeFilePatchToolFunction;
   };
 }
 
@@ -543,6 +549,50 @@ async function filePatchRollbackPasses(
     );
   }
   return false;
+}
+
+async function filePatchToolPathPolicyPasses(
+  executeFilePatchTool: typeof executeFilePatchToolFunction,
+): Promise<boolean> {
+  const allowed = await mkdtemp(resolve(tmpdir(), "linuxagent-file-patch-allowed-"));
+  const outside = await mkdtemp(resolve(tmpdir(), "linuxagent-file-patch-outside-"));
+  const target = resolve(outside, "example.txt");
+  await writeFile(target, "old\n", "utf8");
+  let approvalCalls = 0;
+  const auditEvents: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
+  const result = await executeFilePatchTool({
+    args: {
+      version: 1,
+      requestIntent: "update",
+      summary: "blocked write",
+      patches: [
+        {
+          path: target,
+          diff: diffFor(target, "old", "new"),
+        },
+      ],
+    },
+    pathPolicy: { allowedRoots: [allowed] },
+    approval: {
+      approvePatch: async () => {
+        approvalCalls += 1;
+        return "approve";
+      },
+    },
+    audit: {
+      append: async (eventType, payload) => {
+        auditEvents.push({ eventType, payload });
+      },
+    },
+  });
+
+  return (
+    result.executed === false &&
+    result.blockedReason.includes("path outside allowed roots") &&
+    approvalCalls === 0 &&
+    (await readFile(target, "utf8")) === "old\n" &&
+    auditEvents[0]?.eventType === "file_patch.block"
+  );
 }
 
 function diffFor(path: string, oldText: string, newText: string): string {

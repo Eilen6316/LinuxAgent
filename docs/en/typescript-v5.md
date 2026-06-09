@@ -21,7 +21,7 @@ The TypeScript workspace currently contains:
 | `@linuxagent/audit` | Hash-chained JSONL writer and verifier |
 | `@linuxagent/sandbox` | Sandbox runner contracts, no-op runner, and fail-closed profile selection |
 | `@linuxagent/executor` | argv-based local executor and bounded output redaction |
-| `@linuxagent/agent-runtime` | Session permissions, approval defaults, tool gate, executor-backed command tool, prompt loader, planner validation, minimal runtime wrapper, tool-result redaction hook, minimal turn runner, remote approval/audit metadata, file patch guards, memory scope model, advisory memory read path, and pending memory write path |
+| `@linuxagent/agent-runtime` | Session permissions, approval defaults, tool gate, executor-backed command tool, prompt loader, planner validation, minimal runtime wrapper, tool-result redaction hook, minimal turn runner, remote approval/audit metadata, file patch runtime tool, memory scope model, advisory memory read path, and pending memory write path |
 | `@linuxagent/tui` | Experimental TUI package shell, chat session, direct command routing, approval selector, confirmation renderer, and slash router |
 | `@linuxagent/linuxagent-ts` | Experimental CLI package shell |
 | `@linuxagent/ssh` | Remote profile validation, remote command guard, and OpenSSH argv manager |
@@ -67,13 +67,14 @@ make ts-parity
 
 `make ts-parity` runs the current TS/Python parity runner. It currently checks
 the policy fixture corpus, audit verifier tamper detection, sandbox fail-closed
-behavior, output redaction behavior, file patch transaction rollback, and HITL
-same-thread/resume-scoped session permissions, plus SSH strict known-host and
-remote command guard behavior. It also verifies the required harness fixture
-index and an initial red-team policy slice for protected tree deletion,
-protected block-device mutation, network-to-shell, service mutation, and mkfs
-cases. Keep Python gates (`make test`, `make security`, `make red-team`,
-`make harness`, and release checks) authoritative for the production runtime.
+behavior, output redaction behavior, file patch transaction rollback and
+runtime path-policy fail-closed behavior, and HITL same-thread/resume-scoped
+session permissions, plus SSH strict known-host and remote command guard
+behavior. It also verifies the required harness fixture index and an initial
+red-team policy slice for protected tree deletion, protected block-device
+mutation, network-to-shell, service mutation, and mkfs cases. Keep Python gates
+(`make test`, `make security`, `make red-team`, `make harness`, and release
+checks) authoritative for the production runtime.
 
 The experimental CLI check command validates explicit local paths and does not
 call a model API:
@@ -132,13 +133,14 @@ unless a direct command runner is explicitly configured.
 | File patch path policy | Landed |
 | File patch diff validator | Landed |
 | File patch transaction guard | Landed |
+| File patch runtime integration | Landed |
 | Memory scope model | Landed |
 | Memory read path | Landed |
 | Memory write path pending candidates | Landed |
 | Policy parity CLI runner | Landed |
 | Harness fixture export and required scenario index | Landed |
 | Experimental TS CI job | Landed |
-| File patch runtime integration and cutover checklist | Not yet landed |
+| Cutover checklist | Not yet landed |
 
 When updating TS behavior, update this page and the relevant README/development
 links in the same change so public documentation stays aligned with the code.

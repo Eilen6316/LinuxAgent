@@ -20,7 +20,7 @@ TypeScript workspace 目前包含：
 | `@linuxagent/audit` | hash-chained JSONL writer 和 verifier |
 | `@linuxagent/sandbox` | sandbox runner contract、noop runner、fail-closed profile selection |
 | `@linuxagent/executor` | argv 本地执行器和有界输出脱敏 |
-| `@linuxagent/agent-runtime` | 会话权限、审批默认值、tool gate、连接 executor 的 command tool、prompt loader、planner validation、最小 runtime wrapper、tool-result redaction hook、最小 turn runner、remote approval/audit metadata、file patch guards、memory scope model、advisory memory read path 和 pending memory write path |
+| `@linuxagent/agent-runtime` | 会话权限、审批默认值、tool gate、连接 executor 的 command tool、prompt loader、planner validation、最小 runtime wrapper、tool-result redaction hook、最小 turn runner、remote approval/audit metadata、file patch runtime tool、memory scope model、advisory memory read path 和 pending memory write path |
 | `@linuxagent/tui` | 实验 TUI package shell、chat session、direct command routing、approval selector、confirmation renderer 和 slash router |
 | `@linuxagent/linuxagent-ts` | 实验 CLI package shell |
 | `@linuxagent/ssh` | remote profile validation、remote command guard 和 OpenSSH argv manager |
@@ -63,13 +63,13 @@ make ts-parity
 ```
 
 `make ts-parity` 运行当前 TS/Python parity runner；目前检查 policy fixture corpus、
-audit verifier 篡改检测、sandbox fail-closed 行为、output redaction 行为和 file patch
-transaction rollback，以及 HITL same-thread/resume-scoped session permission；并为
-SSH strict known-host、remote command guard 行为和必选 harness fixture index 提供
-parity 覆盖；同时覆盖初始 red-team policy slice，包括 protected tree delete、
-protected block-device mutation、network-to-shell、service mutation 和 mkfs 场景。
-生产运行时仍以 Python 门禁为准：`make test`、`make security`、`make red-team`、
-`make harness` 和 release 检查仍是权威门禁。
+audit verifier 篡改检测、sandbox fail-closed 行为、output redaction 行为、file patch
+transaction rollback 和 runtime path-policy fail-closed 行为，以及 HITL
+same-thread/resume-scoped session permission；并为 SSH strict known-host、remote
+command guard 行为和必选 harness fixture index 提供 parity 覆盖；同时覆盖初始
+red-team policy slice，包括 protected tree delete、protected block-device mutation、
+network-to-shell、service mutation 和 mkfs 场景。生产运行时仍以 Python 门禁为准：
+`make test`、`make security`、`make red-team`、`make harness` 和 release 检查仍是权威门禁。
 
 实验 CLI 的 check 命令只校验显式传入的本地路径，不会调用模型 API：
 
@@ -126,13 +126,14 @@ node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
 | file patch path policy | 已落地 |
 | file patch diff validator | 已落地 |
 | file patch transaction guard | 已落地 |
+| file patch runtime 集成 | 已落地 |
 | memory scope model | 已落地 |
 | memory read path | 已落地 |
 | memory write path pending candidates | 已落地 |
 | policy parity CLI runner | 已落地 |
 | harness fixture export 和必选场景索引 | 已落地 |
 | 实验 TS CI job | 已落地 |
-| file patch runtime 集成和 cutover checklist | 尚未落地 |
+| cutover checklist | 尚未落地 |
 
 后续修改 TS 行为时，同一个小交付里要同步更新本页以及相关 README/development 链接，
 确保公开文档和代码状态一致。

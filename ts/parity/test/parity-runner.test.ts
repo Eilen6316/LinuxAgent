@@ -54,8 +54,8 @@ describe("parity report formatting", () => {
   it("checks file patch transaction and rollback behavior", async () => {
     await expect(runFilePatchParity()).resolves.toEqual({
       suite: "file-patch",
-      passed: 2,
-      total: 2,
+      passed: 3,
+      total: 3,
       failures: [],
     });
   });
