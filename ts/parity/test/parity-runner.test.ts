@@ -6,6 +6,7 @@ import {
   runHarnessParity,
   runHitlParity,
   runOutputRedactionParity,
+  runRedTeamParity,
   runSandboxParity,
   runSshParity,
 } from "../src/parity-runner.js";
@@ -82,6 +83,15 @@ describe("parity report formatting", () => {
       suite: "harness",
       passed: 8,
       total: 8,
+      failures: [],
+    });
+  });
+
+  it("checks red-team policy parity", async () => {
+    await expect(runRedTeamParity()).resolves.toEqual({
+      suite: "red-team",
+      passed: 6,
+      total: 6,
       failures: [],
     });
   });

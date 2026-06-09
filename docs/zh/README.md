@@ -842,6 +842,7 @@ make optional-anthropic  # 可选 Anthropic extra 兼容验证
 make lint      # ruff check
 make type      # mypy --strict
 make security  # 红线 grep + bandit
+make red-team  # 对抗式 command-policy 语料
 make sandbox   # sandbox 边界回归测试
 make harness   # YAML 场景 harness
 make build     # wheel + sdist

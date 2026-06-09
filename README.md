@@ -70,15 +70,17 @@ under `ts/` as an experimental, progressive rewrite with Python kept as the
 behavior oracle. The TS workspace currently covers shared contracts, policy
 parity fixtures, HITL/session permission primitives, audit hash-chain support,
 sandbox runner contracts, argv-based local execution, output redaction, the
-tool gate to executor boundary, and prompt loading for the agent runtime.
+tool gate to executor boundary, prompt loading, SSH guard primitives, file
+patch transaction parity, harness fixture parity, and a red-team policy slice.
 
 The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
 
 This track does not replace the default `linuxagent` command yet. Future
 `linuxagent-ts` entry points must stay explicitly experimental until policy,
-HITL, audit, sandbox, SSH, file patch, output redaction, and harness parity
-gates are satisfied. See the [TypeScript v5 experimental kernel](docs/en/typescript-v5.md)
-and [progressive rewrite design](docs/design/typescript-v5-progressive-rewrite.md)
+red-team, HITL, audit, sandbox, SSH, file patch, output redaction, and harness
+parity gates are satisfied. See the
+[TypeScript v5 experimental kernel](docs/en/typescript-v5.md) and
+[progressive rewrite design](docs/design/typescript-v5-progressive-rewrite.md)
 for current status, migration boundaries, and TS development commands.
 
 The experimental `linuxagent-ts check` command validates explicit local paths

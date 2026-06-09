@@ -75,6 +75,14 @@ export class PolicyEngine {
         }),
       );
     }
+    if (isProtectedTreeDelete(command)) {
+      decisions.push(
+        decision("BLOCK", 100, ["filesystem.delete"], ["PROTECTED_TREE_DELETE"], {
+          reason: "recursive forced deletion targeting protected system tree",
+          neverWhitelist: true,
+        }),
+      );
+    }
     if (isMkfsProtectedBlockDevice(command)) {
       decisions.push(
         decision("BLOCK", 100, ["block_device.mutate"], ["BLOCK_DEVICE_MUTATE"], {
@@ -83,6 +91,14 @@ export class PolicyEngine {
         }),
         decision("BLOCK", 100, ["filesystem.sensitive_read"], ["SENSITIVE_PATH"], {
           reason: "sensitive path access",
+        }),
+      );
+    }
+    if (isDdProtectedBlockWrite(command)) {
+      decisions.push(
+        decision("BLOCK", 100, ["block_device.mutate"], ["BLOCK_DEVICE_MUTATE"], {
+          reason: "raw write targeting protected block device",
+          neverWhitelist: true,
         }),
       );
     }
@@ -153,7 +169,27 @@ function isRmRoot(command: EffectiveCommand): boolean {
 }
 
 function hasRecursiveForce(args: readonly string[]): boolean {
-  return args.some((arg) => arg === "-rf" || arg === "-fr" || /^-[rRfF]+$/.test(arg));
+  return hasRecursiveFlag(args) && hasForceFlag(args);
+}
+
+function hasRecursiveFlag(args: readonly string[]): boolean {
+  return args.some((arg) => arg === "--recursive" || /^-[rRfF]*[rR][rRfF]*$/.test(arg));
+}
+
+function hasForceFlag(args: readonly string[]): boolean {
+  return args.some((arg) => arg === "--force" || /^-[rRfF]*[fF][rRfF]*$/.test(arg));
+}
+
+function isProtectedTreeDelete(command: EffectiveCommand): boolean {
+  return (
+    ["rm", "rmdir", "shred"].includes(command.normalizedExecutable) &&
+    hasRecursiveForce(command.args) &&
+    command.args.some((arg) => isProtectedSystemPath(arg))
+  );
+}
+
+function isProtectedSystemPath(value: string): boolean {
+  return ["/etc", "/usr", "/var", "/boot"].includes(value.replace(/\/+$/, ""));
 }
 
 function isMkfsProtectedBlockDevice(command: EffectiveCommand): boolean {
@@ -161,6 +197,17 @@ function isMkfsProtectedBlockDevice(command: EffectiveCommand): boolean {
     command.normalizedExecutable.startsWith("mkfs") &&
     command.args.some((arg) => /^\/dev\/(sd[a-z]|nvme\d+n\d+|vd[a-z]|mapper\/.+|md\d+)/.test(arg))
   );
+}
+
+function isDdProtectedBlockWrite(command: EffectiveCommand): boolean {
+  return (
+    command.normalizedExecutable === "dd" &&
+    command.args.some((arg) => arg.startsWith("of=") && isProtectedBlockDevice(arg.slice(3)))
+  );
+}
+
+function isProtectedBlockDevice(value: string): boolean {
+  return /^\/dev\/(sd[a-z]|nvme\d+n\d+|vd[a-z]|mapper\/.+|md\d+)/.test(value);
 }
 
 function isServiceMutation(command: EffectiveCommand): boolean {

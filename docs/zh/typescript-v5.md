@@ -66,9 +66,10 @@ make ts-parity
 audit verifier 篡改检测、sandbox fail-closed 行为、output redaction 行为和 file patch
 transaction rollback，以及 HITL same-thread/resume-scoped session permission；并为
 SSH strict known-host、remote command guard 行为和必选 harness fixture index 提供
-parity 覆盖。red-team parity 仍是占位摘要，后续逐步扩展。生产运行时仍以
-Python 门禁为准：`make test`、`make security`、`make harness` 和 release 检查仍是
-权威门禁。
+parity 覆盖；同时覆盖初始 red-team policy slice，包括 protected tree delete、
+protected block-device mutation、network-to-shell、service mutation 和 mkfs 场景。
+生产运行时仍以 Python 门禁为准：`make test`、`make security`、`make red-team`、
+`make harness` 和 release 检查仍是权威门禁。
 
 实验 CLI 的 check 命令只校验显式传入的本地路径，不会调用模型 API：
 
@@ -131,7 +132,7 @@ node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
 | policy parity CLI runner | 已落地 |
 | harness fixture export 和必选场景索引 | 已落地 |
 | 实验 TS CI job | 已落地 |
-| file patch runtime 集成、red-team parity 和 cutover checklist | 尚未落地 |
+| file patch runtime 集成和 cutover checklist | 尚未落地 |
 
 后续修改 TS 行为时，同一个小交付里要同步更新本页以及相关 README/development 链接，
 确保公开文档和代码状态一致。

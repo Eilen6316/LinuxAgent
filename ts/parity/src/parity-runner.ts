@@ -97,7 +97,7 @@ export async function runParitySuites(
     await runHitlParity(),
     await runSshParity(),
     runHarnessParity(),
-    emptySummary("red-team"),
+    await runRedTeamParity(),
   ];
 }
 
@@ -252,6 +252,46 @@ export function runHarnessParity(fixturePath = defaultHarnessFixturePath()): Par
   };
 }
 
+export async function runRedTeamParity(
+  fixturePath = defaultRedTeamFixturePath(),
+): Promise<ParitySummary> {
+  const PolicyEngine = await loadPolicyEngine();
+  const engine = await PolicyEngine.loadFromYaml(defaultPolicyConfigPath());
+  const records = readRedTeamFixtureRecords(fixturePath);
+  const failures: string[] = [];
+
+  for (const record of records) {
+    const actual = engine.evaluate(record.input.argv, { source: record.input.source });
+    if (!meetsMinimumLevel(actual.level, record.expected.minimumLevel)) {
+      failures.push(
+        `${record.case_id}: expected at least ${record.expected.minimumLevel}, got ${actual.level}`,
+      );
+    }
+    if (actual.neverWhitelist !== record.expected.neverWhitelist) {
+      failures.push(
+        `${record.case_id}: expected neverWhitelist ${record.expected.neverWhitelist}, got ${actual.neverWhitelist}`,
+      );
+    }
+    for (const rule of record.expected.requiredMatchedRules) {
+      if (!actual.matchedRules.includes(rule)) {
+        failures.push(`${record.case_id}: missing matched rule ${rule}`);
+      }
+    }
+    for (const capability of record.expected.requiredCapabilities) {
+      if (!actual.capabilities.includes(capability)) {
+        failures.push(`${record.case_id}: missing capability ${capability}`);
+      }
+    }
+  }
+
+  return {
+    suite: "red-team",
+    passed: records.length - new Set(failures.map((failure) => failure.split(":")[0])).size,
+    total: records.length,
+    failures,
+  };
+}
+
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   const summaries = await runParitySuites(argv[0] ?? defaultPolicyFixturePath());
   const failures = summaries.flatMap((summary) => summary.failures);
@@ -272,6 +312,10 @@ function defaultPolicyFixturePath(): string {
 
 function defaultHarnessFixturePath(): string {
   return resolve(process.cwd(), "parity/fixtures/harness-scenarios.jsonl");
+}
+
+function defaultRedTeamFixturePath(): string {
+  return resolve(process.cwd(), "parity/fixtures/red-team-policy.jsonl");
 }
 
 function defaultPolicyConfigPath(): string {
@@ -312,8 +356,31 @@ function readHarnessFixtureRecords(fixturePath: string): HarnessFixtureRecord[] 
     .map((line) => JSON.parse(line) as HarnessFixtureRecord);
 }
 
-function emptySummary(suite: string): ParitySummary {
-  return { suite, passed: 0, total: 0, failures: [] };
+interface RedTeamFixtureRecord {
+  case_id: string;
+  input: {
+    argv: string[];
+    source: PolicySource;
+  };
+  expected: {
+    minimumLevel: PolicyLevel;
+    neverWhitelist: boolean;
+    requiredMatchedRules: string[];
+    requiredCapabilities: string[];
+  };
+}
+
+function readRedTeamFixtureRecords(fixturePath: string): RedTeamFixtureRecord[] {
+  const content = readFileSync(fixturePath, "utf8").trim();
+  if (content.length === 0) return [];
+  return content
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as RedTeamFixtureRecord);
+}
+
+function meetsMinimumLevel(actual: PolicyLevel, expected: PolicyLevel): boolean {
+  return POLICY_LEVEL_RANK[actual] >= POLICY_LEVEL_RANK[expected];
 }
 
 function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
@@ -325,6 +392,12 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
 function formatStrings(items: readonly string[]): string {
   return `[${[...items].sort().join(", ")}]`;
 }
+
+const POLICY_LEVEL_RANK: Record<PolicyLevel, number> = {
+  SAFE: 0,
+  CONFIRM: 1,
+  BLOCK: 2,
+};
 
 async function loadPolicyEngine(): Promise<typeof PolicyEngineClass> {
   const module = (await import(policyModuleSpecifier())) as {
