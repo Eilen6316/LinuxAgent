@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatSummary,
   runAuditParity,
+  runFilePatchParity,
   runOutputRedactionParity,
   runSandboxParity,
 } from "../src/parity-runner.js";
@@ -40,6 +41,15 @@ describe("parity report formatting", () => {
   it("checks output redaction behavior", () => {
     expect(runOutputRedactionParity()).toEqual({
       suite: "output-redaction",
+      passed: 2,
+      total: 2,
+      failures: [],
+    });
+  });
+
+  it("checks file patch transaction and rollback behavior", async () => {
+    await expect(runFilePatchParity()).resolves.toEqual({
+      suite: "file-patch",
       passed: 2,
       total: 2,
       failures: [],

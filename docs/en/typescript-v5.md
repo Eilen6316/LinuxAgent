@@ -67,8 +67,9 @@ make ts-parity
 
 `make ts-parity` runs the current TS/Python parity runner. It currently checks
 the policy fixture corpus, audit verifier tamper detection, sandbox fail-closed
-behavior, and output redaction behavior, then prints placeholder summaries for
-harness and red-team parity while those suites are expanded. Keep Python gates
+behavior, output redaction behavior, and file patch transaction rollback, then
+prints placeholder summaries for harness and red-team parity while those suites
+are expanded. Keep Python gates
 (`make test`, `make security`, `make harness`, and release checks)
 authoritative for the production runtime.
 

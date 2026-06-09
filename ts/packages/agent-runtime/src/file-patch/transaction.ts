@@ -1,4 +1,6 @@
+import { readFile, writeFile } from "node:fs/promises";
 import type { FilePatchPlan } from "@linuxagent/contracts";
+import { validateUnifiedDiff } from "./diff-validator.js";
 
 export interface PatchApprovalPort {
   approvePatch(plan: FilePatchPlan, preview: string): Promise<"approve" | "deny">;
@@ -31,7 +33,94 @@ export async function applyFilePatchTransaction(
     rolledBack: false,
   });
   if (denied) return { applied: false, rolledBack: false, changedPaths: [] };
-  throw new Error(
-    "transactional apply must be implemented with snapshot and rollback before enabling file patch writes",
-  );
+
+  const snapshots = new Map<string, string>();
+  const changedPaths: string[] = [];
+  try {
+    for (const patch of plan.patches) {
+      validateUnifiedDiff(patch.diff);
+      const original = snapshots.get(patch.path) ?? (await readFile(patch.path, "utf8"));
+      snapshots.set(patch.path, original);
+      const updated = applyUnifiedDiff(original, patch.diff);
+      await writeFile(patch.path, updated, "utf8");
+      changedPaths.push(patch.path);
+    }
+    await audit.append("file_patch.result", {
+      success: true,
+      rolledBack: false,
+      changedPaths,
+    });
+    return { applied: true, rolledBack: false, changedPaths };
+  } catch (error) {
+    for (const [path, content] of snapshots) {
+      await writeFile(path, content, "utf8");
+    }
+    await audit.append("file_patch.result", {
+      success: false,
+      rolledBack: snapshots.size > 0,
+      changedPaths,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+function applyUnifiedDiff(original: string, diff: string): string {
+  const lines = original.split("\n");
+  const output = [...lines];
+  const diffLines = diff.split(/\r?\n/);
+  let cursor = 0;
+
+  while (cursor < diffLines.length) {
+    const line = diffLines[cursor];
+    if (!line?.startsWith("@@ ")) {
+      cursor += 1;
+      continue;
+    }
+    const hunk = parseHunkHeader(line);
+    let position = hunk.oldStart - 1;
+    cursor += 1;
+    while (
+      cursor < diffLines.length &&
+      !diffLines[cursor]?.startsWith("@@ ") &&
+      !diffLines[cursor]?.startsWith("--- ")
+    ) {
+      const hunkLine = diffLines[cursor] ?? "";
+      cursor += 1;
+      if (hunkLine === "" || hunkLine.startsWith("\\")) continue;
+      const marker = hunkLine[0];
+      const text = hunkLine.slice(1);
+      if (marker === " ") {
+        assertLine(output, position, text, "hunk context mismatch");
+        position += 1;
+      } else if (marker === "-") {
+        assertLine(output, position, text, "hunk removal mismatch");
+        output.splice(position, 1);
+      } else if (marker === "+") {
+        output.splice(position, 0, text);
+        position += 1;
+      }
+    }
+  }
+
+  return output.join("\n");
+}
+
+function parseHunkHeader(header: string): { oldStart: number } {
+  const match = /^@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@/.exec(header);
+  if (!match?.[1]) throw new Error(`invalid hunk header: ${header}`);
+  return { oldStart: Number.parseInt(match[1], 10) };
+}
+
+function assertLine(
+  lines: readonly string[],
+  position: number,
+  expected: string,
+  message: string,
+): void {
+  if (lines[position] !== expected) {
+    throw new Error(
+      `${message}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(lines[position])}`,
+    );
+  }
 }

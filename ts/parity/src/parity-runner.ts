@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  applyFilePatchTransaction as applyFilePatchTransactionFunction,
+  FilePatchTransactionResult,
+} from "@linuxagent/agent-runtime";
+import type {
   AuditWriter as AuditWriterClass,
   verifyAuditLog as verifyAuditLogFunction,
 } from "@linuxagent/audit";
@@ -84,6 +88,7 @@ export async function runParitySuites(
     await runAuditParity(),
     await runSandboxParity(),
     runOutputRedactionParity(),
+    await runFilePatchParity(),
     emptySummary("harness"),
     emptySummary("red-team"),
   ];
@@ -151,6 +156,18 @@ export function runOutputRedactionParity(): ParitySummary {
   }
 
   return { suite: "output-redaction", passed: 2 - failures.length, total: 2, failures };
+}
+
+export async function runFilePatchParity(): Promise<ParitySummary> {
+  const { applyFilePatchTransaction } = await loadFilePatchModule();
+  const failures: string[] = [];
+  if (!(await filePatchApplyPasses(applyFilePatchTransaction))) {
+    failures.push("approved file patch must write the expected content");
+  }
+  if (!(await filePatchRollbackPasses(applyFilePatchTransaction))) {
+    failures.push("failed file patch transaction must roll back earlier writes");
+  }
+  return { suite: "file-patch", passed: 2 - failures.length, total: 2, failures };
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -223,6 +240,14 @@ async function loadSandboxModule(): Promise<{
   };
 }
 
+async function loadFilePatchModule(): Promise<{
+  applyFilePatchTransaction: typeof applyFilePatchTransactionFunction;
+}> {
+  return (await import(filePatchModuleSpecifier())) as {
+    applyFilePatchTransaction: typeof applyFilePatchTransactionFunction;
+  };
+}
+
 function policyModuleSpecifier(): string {
   if (process.env.VITEST === "true" || import.meta.url.endsWith(".ts")) {
     return "../../packages/policy/src/index.js";
@@ -242,6 +267,84 @@ function sandboxModuleSpecifier(): string {
     return "../../packages/sandbox/src/index.js";
   }
   return "../../packages/sandbox/dist/src/index.js";
+}
+
+function filePatchModuleSpecifier(): string {
+  if (process.env.VITEST === "true" || import.meta.url.endsWith(".ts")) {
+    return "../../packages/agent-runtime/src/file-patch/index.js";
+  }
+  return "../../packages/agent-runtime/dist/src/file-patch/index.js";
+}
+
+async function filePatchApplyPasses(
+  applyFilePatchTransaction: typeof applyFilePatchTransactionFunction,
+): Promise<boolean> {
+  const dir = await mkdtemp(resolve(tmpdir(), "linuxagent-file-patch-parity-"));
+  const target = resolve(dir, "apply.txt");
+  await writeFile(target, "old\n", "utf8");
+  const result = await applyFilePatchTransaction(
+    {
+      version: 1,
+      requestIntent: "update",
+      summary: "apply parity",
+      patches: [{ path: target, diff: diffFor(target, "old", "new") }],
+    },
+    { approvePatch: async () => "approve" },
+    new MemoryPatchAudit(),
+  );
+  return result.applied && !result.rolledBack && (await readFile(target, "utf8")) === "new\n";
+}
+
+async function filePatchRollbackPasses(
+  applyFilePatchTransaction: typeof applyFilePatchTransactionFunction,
+): Promise<boolean> {
+  const dir = await mkdtemp(resolve(tmpdir(), "linuxagent-file-patch-parity-"));
+  const first = resolve(dir, "first.txt");
+  const second = resolve(dir, "second.txt");
+  const audit = new MemoryPatchAudit();
+  await writeFile(first, "old\n", "utf8");
+  await writeFile(second, "stable\n", "utf8");
+  try {
+    await applyFilePatchTransaction(
+      {
+        version: 1,
+        requestIntent: "update",
+        summary: "rollback parity",
+        patches: [
+          { path: first, diff: diffFor(first, "old", "new") },
+          { path: second, diff: diffFor(second, "missing", "changed") },
+        ],
+      },
+      { approvePatch: async () => "approve" },
+      audit,
+    );
+  } catch {
+    const result = audit.lastResult();
+    return (
+      (await readFile(first, "utf8")) === "old\n" &&
+      (await readFile(second, "utf8")) === "stable\n" &&
+      result?.rolledBack === true
+    );
+  }
+  return false;
+}
+
+function diffFor(path: string, oldText: string, newText: string): string {
+  return `--- ${path}\n+++ ${path}\n@@ -1 +1 @@\n-${oldText}\n+${newText}\n`;
+}
+
+class MemoryPatchAudit {
+  readonly events: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
+
+  async append(eventType: string, payload: Record<string, unknown>): Promise<void> {
+    this.events.push({ eventType, payload });
+  }
+
+  lastResult(): (FilePatchTransactionResult & { success?: boolean }) | undefined {
+    return this.events.findLast((event) => event.eventType === "file_patch.result")?.payload as
+      | (FilePatchTransactionResult & { success?: boolean })
+      | undefined;
+  }
 }
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
