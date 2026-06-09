@@ -6,18 +6,19 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="README.md#quality-gate"><img src="https://img.shields.io/badge/coverage-80%25%2B-brightgreen?style=flat-square" alt="Coverage"></a>
+    <a href="docs/en/development.md"><img src="https://img.shields.io/badge/coverage-80%25%2B-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
   </p>
 
   <p><strong>A Linux ops CLI where LLM-generated commands must pass deterministic policy and human approval before execution.</strong></p>
 
   <p>
-    <a href="docs/zh/README.md">简体中文完整文档</a> ·
-    <a href="docs/en/README.md">Full English manual</a> ·
-    <a href="blog.md">why substring matching is not safety</a> ·
+    <a href="docs/en/quickstart.md">Quick Start</a> ·
+    <a href="docs/zh/quickstart.md">中文快速开始</a> ·
+    <a href="docs/en/README.md">English manual</a> ·
+    <a href="docs/zh/README.md">中文手册</a> ·
     <a href="docs/releases/v4.1.0.md">v4.1.0 release notes</a> ·
-    <a href="https://github.com/Eilen6316/LinuxAgent/issues/new?template=user_feedback.yml">share real usage feedback</a>
+    <a href="https://github.com/Eilen6316/LinuxAgent/issues/new?template=user_feedback.yml">share feedback</a>
   </p>
 </div>
 
@@ -28,94 +29,26 @@ lets an LLM propose Linux operations, but execution stays behind deterministic
 policy checks, Human-in-the-Loop confirmation, SSH safety guards, output
 redaction, and a hash-chained audit log.
 
-The core project is intentionally narrow: command planning, policy, HITL,
-audit, SSH guardrails, and a small set of practical providers. Extra providers,
-Skills, and integrations are treated as extension points rather than the center
-of the product.
+The default runtime is Python v4. A TypeScript v5 rewrite is in progress under
+`ts/`, but it remains experimental until the parity gates in
+[TypeScript v5](docs/en/typescript-v5.md) pass.
 
 ## Why It Exists
 
 LLM command agents usually fail at the exact point operators care about: trust.
-
-LinuxAgent's default stance is different:
+LinuxAgent keeps that trust boundary outside the model.
 
 | Principle | What LinuxAgent does |
 |---|---|
 | The model is not trusted | First-time LLM-generated commands require confirmation |
 | Safety is policy, not substring matching | Commands are tokenized and evaluated by a capability-based policy engine |
-| Production output may contain secrets | Tool output is guarded and redacted before LLM-facing analysis |
+| Output may contain secrets | Tool output is guarded and redacted before model-facing analysis |
 | SSH must not silently trust hosts | Remote execution uses known-host verification and shell-syntax guards |
 | Every approval should be reviewable | HITL decisions are written to a `0o600` hash-chained audit log |
 
-## v4.1 Security Depth
-
-LinuxAgent v4.1 turns the command safety boundary into a measurable subsystem,
-not just a set of claims in the README:
-
-| Layer | What changed |
-|---|---|
-| Red-team proof | 24 adversarial command-agent cases run in CI with `make red-team` |
-| Shell structure | Pipelines, subshells, command substitution, redirects, and nested shell execution are analyzed before execution |
-| LOLBin coverage | Network-to-shell pipelines, `find -exec`, `xargs`, `awk system()`, editor escapes, and interpreter inline execution are classified deterministically |
-| Fuzzing and benchmark | Hypothesis parser fuzzing plus P50/P95/P99 policy latency reporting |
-| Audit depth | Optional HTTP sink forwards hash-chained entries while local append remains the source of truth |
-| Observability | Telemetry can export local JSONL, console JSON, OTLP HTTP JSON, or be disabled explicitly |
-| Sandbox roadmap | Landlock design documents capability probes, fallback order, compatibility limits, and implementation slices |
-| Agent integration | `linuxagent mcp` exposes read-only policy classify and audit verify tools over stdio MCP |
-
-## TypeScript v5 Experimental Track
-
-The production runtime remains Python v4. A TypeScript v5 kernel is being built
-under `ts/` as an experimental, progressive rewrite with Python kept as the
-behavior oracle. The TS workspace currently covers shared contracts, policy
-parity fixtures, HITL/session permission primitives, audit hash-chain support,
-sandbox runner contracts, argv-based local execution, output redaction, the
-tool gate to executor boundary, prompt loading, SSH guard primitives, file
-patch transaction parity, harness fixture parity, and a red-team policy slice.
-
-The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
-
-This track does not replace the default `linuxagent` command yet. Future
-`linuxagent-ts` entry points must stay explicitly experimental until policy,
-red-team, HITL, audit, sandbox, SSH, file patch, output redaction, and harness
-parity gates are satisfied. See the
-[TypeScript v5 experimental kernel](docs/en/typescript-v5.md) and
-[progressive rewrite design](docs/design/typescript-v5-progressive-rewrite.md)
-for current status, migration boundaries, and TS development commands.
-
-The experimental `linuxagent-ts check` command validates explicit local paths
-without contacting a model provider:
-
-```bash
-node ts/apps/linuxagent-ts/dist/src/cli.js check \
-  --config ./config.yaml \
-  --policy ./configs/policy.default.yaml \
-  --audit ~/.linuxagent/audit.log
-```
-
-The config file must be private (`chmod 600`). A passing check exits `0`,
-check failures exit `1`, and CLI usage errors exit `2`.
-
-The experimental audit verifier wraps the TS hash-chain verifier:
-
-```bash
-node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
-```
-
-It exits `0` for a valid log and `1` for missing or invalid logs.
-
-`linuxagent-ts chat --input <text>` exercises the experimental TUI routing
-surface for slash commands such as `/new`, `/resume`, and `/tools`. The default
-runtime port is still a safe placeholder and does not call a provider yet.
-Bang-prefixed input is recognized as direct command mode, but it fails closed
-unless a direct command runner is explicitly configured.
-
-Default-runtime cutover is a separate release decision. Maintainers must run
-`make cutover-check` or the manual CI `cutover-readiness` job before promoting
-TS as the default, and the rollback path is documented in
-[vNext release notes](docs/releases/vNext.md).
-
 ## One-Minute Start
+
+From a source checkout:
 
 ```bash
 git clone https://github.com/Eilen6316/LinuxAgent.git
@@ -123,13 +56,7 @@ cd LinuxAgent
 ./scripts/bootstrap.sh
 ```
 
-Then edit `~/.config/linuxagent/config.yaml` and set a provider. The bootstrap
-script creates a user-level `linuxagent` launcher in `~/.local/bin` and writes
-`LINUXAGENT_CONFIG=$HOME/.config/linuxagent/config.yaml` to your shell profile;
-open a new shell or run `source ~/.bashrc` before starting from another
-directory. Make sure `~/.local/bin` is on `PATH` if your shell does not already
-include it. The core paths are OpenAI, DeepSeek, local
-Ollama/OpenAI-compatible models, and Anthropic:
+Create or edit `~/.config/linuxagent/config.yaml`:
 
 ```yaml
 api:
@@ -148,11 +75,7 @@ api:
   token_parameter: max_tokens
 ```
 
-Other OpenAI-compatible relays and provider shortcuts are documented in the
-[Provider Compatibility Matrix](docs/en/provider-matrix.md). They are useful,
-but they are not the project's core safety story.
-
-Validate and start:
+Then validate and start:
 
 ```bash
 linuxagent check
@@ -165,270 +88,110 @@ Try a read-only request:
 check the Linux version
 ```
 
-When a first LLM-generated command appears, choose `Yes` for one execution,
-`Yes, don't ask again` for the same argv command shape only in this conversation
-and the same `/resume` thread, or `No` to refuse. Use `!uname -a` for direct
-operator-authored command mode.
+`config.yaml` must be owned by the current user and `chmod 600`; real secrets
+are not loaded from `.env`. More provider paths are in the
+[Provider Matrix](docs/en/provider-matrix.md).
 
-`config.yaml` must be owned by the current user and `chmod 600`; secrets are not loaded from `.env`.
+## First Confirmation
 
-## What a Turn Looks Like
+When a first LLM-generated command appears, LinuxAgent shows the command,
+policy result, matched rules, sandbox metadata, and risk summary before
+execution.
+
+Choose:
+
+| Choice | Meaning |
+|---|---|
+| `Yes` / `[y]` | Run this command once |
+| `Yes, don't ask again` / `[a]` | Allow the same argv command shape only in this conversation and the same `/resume` thread |
+| `No` / `[n]` | Refuse this operation |
+
+Destructive commands, `never_whitelist` policy matches, and SSH batch
+operations are never covered by conversation approval. Non-TTY confirmation
+requests fail closed.
+
+Use `!uname -a` for operator-authored direct command mode. Use `/resume` to
+resume a saved conversation or pending HITL checkpoint, and `/new` to start a
+fresh context.
+
+## What A Turn Looks Like
 
 ```text
 you: find services listening on port 8080
 
-parse_intent  -> LLM proposes: ss -tlnp sport = :8080
-safety_check  -> CONFIRM (LLM_FIRST_RUN)
+intent        -> LLM classifies the request
+plan          -> LLM proposes: ss -tlnp sport = :8080
+policy        -> CONFIRM (LLM_FIRST_RUN)
 confirm       -> operator approves in terminal
-execute       -> asyncio subprocess, no shell=True
+execute       -> subprocess argv, no shell=True
 analyze       -> concise operator summary
 audit.log     -> hash-chained JSONL decision record
 ```
 
-For ordinary conversation, LinuxAgent first asks an LLM-owned intent router for
-`DIRECT_ANSWER`, `COMMAND_PLAN`, or `CLARIFY`. Direct answers do not create a
-command plan and therefore do not show the confirmation panel. Operational
-methods are not hard-coded in Python; successful command patterns are learned in
-the local learner memory after sensitive values are redacted. Deterministic
-safety policy data lives in YAML, while Python code only loads, validates, and
-applies those policies.
+The status line keeps active task plans visible during long turns, including
+when commands are being confirmed or executed.
 
-LinuxAgent also keeps a local filesystem memory at `~/.linuxagent/memories` by
-default. On chat startup it starts a background memory pass that can generate
-redacted AI-extracted memory inputs from saved local sessions, then injects the
-current `memory_summary.md` as advisory operator/project context when
-`memory.use_memories` is true. `linuxagent memory status` shows the latest
-pipeline state, including failures. If no memory writer provider is available,
-startup generation no-ops instead of copying deterministic chat snippets into
-long-term memory. Stale stage-1 inputs are pruned by `memory.max_unused_days`,
-and stale pipeline locks recover after `memory.pipeline_lock_ttl_seconds`.
-This memory never changes policy, HITL confirmation, sandbox enforcement,
-command execution, or audit records. Disable all memory reads and writes with
-`memory.enabled: false` in `config.yaml`, or split the read/write paths with
-`memory.use_memories` and `memory.generate_memories`.
-
-Each CLI launch starts with an empty conversation context. Saved sessions are
-available only when the operator asks for it with `/resume`; then enter the
-shown number or use the interactive picker to resume that saved session. If the
-selected session stopped at a HITL confirmation, LinuxAgent reloads the local
-checkpoint and reopens the confirmation flow. Use `/new` to reset context inside
-a running CLI session and `/tools` to see available slash/tool entry points.
-Typing `/` opens the slash-command completion menu. Command confirmations use
-an arrow-key menu with `Yes`, `Yes, don't ask again`, and `No` when conversation
-permissions are allowed; fallback prompts show `[y]`, `[a]`, and `[n]` shortcuts
-for the same decisions. `Yes, don't ask again` is scoped to the current
-conversation thread, the same thread when resumed with `/resume`, and the same
-argv command shape. New conversations do not inherit it, and destructive or
-`never_whitelist` policy matches still ask every time. During long turns, the
-status line keeps the active task plan visible while command execution activity
-continues in the background.
-Input beginning with `!` is direct command mode: LinuxAgent executes the
-operator-authored command, streams stdout/stderr live, and records both
-`!<command>` and the system result into the active conversation context. It does
-not ask the LLM to explain or generate a reply for that turn.
-
-## Core Capabilities
-
-| Capability | Why it matters |
-|---|---|
-| Capability-based policy engine | Produces `SAFE` / `CONFIRM` / `BLOCK`, risk scores, capabilities, and matched rules |
-| YAML policy defaults | Command policy data is loaded from `configs/policy.default.yaml`, not Python rule tables |
-| Structured `CommandPlan` | LLM output must validate as JSON before any policy or execution path |
-| Structured file patches | Script/code/config edits use transactional `FilePatchPlan` apply, unified-diff validation, path policy, and HITL review |
-| Read-only workspace tools | Planner can inspect allowed files with `read_file`, `list_dir`, and `search_files` before proposing patches |
-| AI-owned intent routing | Conversation vs operation vs clarification is decided by `prompts/intent_router.md`, not Python keyword rules |
-| Explicit resume control | New sessions do not inherit previous chats unless `/resume` is used; pending HITL checkpoints resume there too |
-| Direct `!` command mode | Runs operator-authored commands without an AI reply and adds command/output to current context |
-| Sandbox metadata boundary | Commands carry a selected sandbox profile into audit and telemetry; default `noop` records metadata only |
-| Skill guidance | Optional local Skill manifests can add advisory planner context without executable plugin hooks |
-| Learner memory | Successful command patterns are persisted locally after secret redaction |
-| Filesystem memory | `~/.linuxagent/memories/memory_summary.md` is injected as advisory context; generation and use have separate switches |
-| LangGraph HITL | Confirmation uses `interrupt()` and checkpointing rather than inline `input()` |
-| SSH cluster guard | Batch confirmation, remote shell metacharacter blocking, remote profile audit |
-| Output protection | Command results are redacted and bounded before model-facing analysis |
-| Hash-chained audit | `linuxagent audit verify` detects local audit-log tampering |
-| Reproducible release | `constraints.txt`, wheel verification, and packaged config/prompt/locale checks |
-
-## File Changes
-
-Requests such as "create a shell script", "update this Python file", or "edit
-this config" do not bypass the safety model. LinuxAgent asks the planner for a
-structured `FilePatchPlan`, then validates and previews the unified diff before
-writing anything. The plan carries a structured `request_intent` field
-(`create`, `update`, or `unknown`) instead of relying on Python keyword
-matching.
-
-The planner can first inspect the environment with read-only tools:
-
-- `read_file(path, offset, limit)` reads a bounded window from an allowed file.
-- `list_dir(path)` lists an allowed directory.
-- `search_files(pattern, root)` searches literal text under an allowed root; regex
-  metacharacters are treated as ordinary text.
-- `get_system_info`, `search_logs`, and safety-gated `execute_command` provide
-  system context when needed.
-
-Tool calls run through the tool sandbox runtime before output reaches the model:
-each tool carries explicit permissions (`read_files`, `write_files`,
-`execute_commands`, `system_inspect`, `network_access`, and `hitl` mode),
-workspace/log roots are checked, per-tool timeouts and output limits are
-applied, oversized output is marked as truncated, and tool errors are returned
-as structured model-visible events while telemetry records `allowed`, `denied`,
-`timeout`, or `truncated`.
-
-The terminal shows observable tool activity such as `LinuxAgent is reading
-...` / `LinuxAgent is listing ...`, then prints concise evidence from completed
-workspace tool calls, such as the first line-numbered `read_file` snippets or
-`search_files` matches. If the planner concludes that no file change is needed,
-the final answer includes the cited evidence so the operator can see which file
-lines or search results supported the judgment. Patch confirmation shows
-per-file stats, compact `+` / `-` diff snippets, high-risk path warnings,
-permission changes, large-diff pagination, and per-file acceptance for
-multi-file patches. Full diffs are not shown twice; extra review prompts appear
-only when hidden pages exist.
-
-Command confirmation also shows planned sandbox context: requested profile,
-runner, enforcement state, cwd, allowed roots, network policy, and fallback
-reason when the configured runner cannot enforce isolation.
-
-After approval, patch application runs as a transaction. LinuxAgent validates
-target paths before reading file content, rejects symlink path components,
-hardlinks, directories, device files, FIFOs, sockets, oversized targets, and
-non-UTF-8 text, then writes through a temporary file and atomic replace. Existing
-targets are backed up under a local `.linuxagent-patch-*` sandbox directory and
-rolled back automatically if a later file or permission change fails. Audit
-metadata records changed files, permission changes, backup path hashes, rollback
-outcome, and the sandbox root.
-
-By default, file patch reads and writes are limited to the current workspace and
-`/tmp` through `file_patch.allow_roots`. Sensitive roots such as `/etc` and SSH
-key directories are highlighted as high risk, and permission changes such as
-`0755` for generated scripts appear explicitly in the confirmation panel.
-Automatic patch repair defaults to two rounds and can be tuned with
-`file_patch.max_repair_attempts` (`0` disables automatic patch repair).
-Failed command-plan repair is separately capped by
-`command_plan.max_repair_attempts` (`0` disables failed-command replanning).
-
-## Sandbox Status
-
-LinuxAgent local command execution now goes through a sandbox runner boundary.
-The default remains `sandbox.enabled: false` with `runner: noop`, which preserves
-compatibility while recording sandbox metadata only. `runner: local` applies
-process lifecycle controls such as clean environment, closed stdin, timeout,
-process-group cleanup, resource limits, output limits, and configured cwd roots,
-but it does not claim filesystem or network isolation for safe profiles.
-`runner: bubblewrap` is optional and capability-probed; if `bwrap` is missing or
-cannot enforce the requested profile or network policy, safe profiles fail
-closed while explicit passthrough profiles remain auditable passthrough.
-The planned Landlock backend is documented in
-[docs/design/sandbox-landlock.md](docs/design/sandbox-landlock.md), including
-capability probing, fallback order, and the compatibility test matrix.
-
-## Network Policy
-
-The top-level `network` config is the application policy for future LLM/web
-tools. It is disabled and default-deny by default, evaluates only normalized
-domains, and records network decisions without request headers. This is
-separate from `sandbox.network`, which describes OS execution isolation for
-local commands.
-
-## Safety Model
+## Safety Boundaries
 
 | Operation | Default behavior |
 |---|---|
 | User-authored read-only command | May run when policy returns `SAFE` |
 | First LLM-generated command | `CONFIRM` |
-| Conversation-approved LLM command | May skip repeat confirmation only for the same argv command shape in the same conversation thread, including `/resume` of that thread |
+| Conversation-approved LLM command | May skip repeat confirmation only for the same argv command shape in the same conversation thread |
 | Destructive command | `CONFIRM` every time; never conversation-whitelisted |
-| Command targeting root or sensitive paths | `BLOCK` when matched by policy |
+| Command targeting root or protected paths | `BLOCK` when matched by policy |
 | SSH batch across two or more hosts | Explicit batch confirmation with target hosts and remote profiles |
 | Non-TTY confirmation request | Auto-deny |
 | Unknown SSH host | Reject by default |
 | Default sandbox runner | Records profile metadata only; no process isolation |
 | Enabled safe sandbox profile unavailable | Fail closed before spawning |
 
-## MCP Server Prototype
+LinuxAgent is intended for controlled operator-in-the-loop use. For deployment
+boundaries, read [Operator Safety](docs/en/operator-safety.md),
+[Threat Model](docs/en/threat-model.md), and
+[Production Readiness](docs/en/production-readiness.md).
 
-`linuxagent mcp` starts a local stdio MCP server with read-only tools for
-policy classification and audit hash-chain verification. It intentionally does
-not expose command execution, file patch application, SSH fan-out, or secrets.
-The threat model and future execution boundary are documented in
-[docs/design/mcp-server.md](docs/design/mcp-server.md).
+## Core Capabilities
 
-LinuxAgent is **not** an autonomous remediator. The current default `noop`
-sandbox runner is also not a command sandbox; it is intended for controlled
-operator-in-the-loop use. See [Production Readiness](docs/en/production-readiness.md) and [Threat Model](docs/en/threat-model.md).
-
-SSH execution is not protected by local OS sandboxing. Configure cluster hosts
-with least-privilege users, pre-registered `known_hosts`, a remote working
-directory, and explicit sudo allowlists when sudo is required.
-
-## Quality Gate
-
-Current quality gates:
-
-| Gate | Status |
+| Capability | Why it matters |
 |---|---|
-| Unit tests | `make test` |
-| Optional provider compatibility | covered by `make optional-anthropic` when the extra is installed |
-| Sandbox boundary suite | covered by `make sandbox` |
-| Red-team policy suite | adversarial command corpus |
-| Policy benchmark | [P50/P95/P99 policy latency](benchmarks/policy-benchmark.md) |
-| Harness scenarios | scenario-driven HITL / cluster / sandbox / workspace-tool coverage |
-| Integration smoke tests | `make integration` |
-| Coverage | `--cov-fail-under=80` |
-| Static checks | `ruff`, `mypy`, `bandit`, project code-rule checks |
-| Build verification | wheel + sdist + packaged data install check |
-| TypeScript experimental track | `make ts-check`, `make ts-parity` |
-
-Useful commands:
-
-```bash
-make test
-make sandbox
-make lint
-make type
-make security
-make red-team
-make benchmark
-make harness
-make verify-build
-make ts-check
-make ts-parity
-```
+| Capability-based policy engine | Produces `SAFE` / `CONFIRM` / `BLOCK`, risk scores, capabilities, and matched rules |
+| Structured command plans | LLM output must validate before policy or execution paths |
+| File patch workflow | Script/code/config edits use reviewed unified diffs and transactional apply |
+| Read-only workspace tools | The planner can inspect allowed files before proposing changes |
+| Explicit resume control | New sessions do not inherit previous chats unless `/resume` is used |
+| Direct `!` command mode | Runs operator-authored commands without an AI-generated reply |
+| SSH cluster guard | Batch confirmation, remote shell metacharacter blocking, and remote profile audit |
+| Output protection | Command results are redacted and bounded before model-facing analysis |
+| Hash-chained audit | `linuxagent audit verify` detects local audit-log tampering |
+| Local advisory memory | Optional local memory can guide planning but never changes policy or HITL |
+| Read-only MCP prototype | `linuxagent mcp` exposes policy classify and audit verify tools only |
 
 ## Install Paths
 
 | Path | Use when |
 |---|---|
 | `./scripts/bootstrap.sh` | You are working from a source checkout and want `linuxagent` available from any directory |
-| `pip install -c constraints.txt https://github.com/Eilen6316/LinuxAgent/releases/download/v4.1.0/linuxagent-4.1.0-py3-none-any.whl` | You want the published GitHub Release wheel |
-| `pip install linuxagent` | You want the PyPI package after the release is published |
+| `pip install -c constraints.txt https://github.com/Eilen6316/LinuxAgent/releases/download/v4.1.0/linuxagent-4.1.0-py3-none-any.whl` | You want the GitHub Release wheel |
+| `pip install linuxagent` | You want the PyPI package after release publication |
 | `pip install -e ".[dev]"` | You are developing or running the full local gate |
 | `pip install -e ".[anthropic]"` | You need the optional Anthropic provider |
 
 ## Documentation
 
-| Document | Purpose |
+| Start here | Purpose |
 |---|---|
-| [Documentation index](docs/README.md) | All long-form docs in one place |
-| [docs/zh/README.md](docs/zh/README.md) | Full Chinese manual |
-| [docs/en/README.md](docs/en/README.md) | Full English manual |
-| [TypeScript v5 Experimental Kernel](docs/en/typescript-v5.md) | Status and commands for the experimental TS rewrite track |
-| [TypeScript v5 Progressive Rewrite Design](docs/design/typescript-v5-progressive-rewrite.md) | Motivation, pi boundary, parity gates, cutover, and rollback plan |
-| [Quick Start](docs/en/quickstart.md) | Installation and first run |
+| [Quick Start](docs/en/quickstart.md) / [中文快速开始](docs/zh/quickstart.md) | Install, configure, and run the first safe request |
+| [Documentation index](docs/README.md) | Main navigation for all long-form docs |
+| [English manual](docs/en/README.md) / [中文手册](docs/zh/README.md) | User workflow overview |
 | [Provider Matrix](docs/en/provider-matrix.md) | Provider setup paths and compatibility status |
-| [Operator Safety Model](docs/en/operator-safety.md) | Plain-language safety boundaries for users |
-| [Roadmap](ROADMAP.md) | Maintainer priorities and good first issue areas |
-| [Migration Guide](docs/en/migration-v3-to-v4.md) | v3 to v4 breaking changes |
-| [Threat Model](docs/en/threat-model.md) | Assets, trust boundaries, and mitigations |
-| [Production Readiness](docs/en/production-readiness.md) | Where LinuxAgent is and is not appropriate |
+| [Operator Safety](docs/en/operator-safety.md) | Plain-language safety boundaries |
 | [Security Policy](SECURITY.md) | Vulnerability reporting and supported versions |
-| [Contributing](CONTRIBUTING.md) | Contribution workflow and review expectations |
-| [Changelog](CHANGELOG.md) | Release history |
-| [Why substring matching is not safety](blog.md) | Technical argument behind LinuxAgent's command safety model |
-| [Real user feedback](https://github.com/Eilen6316/LinuxAgent/issues/new?template=user_feedback.yml) | Tell us what happened on a real server, VM, container, or homelab machine |
+| [Development Guide](docs/en/development.md) | Local validation, architecture boundaries, and contribution checks |
+| [TypeScript v5](docs/en/typescript-v5.md) | Experimental rewrite status |
+| [Release Notes](docs/releases/v4.1.0.md) | Latest released changes |
 
-## Mirrors and Community
+## Mirrors And Community
 
 | Link | Notes |
 |---|---|

