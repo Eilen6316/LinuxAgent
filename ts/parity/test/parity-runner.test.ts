@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatSummary, runAuditParity } from "../src/parity-runner.js";
+import { formatSummary, runAuditParity, runSandboxParity } from "../src/parity-runner.js";
 
 describe("parity report formatting", () => {
   it("formats pass counts", () => {
@@ -17,6 +17,15 @@ describe("parity report formatting", () => {
   it("checks audit verifier tamper detection", async () => {
     await expect(runAuditParity()).resolves.toEqual({
       suite: "audit",
+      passed: 2,
+      total: 2,
+      failures: [],
+    });
+  });
+
+  it("checks sandbox fail-closed behavior", async () => {
+    await expect(runSandboxParity()).resolves.toEqual({
+      suite: "sandbox",
       passed: 2,
       total: 2,
       failures: [],

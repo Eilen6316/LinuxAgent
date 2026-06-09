@@ -9,6 +9,7 @@
   "references": [
     { "path": "../packages/audit" },
     { "path": "../packages/contracts" },
-    { "path": "../packages/policy" }
+    { "path": "../packages/policy" },
+    { "path": "../packages/sandbox" }
   ]
 }

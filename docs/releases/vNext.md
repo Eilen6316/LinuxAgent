@@ -15,6 +15,8 @@ The TypeScript runtime is experimental. Python v4 remains the default release ru
   release path.
 - Expanded `make ts-parity` so audit verifier tamper detection is a real TS
   parity check instead of a placeholder summary.
+- Added TS sandbox parity coverage for fail-closed safe profiles and explicit
+  `noop` passthrough metadata.
 - Kept `make ts-check` and `make ts-parity` as experimental TS signals until
   parity gates are promoted.
 

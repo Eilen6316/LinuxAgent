@@ -7,6 +7,7 @@ import type {
   AuditWriter as AuditWriterClass,
   verifyAuditLog as verifyAuditLogFunction,
 } from "@linuxagent/audit";
+import type { NoopSandboxRunner as NoopSandboxRunnerClass } from "@linuxagent/sandbox";
 import type { PolicyLevel } from "../../packages/contracts/src/index.js";
 import type { PolicyEngine as PolicyEngineClass } from "../../packages/policy/src/index.js";
 import { formatSummary, type ParitySummary } from "./report.js";
@@ -80,6 +81,7 @@ export async function runParitySuites(
   return [
     await runPolicyParity(policyFixturePath),
     await runAuditParity(),
+    await runSandboxParity(),
     emptySummary("harness"),
     emptySummary("red-team"),
   ];
@@ -108,6 +110,30 @@ export async function runAuditParity(): Promise<ParitySummary> {
   }
 
   return { suite: "audit", passed: 2 - failures.length, total: 2, failures };
+}
+
+export async function runSandboxParity(): Promise<ParitySummary> {
+  const { NoopSandboxRunner } = await loadSandboxModule();
+  const failures: string[] = [];
+  const runner = new NoopSandboxRunner();
+
+  if (runner.canEnforce("read_only")) {
+    failures.push("noop runner must not enforce read_only");
+  }
+
+  const passthrough = await runner.execute(["node", "--version"], {
+    profile: "noop",
+    timeoutMs: 1000,
+  });
+  if (
+    passthrough.enforced !== false ||
+    passthrough.runner !== "noop" ||
+    passthrough.exitCode !== 0
+  ) {
+    failures.push("noop execution must remain auditable passthrough with enforced=false");
+  }
+
+  return { suite: "sandbox", passed: 2 - failures.length, total: 2, failures };
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -172,6 +198,14 @@ async function loadAuditModule(): Promise<{
   };
 }
 
+async function loadSandboxModule(): Promise<{
+  NoopSandboxRunner: typeof NoopSandboxRunnerClass;
+}> {
+  return (await import(sandboxModuleSpecifier())) as {
+    NoopSandboxRunner: typeof NoopSandboxRunnerClass;
+  };
+}
+
 function policyModuleSpecifier(): string {
   if (process.env.VITEST === "true" || import.meta.url.endsWith(".ts")) {
     return "../../packages/policy/src/index.js";
@@ -184,6 +218,13 @@ function auditModuleSpecifier(): string {
     return "../../packages/audit/src/index.js";
   }
   return "../../packages/audit/dist/src/index.js";
+}
+
+function sandboxModuleSpecifier(): string {
+  if (process.env.VITEST === "true" || import.meta.url.endsWith(".ts")) {
+    return "../../packages/sandbox/src/index.js";
+  }
+  return "../../packages/sandbox/dist/src/index.js";
 }
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
