@@ -64,7 +64,7 @@ class WorkingStatus:
 
     def refresh(self) -> None:
         if self._pending_renderable is None:
-            return
+            self._pending_renderable = self._render()
         self._apply_pending_refresh()
 
     def update_pending_inputs(self, inputs: tuple[str, ...]) -> None:
@@ -173,7 +173,7 @@ class WorkingStatus:
             ("LinuxAgent", "bold"),
             (" · ", "dim"),
             (self._working_title(), "bold"),
-            (self._translator.t("ui.working.stable_suffix"), "dim"),
+            (self._working_suffix(), "dim"),
         )
 
     def _accent_style(self) -> str:
@@ -183,6 +183,12 @@ class WorkingStatus:
 
     def _working_title(self) -> str:
         return self._translator.t("ui.working.title")
+
+    def _working_suffix(self) -> str:
+        if self._started_at <= 0.0:
+            return self._translator.t("ui.working.stable_suffix")
+        elapsed = max(0, int(time.monotonic() - self._started_at))
+        return self._translator.t("ui.working.suffix", elapsed=elapsed)
 
     def _should_refresh(self, renderable: Text) -> bool:
         now = time.monotonic()

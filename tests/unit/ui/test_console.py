@@ -908,7 +908,8 @@ async def test_console_print_activity_uses_transient_working_status(monkeypatch)
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（esc 中断）" in rendered
+    assert "处理中（" in rendered
+    assert "s • esc 中断）" in rendered
     assert "规划命令" in rendered
     assert "esc 中断" in rendered
     assert "╭" not in rendered
@@ -938,7 +939,8 @@ async def test_console_print_activity_keeps_current_working_status(
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（esc 中断）" in rendered
+    assert "处理中（" in rendered
+    assert "s • esc 中断）" in rendered
     assert "规划命令" in rendered
     assert "分类意图" not in rendered
     assert "esc 中断" in rendered
@@ -979,7 +981,8 @@ async def test_console_print_activity_supports_multiline_working_status(monkeypa
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（esc 中断）" in rendered
+    assert "处理中（" in rendered
+    assert "s • esc 中断）" in rendered
     assert "esc 中断" in rendered
     assert "整理文件 workspace/disk_info.sh" in rendered
     assert "read_file · 95 lines" in rendered
@@ -1025,7 +1028,8 @@ async def test_console_print_activity_shows_parallel_agent_group(monkeypatch) ->
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（esc 中断）" in rendered
+    assert "处理中（" in rendered
+    assert "s • esc 中断）" in rendered
     assert "esc 中断" in rendered
     assert "并发处理 只读批次：2/2" in rendered
     assert "agent A: running - 查 systemctl 状态" in rendered
@@ -1055,7 +1059,7 @@ async def test_console_print_activity_preserves_elapsed_after_tool_status_clear(
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（esc 中断）" in rendered
+    assert "处理中（3s • esc 中断）" in rendered
     assert "整理目录 /LinuxAgent" in rendered
     ui.clear_activity()
 
@@ -1078,7 +1082,7 @@ async def test_console_print_activity_keeps_tool_failure_in_working_status(
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（esc 中断）" in rendered
+    assert "处理中（2s • esc 中断）" in rendered
     assert "无法读取文件 /etc/ansible/hosts" in rendered
     assert "denied" in rendered
     ui.clear_activity()
@@ -1117,7 +1121,8 @@ async def test_console_print_active_view_renders_work_items(monkeypatch) -> None
     render_console = Console(record=True, width=120)
     render_console.print(ui._working_status._render())
     rendered = render_console.export_text()
-    assert "处理中（esc 中断）" in rendered
+    assert "处理中（" in rendered
+    assert "s • esc 中断）" in rendered
     assert "分类意图" in rendered
     assert "读取文件" in rendered
     assert "/LinuxAgent/.work/plan/PlanC.md" in rendered
@@ -1489,6 +1494,49 @@ def test_working_status_does_not_render_prompt_line() -> None:
     render_console.print(status._render())
     rendered = render_console.export_text()
     assert "linuxagent" not in rendered
+    status.cancel()
+
+
+def test_working_status_title_shows_elapsed_seconds(monkeypatch) -> None:
+    now = 100.0
+    monkeypatch.setattr(working_status_module.time, "monotonic", lambda: now)
+    console = Console(record=True, width=120, force_terminal=True)
+    status = WorkingStatus(console, started_at=now)
+
+    status.update("LinuxAgent 正在分类意图")
+    now = 103.0
+
+    render_console = Console(record=True, width=120)
+    render_console.print(status._render())
+    rendered = render_console.export_text()
+
+    assert "处理中（3s • esc 中断）" in rendered
+    status.cancel()
+
+
+def test_working_status_refresh_updates_elapsed_seconds(monkeypatch) -> None:
+    now = 100.0
+    monkeypatch.setattr(working_status_module.time, "monotonic", lambda: now)
+    console = Console(record=True, width=120, force_terminal=True)
+    status = WorkingStatus(console, started_at=now)
+    status.update("LinuxAgent 正在分类意图")
+    live = status._live
+    assert live is not None
+
+    refreshes = 0
+
+    def fake_refresh() -> None:
+        nonlocal refreshes
+        refreshes += 1
+
+    monkeypatch.setattr(live, "refresh", fake_refresh)
+    now = 101.0
+
+    status.refresh()
+
+    assert refreshes == 1
+    assert status._last_rendered is not None
+    assert "处理中（1s • esc 中断）" in status._last_rendered
     status.cancel()
 
 
