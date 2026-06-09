@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,8 +30,7 @@ from .pending_interrupts import (
 )
 from .state import AgentState
 
-GRAPH_LIMIT = 100
-INTERRUPT_POLL_SECONDS = 0.05
+GRAPH_LIMIT, INTERRUPT_POLL_SECONDS, INTERRUPT_SETTLE_SECONDS = 100, 0.05, 0.1
 
 
 @dataclass(frozen=True)
@@ -222,13 +222,7 @@ class GraphRuntime:
         finally:
             clear_pending_interrupt_payloads(thread_id=thread_id, turn_id=active_turn_id)
 
-    async def _run_result(
-        self,
-        result: Any,
-        *,
-        thread_id: str,
-        turn_id: str,
-    ) -> GraphRunResult:
+    async def _run_result(self, result: Any, *, thread_id: str, turn_id: str) -> GraphRunResult:
         state = result if isinstance(result, dict) else {}
         interrupts = _interrupts_from_result(state, turn_id=turn_id)
         if not interrupts:
@@ -265,15 +259,15 @@ class GraphRuntime:
                 baseline=memory_baseline,
             )
             if memory_interrupts:
-                task.cancel()
-                task.add_done_callback(_consume_task_exception)
-                await asyncio.sleep(0)
+                if (settled := await _settle_interrupt_task(task)) is not None:
+                    return settled
+                await _cancel_task(task)
                 return _interrupt_result(memory_interrupts)
             interrupts = await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
             if interrupts and _interrupt_signature(interrupts) != baseline:
-                task.cancel()
-                task.add_done_callback(_consume_task_exception)
-                await asyncio.sleep(0)
+                if (settled := await _settle_interrupt_task(task)) is not None:
+                    return settled
+                await _cancel_task(task)
                 return _interrupt_result(interrupts)
 
     def _pending_memory_interrupts(
@@ -336,10 +330,7 @@ class GraphRuntime:
         )
 
     async def _first_pending_request(
-        self,
-        *,
-        thread_id: str,
-        turn_id: str,
+        self, *, thread_id: str, turn_id: str
     ) -> PendingRequest | None:
         interrupts = await self.pending_interrupts(thread_id=thread_id, turn_id=turn_id)
         if not interrupts:
@@ -376,6 +367,18 @@ def _payload_signature(payloads: tuple[dict[str, Any], ...]) -> tuple[str, ...]:
 
 def _interrupt_result(interrupts: tuple[GraphInterrupt, ...]) -> dict[str, Any]:
     return {"__interrupt__": [interrupt.payload for interrupt in interrupts]}
+
+
+async def _settle_interrupt_task(task: asyncio.Task[Any]) -> Any | None:
+    with suppress(TimeoutError):
+        return await asyncio.wait_for(asyncio.shield(task), timeout=INTERRUPT_SETTLE_SECONDS)
+    return None
+
+
+async def _cancel_task(task: asyncio.Task[Any]) -> None:
+    task.cancel()
+    task.add_done_callback(_consume_task_exception)
+    await asyncio.sleep(0)
 
 
 def _consume_task_exception(task: asyncio.Task[Any]) -> None:

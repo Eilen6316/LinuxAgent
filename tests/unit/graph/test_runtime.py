@@ -158,6 +158,27 @@ class _MemoryInterruptBeforeSnapshotGraph(_FakeGraph):
         return SimpleNamespace(values={}, tasks=[])
 
 
+class _MemoryInterruptThenCompletesGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__()
+        self.cancelled = False
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del state, config
+        payload = {"type": "confirm_command", "command": "ls"}
+        publish_pending_interrupt(payload)
+        try:
+            await asyncio.sleep(0.08)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        return {"__interrupt__": [Interrupt(value=payload, resumable=True)]}
+
+    async def aget_state(self, config: Any) -> Any:
+        del config
+        return SimpleNamespace(values={}, tasks=[])
+
+
 async def test_run_returns_inline_interrupts_without_app_langgraph_access() -> None:
     graph = _FakeGraph(
         result={
@@ -236,6 +257,19 @@ async def test_run_preserves_memory_interrupt_before_checkpoint_poll() -> None:
     assert result.interrupts[0].request.request_type == "confirm_file_patch"
     assert graph.cancelled is True
     assert not graph.snapshot_started.is_set()
+
+
+async def test_run_waits_briefly_for_graph_interrupt_completion() -> None:
+    graph = _MemoryInterruptThenCompletesGraph()
+
+    result = await GraphRuntime(graph).run(
+        {"messages": []},
+        thread_id="thread",
+        turn_id="turn-1",  # type: ignore[arg-type]
+    )
+
+    assert result.interrupts[0].legacy_payload == {"type": "confirm_command", "command": "ls"}
+    assert graph.cancelled is False
 
 
 async def test_run_result_preserves_memory_interrupt_with_messages() -> None:
@@ -437,3 +471,12 @@ async def test_graph_invocation_preserves_context_across_worker_thread() -> None
     assert await invocation.future == "ok"
     assert seen_thread == "thread-1"
     assert seen_token is None
+
+
+async def test_graph_invocation_future_completes_without_external_loop_wakeup() -> None:
+    async def run() -> str:
+        return "ok"
+
+    invocation = start_graph_invocation(run)
+
+    assert await asyncio.wait_for(invocation.future, timeout=0.5) == "ok"

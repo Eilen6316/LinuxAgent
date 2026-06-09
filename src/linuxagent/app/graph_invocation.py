@@ -5,10 +5,19 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
-from contextvars import Context, copy_context
+from contextlib import ExitStack, suppress
 from dataclasses import dataclass
 from typing import Generic, TypeVar
+
+from ..pending_input import (
+    PendingInputDrainer,
+    PendingInputPreviewUpdater,
+    current_pending_input_drainer,
+    current_pending_input_preview_updater,
+    pending_input_drainer_scope,
+    pending_input_preview_updater_scope,
+)
+from ..turn_context import RuntimeTurnContext, current_turn_context, turn_context_scope
 
 T = TypeVar("T")
 WORKER_POLL_SECONDS = 0.02
@@ -23,10 +32,9 @@ class GraphInvocation(Generic[T]):
 def start_graph_invocation(coro_factory: Callable[[], Awaitable[T]]) -> GraphInvocation[T]:
     loop = asyncio.get_running_loop()
     owner_future = loop.create_future()
-    worker = _start_worker(coro_factory, loop, copy_context())
-    collect_task = asyncio.get_running_loop().create_task(
-        _collect_worker_result(owner_future, worker)
-    )
+    invocation_context = _capture_invocation_context()
+    worker = _start_worker(coro_factory, owner_future, invocation_context)
+    collect_task = loop.create_task(_poll_worker_result(worker))
     return GraphInvocation(
         future=owner_future,
         cancel=lambda: _cancel_worker(worker, owner_future, collect_task),
@@ -41,25 +49,32 @@ async def _run(coro_factory: Callable[[], Awaitable[T]]) -> T:
 class _Worker(Generic[T]):
     done: threading.Event
     cancel_requested: threading.Event
-    owner_future: asyncio.Future[T]
+    public_future: asyncio.Future[T]
     result: list[T]
     errors: list[BaseException]
 
 
+@dataclass(frozen=True)
+class _InvocationContext:
+    turn: RuntimeTurnContext | None
+    pending_input_drainer: PendingInputDrainer | None
+    pending_input_preview_updater: PendingInputPreviewUpdater | None
+
+
 def _start_worker(
     coro_factory: Callable[[], Awaitable[T]],
-    owner_loop: asyncio.AbstractEventLoop,
-    context: Context,
+    public_future: asyncio.Future[T],
+    invocation_context: _InvocationContext,
 ) -> _Worker[T]:
     worker: _Worker[T] = _Worker(
         done=threading.Event(),
         cancel_requested=threading.Event(),
-        owner_future=owner_loop.create_future(),
+        public_future=public_future,
         result=[],
         errors=[],
     )
     thread = threading.Thread(
-        target=lambda: context.run(_run_worker, coro_factory, worker, owner_loop),
+        target=lambda: _run_worker(coro_factory, worker, invocation_context),
         name="linuxagent-graph",
         daemon=True,
     )
@@ -70,15 +85,36 @@ def _start_worker(
 def _run_worker(
     coro_factory: Callable[[], Awaitable[T]],
     worker: _Worker[T],
-    owner_loop: asyncio.AbstractEventLoop,
+    invocation_context: _InvocationContext,
 ) -> None:
     try:
-        worker.result.append(asyncio.run(_run_cancellable(coro_factory, worker)))
+        if invocation_context == _InvocationContext(None, None, None):
+            worker.result.append(asyncio.run(_run_cancellable(coro_factory, worker)))
+        else:
+            with ExitStack() as stack:
+                if invocation_context.turn is not None:
+                    stack.enter_context(turn_context_scope(invocation_context.turn))
+                stack.enter_context(
+                    pending_input_drainer_scope(invocation_context.pending_input_drainer)
+                )
+                stack.enter_context(
+                    pending_input_preview_updater_scope(
+                        invocation_context.pending_input_preview_updater
+                    )
+                )
+                worker.result.append(asyncio.run(_run_cancellable(coro_factory, worker)))
     except BaseException as exc:
         worker.errors.append(exc)
     finally:
         worker.done.set()
-        _notify_worker_done(owner_loop, worker)
+
+
+def _capture_invocation_context() -> _InvocationContext:
+    return _InvocationContext(
+        turn=current_turn_context(),
+        pending_input_drainer=current_pending_input_drainer(),
+        pending_input_preview_updater=current_pending_input_preview_updater(),
+    )
 
 
 async def _run_cancellable(
@@ -102,28 +138,10 @@ async def _wait_for_cancel(cancel_requested: threading.Event) -> None:
         await asyncio.sleep(WORKER_POLL_SECONDS)
 
 
-async def _collect_worker_result(
-    owner_future: asyncio.Future[T],
-    worker: _Worker[T],
-) -> None:
-    try:
-        result = await worker.owner_future
-    except asyncio.CancelledError:
-        if not owner_future.done():
-            owner_future.cancel()
-        return
-    except BaseException as exc:
-        if not owner_future.done():
-            owner_future.set_exception(exc)
-        return
-    if not owner_future.done():
-        owner_future.set_result(result)
-
-
 def _copy_worker_result(
-    owner_future: asyncio.Future[T],
     worker: _Worker[T],
 ) -> None:
+    owner_future = worker.public_future
     if owner_future.done():
         return
     if worker.errors:
@@ -139,16 +157,13 @@ def _copy_worker_result(
     owner_future.set_result(worker.result[0])
 
 
-def _notify_worker_done(
-    owner_loop: asyncio.AbstractEventLoop,
-    worker: _Worker[T],
-) -> None:
-    if owner_loop.is_closed():
-        return
+async def _poll_worker_result(worker: _Worker[T]) -> None:
     try:
-        owner_loop.call_soon_threadsafe(_copy_worker_result, worker.owner_future, worker)
-    except RuntimeError:
+        while not worker.done.is_set():  # noqa: ASYNC110
+            await asyncio.sleep(WORKER_POLL_SECONDS)
+    except asyncio.CancelledError:
         return
+    _copy_worker_result(worker)
 
 
 def _cancel_worker(
@@ -159,7 +174,5 @@ def _cancel_worker(
     worker.cancel_requested.set()
     if not owner_future.done():
         owner_future.cancel()
-    if not worker.owner_future.done():
-        worker.owner_future.cancel()
     if not collect_task.done():
         collect_task.cancel()
