@@ -1,6 +1,7 @@
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { AuditWriter } from "@linuxagent/audit";
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "../src/cli.js";
@@ -52,13 +53,43 @@ describe("linuxagent-ts CLI", () => {
     expect(output.join("\n")).toContain("linuxagent-ts chat");
   });
 
-  it("dispatches audit verify", async () => {
+  it("verifies a valid audit log", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "linuxagent-cli-audit-"));
+    const auditPath = join(dir, "audit.log");
+    await new AuditWriter(auditPath).append("hitl.decision", { decision: "approve" });
     const output: string[] = [];
 
-    const exitCode = await runCli(["audit", "verify"], { stdout: output.push.bind(output) });
+    const exitCode = await runCli(["audit", "verify", auditPath], {
+      stdout: output.push.bind(output),
+    });
 
     expect(exitCode).toBe(0);
-    expect(output.join("\n")).toContain("linuxagent-ts audit verify");
+    expect(output.join("\n")).toContain("linuxagent-ts audit verify: valid");
+  });
+
+  it("returns non-zero for tampered audit logs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "linuxagent-cli-audit-"));
+    const auditPath = join(dir, "audit.log");
+    await new AuditWriter(auditPath).append("hitl.decision", { decision: "approve" });
+    const text = await readFile(auditPath, "utf8");
+    await writeFile(auditPath, text.replace("approve", "deny"), { mode: 0o600 });
+    const output: string[] = [];
+
+    const exitCode = await runCli(["audit", "verify", auditPath], {
+      stdout: output.push.bind(output),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output.join("\n")).toContain("invalid");
+  });
+
+  it("rejects audit verify without a path", async () => {
+    const errors: string[] = [];
+
+    const exitCode = await runCli(["audit", "verify"], { stderr: errors.push.bind(errors) });
+
+    expect(exitCode).toBe(2);
+    expect(errors.join("\n")).toContain("audit verify requires a path");
   });
 
   it("rejects unknown commands with usage text", async () => {

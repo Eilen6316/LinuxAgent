@@ -8,6 +8,7 @@
   "include": ["src/**/*.ts", "test/**/*.ts"],
   "references": [
     { "path": "../../packages/agent-runtime" },
+    { "path": "../../packages/audit" },
     { "path": "../../packages/policy" },
     { "path": "../../packages/tui" }
   ]

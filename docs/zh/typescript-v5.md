@@ -79,6 +79,14 @@ node ts/apps/linuxagent-ts/dist/src/cli.js check \
 配置文件必须是私有权限（`chmod 600`）。检查通过返回 `0`，检查失败返回 `1`，
 CLI 用法错误返回 `2`。
 
+实验 audit verifier 会调用 TS hash-chain verifier：
+
+```bash
+node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
+```
+
+有效日志返回 `0`，缺失或无效日志返回 `1`。
+
 ## 进度表
 
 | 范围 | 状态 |

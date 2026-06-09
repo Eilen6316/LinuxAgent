@@ -94,6 +94,14 @@ node ts/apps/linuxagent-ts/dist/src/cli.js check \
 The config file must be private (`chmod 600`). A passing check exits `0`,
 check failures exit `1`, and CLI usage errors exit `2`.
 
+The experimental audit verifier wraps the TS hash-chain verifier:
+
+```bash
+node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
+```
+
+It exits `0` for a valid log and `1` for missing or invalid logs.
+
 Default-runtime cutover is a separate release decision. Maintainers must run
 `make cutover-check` or the manual CI `cutover-readiness` job before promoting
 TS as the default, and the rollback path is documented in

@@ -1,4 +1,4 @@
-import { runAuditVerifyCommand } from "./commands/audit.js";
+import { formatAuditVerifyResult, runAuditVerifyCommand } from "./commands/audit.js";
 import { runChatCommand } from "./commands/chat.js";
 import { type CheckInput, formatCheckResult, runCheck, runCheckCommand } from "./commands/check.js";
 
@@ -30,9 +30,19 @@ export async function runCli(argv: readonly string[], ports: CliPorts = {}): Pro
     stdout(await runChatCommand());
     return 0;
   }
-  if (command === "audit" && subcommand === "verify" && argv.length === 2) {
-    stdout(await runAuditVerifyCommand());
-    return 0;
+  if (command === "audit" && subcommand === "verify") {
+    const path = rest[0];
+    if (path === undefined) {
+      stderr(`audit verify requires a path\n\n${usage()}`);
+      return 2;
+    }
+    if (rest.length > 1) {
+      stderr(`audit verify accepts exactly one path\n\n${usage()}`);
+      return 2;
+    }
+    const result = await runAuditVerifyCommand(path);
+    stdout(formatAuditVerifyResult(result));
+    return result.status === "valid" ? 0 : 1;
   }
 
   stderr(usage());
@@ -46,7 +56,7 @@ function usage(): string {
     "Commands:",
     "  check [--config <path> --policy <path> --audit <path>]",
     "  chat",
-    "  audit verify",
+    "  audit verify <path>",
   ].join("\n");
 }
 

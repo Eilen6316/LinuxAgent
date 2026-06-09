@@ -84,6 +84,14 @@ node ts/apps/linuxagent-ts/dist/src/cli.js check \
 The config file must be private (`chmod 600`). Passing checks exit `0`, failed
 checks exit `1`, and usage errors exit `2`.
 
+The experimental audit verifier wraps the TS hash-chain verifier:
+
+```bash
+node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
+```
+
+It exits `0` for a valid log and `1` for missing or invalid logs.
+
 ## Progress Tracker
 
 | Area | Status |
