@@ -3,6 +3,7 @@ import {
   formatSummary,
   runAuditParity,
   runFilePatchParity,
+  runHitlParity,
   runOutputRedactionParity,
   runSandboxParity,
 } from "../src/parity-runner.js";
@@ -52,6 +53,15 @@ describe("parity report formatting", () => {
       suite: "file-patch",
       passed: 2,
       total: 2,
+      failures: [],
+    });
+  });
+
+  it("checks HITL session permission parity", async () => {
+    await expect(runHitlParity()).resolves.toEqual({
+      suite: "hitl",
+      passed: 3,
+      total: 3,
       failures: [],
     });
   });

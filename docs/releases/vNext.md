@@ -21,6 +21,8 @@ The TypeScript runtime is experimental. Python v4 remains the default release ru
   redaction and bounded truncation.
 - Added TS file patch parity coverage for transactional apply and rollback on
   partial failure.
+- Added TS HITL session-permission parity coverage for same-thread and
+  resume-scoped approvals.
 - Kept `make ts-check` and `make ts-parity` as experimental TS signals until
   parity gates are promoted.
 

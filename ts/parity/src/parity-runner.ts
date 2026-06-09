@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import type {
   applyFilePatchTransaction as applyFilePatchTransactionFunction,
   FilePatchTransactionResult,
+  SessionPermissions as SessionPermissionsClass,
 } from "@linuxagent/agent-runtime";
 import type {
   AuditWriter as AuditWriterClass,
@@ -89,6 +90,7 @@ export async function runParitySuites(
     await runSandboxParity(),
     runOutputRedactionParity(),
     await runFilePatchParity(),
+    await runHitlParity(),
     emptySummary("harness"),
     emptySummary("red-team"),
   ];
@@ -170,6 +172,28 @@ export async function runFilePatchParity(): Promise<ParitySummary> {
   return { suite: "file-patch", passed: 2 - failures.length, total: 2, failures };
 }
 
+export async function runHitlParity(): Promise<ParitySummary> {
+  const { SessionPermissions } = await loadHitlModule();
+  const failures: string[] = [];
+  const permissions = new SessionPermissions();
+  permissions.allow({ threadId: "thread-1" }, ["uname", "-a"]);
+  if (!permissions.isAllowed({ threadId: "thread-1" }, ["uname", "-a"])) {
+    failures.push("same thread permission must allow identical argv");
+  }
+  if (permissions.isAllowed({ threadId: "thread-2" }, ["uname", "-a"])) {
+    failures.push("different thread must not inherit permission");
+  }
+  if (
+    !permissions.isAllowed({ threadId: "resume-thread", resumedFromThreadId: "thread-1" }, [
+      "uname",
+      "-a",
+    ])
+  ) {
+    failures.push("resumed thread must inherit original thread permission");
+  }
+  return { suite: "hitl", passed: 3 - failures.length, total: 3, failures };
+}
+
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   const summaries = await runParitySuites(argv[0] ?? defaultPolicyFixturePath());
   const failures = summaries.flatMap((summary) => summary.failures);
@@ -248,6 +272,14 @@ async function loadFilePatchModule(): Promise<{
   };
 }
 
+async function loadHitlModule(): Promise<{
+  SessionPermissions: typeof SessionPermissionsClass;
+}> {
+  return (await import(hitlModuleSpecifier())) as {
+    SessionPermissions: typeof SessionPermissionsClass;
+  };
+}
+
 function policyModuleSpecifier(): string {
   if (process.env.VITEST === "true" || import.meta.url.endsWith(".ts")) {
     return "../../packages/policy/src/index.js";
@@ -274,6 +306,13 @@ function filePatchModuleSpecifier(): string {
     return "../../packages/agent-runtime/src/file-patch/index.js";
   }
   return "../../packages/agent-runtime/dist/src/file-patch/index.js";
+}
+
+function hitlModuleSpecifier(): string {
+  if (process.env.VITEST === "true" || import.meta.url.endsWith(".ts")) {
+    return "../../packages/agent-runtime/src/index.js";
+  }
+  return "../../packages/agent-runtime/dist/src/index.js";
 }
 
 async function filePatchApplyPasses(
