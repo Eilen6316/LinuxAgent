@@ -29,6 +29,8 @@ The TypeScript runtime is experimental. Python v4 remains the default release ru
 - Added TS red-team policy parity coverage for protected tree deletion,
   protected block-device mutation, network-to-shell, service mutation, and mkfs
   cases.
+- Recorded fresh `make cutover-check` evidence for the TS migration gate while
+  keeping Python v4 as the default runtime until a separate cutover change.
 - Kept `make ts-check` and `make ts-parity` as experimental TS signals until
   parity gates are promoted.
 

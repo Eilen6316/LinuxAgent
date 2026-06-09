@@ -424,8 +424,7 @@ class ConsoleUI(UserInterface):
         except RuntimeError:
             action_coro.close()
             return True
-        future.add_done_callback(_consume_threadsafe_ui_result)
-        await asyncio.wrap_future(future)
+        await _await_threadsafe_ui_result(future)
         return True
 
     async def _run_posted_ui_action(
@@ -663,13 +662,12 @@ def _execution_result_display(result: ExecutionResult, *, include_output: bool) 
     return execution_summary_text(result)
 
 
-def _consume_threadsafe_ui_result(future: ConcurrentFuture[None]) -> None:
+async def _await_threadsafe_ui_result(future: ConcurrentFuture[None]) -> None:
     try:
         future.result()
-    except (RuntimeError, asyncio.CancelledError):
-        return
-    except Exception:  # noqa: BLE001 - UI refresh failures must not fail worker execution
-        return
+    except asyncio.CancelledError:
+        future.cancel()
+        raise
 
 
 def _consume_async_task_result(task: asyncio.Task[None]) -> None:

@@ -133,7 +133,7 @@ node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
 | policy parity CLI runner | 已落地 |
 | harness fixture export 和必选场景索引 | 已落地 |
 | 实验 TS CI job | 已落地 |
-| cutover checklist | 尚未落地 |
+| cutover checklist | 已落地；默认运行时切换仍需单独 release change |
 
 后续修改 TS 行为时，同一个小交付里要同步更新本页以及相关 README/development 链接，
 确保公开文档和代码状态一致。

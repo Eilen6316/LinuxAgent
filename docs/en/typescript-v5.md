@@ -140,7 +140,7 @@ unless a direct command runner is explicitly configured.
 | Policy parity CLI runner | Landed |
 | Harness fixture export and required scenario index | Landed |
 | Experimental TS CI job | Landed |
-| Cutover checklist | Not yet landed |
+| Cutover checklist | Landed; default-runtime switch still requires a separate release change |
 
 When updating TS behavior, update this page and the relevant README/development
 links in the same change so public documentation stays aligned with the code.
