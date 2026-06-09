@@ -45,6 +45,12 @@ def _render_working_status(ui: ConsoleUI, *, width: int) -> str:
     return render_console.export_text()
 
 
+def _render_rich_markup(markup: str, *, width: int = 120) -> str:
+    console = Console(record=True, width=width)
+    console.print(markup)
+    return console.export_text()
+
+
 def _rule_lines(rendered: str) -> list[str]:
     rule = "─" * 72
     return [line for line in rendered.splitlines() if rule in line]
@@ -646,13 +652,31 @@ def test_command_approval_can_allow_all_in_conversation(monkeypatch) -> None:
     )
 
     assert prompts
-    assert "[a] Yes, don't ask again in this conversation/resume" in prompts[0]["message"]
+    rendered_prompt = _render_rich_markup(prompts[0]["message"])
+    assert "[a] Yes, don't ask again in this conversation/resume" in rendered_prompt
     assert response == {
         "decision": "yes_all",
         "permissions": {
             "allow": ["Bash(cat /etc/os-release)", "Bash(nginx -v)"],
         },
     }
+
+
+def test_command_approval_prompt_renders_shortcut_keys() -> None:
+    options = console_module._approval_options(
+        {
+            "type": "confirm_command",
+            "can_whitelist": True,
+            "permission_candidates": [{"type": "Bash", "command": "hostnamectl"}],
+        },
+        EN_TRANSLATOR,
+    )
+
+    rendered = _render_rich_markup(console_module._approval_prompt(options, EN_TRANSLATOR))
+
+    assert "[y] Yes" in rendered
+    assert "[a] Yes, don't ask again in this conversation/resume" in rendered
+    assert "[n] No" in rendered
 
 
 def test_command_approval_does_not_offer_allow_all_for_destructive_command(
@@ -1201,6 +1225,42 @@ async def test_console_print_active_view_renders_plan_and_token_usage(monkeypatc
     assert "✓ 收集上下文" in rendered
     assert "□ 生成答案" in rendered
     assert "↓ 13.7k tokens" in rendered
+    ui.clear_activity()
+
+
+async def test_console_print_activity_preserves_active_plan_view(monkeypatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    console = Console(record=True, width=120, force_terminal=True)
+    ui = ConsoleUI(console=console)
+
+    await ui.print_active_view(
+        ActiveTurnView(
+            thread_id="thread",
+            turn_id="turn",
+            status="running",
+            items=(
+                ActiveWorkItemView(
+                    item_id="plan:trace",
+                    category="plan",
+                    status="running",
+                    label="runtime.group.task_plan",
+                    summary="检查操作系统关键状态，发现潜在问题",
+                    plan=(
+                        ActivePlanItemView("查看系统版本、内核、主机名等基本信息", "completed"),
+                        ActivePlanItemView("检查磁盘分区使用率", "in_progress"),
+                    ),
+                ),
+            ),
+        )
+    )
+
+    await ui.print_activity("LinuxAgent 正在执行命令：df -h")
+
+    rendered = _render_working_status(ui, width=120)
+    assert Translator(LanguageCode.ZH_CN).t("runtime.group.task_plan") in rendered
+    assert "查看系统版本、内核、主机名等基本信息" in rendered
+    assert "检查磁盘分区使用率" in rendered
+    assert "执行命令：df -h" not in rendered
     ui.clear_activity()
 
 

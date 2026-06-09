@@ -5,6 +5,16 @@ TypeScript v5 rewrite remains experimental.
 
 The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
 
+## CLI Interaction
+
+- Fixed fallback command approval prompts so `[y]`, `[a]`, and `[n]` shortcut
+  keys render literally instead of being consumed as Rich markup.
+- Kept active task plans pinned in the transient status line when later command
+  execution activity is reported.
+- Reduced duplicate HITL confirmation prompts by letting an in-flight graph
+  interrupt settle briefly before the early interrupt probe cancels the graph
+  worker.
+
 ## TypeScript v5 Migration Status
 
 - Added an explicit `make cutover-check` target for default-runtime switch

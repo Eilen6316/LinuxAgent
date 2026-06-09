@@ -215,10 +215,13 @@ checkpoint and reopens the confirmation flow. Use `/new` to reset context inside
 a running CLI session and `/tools` to see available slash/tool entry points.
 Typing `/` opens the slash-command completion menu. Command confirmations use
 an arrow-key menu with `Yes`, `Yes, don't ask again`, and `No` when conversation
-permissions are allowed. `Yes, don't ask again` is scoped to the current
+permissions are allowed; fallback prompts show `[y]`, `[a]`, and `[n]` shortcuts
+for the same decisions. `Yes, don't ask again` is scoped to the current
 conversation thread, the same thread when resumed with `/resume`, and the same
 argv command shape. New conversations do not inherit it, and destructive or
-`never_whitelist` policy matches still ask every time.
+`never_whitelist` policy matches still ask every time. During long turns, the
+status line keeps the active task plan visible while command execution activity
+continues in the background.
 Input beginning with `!` is direct command mode: LinuxAgent executes the
 operator-authored command, streams stdout/stderr live, and records both
 `!<command>` and the system result into the active conversation context. It does

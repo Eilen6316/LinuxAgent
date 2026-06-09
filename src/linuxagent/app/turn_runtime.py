@@ -15,6 +15,7 @@ from .graph_invocation import GraphInvocation, start_graph_invocation
 
 T = TypeVar("T")
 EARLY_RESULT_POLL_SECONDS = 0.05
+EARLY_RESULT_SETTLE_SECONDS = 0.12
 
 
 async def run_graph_turn(
@@ -127,6 +128,10 @@ async def _await_invocation(
         await _stop_task(probe_task)
         return await invocation.future
     if probe_task is not None and probe_task in done:
+        if await _settle_invocation(invocation.future):
+            await _stop_task(cancel_task)
+            await _stop_task(probe_task)
+            return await invocation.future
         await _stop_task(cancel_task)
         invocation.cancel()
         invocation.future.add_done_callback(_consume_cancelled_task)
@@ -163,6 +168,15 @@ async def _poll_early_result_probe(probe: Callable[[], Awaitable[T | None]]) -> 
         if result is not None:
             return result
         await asyncio.sleep(EARLY_RESULT_POLL_SECONDS)
+
+
+async def _settle_invocation(future: asyncio.Future[Any]) -> bool:
+    if future.done():
+        return True
+    with suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.shield(future), timeout=EARLY_RESULT_SETTLE_SECONDS)
+        return True
+    return future.done()
 
 
 async def _stop_task(task: asyncio.Task[Any] | None) -> None:

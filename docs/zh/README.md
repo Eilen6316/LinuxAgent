@@ -613,6 +613,9 @@ Allow this operation?
   2. 接受，本对话/恢复中不再询问 / Yes, don't ask again
   3. 不接受 / No
 
+fallback prompt 也会显示并接受 `[y]`、`[a]`、`[n]` 快捷键。多步骤任务运行时，
+临时状态栏会保留当前任务计划，后续命令执行 activity 不会覆盖这份列表。
+
 [执行输出]
 total 52
 drwxr-xr-x  12 user user 4096 ...

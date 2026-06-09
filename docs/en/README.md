@@ -667,6 +667,10 @@ Allow this operation?
   2. Accept, don't ask again in this conversation/resume / Yes, don't ask again
   3. Do not accept / No
 
+Fallback prompts also accept visible `[y]`, `[a]`, and `[n]` shortcut keys for
+the same choices. During multi-step turns, the transient status line keeps the
+active task plan visible while later command activity is reported.
+
 [output]
 total 52
 drwxr-xr-x  12 user user 4096 ...

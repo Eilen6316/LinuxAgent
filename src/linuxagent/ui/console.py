@@ -14,6 +14,7 @@ from typing import Any
 from prompt_toolkit.patch_stdout import patch_stdout
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.text import Text
@@ -198,6 +199,8 @@ class ConsoleUI(UserInterface):
         if not self._activity_visible:
             return
         if self._is_transient_activity(text) and sys.stdin.isatty() and self._console.is_terminal:
+            if self._working_status is not None and self._working_status.has_active_plan_view():
+                return
             self.start_working(text)
             return
         self._clear_activity(reset_timer=False)
@@ -601,7 +604,7 @@ def _ask_command_approval(payload: dict[str, Any], translator: Translator) -> st
 
 
 def _approval_prompt(options: tuple[ApprovalOption, ...], translator: Translator) -> str:
-    labels = " / ".join(f"[{option.key}] {option.label}" for option in options)
+    labels = " / ".join(escape(f"[{option.key}] {option.label}") for option in options)
     return f"[bold]{translator.t('ui.approval.title')}[/] {labels}"
 
 

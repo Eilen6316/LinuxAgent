@@ -62,6 +62,9 @@ class WorkingStatus:
         self._active_view = view
         self._refresh()
 
+    def has_active_plan_view(self) -> bool:
+        return self._active_view is not None and any(item.plan for item in self._active_view.items)
+
     def refresh(self) -> None:
         if self._pending_renderable is None:
             self._pending_renderable = self._render()

@@ -332,6 +332,33 @@ class _BlockingInterruptGraph(_FakeGraph):
         return SimpleNamespace(values={}, tasks=[SimpleNamespace(interrupts=self._interrupts)])
 
 
+class _DuplicateConfirmIfEarlyCancelledGraph(_FakeGraph):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.cancelled_before_checkpoint = False
+        self._duplicate_returned = False
+        self._payload = {
+            "type": "confirm_command",
+            "command": "systemctl --failed --no-legend",
+        }
+
+    async def ainvoke(self, state: Any, config: Any) -> Any:
+        del config
+        self.calls.append(state)
+        if isinstance(state, Command):
+            if self.cancelled_before_checkpoint and not self._duplicate_returned:
+                self._duplicate_returned = True
+                return {"__interrupt__": [Interrupt(value=self._payload, resumable=True)]}
+            return {"messages": [HumanMessage(content="run"), AIMessage(content="ok")]}
+        publish_pending_interrupt(self._payload)
+        try:
+            await asyncio.sleep(0.08)
+        except asyncio.CancelledError:
+            self.cancelled_before_checkpoint = True
+            raise
+        return {"__interrupt__": [Interrupt(value=self._payload, resumable=True)]}
+
+
 def _blocking_pause(delay: float) -> None:
     time.sleep(delay)
 
@@ -617,6 +644,21 @@ async def test_run_turn_surfaces_interrupt_before_pending_history_snapshot(
 
     assert ui.interrupt_seen.is_set()
     assert ui.interrupts == [{"type": "confirm_file_patch", "audit_id": "audit-1"}]
+
+
+async def test_run_turn_does_not_repeat_confirmation_when_memory_probe_wins(
+    tmp_path,
+) -> None:
+    graph = _DuplicateConfirmIfEarlyCancelledGraph()
+    ui = _FakeUI(interrupt_response={"decision": "yes", "latency_ms": 1})
+    agent = _agent(tmp_path, graph=graph, ui=ui)
+
+    await asyncio.wait_for(agent.run_turn("check services", thread_id="thread"), timeout=0.5)
+
+    assert ui.interrupts == [
+        {"type": "confirm_command", "command": "systemctl --failed --no-legend"}
+    ]
+    assert graph.cancelled_before_checkpoint is False
 
 
 async def test_run_turn_escape_does_not_wait_for_slow_graph_cleanup(tmp_path) -> None:
