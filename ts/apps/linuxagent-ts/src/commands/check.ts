@@ -1,6 +1,6 @@
 import { access, stat } from "node:fs/promises";
 import { dirname } from "node:path";
-import { PolicyEngine } from "../../../../packages/policy/src/index.js";
+import { PolicyEngine } from "@linuxagent/policy";
 
 export interface CheckInput {
   configPath: string;

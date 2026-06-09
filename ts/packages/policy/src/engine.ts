@@ -1,4 +1,4 @@
-import type { PolicyDecision, PolicyLevel } from "../../contracts/src/index.js";
+import type { PolicyDecision, PolicyLevel } from "@linuxagent/contracts";
 import { buildEffectiveCommand, type EffectiveCommand } from "./effective-command.js";
 
 const LEVEL_RANK: Record<PolicyLevel, number> = {

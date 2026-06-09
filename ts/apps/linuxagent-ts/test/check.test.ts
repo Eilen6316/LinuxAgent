@@ -44,4 +44,11 @@ describe("linuxagent-ts check", () => {
       "audit_parent",
     ]);
   });
+
+  it("loads the compiled check command after build", async () => {
+    const distUrl = new URL("../dist/src/commands/check.js", import.meta.url).href;
+    const distCheck = (await import(distUrl)) as { runCheckCommand?: unknown };
+
+    expect(typeof distCheck.runCheckCommand).toBe("function");
+  });
 });
