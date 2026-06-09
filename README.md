@@ -81,6 +81,19 @@ gates are satisfied. See the [TypeScript v5 experimental kernel](docs/en/typescr
 and [progressive rewrite design](docs/design/typescript-v5-progressive-rewrite.md)
 for current status, migration boundaries, and TS development commands.
 
+The experimental `linuxagent-ts check` command validates explicit local paths
+without contacting a model provider:
+
+```bash
+node ts/apps/linuxagent-ts/dist/src/cli.js check \
+  --config ./config.yaml \
+  --policy ./configs/policy.default.yaml \
+  --audit ~/.linuxagent/audit.log
+```
+
+The config file must be private (`chmod 600`). A passing check exits `0`,
+check failures exit `1`, and CLI usage errors exit `2`.
+
 Default-runtime cutover is a separate release decision. Maintainers must run
 `make cutover-check` or the manual CI `cutover-readiness` job before promoting
 TS as the default, and the rollback path is documented in

@@ -71,6 +71,19 @@ and red-team parity while those suites are expanded. Keep Python gates
 (`make test`, `make security`, `make harness`, and release checks)
 authoritative for the production runtime.
 
+The experimental CLI check command validates explicit local paths and does not
+call a model API:
+
+```bash
+node ts/apps/linuxagent-ts/dist/src/cli.js check \
+  --config ./config.yaml \
+  --policy ./configs/policy.default.yaml \
+  --audit ~/.linuxagent/audit.log
+```
+
+The config file must be private (`chmod 600`). Passing checks exit `0`, failed
+checks exit `1`, and usage errors exit `2`.
+
 ## Progress Tracker
 
 | Area | Status |

@@ -67,6 +67,18 @@ make ts-parity
 Python 门禁为准：`make test`、`make security`、`make harness` 和 release 检查仍是
 权威门禁。
 
+实验 CLI 的 check 命令只校验显式传入的本地路径，不会调用模型 API：
+
+```bash
+node ts/apps/linuxagent-ts/dist/src/cli.js check \
+  --config ./config.yaml \
+  --policy ./configs/policy.default.yaml \
+  --audit ~/.linuxagent/audit.log
+```
+
+配置文件必须是私有权限（`chmod 600`）。检查通过返回 `0`，检查失败返回 `1`，
+CLI 用法错误返回 `2`。
+
 ## 进度表
 
 | 范围 | 状态 |

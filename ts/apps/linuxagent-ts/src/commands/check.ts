@@ -62,7 +62,7 @@ async function checkPolicy(path: string): Promise<CheckItem> {
   }
 }
 
-function formatCheckResult(result: CheckResult): string {
+export function formatCheckResult(result: CheckResult): string {
   const lines = result.checks.map((check) => {
     const status = check.ok ? "ok" : "fail";
     return `${status} ${check.name}: ${check.message}`;

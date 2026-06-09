@@ -1,6 +1,6 @@
 import { runAuditVerifyCommand } from "./commands/audit.js";
 import { runChatCommand } from "./commands/chat.js";
-import { runCheckCommand } from "./commands/check.js";
+import { type CheckInput, formatCheckResult, runCheck, runCheckCommand } from "./commands/check.js";
 
 export interface CliPorts {
   stdout?: (text: string) => void;
@@ -10,11 +10,21 @@ export interface CliPorts {
 export async function runCli(argv: readonly string[], ports: CliPorts = {}): Promise<number> {
   const stdout = ports.stdout ?? console.log;
   const stderr = ports.stderr ?? console.error;
-  const [command, subcommand] = argv;
+  const [command, subcommand, ...rest] = argv;
 
-  if (command === "check" && subcommand === undefined) {
-    stdout(await runCheckCommand());
-    return 0;
+  if (command === "check") {
+    const parsed = parseCheckInput([subcommand, ...rest].filter((arg) => arg !== undefined));
+    if (parsed.ok === false) {
+      stderr(`${parsed.error}\n\n${usage()}`);
+      return 2;
+    }
+    if (parsed.input === undefined) {
+      stdout(await runCheckCommand());
+      return 0;
+    }
+    const result = await runCheck(parsed.input);
+    stdout(formatCheckResult(result));
+    return result.ok ? 0 : 1;
   }
   if (command === "chat" && subcommand === undefined) {
     stdout(await runChatCommand());
@@ -34,10 +44,42 @@ function usage(): string {
     "Usage: linuxagent-ts <command>",
     "",
     "Commands:",
-    "  check",
+    "  check [--config <path> --policy <path> --audit <path>]",
     "  chat",
     "  audit verify",
   ].join("\n");
+}
+
+type ParseCheckResult = { ok: true; input?: CheckInput } | { ok: false; error: string };
+
+function parseCheckInput(args: readonly string[]): ParseCheckResult {
+  if (args.length === 0) return { ok: true };
+
+  const values: Partial<CheckInput> = {};
+  for (let index = 0; index < args.length; index += 2) {
+    const flag = args[index];
+    const value = args[index + 1];
+    if (value === undefined) return { ok: false, error: `${flag} requires a value` };
+    switch (flag) {
+      case "--config":
+        values.configPath = value;
+        break;
+      case "--policy":
+        values.policyPath = value;
+        break;
+      case "--audit":
+        values.auditPath = value;
+        break;
+      default:
+        return { ok: false, error: `unknown check flag: ${flag}` };
+    }
+  }
+
+  const missing = ["configPath", "policyPath", "auditPath"].filter(
+    (key) => values[key as keyof CheckInput] === undefined,
+  );
+  if (missing.length > 0) return { ok: false, error: `missing check option: ${missing[0]}` };
+  return { ok: true, input: values as CheckInput };
 }
 
 if (isCliEntrypoint(process.argv[1])) {
