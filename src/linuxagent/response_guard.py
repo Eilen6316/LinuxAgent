@@ -113,6 +113,8 @@ def _blocked_command_suggestion(
 ) -> _BlockedCommandSuggestion | None:
     for command in _candidate_commands(text):
         decision = policy_engine.evaluate(command, source=CommandSource.USER)
+        if _is_non_executable_shell_fragment(decision.matched_rules):
+            continue
         if decision.level is SafetyLevel.BLOCK:
             return _BlockedCommandSuggestion(
                 command=command,
@@ -120,6 +122,10 @@ def _blocked_command_suggestion(
                 matched_rules=decision.matched_rules,
             )
     return None
+
+
+def _is_non_executable_shell_fragment(matched_rules: tuple[str, ...]) -> bool:
+    return "PARSE_ERROR" in matched_rules
 
 
 def _candidate_commands(text: str) -> tuple[str, ...]:

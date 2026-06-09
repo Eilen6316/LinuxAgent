@@ -97,8 +97,39 @@ def test_guard_response_text_allows_incomplete_redirect_as_prose_example() -> No
     assert result.changed is False
 
 
-def test_guard_response_text_blocks_incomplete_redirect_in_explicit_shell_fence() -> None:
-    result = guard_response_text("Run this:\n```bash\ncat >\n```")
+def test_guard_response_text_allows_incomplete_redirect_in_explicit_shell_fence() -> None:
+    result = guard_response_text("Syntax note:\n```bash\ncat >\n```")
+
+    assert result.changed is False
+
+
+def test_guard_response_text_allows_chinese_capability_answer_with_shell_placeholder() -> None:
+    result = guard_response_text(
+        "\n".join(
+            (
+                "我能帮你做 Linux 运维排查、脚本整理和配置检查。",
+                "比如解释这种还不完整的 shell 写法：",
+                "```bash",
+                "cat >",
+                "```",
+                "真正执行前仍会经过策略检查和人工确认。",
+            )
+        )
+    )
+
+    assert result.changed is False
+
+
+def test_guard_response_text_blocks_dangerous_complete_redirect_in_explicit_shell_fence() -> None:
+    result = guard_response_text("Run this:\n```bash\ncat /etc/shadow > /tmp/shadow-copy\n```")
+
+    assert result.changed is True
+    assert result.blocked_reason is not None
+    assert "violates the command safety policy" in result.text
+
+
+def test_guard_response_text_still_blocks_input_validation_failures() -> None:
+    result = guard_response_text("Run this:\n```bash\ncat \u202e/etc/passwd\n```")
 
     assert result.changed is True
     assert result.blocked_reason is not None
