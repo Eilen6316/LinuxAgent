@@ -7,6 +7,7 @@ import type {
   AuditWriter as AuditWriterClass,
   verifyAuditLog as verifyAuditLogFunction,
 } from "@linuxagent/audit";
+import { redactOutput } from "@linuxagent/executor";
 import type { NoopSandboxRunner as NoopSandboxRunnerClass } from "@linuxagent/sandbox";
 import type { PolicyLevel } from "../../packages/contracts/src/index.js";
 import type { PolicyEngine as PolicyEngineClass } from "../../packages/policy/src/index.js";
@@ -82,6 +83,7 @@ export async function runParitySuites(
     await runPolicyParity(policyFixturePath),
     await runAuditParity(),
     await runSandboxParity(),
+    runOutputRedactionParity(),
     emptySummary("harness"),
     emptySummary("red-team"),
   ];
@@ -134,6 +136,21 @@ export async function runSandboxParity(): Promise<ParitySummary> {
   }
 
   return { suite: "sandbox", passed: 2 - failures.length, total: 2, failures };
+}
+
+export function runOutputRedactionParity(): ParitySummary {
+  const failures: string[] = [];
+  const bearer = redactOutput("Authorization: Bearer runtime-secret-token");
+  if (bearer.text.includes("runtime-secret-token") || !bearer.redacted) {
+    failures.push("bearer token must be redacted before model-facing analysis");
+  }
+
+  const bounded = redactOutput(`token sk-${"a".repeat(32)} ${"x".repeat(20)}`, 20);
+  if (bounded.text.includes("sk-") || !bounded.text.includes("[TRUNCATED]") || !bounded.truncated) {
+    failures.push("bounded output must redact before truncation");
+  }
+
+  return { suite: "output-redaction", passed: 2 - failures.length, total: 2, failures };
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {

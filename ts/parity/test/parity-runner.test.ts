@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatSummary, runAuditParity, runSandboxParity } from "../src/parity-runner.js";
+import {
+  formatSummary,
+  runAuditParity,
+  runOutputRedactionParity,
+  runSandboxParity,
+} from "../src/parity-runner.js";
 
 describe("parity report formatting", () => {
   it("formats pass counts", () => {
@@ -26,6 +31,15 @@ describe("parity report formatting", () => {
   it("checks sandbox fail-closed behavior", async () => {
     await expect(runSandboxParity()).resolves.toEqual({
       suite: "sandbox",
+      passed: 2,
+      total: 2,
+      failures: [],
+    });
+  });
+
+  it("checks output redaction behavior", () => {
+    expect(runOutputRedactionParity()).toEqual({
+      suite: "output-redaction",
       passed: 2,
       total: 2,
       failures: [],
