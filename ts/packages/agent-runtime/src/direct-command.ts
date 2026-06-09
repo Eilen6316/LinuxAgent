@@ -1,6 +1,6 @@
-import { redactOutput } from "../../executor/src/index.js";
-import type { PolicyEngine } from "../../policy/src/index.js";
-import type { SandboxSpec } from "../../sandbox/src/index.js";
+import { redactOutput } from "@linuxagent/executor";
+import type { PolicyEngine } from "@linuxagent/policy";
+import type { SandboxSpec } from "@linuxagent/sandbox";
 import type { CommandExecutorPort, ExecuteCommandToolResult } from "./execute-command-tool.js";
 import { formatExecutionResultForModel } from "./execute-command-tool.js";
 import type { AuditPort } from "./tool-gate.js";

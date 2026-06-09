@@ -1,5 +1,5 @@
-import type { ApprovalDecision } from "../../agent-runtime/src/index.js";
-import type { PolicyDecision } from "../../contracts/src/index.js";
+import type { ApprovalDecision } from "@linuxagent/agent-runtime";
+import type { PolicyDecision } from "@linuxagent/contracts";
 
 export interface ApprovalOption {
   label: "Yes" | "Yes, don't ask again" | "No";

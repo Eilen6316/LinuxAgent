@@ -1,7 +1,4 @@
-import type {
-  ExecuteCommandToolResult,
-  LinuxAgentTurnResult,
-} from "../../agent-runtime/src/index.js";
+import type { ExecuteCommandToolResult, LinuxAgentTurnResult } from "@linuxagent/agent-runtime";
 import { routeSlashCommand, type SlashRoute } from "./slash-router.js";
 
 export interface LinuxAgentTuiApp {

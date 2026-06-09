@@ -1,4 +1,4 @@
-import type { PolicyDecision } from "../../contracts/src/index.js";
+import type { PolicyDecision } from "@linuxagent/contracts";
 
 export interface ConfirmationSandbox {
   profile: string;

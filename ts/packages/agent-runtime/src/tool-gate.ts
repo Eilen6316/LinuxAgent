@@ -1,5 +1,5 @@
-import type { PolicyDecision } from "../../contracts/src/index.js";
-import type { PolicyEngine } from "../../policy/src/index.js";
+import type { PolicyDecision } from "@linuxagent/contracts";
+import type { PolicyEngine } from "@linuxagent/policy";
 import {
   type ApprovalPort,
   createApprovalRequest,

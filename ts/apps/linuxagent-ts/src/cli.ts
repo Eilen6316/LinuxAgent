@@ -26,8 +26,13 @@ export async function runCli(argv: readonly string[], ports: CliPorts = {}): Pro
     stdout(formatCheckResult(result));
     return result.ok ? 0 : 1;
   }
-  if (command === "chat" && subcommand === undefined) {
-    stdout(await runChatCommand());
+  if (command === "chat") {
+    const parsed = parseChatInput([subcommand, ...rest].filter((arg) => arg !== undefined));
+    if (parsed.ok === false) {
+      stderr(`${parsed.error}\n\n${usage()}`);
+      return 2;
+    }
+    stdout(await runChatCommand(parsed.input));
     return 0;
   }
   if (command === "audit" && subcommand === "verify") {
@@ -55,7 +60,7 @@ function usage(): string {
     "",
     "Commands:",
     "  check [--config <path> --policy <path> --audit <path>]",
-    "  chat",
+    "  chat [--input <text>]",
     "  audit verify <path>",
   ].join("\n");
 }
@@ -90,6 +95,16 @@ function parseCheckInput(args: readonly string[]): ParseCheckResult {
   );
   if (missing.length > 0) return { ok: false, error: `missing check option: ${missing[0]}` };
   return { ok: true, input: values as CheckInput };
+}
+
+type ParseChatResult = { ok: true; input?: string } | { ok: false; error: string };
+
+function parseChatInput(args: readonly string[]): ParseChatResult {
+  if (args.length === 0) return { ok: true };
+  if (args[0] !== "--input") return { ok: false, error: `unknown chat flag: ${args[0]}` };
+  if (args[1] === undefined) return { ok: false, error: "--input requires a value" };
+  if (args.length > 2) return { ok: false, error: "chat accepts only one --input value" };
+  return { ok: true, input: args[1] };
 }
 
 if (isCliEntrypoint(process.argv[1])) {

@@ -1,4 +1,4 @@
-import { redactOutput } from "../../executor/src/index.js";
+import { redactOutput } from "@linuxagent/executor";
 
 export interface LinuxAgentToolCallAnalysisContext {
   result: {

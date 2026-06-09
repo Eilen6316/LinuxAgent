@@ -1,5 +1,5 @@
-import { redactOutput } from "../../executor/src/index.js";
-import type { SandboxExecutionResult, SandboxSpec } from "../../sandbox/src/index.js";
+import { redactOutput } from "@linuxagent/executor";
+import type { SandboxExecutionResult, SandboxSpec } from "@linuxagent/sandbox";
 import type { LinuxAgentToolGate, ToolCallResult } from "./tool-gate.js";
 
 export interface CommandExecutorPort {

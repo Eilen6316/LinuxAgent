@@ -6,6 +6,8 @@
   "types": "dist/src/index.d.ts",
   "dependencies": {
     "@linuxagent/contracts": "*",
-    "@linuxagent/policy": "*"
+    "@linuxagent/executor": "*",
+    "@linuxagent/policy": "*",
+    "@linuxagent/sandbox": "*"
   }
 }

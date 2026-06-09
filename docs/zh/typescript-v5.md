@@ -87,6 +87,9 @@ node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
 
 有效日志返回 `0`，缺失或无效日志返回 `1`。
 
+`linuxagent-ts chat --input <text>` 用来验证实验 TUI 路由面，例如 `/new`、
+`/resume` 和 `/tools`。默认 runtime port 仍是安全占位实现，暂不调用 provider。
+
 ## 进度表
 
 | 范围 | 状态 |

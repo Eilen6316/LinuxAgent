@@ -1,4 +1,4 @@
-import type { FilePatchPlan } from "../../../contracts/src/index.js";
+import type { FilePatchPlan } from "@linuxagent/contracts";
 
 export interface PatchApprovalPort {
   approvePatch(plan: FilePatchPlan, preview: string): Promise<"approve" | "deny">;

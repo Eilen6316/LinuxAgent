@@ -1,5 +1,5 @@
+import { type CommandPlan, CommandPlanSchema } from "@linuxagent/contracts";
 import { Value } from "typebox/value";
-import { type CommandPlan, CommandPlanSchema } from "../../contracts/src/index.js";
 
 export type PlannerResult =
   | { ok: true; plan: CommandPlan }

@@ -53,6 +53,39 @@ describe("linuxagent-ts CLI", () => {
     expect(output.join("\n")).toContain("linuxagent-ts chat");
   });
 
+  it.each([
+    ["/new", "new"],
+    ["/resume", "resume"],
+    ["/tools", "tools"],
+  ] as const)("routes chat slash input %s", async (input, expected) => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["chat", "--input", input], { stdout: output.push.bind(output) });
+
+    expect(exitCode).toBe(0);
+    expect(output.join("\n")).toContain(`linuxagent-ts chat: ${expected}`);
+  });
+
+  it("runs chat input through the runtime port", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["chat", "--input", "check kernel"], {
+      stdout: output.push.bind(output),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output.join("\n")).toContain("linuxagent-ts chat: direct_answer");
+  });
+
+  it("rejects incomplete chat input flags", async () => {
+    const errors: string[] = [];
+
+    const exitCode = await runCli(["chat", "--input"], { stderr: errors.push.bind(errors) });
+
+    expect(exitCode).toBe(2);
+    expect(errors.join("\n")).toContain("--input requires a value");
+  });
+
   it("verifies a valid audit log", async () => {
     const dir = await mkdtemp(join(tmpdir(), "linuxagent-cli-audit-"));
     const auditPath = join(dir, "audit.log");

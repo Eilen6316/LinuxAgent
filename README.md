@@ -102,6 +102,10 @@ node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
 
 It exits `0` for a valid log and `1` for missing or invalid logs.
 
+`linuxagent-ts chat --input <text>` exercises the experimental TUI routing
+surface for slash commands such as `/new`, `/resume`, and `/tools`. The default
+runtime port is still a safe placeholder and does not call a provider yet.
+
 Default-runtime cutover is a separate release decision. Maintainers must run
 `make cutover-check` or the manual CI `cutover-readiness` job before promoting
 TS as the default, and the rollback path is documented in

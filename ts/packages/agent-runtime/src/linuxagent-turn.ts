@@ -1,5 +1,5 @@
-import type { PolicyEngine } from "../../policy/src/index.js";
-import type { SandboxProfile, SandboxSpec } from "../../sandbox/src/index.js";
+import type { PolicyEngine } from "@linuxagent/policy";
+import type { SandboxProfile, SandboxSpec } from "@linuxagent/sandbox";
 import type { ApprovalPort } from "./approval.js";
 import type { CommandExecutorPort } from "./execute-command-tool.js";
 import { type ExecuteCommandToolResult, executeCommandTool } from "./execute-command-tool.js";

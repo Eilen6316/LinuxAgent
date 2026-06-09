@@ -1,9 +1,5 @@
-import type {
-  SandboxExecutionResult,
-  SandboxRunner,
-  SandboxSpec,
-} from "../../sandbox/src/index.js";
-import { SandboxUnavailableError, selectSandboxRunner } from "../../sandbox/src/index.js";
+import type { SandboxExecutionResult, SandboxRunner, SandboxSpec } from "@linuxagent/sandbox";
+import { SandboxUnavailableError, selectSandboxRunner } from "@linuxagent/sandbox";
 
 export class LocalExecutor {
   constructor(private readonly runners: readonly SandboxRunner[]) {}
