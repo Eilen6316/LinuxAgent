@@ -1,8 +1,10 @@
 import type { ExecuteCommandToolResult, LinuxAgentTurnResult } from "@linuxagent/agent-runtime";
+import { LinuxAgentEventRenderer } from "./event-renderer.js";
 import { routeSlashCommand, type SlashRoute } from "./slash-router.js";
 
 export interface LinuxAgentTuiApp {
   readonly name: "linuxagent-ts";
+  readonly eventRenderer: LinuxAgentEventRenderer;
 }
 
 export interface ChatTurnRunner {
@@ -50,5 +52,5 @@ export class LinuxAgentChatSession {
 }
 
 export function createLinuxAgentTuiApp(): LinuxAgentTuiApp {
-  return { name: "linuxagent-ts" };
+  return { name: "linuxagent-ts", eventRenderer: new LinuxAgentEventRenderer() };
 }

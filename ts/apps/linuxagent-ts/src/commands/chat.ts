@@ -1,8 +1,25 @@
 import type { LinuxAgentTurnResult } from "@linuxagent/agent-runtime";
-import { type ChatSessionResult, LinuxAgentChatSession } from "@linuxagent/tui";
+import {
+  type ChatSessionResult,
+  createLinuxAgentTuiApp,
+  LinuxAgentChatSession,
+} from "@linuxagent/tui";
 
-export async function runChatCommand(input?: string): Promise<string> {
-  if (input === undefined) return "linuxagent-ts chat";
+export interface ChatTtyPort {
+  isTTY?: boolean;
+}
+
+export interface RunChatCommandOptions {
+  stdin?: ChatTtyPort;
+  stdout?: ChatTtyPort;
+  launchInteractive?: () => Promise<string>;
+}
+
+export async function runChatCommand(
+  input?: string,
+  options: RunChatCommandOptions = {},
+): Promise<string> {
+  if (input === undefined) return runInteractiveOrFailClosed(options);
   return formatChatSessionResult(await createDefaultChatSession().handleInput(input));
 }
 
@@ -42,4 +59,22 @@ function formatRuntimeKind(result: LinuxAgentTurnResult): string {
     case "tool_results":
       return `tool_results ${result.results.length}`;
   }
+}
+
+async function runInteractiveOrFailClosed(options: RunChatCommandOptions): Promise<string> {
+  if (!isInteractiveTty(options)) {
+    return "linuxagent-ts chat: non_interactive requires --input";
+  }
+  return (options.launchInteractive ?? runExperimentalInteractiveChat)();
+}
+
+function isInteractiveTty(options: RunChatCommandOptions): boolean {
+  const stdinIsTty = options.stdin?.isTTY ?? process.stdin.isTTY ?? false;
+  const stdoutIsTty = options.stdout?.isTTY ?? process.stdout.isTTY ?? false;
+  return stdinIsTty && stdoutIsTty;
+}
+
+async function runExperimentalInteractiveChat(): Promise<string> {
+  createLinuxAgentTuiApp();
+  return "linuxagent-ts chat: interactive experimental";
 }
