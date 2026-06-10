@@ -13,7 +13,7 @@ describe("linuxagent-ts CLI", () => {
     const configPath = join(dir, "config.yaml");
     const policyPath = join(dir, "policy.yaml");
     await mkdir(auditDir);
-    await writeFile(configPath, "api:\n  provider: fake\n", { mode: 0o600 });
+    await writeFile(configPath, localProviderConfig(), { mode: 0o600 });
     await chmod(configPath, 0o600);
     await writeFile(policyPath, "rules: []\n", { mode: 0o600 });
     const output: string[] = [];
@@ -145,3 +145,14 @@ describe("linuxagent-ts CLI", () => {
     expect(errors.join("\n")).toContain("Usage: linuxagent-ts");
   });
 });
+
+function localProviderConfig(): string {
+  return [
+    "api:",
+    "  provider: ollama",
+    "  base_url: http://127.0.0.1:11434",
+    "  model: llama3.1",
+    "  api_key: ''",
+    "",
+  ].join("\n");
+}

@@ -1,6 +1,8 @@
-import { access, stat } from "node:fs/promises";
+import { access, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
+import { resolvePiModelDescriptor, validateReactProviderConfig } from "@linuxagent/agent-runtime";
 import { PolicyEngine } from "@linuxagent/policy";
+import YAML from "yaml";
 
 export interface CheckInput {
   configPath: string;
@@ -23,6 +25,7 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
   const checks: CheckItem[] = [];
   checks.push(await checkReadable("config", input.configPath));
   checks.push(await checkPrivateMode("config_mode", input.configPath));
+  checks.push(await checkReactProvider(input.configPath));
   checks.push(await checkPolicy(input.policyPath));
   checks.push(await checkReadable("audit_parent", dirname(input.auditPath)));
   return { ok: checks.every((check) => check.ok), checks };
@@ -59,6 +62,20 @@ async function checkPolicy(path: string): Promise<CheckItem> {
     return { name: "policy", ok: true, message: "policy loaded" };
   } catch (error) {
     return { name: "policy", ok: false, message: String(error) };
+  }
+}
+
+async function checkReactProvider(path: string): Promise<CheckItem> {
+  try {
+    const parsed = YAML.parse(await readFile(path, "utf8")) as unknown;
+    const descriptor = resolvePiModelDescriptor(validateReactProviderConfig(parsed));
+    return {
+      name: "react_provider",
+      ok: true,
+      message: `${descriptor.provider}/${descriptor.model} resolves via ${descriptor.piProvider}`,
+    };
+  } catch (error) {
+    return { name: "react_provider", ok: false, message: String(error) };
   }
 }
 

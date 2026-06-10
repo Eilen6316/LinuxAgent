@@ -10,7 +10,7 @@ describe("linuxagent-ts check", () => {
     const dir = await mkdtemp(join(tmpdir(), "linuxagent-check-"));
     const configPath = join(dir, "config.yaml");
     const policyPath = join(dir, "policy.yaml");
-    await writeFile(configPath, "api:\n  provider: fake\n", { mode: 0o644 });
+    await writeFile(configPath, localProviderConfig(), { mode: 0o644 });
     await chmod(configPath, 0o644);
     await writeFile(policyPath, "rules: []\n", { mode: 0o600 });
 
@@ -26,7 +26,7 @@ describe("linuxagent-ts check", () => {
     const configPath = join(dir, "config.yaml");
     const policyPath = join(dir, "policy.yaml");
     await mkdir(auditDir);
-    await writeFile(configPath, "api:\n  provider: fake\n", { mode: 0o600 });
+    await writeFile(configPath, localProviderConfig(), { mode: 0o600 });
     await chmod(configPath, 0o600);
     await writeFile(policyPath, "rules: []\n", { mode: 0o600 });
 
@@ -40,6 +40,7 @@ describe("linuxagent-ts check", () => {
     expect(result.checks.map((check) => check.name)).toEqual([
       "config",
       "config_mode",
+      "react_provider",
       "policy",
       "audit_parent",
     ]);
@@ -52,3 +53,14 @@ describe("linuxagent-ts check", () => {
     expect(typeof distCheck.runCheckCommand).toBe("function");
   });
 });
+
+function localProviderConfig(): string {
+  return [
+    "api:",
+    "  provider: ollama",
+    "  base_url: http://127.0.0.1:11434",
+    "  model: llama3.1",
+    "  api_key: ''",
+    "",
+  ].join("\n");
+}
