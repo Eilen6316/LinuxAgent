@@ -10,6 +10,7 @@
     { "path": "../contracts" },
     { "path": "../policy" },
     { "path": "../sandbox" },
-    { "path": "../executor" }
+    { "path": "../executor" },
+    { "path": "../ssh" }
   ]
 }

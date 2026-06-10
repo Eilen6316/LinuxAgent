@@ -8,6 +8,7 @@
     "@linuxagent/contracts": "*",
     "@linuxagent/executor": "*",
     "@linuxagent/policy": "*",
-    "@linuxagent/sandbox": "*"
+    "@linuxagent/sandbox": "*",
+    "@linuxagent/ssh": "*"
   }
 }
