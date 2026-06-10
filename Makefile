@@ -29,7 +29,7 @@ help:
 	@echo "  ts-parity  run TS/Python parity checks"
 	@echo "  ts-security TS red-line checks"
 	@echo "  ts-check   TS lint + type + test + security"
-	@echo "  cutover-check explicit Python+TS gate before default runtime switch"
+	@echo "  cutover-check opt-in Python+TS gate; does not switch the default runtime"
 	@echo "  clean      remove build / cache artifacts"
 
 install:
@@ -145,6 +145,7 @@ ts-security:
 ts-check: ts-lint ts-type ts-test ts-security
 
 cutover-check:
+	@echo "--> Python release gates (default runtime remains Python v4)"
 	$(MAKE) lint
 	$(MAKE) type
 	$(MAKE) security
@@ -153,6 +154,7 @@ cutover-check:
 	$(MAKE) red-team
 	$(MAKE) harness
 	$(MAKE) verify-build
+	@echo "--> TypeScript ReAct gates (includes turn-level parity)"
 	$(MAKE) ts-check
 	$(MAKE) ts-parity
 

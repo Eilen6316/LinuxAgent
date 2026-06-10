@@ -60,6 +60,35 @@ The current TS code does not expose a supported CLI and does not replace
 experimental until policy, HITL, audit, sandbox, SSH, file patch, output
 redaction, and harness parity are all satisfied for the release scope.
 
+## Cutover Staging
+
+`make cutover-check` is an opt-in readiness gate for a future default-runtime
+switch. It runs the Python release gates first, then the TS ReAct gates
+(`make ts-check` and `make ts-parity`). It does not switch the default
+`linuxagent` entry point.
+
+ReAct turn-level parity fixtures are a P0 cutover gate. The `react-turn`
+suite exercises direct answers, first-run approval, denial, same-thread resume
+permission, destructive command reconfirmation, non-TTY fail-closed behavior,
+model-observation redaction, file patch rollback, and SSH shell-syntax
+blocking through the pi-agent-core loop and LinuxAgent tools.
+
+The CI `ts-experimental` job remains separate from Python release jobs. Its
+parity step uploads a summary artifact, and the manual `cutover-readiness` job
+can run the full `make cutover-check` gate with a separate summary artifact.
+
+Before maintainers can promote TS as the default runtime:
+
+- all P0 ReAct fixtures must pass repeatedly in CI
+- Python release gates must still pass
+- TS interactive HITL and `/resume` must pass a TTY smoke test
+- Python and TS security redlines must pass
+- a maintainer must explicitly approve the default-runtime switch
+
+Rollback for any promoted TS default is to restore the Python `linuxagent`
+entry point, keep `linuxagent-ts` experimental when safe, and add a regression
+fixture before attempting promotion again.
+
 ## Development Commands
 
 Install dependencies and run the TypeScript gates from the repository root:
@@ -84,11 +113,12 @@ the policy fixture corpus, audit verifier tamper detection, sandbox fail-closed
 behavior, output redaction behavior, file patch transaction rollback and
 runtime path-policy fail-closed behavior, and HITL same-thread/resume-scoped
 session permissions, plus SSH strict known-host and remote command guard
-behavior. It also verifies the required harness fixture index and an initial
-red-team policy slice for protected tree deletion, protected block-device
-mutation, network-to-shell, service mutation, and mkfs cases. Keep Python gates
-(`make test`, `make security`, `make red-team`, `make harness`, and release
-checks) authoritative for the production runtime.
+behavior. It also verifies ReAct turn-level parity fixtures, the required
+harness fixture index, and an initial red-team policy slice for protected tree
+deletion, protected block-device mutation, network-to-shell, service mutation,
+and mkfs cases. Keep Python gates (`make test`, `make security`,
+`make red-team`, `make harness`, and release checks) authoritative for the
+production runtime.
 
 The experimental CLI check command validates explicit local paths and does not
 call a model API:
@@ -153,8 +183,9 @@ unless a direct command runner is explicitly configured.
 | Memory write path pending candidates | Landed |
 | Policy parity CLI runner | Landed |
 | Harness fixture export and required scenario index | Landed |
+| ReAct turn-level parity gate | Landed |
 | Experimental TS CI job | Landed |
-| Cutover checklist | Landed; default-runtime switch still requires a separate release change |
+| Cutover readiness staging | Landed; default-runtime switch still requires a separate release change |
 
 When updating TS behavior, update this page and the relevant README/development
 links in the same change so public documentation stays aligned with the code.

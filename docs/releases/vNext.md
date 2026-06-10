@@ -35,10 +35,16 @@ The TypeScript runtime is experimental. Python v4 remains the default release ru
   resume-scoped approvals.
 - Added TS SSH parity coverage for strict known-host OpenSSH argv and remote
   shell metacharacter confirmation.
+- Added TS ReAct turn-level parity coverage for direct answers, command HITL,
+  same-thread resume permission, destructive reconfirmation, non-TTY
+  fail-closed behavior, redacted model observations, file patch rollback, and
+  SSH shell-syntax blocking.
 - Added TS harness fixture parity coverage for the required scenario index.
 - Added TS red-team policy parity coverage for protected tree deletion,
   protected block-device mutation, network-to-shell, service mutation, and mkfs
   cases.
+- Added CI summary artifacts for `make ts-parity` and the manual full
+  `make cutover-check` gate.
 - Recorded fresh `make cutover-check` evidence for the TS migration gate while
   keeping Python v4 as the default runtime until a separate cutover change.
 - Kept `make ts-check` and `make ts-parity` as experimental TS signals until
@@ -60,6 +66,9 @@ evidence for:
 - `make verify-build`
 - `make ts-check`
 - `make ts-parity`
+- P0 ReAct turn-level parity passing repeatedly in CI
+- a TS interactive HITL and `/resume` TTY smoke test
+- maintainer explicitly approves the default-runtime switch
 
 ## Rollback Path
 

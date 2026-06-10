@@ -166,7 +166,16 @@ jobs:
       - name: TypeScript experimental checks
         run: make ts-check
       - name: TypeScript parity checks
-        run: make ts-parity
+        run: |
+          set -o pipefail
+          make ts-parity | tee ts-parity-summary.txt
+      - name: Upload TypeScript parity summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ts-parity-summary
+          path: ts-parity-summary.txt
+          if-no-files-found: warn
 
   build:
     runs-on: ubuntu-latest
@@ -206,4 +215,13 @@ jobs:
       - name: Install TypeScript workspace
         run: make ts-install
       - name: Default runtime cutover gate
-        run: make cutover-check
+        run: |
+          set -o pipefail
+          make cutover-check | tee cutover-check-summary.txt
+      - name: Upload cutover gate summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cutover-check-summary
+          path: cutover-check-summary.txt
+          if-no-files-found: warn

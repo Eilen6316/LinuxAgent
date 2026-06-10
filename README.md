@@ -29,9 +29,12 @@ lets an LLM propose Linux operations, but execution stays behind deterministic
 policy checks, Human-in-the-Loop confirmation, SSH safety guards, output
 redaction, and a hash-chained audit log.
 
-The default runtime is Python v4. A TypeScript v5 rewrite is in progress under
-`ts/`, but it remains experimental until the parity gates in
-[TypeScript v5](docs/en/typescript-v5.md) pass.
+The default runtime is Python v4. LangGraph remains the old Python runtime and
+rollback anchor. A TypeScript v5 rewrite is in progress under `ts/`, with
+`@earendil-works/pi-agent-core` as the target TS ReAct loop, but
+`linuxagent-ts` remains experimental until the parity gates in
+[TypeScript v5](docs/en/typescript-v5.md) pass and maintainers approve a
+separate cutover release.
 
 ## Why It Exists
 

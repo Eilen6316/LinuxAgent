@@ -55,6 +55,33 @@ TS 线沿用 Python v4 的安全规则：
 `linuxagent-ts` 入口必须保持显式实验状态，直到 policy、HITL、audit、sandbox、SSH、
 file patch、output redaction 和 harness parity 都满足对应 release scope。
 
+## Cutover staging
+
+`make cutover-check` 是未来默认运行时切换前的 opt-in readiness gate。它先运行
+Python release 门禁，再运行 TS ReAct 门禁（`make ts-check` 和 `make ts-parity`）。
+这个目标不会切换默认 `linuxagent` 入口。
+
+ReAct turn-level parity fixture 是 P0 cutover gate。`react-turn` suite 会通过
+pi-agent-core loop 和 LinuxAgent 自有工具覆盖 direct answer、首次审批、拒绝、
+同 thread `/resume` 权限、破坏性命令重新确认、非 TTY fail-closed、模型 observation
+脱敏、file patch rollback 和 SSH shell syntax blocking。
+
+CI 中的 `ts-experimental` job 继续和 Python release jobs 分离。它会上传 parity
+summary artifact；手动触发的 `cutover-readiness` job 可以运行完整
+`make cutover-check`，并上传单独的 summary artifact。
+
+默认运行时 promotion 前必须满足：
+
+- 所有 P0 ReAct fixtures 在 CI 中稳定通过
+- Python release gates 仍然通过
+- TS interactive HITL 和 `/resume` 通过 TTY smoke test
+- Python 和 TS security redlines 都通过
+- maintainer 明确批准默认运行时切换
+
+如果已经 promotion 的 TS 默认运行时出现 P0 安全回归，rollback 路径是恢复 Python
+`linuxagent` 入口，安全时只保留 `linuxagent-ts` 为实验入口，并在再次 promotion
+前添加 regression fixture。
+
 ## 开发命令
 
 从仓库根目录安装依赖并运行 TS 门禁：
@@ -78,10 +105,11 @@ make ts-parity
 audit verifier 篡改检测、sandbox fail-closed 行为、output redaction 行为、file patch
 transaction rollback 和 runtime path-policy fail-closed 行为，以及 HITL
 same-thread/resume-scoped session permission；并为 SSH strict known-host、remote
-command guard 行为和必选 harness fixture index 提供 parity 覆盖；同时覆盖初始
-red-team policy slice，包括 protected tree delete、protected block-device mutation、
-network-to-shell、service mutation 和 mkfs 场景。生产运行时仍以 Python 门禁为准：
-`make test`、`make security`、`make red-team`、`make harness` 和 release 检查仍是权威门禁。
+command guard 行为、ReAct turn-level parity fixtures 和必选 harness fixture index
+提供 parity 覆盖；同时覆盖初始 red-team policy slice，包括 protected tree delete、
+protected block-device mutation、network-to-shell、service mutation 和 mkfs 场景。
+生产运行时仍以 Python 门禁为准：`make test`、`make security`、`make red-team`、
+`make harness` 和 release 检查仍是权威门禁。
 
 实验 CLI 的 check 命令只校验显式传入的本地路径，不会调用模型 API：
 
@@ -144,8 +172,9 @@ node ts/apps/linuxagent-ts/dist/src/cli.js audit verify ~/.linuxagent/audit.log
 | memory write path pending candidates | 已落地 |
 | policy parity CLI runner | 已落地 |
 | harness fixture export 和必选场景索引 | 已落地 |
+| ReAct turn-level parity gate | 已落地 |
 | 实验 TS CI job | 已落地 |
-| cutover checklist | 已落地；默认运行时切换仍需单独 release change |
+| cutover readiness staging | 已落地；默认运行时切换仍需单独 release change |
 
 后续修改 TS 行为时，同一个小交付里要同步更新本页以及相关 README/development 链接，
 确保公开文档和代码状态一致。
