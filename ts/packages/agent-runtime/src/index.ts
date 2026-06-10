@@ -8,5 +8,6 @@ export * from "./linuxagent-turn.js";
 export * from "./memory/index.js";
 export * from "./planner.js";
 export * from "./prompt-loader.js";
+export * from "./react/index.js";
 export * from "./session-permissions.js";
 export * from "./tool-gate.js";
