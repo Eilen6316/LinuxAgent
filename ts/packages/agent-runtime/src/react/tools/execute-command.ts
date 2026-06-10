@@ -39,7 +39,7 @@ export function createExecuteCommandReactTool(
     parameters: ExecuteCommandParameters,
     executionMode: "sequential",
     linuxAgent: { category: "execute", requiresGate: true, sandboxProfile: "system_inspect" },
-    async execute(_toolCallId, params, signal) {
+    async execute(toolCallId, params, signal) {
       const args = params as ExecuteCommandParameters;
       const result = await executeCommandTool({
         args,
@@ -49,6 +49,7 @@ export function createExecuteCommandReactTool(
         },
         gate: input.gate,
         executor: input.executor,
+        toolCallId,
         ...((signal ?? input.signal) ? { signal: signal ?? input.signal } : {}),
       });
       return {

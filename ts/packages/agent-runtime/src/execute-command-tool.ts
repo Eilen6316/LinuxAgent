@@ -15,6 +15,7 @@ export interface ExecuteCommandToolInput {
   sandbox: SandboxSpec;
   gate: Pick<LinuxAgentToolGate, "beforeToolCall">;
   executor: CommandExecutorPort;
+  toolCallId?: string;
   signal?: AbortSignal;
   maxModelChars?: number;
 }
@@ -39,7 +40,13 @@ export type ExecuteCommandToolResult =
 export async function executeCommandTool(
   input: ExecuteCommandToolInput,
 ): Promise<ExecuteCommandToolResult> {
-  const gateResult = await input.gate.beforeToolCall({ args: input.args }, input.signal);
+  const gateResult = await input.gate.beforeToolCall(
+    {
+      args: input.args,
+      ...(input.toolCallId !== undefined ? { toolCallId: input.toolCallId } : {}),
+    },
+    input.signal,
+  );
   if (gateResult?.block) {
     return blocked(gateResult);
   }

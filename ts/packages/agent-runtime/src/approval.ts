@@ -1,4 +1,4 @@
-export type ApprovalDecision = "approve_once" | "approve_thread" | "deny";
+export type ApprovalDecision = "approve_once" | "approve_thread" | "deny" | "pending";
 
 export interface ApprovalRequest {
   argv: string[];
