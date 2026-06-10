@@ -21,10 +21,21 @@ def export_harness_fixtures(output: Path, scenario_dir: Path) -> None:
                     "schemaVersion": 1,
                     "scenarioId": scenario.name,
                     "source": path.as_posix(),
+                    "oracleRuntime": "python-langgraph-legacy",
+                    "runtimeBoundary": "stable-behavior-summary",
                     "turnCount": len(scenario.turns),
                     "providerResponseCount": len(scenario.provider_responses),
                     "expectedKeys": sorted(scenario.expected.keys()),
                     "setupKeys": sorted(scenario.setup.keys()),
+                    "behaviorSummary": {
+                        "expectedInterruptCount": len(scenario.expected_interrupts),
+                        "turnExpectedInterruptCounts": [
+                            len(turn.expected_interrupts) for turn in scenario.turns
+                        ],
+                        "hasResume": scenario.resume is not None
+                        or any(turn.resume is not None for turn in scenario.turns),
+                        "hasResumeSequence": any(turn.resume_sequence for turn in scenario.turns),
+                    },
                 }
                 handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 

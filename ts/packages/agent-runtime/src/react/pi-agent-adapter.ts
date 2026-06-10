@@ -12,7 +12,7 @@ import {
   upsertPendingRequest,
 } from "./pending-request.js";
 import type { ReactSessionMessageSnapshot, ReactSessionStore } from "./session-store.js";
-import { buildReactToolRegistry } from "./tool-registry.js";
+import { buildReactToolRegistry, type ReactToolRegistryInput } from "./tool-registry.js";
 
 interface ReactModel {
   id?: string;
@@ -37,7 +37,11 @@ interface ReactAssistantMessage {
 interface ReactAgentEvent {
   type: string;
   message?: unknown;
-  result?: { details?: { result?: ExecuteCommandToolResult } };
+  isError?: boolean;
+  result?: {
+    content?: Array<{ type: string; text?: string; [key: string]: unknown }>;
+    details?: { result?: ExecuteCommandToolResult };
+  };
 }
 
 type ReactAgentConstructor = new (
@@ -65,6 +69,9 @@ export interface LinuxAgentReactRuntimeInput {
   permissionScope?: PermissionScope;
   sessionStore?: ReactSessionStore;
   approvalExpiresInMs?: number;
+  workspace?: ReactToolRegistryInput["workspace"];
+  filePatch?: ReactToolRegistryInput["filePatch"];
+  ssh?: ReactToolRegistryInput["ssh"];
   now?: () => Date;
   streamFn?: ReactStreamFn;
   signal?: AbortSignal;
@@ -132,6 +139,9 @@ export async function runLinuxAgentReactTurn(
         gate,
         executor: input.executor,
         sandbox: input.sandbox,
+        ...(input.workspace !== undefined ? { workspace: input.workspace } : {}),
+        ...(input.filePatch !== undefined ? { filePatch: input.filePatch } : {}),
+        ...(input.ssh !== undefined ? { ssh: input.ssh } : {}),
         ...(input.signal ? { signal: input.signal } : {}),
       }),
     },
@@ -198,6 +208,17 @@ function collectEvent(
     const details = event.result?.details;
     if (details?.result !== undefined) {
       toolResults.push(details.result);
+      return;
+    }
+    if (event.isError) {
+      const text = textFromToolResult(event.result) || "tool execution failed";
+      toolResults.push({
+        executed: false,
+        blockedReason: text,
+        modelText: `blocked: ${text}`,
+        redacted: false,
+        truncated: false,
+      });
     }
     return;
   }
@@ -207,6 +228,15 @@ function collectEvent(
     .map((content) => content.text ?? "")
     .join("");
   if (text.length > 0) setAssistantMessage(text);
+}
+
+function textFromToolResult(eventResult: ReactAgentEvent["result"]): string {
+  return (
+    eventResult?.content
+      ?.filter((content) => content.type === "text")
+      .map((content) => content.text ?? "")
+      .join("") ?? ""
+  );
 }
 
 function statusFromResults(

@@ -28,7 +28,17 @@ export interface SshExecutorPort {
   }): Promise<OpenSshExecutionResult>;
 }
 
-export function createRunSshCommandTool(executor?: SshExecutorPort): ReactAgentTool {
+export type RunSshCommandToolResult =
+  | ({ executed: true; modelText: string } & OpenSshExecutionResult)
+  | {
+      executed: false;
+      blockedReason: string;
+      modelText: string;
+    };
+
+export function createRunSshCommandTool(
+  executor?: SshExecutorPort,
+): ReactAgentTool<typeof RunSshCommandParameters, { result: RunSshCommandToolResult }> {
   return {
     name: "run_ssh_command",
     label: "Run SSH command",
@@ -39,15 +49,27 @@ export function createRunSshCommandTool(executor?: SshExecutorPort): ReactAgentT
     async execute(_toolCallId, params, signal) {
       if (executor === undefined) throw new Error("ssh tool is not configured");
       const args = params as { profile: RemoteProfile; command: string; timeoutMs?: number };
-      const result = await executor.execute({
-        profile: args.profile,
-        command: args.command,
-        timeoutMs: args.timeoutMs ?? 30_000,
-        ...(signal ? { signal } : {}),
-      });
+      let result: RunSshCommandToolResult;
+      try {
+        const executed = await executor.execute({
+          profile: args.profile,
+          command: args.command,
+          timeoutMs: args.timeoutMs ?? 30_000,
+          ...(signal ? { signal } : {}),
+        });
+        result = { executed: true, ...executed, modelText: sshResultForModel(executed) };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result = {
+          executed: false,
+          blockedReason: message,
+          modelText: `blocked: ${message}`,
+        };
+      }
       return {
-        content: [{ type: "text", text: sshResultForModel(result) }],
+        content: [{ type: "text", text: result.modelText }],
         details: { result },
+        terminate: !result.executed,
       };
     },
   };

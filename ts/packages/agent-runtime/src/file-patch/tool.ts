@@ -20,7 +20,7 @@ export type ExecuteFilePatchToolResult =
   | {
       executed: false;
       applied: false;
-      rolledBack: false;
+      rolledBack: boolean;
       changedPaths: [];
       blockedReason: string;
       modelText: string;
@@ -51,7 +51,20 @@ export async function executeFilePatchTool(
     };
   }
 
-  const result = await applyFilePatchTransaction(pathResult.plan, input.approval, input.audit);
+  let result: FilePatchTransactionResult;
+  try {
+    result = await applyFilePatchTransaction(pathResult.plan, input.approval, input.audit);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      executed: false,
+      applied: false,
+      rolledBack: true,
+      changedPaths: [],
+      blockedReason: message,
+      modelText: ["file_patch applied=false", "rolled_back=true", `error=${message}`].join("\n"),
+    };
+  }
   return {
     executed: true,
     ...result,

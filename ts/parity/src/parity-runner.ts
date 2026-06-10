@@ -21,6 +21,7 @@ import type {
 } from "@linuxagent/ssh";
 import type { PolicyLevel } from "../../packages/contracts/src/index.js";
 import type { PolicyEngine as PolicyEngineClass } from "../../packages/policy/src/index.js";
+import { runReactTurnParity } from "./react-turn-runner.js";
 import { formatSummary, type ParitySummary } from "./report.js";
 
 type PolicySource = "llm" | "operator" | "runbook";
@@ -97,6 +98,7 @@ export async function runParitySuites(
     await runFilePatchParity(),
     await runHitlParity(),
     await runSshParity(),
+    await runReactTurnParity(),
     runHarnessParity(),
     await runRedTeamParity(),
   ];
