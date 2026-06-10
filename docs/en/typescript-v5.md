@@ -1,7 +1,7 @@
-# TypeScript v5 Experimental Kernel
+# TypeScript v5 Experimental ReAct Runtime
 
 LinuxAgent is still a Python v4 application in production. The TypeScript v5
-work under `ts/` is an experimental rewrite track that is built beside Python,
+work under `ts/` is an experimental ReAct runtime track built beside Python,
 with Python remaining the behavior oracle until the cutover gates are met.
 
 The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
@@ -9,6 +9,8 @@ The TypeScript runtime is experimental. Python v4 remains the default release ru
 Do not treat the TypeScript workspace as the default `linuxagent` runtime yet.
 It exists to make the migration measurable: each subsystem lands with tests,
 red-line checks, and parity fixtures before it can replace Python behavior.
+LangGraph is the old Python runtime implementation detail; the target TS loop
+is `@earendil-works/pi-agent-core` plus the LinuxAgent safety kernel.
 
 ## Current Scope
 
@@ -34,8 +36,20 @@ red-line checks in `scripts/check_ts_redlines.mjs`.
 
 The TS line follows the same safety rules as Python v4:
 
+- `@earendil-works/pi-agent-core` may drive the ReAct/tool-calling loop, but
+  LinuxAgentToolGate remains the first enforcement hook for sensitive tools.
+- `@earendil-works/pi-ai` is only a provider/model abstraction; LinuxAgent
+  config remains the secret authority.
+- `@earendil-works/pi-tui` may render the interactive surface, but audit JSONL
+  remains separate from UI events.
+- `@earendil-works/pi-coding-agent` is reference-only. Do not import its
+  default `bash`, `write`, or `edit` tools as LinuxAgent authority.
 - LLM-planned local commands must stay argv-based; no shell-string execution.
 - Tool calls must pass the LinuxAgent tool gate before execution.
+- pi-agent-core `afterToolCall` observations must be redacted and bounded
+  before they can be returned to the model.
+- Audit records for approved command, file patch, or SSH actions must be
+  appended before the model receives the tool result.
 - Sandbox profiles fail closed when no runner can enforce the requested safe profile.
 - The no-op runner records `enforced: false`; plain `spawn` is not sandbox enforcement.
 - Model-facing command output is redacted and bounded before analysis.

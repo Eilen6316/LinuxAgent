@@ -1,13 +1,15 @@
-# TypeScript v5 实验内核
+# TypeScript v5 实验 ReAct 运行时
 
 LinuxAgent 当前生产运行时仍是 Python v4。`ts/` 下的 TypeScript v5 工作线是
-旁路实验重写：在迁移门禁全部满足前，Python 继续作为行为真源和稳定运行时。
+旁路实验 ReAct 运行时：在迁移门禁全部满足前，Python 继续作为行为真源和稳定运行时。
 
 The TypeScript runtime is experimental. Python v4 remains the default release runtime until parity gates pass.
 
 不要把 TypeScript workspace 当成默认 `linuxagent` 运行时。它的作用是让迁移过程
 可度量：每个子系统都要带测试、红线检查和与 Python 的 parity fixture，之后才有资格
 替换 Python 行为。
+LangGraph 是旧 Python runtime 的实现细节；TS 的目标 loop 是
+`@earendil-works/pi-agent-core` 加 LinuxAgent safety kernel。
 
 ## 当前范围
 
@@ -32,8 +34,18 @@ TypeScript workspace 目前包含：
 
 TS 线沿用 Python v4 的安全规则：
 
+- `@earendil-works/pi-agent-core` 可以驱动 ReAct/tool-calling loop，但
+  LinuxAgentToolGate 仍是敏感工具的第一道执行门禁。
+- `@earendil-works/pi-ai` 只作为 provider/model 抽象；密钥和 provider 配置仍以
+  LinuxAgent config 为准。
+- `@earendil-works/pi-tui` 可以渲染交互界面，但 audit JSONL 独立于 UI event。
+- `@earendil-works/pi-coding-agent` 仅作参考，禁止把它默认的 `bash`、`write` 或
+  `edit` 工具导入为 LinuxAgent 权限。
 - LLM 计划出的本地命令必须保持 argv 执行，禁止 shell 字符串执行。
 - 工具调用必须先经过 LinuxAgent tool gate，再进入执行。
+- pi-agent-core `afterToolCall` observation 返回模型前必须已经脱敏并限制长度。
+- 已批准的 command、file patch 或 SSH action 必须先追加 audit，再把 tool result
+  返回给模型。
 - 安全 sandbox profile 没有可执行 runner 时必须 fail closed。
 - noop runner 只能记录 `enforced: false`；普通 `spawn` 不能被当作 sandbox enforcement。
 - 命令输出进入模型分析前必须先脱敏并限制长度。

@@ -8,8 +8,13 @@ The TypeScript runtime is experimental. Python v4 remains the default release ru
 
 LinuxAgent's Python v4 runtime is the current product and safety baseline. The
 TypeScript v5 track exists to evaluate whether the runtime can move toward a
-typed, package-oriented kernel while keeping the operational safety properties
-that make LinuxAgent acceptable for real machines.
+pi-agent-core ReAct runtime plus a LinuxAgent safety kernel while keeping the
+operational safety properties that make LinuxAgent acceptable for real
+machines.
+
+LangGraph is the old Python runtime implementation detail. It remains the
+stable release runtime and behavior oracle during migration, but it is not the
+target architecture for the TypeScript runtime.
 
 The rewrite is progressive instead of big-bang:
 
@@ -25,8 +30,12 @@ The rewrite is progressive instead of big-bang:
 
 The upstream `earendil-works/pi` packages are useful as implementation
 infrastructure, not as a replacement for LinuxAgent's safety model. The TS
-track may use pi packages for model/provider abstractions, agent composition,
-coding-agent ergonomics, or TUI primitives when they reduce maintenance cost.
+track uses `@earendil-works/pi-agent-core` as the target ReAct/tool-calling
+loop, `@earendil-works/pi-ai` as the provider/model abstraction, and
+`@earendil-works/pi-tui` as the eventual interactive rendering layer.
+
+`@earendil-works/pi-coding-agent` is reference material only. Its default
+`bash`, `write`, or `edit` tools must not become LinuxAgent authority.
 
 LinuxAgent-owned boundaries remain non-negotiable:
 
@@ -40,11 +49,12 @@ LinuxAgent-owned boundaries remain non-negotiable:
 | Audit JSONL, hash chain, and redaction | LinuxAgent audit/security |
 | Release cutover decision | LinuxAgent maintainers |
 
-pi code must not introduce direct command execution, silent approval, shell
-string execution, host-key trust-on-first-use, unredacted model context, or
-secret-bearing environment variables. Any pi integration that touches those
-paths must be wrapped by LinuxAgent contracts and tested through LinuxAgent
-gates.
+LinuxAgentToolGate is the only path from model tool calls to command
+execution, SSH, file mutation, or sensitive workspace reads. pi code must not
+introduce direct command execution, silent approval, shell string execution,
+host-key trust-on-first-use, unredacted model context, or secret-bearing
+environment variables. Any pi integration that touches those paths must be
+wrapped by LinuxAgent contracts and tested through LinuxAgent gates.
 
 ## Safety Invariants
 
@@ -54,6 +64,13 @@ cutover:
 - LLM-generated commands are represented as argv or structured plans before
   execution; no `shell: true` or string shell execution path is allowed.
 - Policy uses token/effective-command analysis, not substring matching.
+- Every model tool call that can inspect sensitive data, execute commands,
+  write files, or reach SSH must enter LinuxAgentToolGate before the operation.
+- pi-agent-core `beforeToolCall` is an enforcement hook, not a logging hook.
+- pi-agent-core `afterToolCall` may only receive redacted and bounded
+  model-facing output.
+- Audit append happens before an approved command, file patch, or SSH result is
+  returned to the model.
 - First-run LLM commands require Human-in-the-Loop confirmation.
 - Destructive commands are never eligible for conversation whitelisting.
 - Non-TTY approval requests fail closed.
