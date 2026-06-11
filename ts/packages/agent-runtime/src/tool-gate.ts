@@ -61,6 +61,7 @@ export class LinuxAgentToolGate {
   ): Promise<ToolCallResult | undefined> {
     const argv = commandArgvFromToolArgs(context.args);
     const remote = remoteMetadataFromToolArgs(context.args);
+    const sandbox = sandboxMetadataFromToolArgs(context.args);
     const decision = decisionWithRemoteGuard(
       this.policy.evaluate(argv, { source: "llm" }) as PolicyDecision,
       argv,
@@ -68,12 +69,12 @@ export class LinuxAgentToolGate {
     );
 
     if (decision.level === "BLOCK") {
-      await this.audit.append("policy.block", auditPayload(argv, decision, remote));
+      await this.audit.append("policy.block", auditPayload(argv, decision, remote, { sandbox }));
       return { block: true, reason: decision.reason ?? "blocked by policy" };
     }
 
     if (decision.level === "SAFE" || this.isAlreadyAllowed(decision, argv)) {
-      await this.audit.append("policy.allow", auditPayload(argv, decision, remote));
+      await this.audit.append("policy.allow", auditPayload(argv, decision, remote, { sandbox }));
       return undefined;
     }
 
@@ -101,14 +102,17 @@ export class LinuxAgentToolGate {
 
     const approval = await this.approvals.requestApproval(approvalRequest, signal);
     if (approval === "pending") {
-      await this.audit.append("hitl.pending", auditPayload(argv, decision, remote, { requestId }));
+      await this.audit.append(
+        "hitl.pending",
+        auditPayload(argv, decision, remote, { requestId, sandbox }),
+      );
       return { block: true, reason: PENDING_APPROVAL_REASON };
     }
 
     await this.pendingRequests?.resolve(approvalRequest.threadId, requestId);
     await this.audit.append(
       "hitl.decision",
-      auditPayload(argv, decision, remote, { approval, requestId }),
+      auditPayload(argv, decision, remote, { approval, requestId, sandbox }),
     );
     if (approval === "deny") return { block: true, reason: "operator denied command" };
     if (approval === "approve_thread" && !decision.neverWhitelist) {
@@ -194,11 +198,27 @@ function remoteMetadataFromToolArgs(
   return normalizeRemoteApprovalMetadata((args as { remote: unknown }).remote);
 }
 
+function sandboxMetadataFromToolArgs(args: unknown): Record<string, unknown> | undefined {
+  if (!args || typeof args !== "object" || !("sandbox" in args)) return undefined;
+  const sandbox = (args as { sandbox: unknown }).sandbox;
+  if (!sandbox || typeof sandbox !== "object") return undefined;
+  const record = sandbox as Record<string, unknown>;
+  const metadata: Record<string, unknown> = {};
+  if (typeof record.profile === "string") metadata.profile = record.profile;
+  if (typeof record.timeoutMs === "number") metadata.timeoutMs = record.timeoutMs;
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
 function auditPayload(
   argv: readonly string[],
   decision: PolicyDecision,
   remote: ReturnType<typeof normalizeRemoteApprovalMetadata>,
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return remote === undefined ? { argv, decision, ...extra } : { argv, decision, remote, ...extra };
+  const sanitizedExtra = Object.fromEntries(
+    Object.entries(extra).filter(([, value]) => value !== undefined),
+  );
+  return remote === undefined
+    ? { argv, decision, ...sanitizedExtra }
+    : { argv, decision, remote, ...sanitizedExtra };
 }

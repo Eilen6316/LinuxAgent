@@ -107,6 +107,31 @@ describe("LinuxAgentToolGate", () => {
     expect(audit.events.at(-1)?.eventType).toBe("policy.allow");
   });
 
+  it("includes sandbox metadata in audit payloads", async () => {
+    const audit = new RecordingAudit();
+    const gate = new LinuxAgentToolGate(
+      new StubPolicy(decision("SAFE", false)),
+      new SessionPermissions(),
+      new StaticApproval("approve_once"),
+      audit,
+      "t1",
+    );
+
+    await gate.beforeToolCall({
+      args: {
+        argv: ["uname", "-a"],
+        sandbox: { profile: "system_inspect", timeoutMs: 5000, ignored: "value" },
+      },
+    });
+
+    expect(audit.events[0]).toMatchObject({
+      eventType: "policy.allow",
+      payload: {
+        sandbox: { profile: "system_inspect", timeoutMs: 5000 },
+      },
+    });
+  });
+
   it("includes remote profile metadata in approval and audit payloads", async () => {
     const audit = new RecordingAudit();
     const approvals = new StaticApproval("approve_once");

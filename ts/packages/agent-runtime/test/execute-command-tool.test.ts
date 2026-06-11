@@ -4,9 +4,14 @@ import { type CommandExecutorPort, executeCommandTool } from "../src/execute-com
 import type { LinuxAgentToolGate } from "../src/tool-gate.js";
 
 class StubGate {
+  readonly calls: Parameters<LinuxAgentToolGate["beforeToolCall"]>[0][] = [];
+
   constructor(private readonly result: Awaited<ReturnType<LinuxAgentToolGate["beforeToolCall"]>>) {}
 
-  async beforeToolCall(): Promise<Awaited<ReturnType<LinuxAgentToolGate["beforeToolCall"]>>> {
+  async beforeToolCall(
+    context: Parameters<LinuxAgentToolGate["beforeToolCall"]>[0],
+  ): Promise<Awaited<ReturnType<LinuxAgentToolGate["beforeToolCall"]>>> {
+    this.calls.push(context);
     return this.result;
   }
 }
@@ -49,16 +54,29 @@ describe("executeCommandTool", () => {
 
   it("executes through executor and returns redacted model-facing output", async () => {
     const executor = new RecordingExecutor();
+    const gate = new StubGate(undefined);
 
     const result = await executeCommandTool({
       args: { argv: ["printf", "ok"] },
       sandbox: { profile: "noop", timeoutMs: 1000 },
-      gate: new StubGate(undefined),
+      gate,
       executor,
     });
 
     expect(executor.calls).toHaveLength(1);
+    expect(gate.calls[0]).toMatchObject({
+      args: {
+        sandbox: {
+          profile: "noop",
+          timeoutMs: 1000,
+        },
+      },
+    });
     expect(result.executed).toBe(true);
+    if (!result.executed) {
+      throw new Error("expected command to execute");
+    }
+    expect(result.sandbox.metadata).toEqual({ profile: "noop" });
     expect(result.modelText).not.toContain("secret-token-value");
     expect(result.modelText).toContain("[REDACTED]");
     expect(result.redacted).toBe(true);

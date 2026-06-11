@@ -42,7 +42,7 @@ export async function executeCommandTool(
 ): Promise<ExecuteCommandToolResult> {
   const gateResult = await input.gate.beforeToolCall(
     {
-      args: input.args,
+      args: { ...commandToolArgsRecord(input.args), sandbox: input.sandbox },
       ...(input.toolCallId !== undefined ? { toolCallId: input.toolCallId } : {}),
     },
     input.signal,
@@ -82,12 +82,17 @@ function blocked(result: ToolCallResult): ExecuteCommandToolResult {
 }
 
 function commandArgvFromToolArgs(args: unknown): string[] {
+  const record = commandToolArgsRecord(args);
+  const argv = record.argv;
+  if (!Array.isArray(argv)) throw new Error("command tool args must contain argv");
+  return argv.map((value) => String(value));
+}
+
+function commandToolArgsRecord(args: unknown): Record<string, unknown> {
   if (!args || typeof args !== "object" || !("argv" in args)) {
     throw new Error("command tool args must contain argv");
   }
-  const argv = (args as { argv: unknown }).argv;
-  if (!Array.isArray(argv)) throw new Error("command tool args must contain argv");
-  return argv.map((value) => String(value));
+  return args as Record<string, unknown>;
 }
 
 export function formatExecutionResultForModel(
