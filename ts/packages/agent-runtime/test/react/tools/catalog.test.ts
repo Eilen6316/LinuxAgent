@@ -135,7 +135,7 @@ describe("React tool catalog", () => {
     expect(result.content[0]?.text).not.toContain("regex axxb");
   });
 
-  it("read-only tools reject paths outside allowed roots", async () => {
+  it("read-only tools return structured errors for paths outside allowed roots", async () => {
     const allowed = await mkdtemp(join(tmpdir(), "linuxagent-react-tools-allowed-"));
     const outside = await mkdtemp(join(tmpdir(), "linuxagent-react-tools-outside-"));
     await mkdir(join(allowed, "nested"));
@@ -146,9 +146,44 @@ describe("React tool catalog", () => {
     });
 
     const readFile = tools.find((tool) => tool.name === "read_file");
-    await expect(
-      readFile?.execute("call-1", { path: join(outside, "secret.txt") }),
-    ).rejects.toThrow("path outside allowed roots");
+    const result = await readFile?.execute("call-1", { path: join(outside, "secret.txt") });
+
+    expect(result).toMatchObject({
+      content: [{ type: "text", text: expect.stringContaining("ok=false") }],
+      details: {
+        ok: false,
+        error: expect.stringContaining("path outside allowed roots"),
+      },
+      terminate: true,
+    });
+  });
+
+  it("redacts and bounds read-only tool previews", async () => {
+    const root = await mkdtemp(join(tmpdir(), "linuxagent-react-tools-redact-"));
+    await writeFile(
+      join(root, "secret.txt"),
+      `Authorization: Bearer secret-token-value\n${"visible ".repeat(20)}\n`,
+      "utf8",
+    );
+    const tools = buildReactToolRegistry({
+      ...stubCatalogInput(),
+      workspace: { allowedRoots: [root], maxPreviewChars: 40 },
+    });
+
+    const readFile = tools.find((tool) => tool.name === "read_file");
+    const result = await readFile?.execute("call-1", {
+      path: join(root, "secret.txt"),
+      limit: 10,
+    });
+
+    expect(result?.content[0]?.text).toContain("[REDACTED]");
+    expect(result?.content[0]?.text).not.toContain("secret-token-value");
+    expect(result?.content[0]?.text).toContain("[TRUNCATED]");
+    expect(result?.details).toMatchObject({
+      ok: true,
+      redacted: true,
+      truncated: true,
+    });
   });
 });
 

@@ -6,6 +6,7 @@ export interface WorkspaceToolConfig {
   maxFileBytes?: number;
   maxMatches?: number;
   maxEntries?: number;
+  maxPreviewChars?: number;
 }
 
 export async function resolveWorkspacePath(

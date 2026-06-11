@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { ReactAgentTool } from "./types.js";
 import { searchWorkspaceFiles, type WorkspaceToolConfig } from "./workspace.js";
+import { workspaceToolResult } from "./workspace-result.js";
 
 const SearchFilesParameters = Type.Object({
   pattern: Type.String(),
@@ -17,13 +18,15 @@ export function createSearchFilesTool(config: WorkspaceToolConfig): ReactAgentTo
     linuxAgent: { category: "read", requiresGate: false, sandboxProfile: "read_only" },
     async execute(_toolCallId, params) {
       const args = params as { pattern: string; root?: string; maxMatches?: number };
-      const matches = await searchWorkspaceFiles(
-        args.root ?? ".",
-        args.pattern,
-        config,
-        args.maxMatches,
-      );
-      return { content: [{ type: "text", text: matches.join("\n") }], details: { matches } };
+      return await workspaceToolResult(config, async () => {
+        const matches = await searchWorkspaceFiles(
+          args.root ?? ".",
+          args.pattern,
+          config,
+          args.maxMatches,
+        );
+        return { text: matches.join("\n"), details: { matches } };
+      });
     },
   };
 }
