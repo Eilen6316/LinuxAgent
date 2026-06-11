@@ -66,7 +66,7 @@ describe("linuxagent-ts CLI", () => {
     expect(output.join("\n")).toContain(`linuxagent-ts chat: ${expected}`);
   });
 
-  it("runs chat input through the runtime port", async () => {
+  it("runs chat input through the ReAct runtime path", async () => {
     const output: string[] = [];
 
     const exitCode = await runCli(["chat", "--input", "check kernel"], {
@@ -74,7 +74,7 @@ describe("linuxagent-ts CLI", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(output.join("\n")).toContain("linuxagent-ts chat: direct_answer");
+    expect(output.join("\n")).toContain("linuxagent-ts chat: react completed");
   });
 
   it("fails closed for direct command chat input when execution is not configured", async () => {

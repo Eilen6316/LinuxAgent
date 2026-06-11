@@ -1,4 +1,8 @@
-import type { LinuxAgentTurnResult } from "@linuxagent/agent-runtime";
+import {
+  type LinuxAgentReactTurnResult,
+  type LinuxAgentTurnResult,
+  runLinuxAgentReactTurn,
+} from "@linuxagent/agent-runtime";
 import {
   type ChatSessionResult,
   createLinuxAgentTuiApp,
@@ -13,6 +17,8 @@ export interface RunChatCommandOptions {
   stdin?: ChatTtyPort;
   stdout?: ChatTtyPort;
   launchInteractive?: () => Promise<string>;
+  runReactTurn?: (input: string, signal?: AbortSignal) => Promise<LinuxAgentReactTurnResult>;
+  signal?: AbortSignal;
 }
 
 export async function runChatCommand(
@@ -20,6 +26,11 @@ export async function runChatCommand(
   options: RunChatCommandOptions = {},
 ): Promise<string> {
   if (input === undefined) return runInteractiveOrFailClosed(options);
+  if (!isLegacyChatInput(input)) {
+    return formatReactTurnResult(
+      await (options.runReactTurn ?? runDefaultReactTurn)(input, options.signal),
+    );
+  }
   return formatChatSessionResult(await createDefaultChatSession().handleInput(input));
 }
 
@@ -77,4 +88,93 @@ function isInteractiveTty(options: RunChatCommandOptions): boolean {
 async function runExperimentalInteractiveChat(): Promise<string> {
   createLinuxAgentTuiApp();
   return "linuxagent-ts chat: interactive experimental";
+}
+
+function isLegacyChatInput(input: string): boolean {
+  return input.trimStart().startsWith("/") || input.startsWith("!");
+}
+
+function formatReactTurnResult(result: LinuxAgentReactTurnResult): string {
+  return `linuxagent-ts chat: react ${result.status}`;
+}
+
+async function runDefaultReactTurn(
+  input: string,
+  signal?: AbortSignal,
+): Promise<LinuxAgentReactTurnResult> {
+  return await runLinuxAgentReactTurn({
+    input,
+    systemPrompt: "You are LinuxAgent.",
+    model: fakeModel(),
+    policy: { evaluate: () => safeDecision() },
+    approvals: { requestApproval: async () => "deny" },
+    audit: { append: async () => undefined },
+    executor: {
+      execute: async () => {
+        throw new Error("default chat command executor is not configured");
+      },
+    },
+    threadId: "cli-default",
+    sandbox: { profile: "noop", timeoutMs: 1000 },
+    streamFn: fakeDirectAnswerStream(input),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+function fakeModel() {
+  return {
+    id: "fake-cli-react",
+    provider: "fake",
+    api: "fake",
+    name: "Fake CLI ReAct",
+    baseUrl: "http://localhost:0",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 4096,
+    maxTokens: 1024,
+  };
+}
+
+function safeDecision() {
+  return {
+    level: "SAFE" as const,
+    reason: null,
+    riskScore: 0,
+    capabilities: [],
+    matchedRules: [],
+    neverWhitelist: false,
+  };
+}
+
+function fakeDirectAnswerStream(input: string) {
+  return () => {
+    const message = {
+      role: "assistant" as const,
+      content: [{ type: "text", text: `ReAct fake response: ${input}` }],
+      stopReason: "stop" as const,
+    };
+    return {
+      async *[Symbol.asyncIterator]() {
+        yield { type: "start", partial: message };
+        yield { type: "text_start", contentIndex: 0, partial: message };
+        yield {
+          type: "text_delta",
+          contentIndex: 0,
+          delta: message.content[0]?.text,
+          partial: message,
+        };
+        yield {
+          type: "text_end",
+          contentIndex: 0,
+          content: message.content[0]?.text,
+          partial: message,
+        };
+        yield { type: "done", reason: message.stopReason, message };
+      },
+      async result() {
+        return message;
+      },
+    };
+  };
 }
