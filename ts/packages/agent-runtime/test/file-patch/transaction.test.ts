@@ -33,6 +33,14 @@ describe("file patch transaction", () => {
         success: true,
         rolledBack: false,
         changedPaths: [target],
+        backupHashes: [{ path: target, sha256: expect.any(String) }],
+      },
+    });
+    expect(audit.events[0]).toMatchObject({
+      eventType: "file_patch.decision",
+      payload: {
+        acceptedPaths: [target],
+        rejectedPaths: [],
       },
     });
   });
@@ -75,6 +83,10 @@ describe("file patch transaction", () => {
         success: false,
         rolledBack: true,
         changedPaths: [first],
+        backupHashes: [
+          { path: first, sha256: expect.any(String) },
+          { path: second, sha256: expect.any(String) },
+        ],
       },
     });
   });
@@ -95,6 +107,8 @@ describe("file patch transaction", () => {
       payload: {
         decision: "deny",
         paths: [target],
+        acceptedPaths: [],
+        rejectedPaths: [target],
         operation: "update",
         success: false,
         rolledBack: false,

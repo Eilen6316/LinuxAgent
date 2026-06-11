@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import type { FilePatchPlan } from "@linuxagent/contracts";
 import { validateUnifiedDiff } from "./diff-validator.js";
@@ -28,6 +29,8 @@ export async function applyFilePatchTransaction(
   await audit.append("file_patch.decision", {
     decision,
     paths,
+    acceptedPaths: denied ? [] : paths,
+    rejectedPaths: denied ? paths : [],
     operation: plan.requestIntent,
     success: false,
     rolledBack: false,
@@ -49,6 +52,7 @@ export async function applyFilePatchTransaction(
       success: true,
       rolledBack: false,
       changedPaths,
+      backupHashes: backupHashes(snapshots),
     });
     return { applied: true, rolledBack: false, changedPaths };
   } catch (error) {
@@ -59,10 +63,20 @@ export async function applyFilePatchTransaction(
       success: false,
       rolledBack: snapshots.size > 0,
       changedPaths,
+      backupHashes: backupHashes(snapshots),
       reason: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
+}
+
+function backupHashes(
+  snapshots: ReadonlyMap<string, string>,
+): Array<{ path: string; sha256: string }> {
+  return [...snapshots.entries()].map(([path, content]) => ({
+    path,
+    sha256: createHash("sha256").update(content, "utf8").digest("hex"),
+  }));
 }
 
 function applyUnifiedDiff(original: string, diff: string): string {
