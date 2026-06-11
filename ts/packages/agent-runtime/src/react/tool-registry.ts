@@ -44,6 +44,9 @@ export function buildReactToolRegistry(input: ReactToolRegistryInput): ReactAgen
       ...(input.signal ? { signal: input.signal } : {}),
     }),
     createApplyFilePatchTool(filePatch),
-    createRunSshCommandTool(input.ssh),
+    createRunSshCommandTool({
+      gate: input.gate,
+      ...(input.ssh !== undefined ? { executor: input.ssh } : {}),
+    }),
   ];
 }

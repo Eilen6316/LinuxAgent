@@ -1,5 +1,6 @@
-import type { OpenSshExecutionResult, RemoteProfile } from "@linuxagent/ssh";
+import { buildOpenSshArgv, type OpenSshExecutionResult, type RemoteProfile } from "@linuxagent/ssh";
 import { Type } from "typebox";
+import type { LinuxAgentToolGate, ToolCallResult } from "../../tool-gate.js";
 import type { ReactAgentTool } from "./types.js";
 
 const RemoteProfileParameters = Type.Object({
@@ -28,6 +29,11 @@ export interface SshExecutorPort {
   }): Promise<OpenSshExecutionResult>;
 }
 
+export interface RunSshCommandToolInput {
+  gate: Pick<LinuxAgentToolGate, "beforeToolCall">;
+  executor?: SshExecutorPort;
+}
+
 export type RunSshCommandToolResult =
   | ({ executed: true; modelText: string } & OpenSshExecutionResult)
   | {
@@ -37,7 +43,7 @@ export type RunSshCommandToolResult =
     };
 
 export function createRunSshCommandTool(
-  executor?: SshExecutorPort,
+  input: RunSshCommandToolInput,
 ): ReactAgentTool<typeof RunSshCommandParameters, { result: RunSshCommandToolResult }> {
   return {
     name: "run_ssh_command",
@@ -46,12 +52,27 @@ export function createRunSshCommandTool(
     parameters: RunSshCommandParameters,
     executionMode: "sequential",
     linuxAgent: { category: "ssh", requiresGate: true, sandboxProfile: "system_inspect" },
-    async execute(_toolCallId, params, signal) {
-      if (executor === undefined) throw new Error("ssh tool is not configured");
+    async execute(toolCallId, params, signal) {
+      if (input.executor === undefined) throw new Error("ssh tool is not configured");
       const args = params as { profile: RemoteProfile; command: string; timeoutMs?: number };
+      const gateResult = await input.gate.beforeToolCall(
+        {
+          toolCallId,
+          args: sshGateArgs(args.profile, args.command),
+        },
+        signal,
+      );
+      if (gateResult?.block) {
+        const result = blocked(gateResult);
+        return {
+          content: [{ type: "text", text: result.modelText }],
+          details: { result },
+          terminate: true,
+        };
+      }
       let result: RunSshCommandToolResult;
       try {
-        const executed = await executor.execute({
+        const executed = await input.executor.execute({
           profile: args.profile,
           command: args.command,
           timeoutMs: args.timeoutMs ?? 30_000,
@@ -72,6 +93,45 @@ export function createRunSshCommandTool(
         terminate: !result.executed,
       };
     },
+  };
+}
+
+function sshGateArgs(
+  profile: RemoteProfile,
+  command: string,
+): {
+  argv: readonly string[];
+  remote: {
+    type: "ssh";
+    host: string;
+    profileName: string;
+    username: string;
+    port: number;
+    knownHostsPath: string;
+    allowedWorkdirs: string[];
+    sudoPolicy: string;
+  };
+} {
+  return {
+    argv: buildOpenSshArgv(profile, command),
+    remote: {
+      type: "ssh",
+      host: profile.host,
+      profileName: profile.name,
+      username: profile.username,
+      port: profile.port,
+      knownHostsPath: profile.knownHostsPath,
+      allowedWorkdirs: profile.allowedWorkdirs,
+      sudoPolicy: profile.sudoPolicy,
+    },
+  };
+}
+
+function blocked(result: ToolCallResult): RunSshCommandToolResult {
+  return {
+    executed: false,
+    blockedReason: result.reason,
+    modelText: `blocked: ${result.reason}`,
   };
 }
 

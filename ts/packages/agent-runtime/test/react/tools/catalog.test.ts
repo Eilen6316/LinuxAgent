@@ -24,6 +24,106 @@ describe("React tool catalog", () => {
     expect(gatedTools.every((tool) => tool.linuxAgent.requiresGate)).toBe(true);
   });
 
+  it("routes SSH commands through LinuxAgentToolGate before execution", async () => {
+    const gateCalls: unknown[] = [];
+    let sshCalls = 0;
+    const tools = buildReactToolRegistry({
+      ...stubCatalogInput(),
+      gate: {
+        beforeToolCall: async (context) => {
+          gateCalls.push(context);
+          return undefined;
+        },
+      },
+      ssh: {
+        execute: async () => {
+          sshCalls += 1;
+          return {
+            profileName: "prod-web",
+            host: "192.0.2.10",
+            port: 22,
+            username: "operator",
+            command: "uptime",
+            argv: ["ssh", "operator@192.0.2.10", "uptime"],
+            exitCode: 0,
+            stdout: "up\n",
+            stderr: "",
+            timedOut: false,
+          };
+        },
+      },
+    });
+
+    await tools
+      .find((tool) => tool.name === "run_ssh_command")
+      ?.execute("ssh-call-1", {
+        profile: remoteProfile(),
+        command: "uptime",
+        timeoutMs: 1000,
+      });
+
+    expect(sshCalls).toBe(1);
+    expect(gateCalls).toEqual([
+      {
+        toolCallId: "ssh-call-1",
+        args: {
+          argv: [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=yes",
+            "-o",
+            "UserKnownHostsFile=/home/operator/.ssh/known_hosts",
+            "-i",
+            "/home/operator/.ssh/id_ed25519",
+            "-p",
+            "22",
+            "operator@192.0.2.10",
+            "uptime",
+          ],
+          remote: {
+            type: "ssh",
+            host: "192.0.2.10",
+            profileName: "prod-web",
+            username: "operator",
+            port: 22,
+            knownHostsPath: "/home/operator/.ssh/known_hosts",
+            allowedWorkdirs: ["/var/log"],
+            sudoPolicy: "none",
+          },
+        },
+      },
+    ]);
+  });
+
+  it("does not execute SSH when LinuxAgentToolGate blocks", async () => {
+    let sshCalls = 0;
+    const tools = buildReactToolRegistry({
+      ...stubCatalogInput(),
+      gate: {
+        beforeToolCall: async () => ({ block: true, reason: "blocked by policy" }),
+      },
+      ssh: {
+        execute: async () => {
+          sshCalls += 1;
+          throw new Error("ssh executor must not run");
+        },
+      },
+    });
+
+    const result = await tools
+      .find((tool) => tool.name === "run_ssh_command")
+      ?.execute("ssh-call-1", {
+        profile: remoteProfile(),
+        command: "uptime",
+      });
+
+    expect(sshCalls).toBe(0);
+    expect(result?.content[0]?.text).toBe("blocked: blocked by policy");
+    expect(result?.terminate).toBe(true);
+  });
+
   it("search_files treats regex characters as literal text", async () => {
     const root = await mkdtemp(join(tmpdir(), "linuxagent-react-tools-"));
     await writeFile(join(root, "notes.txt"), "literal a.*b\nregex axxb\n", "utf8");
@@ -89,5 +189,18 @@ function stubCatalogInput(): Parameters<typeof buildReactToolRegistry>[0] {
         timedOut: false,
       }),
     },
+  };
+}
+
+function remoteProfile() {
+  return {
+    name: "prod-web",
+    host: "192.0.2.10",
+    port: 22,
+    username: "operator",
+    keyPath: "/home/operator/.ssh/id_ed25519",
+    knownHostsPath: "/home/operator/.ssh/known_hosts",
+    allowedWorkdirs: ["/var/log"],
+    sudoPolicy: "none" as const,
   };
 }

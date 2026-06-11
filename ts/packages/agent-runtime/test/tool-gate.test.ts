@@ -171,7 +171,44 @@ describe("LinuxAgentToolGate", () => {
       args: { argv: ["ssh", "operator@192.0.2.10", "echo $(cat /etc/shadow)"], remote },
     });
 
-    expect(result).toEqual({ block: true, reason: "blocked" });
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toContain("remote command substitution is blocked");
+    expect(approvals.callCount).toBe(0);
+    expect(audit.events[0]).toMatchObject({
+      eventType: "policy.block",
+      payload: {
+        remote,
+      },
+    });
+  });
+
+  it("blocks remote command substitution at the gate before SSH transport", async () => {
+    const audit = new RecordingAudit();
+    const approvals = new StaticApproval("approve_once");
+    const remote = {
+      type: "ssh",
+      host: "192.0.2.10",
+      profileName: "prod-web",
+      username: "operator",
+      port: 22,
+    };
+    const gate = new LinuxAgentToolGate(
+      new StubPolicy(decision("SAFE", false)),
+      new SessionPermissions(),
+      approvals,
+      audit,
+      "t1",
+    );
+
+    const result = await gate.beforeToolCall({
+      args: {
+        argv: ["ssh", "operator@192.0.2.10", "echo $(cat /etc/shadow)"],
+        remote,
+      },
+    });
+
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toContain("remote command substitution is blocked");
     expect(approvals.callCount).toBe(0);
     expect(audit.events[0]).toMatchObject({
       eventType: "policy.block",

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PolicyDecision } from "@linuxagent/contracts";
 import type { PolicyEngine } from "@linuxagent/policy";
+import { guardRemoteCommand } from "@linuxagent/ssh";
 import {
   type ApprovalPort,
   createApprovalRequest,
@@ -60,7 +61,11 @@ export class LinuxAgentToolGate {
   ): Promise<ToolCallResult | undefined> {
     const argv = commandArgvFromToolArgs(context.args);
     const remote = remoteMetadataFromToolArgs(context.args);
-    const decision = this.policy.evaluate(argv, { source: "llm" }) as PolicyDecision;
+    const decision = decisionWithRemoteGuard(
+      this.policy.evaluate(argv, { source: "llm" }) as PolicyDecision,
+      argv,
+      remote,
+    );
 
     if (decision.level === "BLOCK") {
       await this.audit.append("policy.block", auditPayload(argv, decision, remote));
@@ -124,6 +129,53 @@ export class LinuxAgentToolGate {
     if (this.approvalExpiresInMs === undefined) return undefined;
     return new Date(this.now().getTime() + this.approvalExpiresInMs).toISOString();
   }
+}
+
+function decisionWithRemoteGuard(
+  decision: PolicyDecision,
+  argv: readonly string[],
+  remote: ReturnType<typeof normalizeRemoteApprovalMetadata>,
+): PolicyDecision {
+  if (remote === undefined) return decision;
+  const command = argv.at(-1);
+  if (command === undefined) return decision;
+  const guard = guardRemoteCommand(command);
+  if (guard.level === "SAFE") return decision;
+  return mergePolicyDecision(decision, {
+    level: guard.level,
+    reason: guard.reason,
+    riskScore: guard.level === "BLOCK" ? 100 : 65,
+    capabilities: ["ssh.remote_execute"],
+    matchedRules: [guard.level === "BLOCK" ? "SSH_REMOTE_BLOCKED" : "SSH_REMOTE_CONFIRM"],
+    neverWhitelist: guard.level === "BLOCK",
+  });
+}
+
+function mergePolicyDecision(left: PolicyDecision, right: PolicyDecision): PolicyDecision {
+  const level = levelRank(right.level) > levelRank(left.level) ? right.level : left.level;
+  return {
+    level,
+    reason: unique([left.reason, right.reason].filter((item) => item !== null)).join("; "),
+    riskScore: Math.max(left.riskScore, right.riskScore),
+    capabilities: unique([...left.capabilities, ...right.capabilities]),
+    matchedRules: unique([...left.matchedRules, ...right.matchedRules]),
+    neverWhitelist: left.neverWhitelist || right.neverWhitelist,
+  };
+}
+
+function levelRank(level: PolicyDecision["level"]): number {
+  switch (level) {
+    case "SAFE":
+      return 0;
+    case "CONFIRM":
+      return 1;
+    case "BLOCK":
+      return 2;
+  }
+}
+
+function unique<T>(items: readonly T[]): T[] {
+  return [...new Set(items)];
 }
 
 function commandArgvFromToolArgs(args: unknown): string[] {
