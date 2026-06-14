@@ -652,6 +652,32 @@ def test_privileged_runner_is_confirm_and_never_whitelistable(command: str) -> N
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        "true; rm -rf /etc",
+        "true && rm -rf /etc",
+        "echo ok || rm -rf /etc",
+        "echo hi & rm -rf /etc",
+        "echo start\nrm -rf /etc",
+    ],
+)
+def test_sequenced_commands_are_not_downgraded(command: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert decision.level is SafetyLevel.BLOCK
+    assert "PROTECTED_TREE_DELETE" in decision.matched_rules
+    assert decision.can_whitelist is False
+
+
+def test_newline_separated_service_mutation_is_classified() -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate("ls\nsystemctl stop nginx")
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert "service.mutate" in decision.capabilities
+    assert decision.can_whitelist is False
+
+
+@pytest.mark.parametrize(
     ("command", "capability"),
     [
         ("sudo systemctl stop nginx", "service.mutate"),

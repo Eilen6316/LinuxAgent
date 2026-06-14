@@ -36,12 +36,14 @@ class ShellStructure:
     command_substitutions: tuple[str, ...] = ()
     subshells: tuple[str, ...] = ()
     nested_commands: tuple[str, ...] = ()
+    sequenced_commands: tuple[str, ...] = ()
     parse_error: str | None = None
 
     @property
     def child_commands(self) -> tuple[str, ...]:
         commands = (
             *self.pipeline_segments,
+            *self.sequenced_commands,
             *self.nested_commands,
             *self.command_substitutions,
             *self.subshells,
@@ -56,6 +58,7 @@ class _TopLevelScan:
     command_substitutions: tuple[str, ...]
     subshells: tuple[str, ...]
     parse_error: str | None = None
+    sequenced_commands: tuple[str, ...] = ()
 
 
 def analyze_shell_structure(command: str) -> ShellStructure:
@@ -76,6 +79,7 @@ def analyze_shell_structure(command: str) -> ShellStructure:
             *_interpreter_command_strings(tokens),
             *_runner_command_strings(tokens),
         ),
+        sequenced_commands=scan.sequenced_commands,
         parse_error=parse_error,
     )
 
@@ -91,7 +95,14 @@ def _scan_top_level(command: str) -> _TopLevelScan:
     controls: list[str] = []
     substitutions: list[str] = []
     subshells: list[str] = []
+    # Segments split at every sequencing/pipe operator and at newlines, so each
+    # top-level simple command is re-evaluated independently (head-based BLOCK
+    # rules must see the 2nd..nth command of `a && b`, `a; b`, `a\nb`, not only
+    # the first). pipeline_segments stays pipe-only for the network-to-shell
+    # lolbin heuristic.
+    sequenced: list[str] = []
     start = 0
+    seq_start = 0
     index = 0
     state = _ScannerState()
     while index < len(command):
@@ -114,24 +125,39 @@ def _scan_top_level(command: str) -> _TopLevelScan:
                 return _TopLevelScan((), (), (), (), "unclosed subshell")
             subshells.append(body.strip())
             controls.append("(")
+            sequenced.append(command[seq_start:index].strip())
+            seq_start = end
             index = end
+            continue
+        if command[index] in "\n\r":
+            sequenced.append(command[seq_start:index].strip())
+            seq_start = index + 1
+            index = seq_start
             continue
         operator = _control_operator_at(command, index)
         if operator is not None:
             controls.append(operator)
             if operator == "|":
                 segments.append(command[start:index].strip())
+            sequenced.append(command[seq_start:index].strip())
             start = index + len(operator)
+            seq_start = start
             index = start
             continue
         index += 1
     if "|" in controls:
         segments.append(command[start:].strip())
+    sequenced.append(command[seq_start:].strip())
+    seq_filtered = tuple(command for command in sequenced if command)
     return _TopLevelScan(
         tuple(segment for segment in segments if segment),
         tuple(controls),
         tuple(command for command in substitutions if command),
         tuple(command for command in subshells if command),
+        # Only surface sequenced children when a real split happened; a single
+        # segment is the whole command and must not be re-evaluated as its own
+        # child (that would recurse to the depth cap on every command).
+        sequenced_commands=seq_filtered if len(seq_filtered) > 1 else (),
     )
 
 

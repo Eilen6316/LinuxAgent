@@ -39,6 +39,11 @@ _BLOCK_WRAPPERS = st.sampled_from(
         "echo ignored | {}",
         "({})",
         "$({})",
+        "true; {}",
+        "true && {}",
+        "false || {}",
+        "{} ; true",
+        "echo ok\n{}",
     )
 )
 
