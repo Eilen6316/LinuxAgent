@@ -62,7 +62,9 @@ directory policy, sudo allowlists, batch confirmation, and audit.
 
 HITL decisions and command outcomes are appended to a `0o600` hash-chained
 audit log. Command text is intentionally recorded raw for traceability. Other
-structured fields and model-facing outputs are redacted where possible.
+structured fields and model-facing outputs are redacted where possible. An
+optional remote audit sink must use `https://` and scrubs inline command
+secrets before egress, even though the local copy keeps the command raw.
 
 Redaction covers private-key blocks, `Authorization` headers, keyword
 assignments (including compound and JSON/quoted names such as `DB_PASSWORD=`

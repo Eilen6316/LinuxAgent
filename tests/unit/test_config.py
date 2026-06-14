@@ -736,9 +736,10 @@ def test_audit_sink_requires_url_when_enabled() -> None:
         AuditConfig.model_validate({"sink_enabled": True})
 
 
-def test_audit_sink_requires_http_url() -> None:
-    with pytest.raises(ValueError, match="must be http:// or https://"):
-        AuditConfig.model_validate({"sink_enabled": True, "sink_url": "file:///audit.jsonl"})
+def test_audit_sink_requires_https_url() -> None:
+    for url in ("file:///audit.jsonl", "http://audit.example.invalid/events"):
+        with pytest.raises(ValueError, match="must use https://"):
+            AuditConfig.model_validate({"sink_enabled": True, "sink_url": url})
 
 
 def test_audit_sink_header_secret_is_not_rendered() -> None:

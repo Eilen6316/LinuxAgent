@@ -98,40 +98,45 @@ def redact_text(text: str) -> RedactionResult:
     return RedactionResult(text=updated, count=count)
 
 
-def redact_record(record: dict[str, Any]) -> dict[str, Any]:
+def redact_record(record: dict[str, Any], *, redact_commands: bool = False) -> dict[str, Any]:
     """Recursively redact sensitive record fields before persistence.
 
-    Audit commands intentionally remain raw for traceability; other strings are
-    scanned because logs and provider errors often embed headers or tokens in
-    free-form text.
+    Audit commands intentionally remain raw for traceability in the local
+    ``0o600`` log; other strings are scanned because logs and provider errors
+    often embed headers or tokens in free-form text. Set ``redact_commands`` when
+    the record leaves the host (e.g. a remote audit sink) so inline command
+    secrets are scrubbed even though the local copy keeps them raw.
     """
-    redacted, _count = _redact_value(record, key=None)
+    redacted, _count = _redact_value(record, key=None, redact_commands=redact_commands)
     return redacted if isinstance(redacted, dict) else {}
 
 
-def _redact_value(value: Any, *, key: str | None) -> tuple[Any, int]:
+def _redact_value(value: Any, *, key: str | None, redact_commands: bool) -> tuple[Any, int]:
     if key is not None and _is_sensitive_key(key):
         return REDACTED, 1
+    keep_raw = key in _RAW_COMMAND_KEYS and not redact_commands
     if isinstance(value, dict):
         total = 0
         output_record: dict[str, Any] = {}
         for child_key, child_value in value.items():
-            redacted, count = _redact_value(child_value, key=str(child_key))
+            redacted, count = _redact_value(
+                child_value, key=str(child_key), redact_commands=redact_commands
+            )
             output_record[str(child_key)] = redacted
             total += count
         return output_record, total
     if isinstance(value, list):
-        if key in _RAW_COMMAND_KEYS:
+        if keep_raw:
             return value, 0
         total = 0
         output_list: list[Any] = []
         for item in value:
-            redacted, count = _redact_value(item, key=None)
+            redacted, count = _redact_value(item, key=None, redact_commands=redact_commands)
             output_list.append(redacted)
             total += count
         return output_list, total
     if isinstance(value, str):
-        if key in _RAW_COMMAND_KEYS:
+        if keep_raw:
             return value, 0
         result = redact_text(value)
         return result.text, result.count

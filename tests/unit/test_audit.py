@@ -174,6 +174,22 @@ def test_audit_sink_receives_redacted_hash_chained_record(tmp_path) -> None:
     assert verify_audit_log(path).valid is True
 
 
+def test_audit_sink_redacts_inline_command_secret_kept_raw_locally(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    sink = CapturingSink()
+    audit = AuditLog(path, sink=sink)
+
+    audit.append({"event": "manual", "command": "export API_TOKEN=secret-egress-value"})
+
+    # Local file keeps the command raw for traceability...
+    local = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert local["command"] == "export API_TOKEN=secret-egress-value"
+    # ...but the off-host sink copy is scrubbed, while the hash anchor is preserved.
+    sent = sink.records[0]
+    assert "secret-egress-value" not in sent["command"]
+    assert sent["hash"] == local["hash"]
+
+
 def test_audit_append_uses_last_valid_record_hash(tmp_path) -> None:
     path = tmp_path / "audit.log"
     audit = AuditLog(path)

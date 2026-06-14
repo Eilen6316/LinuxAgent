@@ -204,8 +204,13 @@ class AuditLog:
     def _send_to_sink(self, payload: dict[str, Any]) -> None:
         if self.sink is None:
             return
+        # The local log keeps the command raw for traceability, but a remote sink
+        # leaves the host: scrub inline command secrets before egress. The hash is
+        # computed over the local record and preserved, so the sink still anchors
+        # the chain by hash even though its command text is redacted.
+        egress = redact_record(payload, redact_commands=True)
         try:
-            self.sink.send(payload)
+            self.sink.send(egress)
         except AuditSinkError as exc:
             self._record_sink_failure(payload, exc)
 

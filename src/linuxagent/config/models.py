@@ -436,8 +436,10 @@ class AuditConfig(BaseModel):
             return self
         if not self.sink_url:
             raise ValueError("audit.sink_url is required when audit.sink_enabled is true")
-        if not self.sink_url.startswith(("https://", "http://")):
-            raise ValueError("audit.sink_url must be http:// or https://")
+        if not self.sink_url.startswith("https://"):
+            # Audit records leave the host; require TLS so they are not shipped in
+            # cleartext (the record may embed an auth header value or command).
+            raise ValueError("audit.sink_url must use https://")
         if bool(self.sink_header_name) != bool(self.sink_header_value):
             raise ValueError(
                 "audit.sink_header_name and audit.sink_header_value must be set together"
