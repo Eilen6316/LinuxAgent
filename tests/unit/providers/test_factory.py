@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import os
+
 import pytest
 from pydantic import SecretStr
 
@@ -239,9 +242,37 @@ def test_local_openai_provider_uses_placeholder_key(monkeypatch: pytest.MonkeyPa
     assert api_key.get_secret_value() == "local-not-required"
 
 
-def test_openai_provider_raises_clear_error_when_socks_dependency_missing(
+def test_openai_provider_degrades_when_socks_proxy_unusable(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("ALL_PROXY", "socks5h://127.0.0.1:7890")
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
+    sentinel = object()
+
+    def _construct(_config: APIConfig) -> object:
+        # httpx only raises while a SOCKS proxy is still visible in the environment.
+        if os.environ.get("ALL_PROXY", "").lower().startswith("socks"):
+            raise ImportError("Using SOCKS proxy, but the 'socksio' package is not installed.")
+        return sentinel
+
+    monkeypatch.setattr(openai_module, "_construct_chat_model", _construct)
+
+    with caplog.at_level(logging.WARNING, logger="linuxagent.providers.openai"):
+        model = openai_module._build_chat_model(_cfg(LLMProviderName.OPENAI))
+
+    assert model is sentinel
+    # The SOCKS variable is dropped only for the duration of construction.
+    assert os.environ["ALL_PROXY"] == "socks5h://127.0.0.1:7890"
+    assert os.environ["HTTPS_PROXY"] == "http://127.0.0.1:7890"
+    assert "Ignoring SOCKS proxy" in caplog.text
+
+
+def test_openai_provider_raises_when_socks_unusable_and_no_proxy_to_drop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The autouse proxy fixture clears proxy env, so there is no SOCKS variable to
+    # drop; the missing dependency must then surface as a clear, actionable error.
     def _raise_socks(_config: APIConfig) -> object:
         raise ImportError("Using SOCKS proxy, but the 'socksio' package is not installed.")
 

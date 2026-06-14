@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import os
+
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
@@ -14,6 +17,19 @@ from .errors import (
     ProviderRateLimitError,
     ProviderTimeoutError,
     ProviderUnsupportedError,
+)
+
+logger = logging.getLogger(__name__)
+
+# Proxy environment variables httpx reads (with ``trust_env``) when it builds the
+# client; a SOCKS value in any of them needs the optional ``httpx[socks]`` extra.
+_PROXY_ENV_VARS = (
+    "ALL_PROXY",
+    "all_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
 )
 
 _OPENAI_ERROR_MAP: dict[str, type[ProviderError]] = {
@@ -38,18 +54,61 @@ def _build_chat_model(config: APIConfig) -> ChatOpenAI:
     except ImportError as exc:
         if not _is_socks_proxy_dependency_error(exc):
             raise
-        # A SOCKS proxy is configured in the environment but ``httpx[socks]`` is
-        # missing, so the client cannot honor it. Fail loudly with guidance
-        # rather than silently bypassing the proxy the operator asked for.
-        raise ProviderUnsupportedError(
-            "A SOCKS proxy is configured (e.g. ALL_PROXY/HTTPS_PROXY) but the "
-            "optional 'httpx[socks]' dependency is not installed. Install it with "
-            "`pip install 'httpx[socks]'`, or unset the proxy environment variables."
-        ) from exc
+        return _build_without_socks_proxy(config, exc)
 
 
 def _is_socks_proxy_dependency_error(exc: ImportError) -> bool:
     return "socks" in str(exc).lower()
+
+
+def _build_without_socks_proxy(config: APIConfig, cause: ImportError) -> ChatOpenAI:
+    """Retry client construction with SOCKS proxies dropped.
+
+    httpx initializes a transport for every proxy in the environment when the
+    client is built, so an ``ALL_PROXY=socks5h://...`` fails construction with
+    ``ImportError`` whenever the optional ``httpx[socks]`` dependency is absent —
+    even when the actual request would use a plain HTTP proxy. Rather than block
+    the whole agent, drop only the SOCKS proxy variables (keeping any HTTP proxy,
+    i.e. the same local endpoint) and retry, warning that the SOCKS proxy is being
+    ignored. The configured proxy is degraded, never silently widened: if there is
+    no SOCKS variable to drop, surface actionable guidance instead.
+    """
+    removed = _strip_socks_proxy_env()
+    if not removed:
+        raise ProviderUnsupportedError(
+            "A SOCKS proxy is configured but the optional 'httpx[socks]' dependency "
+            "is not installed. Install it with `pip install 'httpx[socks]'`, or unset "
+            "the proxy environment variables."
+        ) from cause
+    try:
+        model = _construct_chat_model(config)
+    finally:
+        os.environ.update(removed)
+    logger.warning(
+        "Ignoring SOCKS proxy (%s) for the LLM client because the optional "
+        "'httpx[socks]' dependency is not installed; using the remaining HTTP proxy "
+        "or a direct connection. Install httpx[socks] to route the client through the "
+        "SOCKS proxy.",
+        ", ".join(sorted(removed)),
+    )
+    return model
+
+
+def _strip_socks_proxy_env() -> dict[str, str]:
+    """Remove SOCKS-scheme proxy variables from the environment, returning them.
+
+    Only variables whose value is a ``socks*`` URL are removed; HTTP proxies are
+    left in place so the client still routes through them. The caller restores
+    the returned mapping once the client has captured its transports.
+    """
+    removed = {
+        name: value
+        for name in _PROXY_ENV_VARS
+        if (value := os.environ.get(name)) is not None and value.lower().startswith("socks")
+    }
+    for name in removed:
+        del os.environ[name]
+    return removed
 
 
 def _construct_chat_model(config: APIConfig) -> ChatOpenAI:
