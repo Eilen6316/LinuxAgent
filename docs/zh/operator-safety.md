@@ -53,4 +53,9 @@ SSH 远端命令不受本地 OS sandbox 保护。远端边界来自 host-key 校
 HITL 决策和执行结果写入 `0o600` hash-chained audit log。命令原文为了可追溯
 会保留；其他结构化字段和进入模型上下文的输出会尽力脱敏。
 
+脱敏覆盖私钥块、`Authorization` 头、关键字赋值（包括复合名和 JSON/带引号形式，
+如 `DB_PASSWORD=`、`"api_key": "..."`）、任意 scheme 的带凭据连接串（含无用户名的
+`redis://:pass@` 形式），以及常见厂商 token 形态（AWS、GitHub、OpenAI、Slack、
+JWT、Gemini、GLM）。
+
 不要主动让 LinuxAgent 打印密钥。脱敏是防御层，不是暴露凭据的许可。

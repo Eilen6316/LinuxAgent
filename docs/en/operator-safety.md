@@ -64,6 +64,12 @@ HITL decisions and command outcomes are appended to a `0o600` hash-chained
 audit log. Command text is intentionally recorded raw for traceability. Other
 structured fields and model-facing outputs are redacted where possible.
 
+Redaction covers private-key blocks, `Authorization` headers, keyword
+assignments (including compound and JSON/quoted names such as `DB_PASSWORD=`
+and `"api_key": "..."`), credentialed connection strings of any scheme
+(including the username-less `redis://:pass@` form), and common vendor token
+shapes (AWS, GitHub, OpenAI, Slack, JWT, Gemini, GLM).
+
 Operators should still avoid asking LinuxAgent to print secrets. Redaction is a
 defense-in-depth layer, not permission to expose credentials.
 

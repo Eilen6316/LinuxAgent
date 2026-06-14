@@ -18,6 +18,17 @@ _SENSITIVE_KEYS = frozenset(
         "pwd",
         "secret",
         "token",
+        # Credential key names whose ``_``-split parts are individually benign
+        # (``access_key`` -> access/key), so they need explicit listing. ``_key``
+        # is intentionally NOT a blanket suffix — it would redact lookup keys
+        # such as ``cache_key``/``prompt_cache_key``.
+        "access_key",
+        "accesskey",
+        "secret_key",
+        "private_key",
+        "x_api_key",
+        "x_goog_api_key",
+        "bearer",
     }
 )
 
@@ -30,17 +41,42 @@ _INCOMPLETE_PRIVATE_KEY_PATTERN = re.compile(
     re.DOTALL,
 )
 
-_TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"(?i)(authorization\s*:\s*)(bearer|basic)\s+[A-Za-z0-9._~+/=-]+"),
-    re.compile(r"(?i)\b(password|passwd|pwd|token|api[_-]?key|secret)\s*[:=]\s*[^\s&;,]+"),
-    re.compile(r"(?i)\b(identified\s+by\s+)(['\"]?)[^\s;'\",]+(['\"]?)"),
-    re.compile(r"(?i)\b((?:postgres(?:ql)?|mysql|mariadb|redis|mongodb)://[^:\s/@]+:)[^@\s]+(@)"),
+# Structured key/value secrets, dispatched by pattern identity in ``_replacement``.
+_AUTH_HEADER_RE = re.compile(r"(?i)(authorization\s*:\s*)(bearer|basic)\s+[A-Za-z0-9._~+/=-]+")
+# Keyword assignments. The leading ``[A-Za-z0-9_]*`` lets compound names match
+# (``DB_PASSWORD=``, ``service_api_key=``); the optional quote before the
+# separator handles JSON/YAML (``"password": "..."``); and the value accepts a
+# quoted run so spaces inside quotes do not truncate the redaction.
+_KEYWORD_ASSIGNMENT_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_])"
+    r"([A-Za-z0-9_]*(?:password|passwd|pwd|token|api[-_]?key|secret)[A-Za-z0-9_]*)"
+    r"[\"']?\s*[:=]\s*"
+    r"(?:\"[^\"]*\"|'[^']*'|[^\s&;,]+)"
+)
+_IDENTIFIED_BY_RE = re.compile(r"(?i)\b(identified\s+by\s+)(['\"]?)[^\s;'\",]+(['\"]?)")
+# Credentialed connection strings of any scheme, including the username-less
+# ``redis://:pass@`` form and ``mongodb+srv://`` variants.
+_CONNECTION_STRING_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9+.\-])([A-Za-z][A-Za-z0-9+.\-]*://[^:@/\s]*:)[^@\s]+(@)"
+)
+# Opaque vendor tokens redacted whole, including Google/Gemini (``AIza...``) and
+# GLM/Zhipu (``<32-hex>.<16-alnum>``) keys for the providers LinuxAgent supports.
+_OPAQUE_TOKEN_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bghp_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
     re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    re.compile(r"\b[0-9a-f]{32}\.[A-Za-z0-9]{16}\b"),
+)
+_TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    _AUTH_HEADER_RE,
+    _KEYWORD_ASSIGNMENT_RE,
+    _IDENTIFIED_BY_RE,
+    _CONNECTION_STRING_RE,
+    *_OPAQUE_TOKEN_PATTERNS,
 )
 _RAW_COMMAND_KEYS: frozenset[str] = frozenset({"command", "command_tokens", "command_head"})
 
@@ -110,13 +146,16 @@ def _is_sensitive_key(key: str) -> bool:
 
 
 def _replacement(match: re.Match[str]) -> str:
-    groups = match.groups()
-    if groups and match.re.pattern.startswith("(?i)(authorization"):
-        return f"{groups[0]}{REDACTED}"
-    if groups and "://" in match.group(0):
-        return f"{groups[0]}{REDACTED}{groups[1]}"
-    if groups and match.re.pattern.startswith("(?i)\\b(password"):
-        return f"{groups[0]}={REDACTED}"
-    if groups and match.re.pattern.startswith("(?i)\\b(identified"):
-        return f"{groups[0]}{groups[1]}{REDACTED}{groups[2]}"
+    # Dispatch by pattern identity, not by sniffing the matched text: a value
+    # that happens to contain "://" must not be mistaken for the connection
+    # string pattern (which would index a non-existent second group).
+    pattern = match.re
+    if pattern is _AUTH_HEADER_RE:
+        return f"{match.group(1)}{REDACTED}"
+    if pattern is _CONNECTION_STRING_RE:
+        return f"{match.group(1)}{REDACTED}{match.group(2)}"
+    if pattern is _KEYWORD_ASSIGNMENT_RE:
+        return f"{match.group(1)}={REDACTED}"
+    if pattern is _IDENTIFIED_BY_RE:
+        return f"{match.group(1)}{match.group(2)}{REDACTED}{match.group(3)}"
     return REDACTED
