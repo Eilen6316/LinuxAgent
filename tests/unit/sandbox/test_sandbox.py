@@ -544,6 +544,48 @@ async def test_bubblewrap_read_only_hides_sensitive_paths_and_keeps_logs(
     assert _contains_pair(argv, "--ro-bind", "/var/log")
 
 
+async def test_bubblewrap_workspace_write_still_masks_credential_paths(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "bwrap-report.json"
+    executable = tmp_path / "bwrap"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "import os\n"
+        "import sys\n"
+        f"report = {str(report)!r}\n"
+        "separator = sys.argv.index('--')\n"
+        "open(report, 'w', encoding='utf-8').write(json.dumps({'argv': sys.argv[1:separator]}))\n"
+        "os.execvp(sys.argv[separator + 1], sys.argv[separator + 1:])\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=_available_capabilities,
+    )
+
+    result = await runner.run(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.WORKSPACE_WRITE,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+        )
+    )
+
+    assert result.exit_code == 0
+    argv = json.loads(report.read_text(encoding="utf-8"))["argv"]
+    # cwd is bound read-write for this profile...
+    assert _contains_triple(argv, "--bind", str(tmp_path), str(tmp_path))
+    # ...but credential paths must still be masked, after the cwd bind so they win.
+    assert _contains_triple(argv, "--ro-bind", "/dev/null", "/etc/shadow")
+    assert _contains_pair(argv, "--tmpfs", str(Path.home() / ".ssh"))
+    assert _contains_pair(argv, "--tmpfs", str(Path.home() / ".aws"))
+
+
 async def test_bubblewrap_run_path_keeps_local_process_controls(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -343,13 +343,31 @@ def _cwd_bind_args(request: SandboxRequest) -> tuple[str, ...]:
     return (option, cwd, cwd)
 
 
+_READ_SCOPED_PROFILES = {SandboxProfile.READ_ONLY, SandboxProfile.SYSTEM_INSPECT}
+
+
 def _read_scope_args(request: SandboxRequest) -> tuple[str, ...]:
-    if request.profile not in {SandboxProfile.READ_ONLY, SandboxProfile.SYSTEM_INSPECT}:
-        return ()
+    if request.profile in _READ_SCOPED_PROFILES:
+        return (*_read_allow_args(request), *_read_hide_args(request))
+    if request.profile is SandboxProfile.WORKSPACE_WRITE:
+        # The cwd is bound read-write for this profile, so still mask the
+        # credential paths: emitted after the cwd ``--bind`` (argv order in
+        # ``_bubblewrap_argv``), bwrap's last-wins binding keeps ~/.ssh, ~/.aws,
+        # ~/.kube, /etc/shadow, etc. hidden even when cwd is the home directory.
+        return _read_hide_args(request)
+    return ()
+
+
+def _read_allow_args(request: SandboxRequest) -> tuple[str, ...]:
     args: list[str] = []
     for path in request.read_allow_paths:
         expanded = str(path.expanduser())
         args.extend(("--ro-bind", expanded, expanded))
+    return tuple(args)
+
+
+def _read_hide_args(request: SandboxRequest) -> tuple[str, ...]:
+    args: list[str] = []
     for path in request.read_hide_paths:
         expanded_path = path.expanduser()
         expanded = str(expanded_path)
