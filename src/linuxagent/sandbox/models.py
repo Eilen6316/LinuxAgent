@@ -97,6 +97,10 @@ class SandboxActualIsolation:
             "network": self.network,
         }
 
+    @property
+    def enforced_profile_complete(self) -> bool:
+        return self.filesystem and self.seccomp and self.cgroup
+
 
 @dataclass(frozen=True)
 class SandboxResult:
@@ -123,6 +127,7 @@ class SandboxResult:
             "fallback_reason": self.fallback_reason,
             "runtime_label": self.runtime_label.value,
             "actual": self.actual.to_record(),
+            "actual_mismatch": self.enforced and not self.actual.enforced_profile_complete,
         }
 
 

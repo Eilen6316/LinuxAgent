@@ -19,6 +19,7 @@ from linuxagent.sandbox import (
     SandboxNetworkPolicy,
     SandboxProfile,
     SandboxRequest,
+    SandboxResult,
     SandboxRunnerKind,
     SandboxRuntimeLabel,
     SandboxUnavailableError,
@@ -58,6 +59,20 @@ def test_noop_runner_records_metadata_without_enforcement() -> None:
         "cgroup": False,
         "network": False,
     }
+
+
+def test_sandbox_record_marks_actual_mismatch() -> None:
+    record = SandboxResult(
+        requested_profile=SandboxProfile.READ_ONLY,
+        runner=SandboxRunnerKind.BUBBLEWRAP,
+        enabled=True,
+        enforced=True,
+        root="/workspace",
+        network=SandboxNetworkPolicy.INHERIT,
+        resource_limits={},
+    ).to_record()
+
+    assert record["actual_mismatch"] is True
 
 
 async def test_noop_runner_executes_without_claiming_enforcement() -> None:
