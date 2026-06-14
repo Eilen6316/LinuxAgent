@@ -7,6 +7,7 @@ from .local import LocalProcessSandboxRunner
 from .models import (
     SandboxActualIsolation,
     SandboxCapabilities,
+    SandboxControlState,
     SandboxNetworkPolicy,
     SandboxOutputCallback,
     SandboxProfile,
@@ -27,6 +28,7 @@ __all__ = [
     "NoopSandboxRunner",
     "SandboxActualIsolation",
     "SandboxCapabilities",
+    "SandboxControlState",
     "SandboxNetworkPolicy",
     "SandboxOutputCallback",
     "SandboxProfile",

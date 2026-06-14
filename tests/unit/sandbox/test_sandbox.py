@@ -54,10 +54,10 @@ def test_noop_runner_records_metadata_without_enforcement() -> None:
     assert result.to_record()["requested_profile"] == "system_inspect"
     assert result.to_record()["runtime_label"] == "no_isolation"
     assert result.to_record()["actual"] == {
-        "filesystem": False,
-        "seccomp": False,
-        "cgroup": False,
-        "network": False,
+        "filesystem": "unavailable",
+        "seccomp": "unavailable",
+        "cgroup": "unavailable",
+        "network": "unavailable",
     }
 
 
@@ -379,10 +379,10 @@ def test_bubblewrap_marks_missing_capabilities_as_unenforced(tmp_path: Path) -> 
     assert "seccomp" in result.fallback_reason
     assert "cgroup" in result.fallback_reason
     assert result.to_record()["actual"] == {
-        "filesystem": False,
-        "seccomp": False,
-        "cgroup": False,
-        "network": False,
+        "filesystem": "unavailable",
+        "seccomp": "unavailable",
+        "cgroup": "unavailable",
+        "network": "unavailable",
     }
 
 
@@ -411,10 +411,10 @@ def test_bubblewrap_enforces_when_required_capabilities_are_available(tmp_path: 
     assert result.fallback_reason is None
     assert result.runtime_label is SandboxRuntimeLabel.FILESYSTEM_ISOLATION
     assert result.to_record()["actual"] == {
-        "filesystem": True,
-        "seccomp": True,
-        "cgroup": True,
-        "network": False,
+        "filesystem": "claimed",
+        "seccomp": "claimed",
+        "cgroup": "claimed",
+        "network": "unavailable",
     }
 
 
@@ -650,9 +650,9 @@ async def test_bubblewrap_run_records_cgroup_gap_when_delegate_unwritable(
     assert result.exit_code == 0
     assert result.sandbox.enforced is True
     record = result.sandbox.to_record()
-    assert record["actual"]["filesystem"] is True
-    assert record["actual"]["seccomp"] is True
-    assert record["actual"]["cgroup"] is False
+    assert record["actual"]["filesystem"] == "claimed"
+    assert record["actual"]["seccomp"] == "claimed"
+    assert record["actual"]["cgroup"] == "unavailable"
     assert record["actual_mismatch"] is True
     assert result.sandbox.fallback_reason is not None
     assert "cgroup" in result.sandbox.fallback_reason
@@ -687,9 +687,52 @@ async def test_bubblewrap_run_records_cgroup_when_delegate_is_writable(
 
     assert result.exit_code == 0
     record = result.sandbox.to_record()
-    assert record["actual"]["cgroup"] is True
+    assert record["actual"]["cgroup"] == "verified"
+    assert record["actual"]["filesystem"] == "claimed"
+    assert record["actual"]["seccomp"] == "claimed"
     assert record["actual_mismatch"] is False
     assert result.sandbox.fallback_reason is None
+
+
+async def test_bubblewrap_run_downgrades_isolation_when_bwrap_aborts(
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "bwrap"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "sys.stderr.write('bwrap: No permissions to create new namespace\\n')\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=_available_capabilities,
+    )
+
+    result = await runner.run(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+        )
+    )
+
+    assert result.exit_code == 1
+    assert result.sandbox.enforced is True
+    record = result.sandbox.to_record()
+    assert record["actual"] == {
+        "filesystem": "unavailable",
+        "seccomp": "unavailable",
+        "cgroup": "unavailable",
+        "network": "unavailable",
+    }
+    assert record["actual_mismatch"] is True
+    assert result.sandbox.fallback_reason is not None
+    assert "bubblewrap" in result.sandbox.fallback_reason
 
 
 def test_profile_mapping_prefers_destructive_capabilities() -> None:

@@ -12,6 +12,7 @@ from .local import LocalProcessSandboxRunner, validate_cwd_allowed
 from .models import (
     SandboxActualIsolation,
     SandboxCapabilities,
+    SandboxControlState,
     SandboxNetworkPolicy,
     SandboxOutputCallback,
     SandboxProfile,
@@ -87,7 +88,10 @@ class BubblewrapSandboxRunner:
                 on_stderr=on_stderr,
                 interactive=interactive,
             )
-            reconciled = _reconcile_enforced_isolation(sandbox, result.sandbox)
+            bwrap_failed = _bubblewrap_setup_failed(result.exit_code, result.stderr)
+            reconciled = _reconcile_enforced_isolation(
+                sandbox, result.sandbox, bwrap_failed=bwrap_failed
+            )
             return SandboxRunResult(result.exit_code, result.stdout, result.stderr, reconciled)
         finally:
             seccomp_program.close()
@@ -149,7 +153,7 @@ class BubblewrapSandboxRunner:
             resource_limits=request.resource_limits,
             fallback_reason="sandbox disabled",
             runtime_label=SandboxRuntimeLabel.NO_ISOLATION,
-            actual=SandboxActualIsolation(network=_network_actual(request.network)),
+            actual=SandboxActualIsolation(),
         )
 
     def _passthrough_result(self, request: SandboxRequest, reason: str) -> SandboxResult:
@@ -163,7 +167,7 @@ class BubblewrapSandboxRunner:
             resource_limits=request.resource_limits,
             fallback_reason=reason,
             runtime_label=SandboxRuntimeLabel.PRIVILEGED_PASSTHROUGH,
-            actual=SandboxActualIsolation(network=_network_actual(request.network)),
+            actual=SandboxActualIsolation(),
         )
 
     def _capability_fallback_result(
@@ -179,7 +183,7 @@ class BubblewrapSandboxRunner:
             resource_limits=request.resource_limits,
             fallback_reason=f"sandbox capability unavailable: {', '.join(missing)}",
             runtime_label=SandboxRuntimeLabel.NO_ISOLATION,
-            actual=SandboxActualIsolation(network=_network_actual(request.network)),
+            actual=SandboxActualIsolation(),
         )
 
     def _enforced_result(self, request: SandboxRequest) -> SandboxResult:
@@ -193,10 +197,10 @@ class BubblewrapSandboxRunner:
             resource_limits=request.resource_limits,
             runtime_label=SandboxRuntimeLabel.FILESYSTEM_ISOLATION,
             actual=SandboxActualIsolation(
-                filesystem=True,
-                seccomp=True,
-                cgroup=True,
-                network=_network_actual(request.network),
+                filesystem=SandboxControlState.CLAIMED,
+                seccomp=SandboxControlState.CLAIMED,
+                cgroup=SandboxControlState.CLAIMED,
+                network=SandboxControlState.claimed_if(_network_actual(request.network)),
             ),
         )
 
@@ -207,23 +211,54 @@ _PASSTHROUGH_PROFILES = {
 }
 
 
-def _reconcile_enforced_isolation(declared: SandboxResult, inner: SandboxResult) -> SandboxResult:
-    """Backfill the cgroup truth from the inner controlled-local run.
+def _reconcile_enforced_isolation(
+    declared: SandboxResult, inner: SandboxResult, *, bwrap_failed: bool
+) -> SandboxResult:
+    """Resolve the projected isolation into what the run actually enforced.
 
-    ``declared`` carries the bubblewrap-level isolation projected before the
-    process starts (filesystem + seccomp, both enforced by ``bwrap`` itself).
-    cgroup limits, however, are applied by the inner local runner, which
-    silently degrades to rlimit-only controls when the cgroup v2 delegate is not
-    writable. Returning ``declared`` verbatim would keep the projected
-    ``cgroup=True`` even when no limits were applied, hiding the gap from
-    ``actual_mismatch``. Reconcile so the recorded isolation reflects what the
-    run actually enforced.
+    ``declared`` carries the bubblewrap isolation *claimed* before the process
+    starts: filesystem, seccomp and cgroup are all ``CLAIMED``. Two runtime
+    signals refine that projection:
+
+    * If ``bwrap`` aborted before exec'ing the target (``bwrap_failed``), no
+      isolation was applied at all, so every control collapses to
+      ``UNAVAILABLE`` and ``actual_mismatch`` fires.
+    * Otherwise cgroup limits are applied by the inner local runner, which
+      silently degrades to rlimit-only controls when the cgroup v2 delegate is
+      not writable. The inner result reports cgroup as ``VERIFIED`` or
+      ``UNAVAILABLE``; adopt it so a silent cgroup gap is recorded instead of
+      the projected claim. filesystem and seccomp stay ``CLAIMED`` — ``bwrap``
+      was asked for them and did not abort, but the runner cannot positively
+      verify them after the fact.
     """
+    if bwrap_failed:
+        actual = replace(
+            declared.actual,
+            filesystem=SandboxControlState.UNAVAILABLE,
+            seccomp=SandboxControlState.UNAVAILABLE,
+            cgroup=SandboxControlState.UNAVAILABLE,
+            network=SandboxControlState.UNAVAILABLE,
+        )
+        reason = declared.fallback_reason or "bubblewrap aborted before enforcing isolation"
+        return replace(declared, actual=actual, fallback_reason=reason)
     actual = replace(declared.actual, cgroup=inner.actual.cgroup)
-    if inner.actual.cgroup:
+    if inner.actual.cgroup is SandboxControlState.VERIFIED:
         return replace(declared, actual=actual)
     fallback = inner.fallback_reason or "cgroup unavailable; using rlimit process controls only"
     return replace(declared, actual=actual, fallback_reason=fallback)
+
+
+def _bubblewrap_setup_failed(exit_code: int, stderr: str) -> bool:
+    """Detect ``bwrap`` aborting before it could exec the target command.
+
+    ``bwrap`` reports its own sandbox-setup errors on stderr with a ``bwrap:``
+    prefix and exits non-zero without running the child. When that happens no
+    filesystem or seccomp isolation was applied, so the projected controls must
+    be downgraded rather than recorded as enforced. A clean run propagates the
+    child's exit status and does not lead stderr with that prefix, so the check
+    stays false for ordinary non-zero command exits.
+    """
+    return exit_code != 0 and stderr.lstrip().startswith("bwrap:")
 
 
 def _wrap_request(

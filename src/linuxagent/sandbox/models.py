@@ -82,24 +82,67 @@ class SandboxCapabilities:
         return tuple(missing)
 
 
+class SandboxControlState(StrEnum):
+    """Tri-state record of whether a single sandbox control was applied.
+
+    A boolean conflates "we confirmed this control" with "we believe this
+    control is on", which let the runner record isolation that never happened.
+    The three states keep the audit trail honest:
+
+    ``VERIFIED``    runtime evidence shows the control was enforced (e.g. the
+                    cgroup scope was created and the process joined it).
+    ``CLAIMED``     the control was requested and not observed to fail, but the
+                    runner cannot positively confirm it (e.g. bubblewrap was
+                    asked for a seccomp filter and did not abort). This is also
+                    the state for a pre-run projection / preview.
+    ``UNAVAILABLE`` the control was not applied — either never requested, or
+                    positively observed to have failed.
+    """
+
+    VERIFIED = "verified"
+    CLAIMED = "claimed"
+    UNAVAILABLE = "unavailable"
+
+    @classmethod
+    def verified_if(cls, applied: bool) -> SandboxControlState:
+        """``VERIFIED`` when runtime evidence confirms enforcement, else ``UNAVAILABLE``."""
+        return cls.VERIFIED if applied else cls.UNAVAILABLE
+
+    @classmethod
+    def claimed_if(cls, requested: bool) -> SandboxControlState:
+        """``CLAIMED`` when the control was requested, else ``UNAVAILABLE``."""
+        return cls.CLAIMED if requested else cls.UNAVAILABLE
+
+
 @dataclass(frozen=True)
 class SandboxActualIsolation:
-    filesystem: bool = False
-    seccomp: bool = False
-    cgroup: bool = False
-    network: bool = False
+    filesystem: SandboxControlState = SandboxControlState.UNAVAILABLE
+    seccomp: SandboxControlState = SandboxControlState.UNAVAILABLE
+    cgroup: SandboxControlState = SandboxControlState.UNAVAILABLE
+    network: SandboxControlState = SandboxControlState.UNAVAILABLE
 
-    def to_record(self) -> dict[str, bool]:
+    def to_record(self) -> dict[str, str]:
         return {
-            "filesystem": self.filesystem,
-            "seccomp": self.seccomp,
-            "cgroup": self.cgroup,
-            "network": self.network,
+            "filesystem": self.filesystem.value,
+            "seccomp": self.seccomp.value,
+            "cgroup": self.cgroup.value,
+            "network": self.network.value,
         }
 
     @property
     def enforced_profile_complete(self) -> bool:
-        return self.filesystem and self.seccomp and self.cgroup
+        """True when no core control is positively known to have failed.
+
+        Only ``UNAVAILABLE`` marks a gap; a ``CLAIMED`` control (requested and
+        not observed to fail) does not. This keeps ``actual_mismatch`` quiet for
+        ordinary enforced runs while still firing when a promised control —
+        filesystem, seccomp, or cgroup — definitively did not apply. Network is
+        recorded but excluded here, matching the original contract.
+        """
+        return all(
+            state is not SandboxControlState.UNAVAILABLE
+            for state in (self.filesystem, self.seccomp, self.cgroup)
+        )
 
 
 @dataclass(frozen=True)
