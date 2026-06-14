@@ -21,6 +21,7 @@ from .models import (
     SandboxRuntimeLabel,
     SandboxUnavailableError,
 )
+from .seccomp import SeccompProgram, build_default_seccomp_program, libseccomp_available
 
 
 class BubblewrapSandboxRunner:
@@ -69,14 +70,18 @@ class BubblewrapSandboxRunner:
         sandbox, executable = self._describe_for_run(request)
         if not sandbox.enforced:
             return await self._run_local(request, sandbox, on_stdout, on_stderr, interactive)
-        wrapped = _wrap_request(request, executable)
-        result = await self._controlled_local.run(
-            wrapped,
-            on_stdout=on_stdout,
-            on_stderr=on_stderr,
-            interactive=interactive,
-        )
-        return SandboxRunResult(result.exit_code, result.stdout, result.stderr, sandbox)
+        seccomp_program = build_default_seccomp_program()
+        try:
+            wrapped = _wrap_request(request, executable, seccomp_program=seccomp_program)
+            result = await self._controlled_local.run(
+                wrapped,
+                on_stdout=on_stdout,
+                on_stderr=on_stderr,
+                interactive=interactive,
+            )
+            return SandboxRunResult(result.exit_code, result.stdout, result.stderr, sandbox)
+        finally:
+            seccomp_program.close()
 
     def _describe_for_run(self, request: SandboxRequest) -> tuple[SandboxResult, Path]:
         if not self._enabled:
@@ -184,11 +189,18 @@ _PASSTHROUGH_PROFILES = {
 }
 
 
-def _wrap_request(request: SandboxRequest, executable: Path) -> SandboxRequest:
+def _wrap_request(
+    request: SandboxRequest,
+    executable: Path,
+    *,
+    seccomp_program: SeccompProgram,
+) -> SandboxRequest:
     argv = (
         str(executable),
         "--die-with-parent",
         "--new-session",
+        "--seccomp",
+        str(seccomp_program.fd),
         "--ro-bind",
         "/usr",
         "/usr",
@@ -223,6 +235,7 @@ def _wrap_request(request: SandboxRequest, executable: Path) -> SandboxRequest:
         resource_limits=request.resource_limits,
         allowed_roots=(Path("/"),),
         temp_dir=request.temp_dir,
+        pass_fds=(seccomp_program.fd,),
     )
 
 
@@ -240,7 +253,7 @@ def _cwd_bind_args(request: SandboxRequest) -> tuple[str, ...]:
 
 def probe_bubblewrap_capabilities(executable: Path) -> SandboxCapabilities:
     return SandboxCapabilities(
-        seccomp_supported=_bwrap_supports_seccomp(executable),
+        seccomp_supported=_bwrap_supports_seccomp(executable) and libseccomp_available(),
         cgroup_v2_writable=_cgroup_v2_writable(),
     )
 

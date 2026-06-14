@@ -62,6 +62,7 @@ class SandboxRequest:
     network_allowlist: tuple[str, ...] = ()
     allowed_roots: tuple[Path, ...] = ()
     temp_dir: Path | None = None
+    pass_fds: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

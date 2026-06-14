@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shlex
 import sys
 from pathlib import Path
@@ -23,6 +24,7 @@ from linuxagent.sandbox import (
     SandboxUnavailableError,
     profile_for_safety,
 )
+from linuxagent.sandbox.profiles import DEFAULT_SECCOMP_DENY_SYSCALLS
 
 
 def test_noop_runner_records_metadata_without_enforcement() -> None:
@@ -343,6 +345,25 @@ def test_bubblewrap_enforces_when_required_capabilities_are_available(tmp_path: 
     assert result.runtime_label is SandboxRuntimeLabel.FILESYSTEM_ISOLATION
 
 
+def test_default_seccomp_denylist_covers_dangerous_syscalls() -> None:
+    expected = {
+        "ptrace",
+        "mount",
+        "umount2",
+        "keyctl",
+        "add_key",
+        "request_key",
+        "bpf",
+        "unshare",
+        "pivot_root",
+        "kexec_load",
+        "init_module",
+        "finit_module",
+    }
+
+    assert expected.issubset(DEFAULT_SECCOMP_DENY_SYSCALLS)
+
+
 async def test_bubblewrap_allows_explicit_passthrough_without_probe(tmp_path: Path) -> None:
     runner = BubblewrapSandboxRunner(enabled=True, executable=tmp_path / "missing-bwrap")
 
@@ -355,6 +376,46 @@ async def test_bubblewrap_allows_explicit_passthrough_without_probe(tmp_path: Pa
     assert result.sandbox.enforced is False
     assert result.sandbox.runtime_label is SandboxRuntimeLabel.PRIVILEGED_PASSTHROUGH
     assert result.sandbox.fallback_reason == "profile permits privileged passthrough"
+
+
+async def test_bubblewrap_run_passes_seccomp_fd_to_enforced_profile(tmp_path: Path) -> None:
+    report = tmp_path / "bwrap-report.json"
+    executable = tmp_path / "bwrap"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "import os\n"
+        "import sys\n"
+        f"report = {str(report)!r}\n"
+        "index = sys.argv.index('--seccomp')\n"
+        "fd = int(sys.argv[index + 1])\n"
+        "size = os.fstat(fd).st_size\n"
+        "separator = sys.argv.index('--')\n"
+        "payload = {'argv': sys.argv[1:], 'seccomp_fd_size': size}\n"
+        "open(report, 'w', encoding='utf-8').write(json.dumps(payload))\n"
+        "os.execvp(sys.argv[separator + 1], sys.argv[separator + 1:])\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=_available_capabilities,
+    )
+
+    result = await runner.run(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+        )
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert "--seccomp" in payload["argv"]
+    assert payload["seccomp_fd_size"] > 0
 
 
 async def test_bubblewrap_run_path_keeps_local_process_controls(

@@ -6,6 +6,24 @@ from typing import Protocol
 
 from .models import SandboxProfile
 
+DEFAULT_SECCOMP_DENY_SYSCALLS: frozenset[str] = frozenset(
+    {
+        "ptrace",
+        "mount",
+        "umount2",
+        "keyctl",
+        "add_key",
+        "request_key",
+        "bpf",
+        "clone",
+        "unshare",
+        "pivot_root",
+        "kexec_load",
+        "init_module",
+        "finit_module",
+    }
+)
+
 
 class _SafetyLike(Protocol):
     @property

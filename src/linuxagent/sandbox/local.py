@@ -281,6 +281,8 @@ def _spawn_kwargs(
     compatibility_mode: bool,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"stdout": stdout, "stderr": stderr}
+    if request.pass_fds:
+        kwargs["pass_fds"] = request.pass_fds
     if not interactive and not compatibility_mode:
         kwargs["stdin"] = asyncio.subprocess.DEVNULL
     if not compatibility_mode:
