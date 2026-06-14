@@ -14,6 +14,7 @@ from linuxagent.sandbox import (
     BubblewrapSandboxRunner,
     LocalProcessSandboxRunner,
     NoopSandboxRunner,
+    SandboxCapabilities,
     SandboxNetworkPolicy,
     SandboxProfile,
     SandboxRequest,
@@ -288,6 +289,60 @@ def test_bubblewrap_rejects_cwd_outside_allowed_roots(tmp_path: Path) -> None:
         )
 
 
+def test_bubblewrap_marks_missing_capabilities_as_unenforced(tmp_path: Path) -> None:
+    executable = tmp_path / "bwrap"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=lambda _path: SandboxCapabilities(
+            seccomp_supported=False,
+            cgroup_v2_writable=False,
+        ),
+    )
+
+    result = runner.describe(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+        )
+    )
+
+    assert result.enforced is False
+    assert result.runtime_label is SandboxRuntimeLabel.NO_ISOLATION
+    assert result.fallback_reason is not None
+    assert "seccomp" in result.fallback_reason
+    assert "cgroup" in result.fallback_reason
+
+
+def test_bubblewrap_enforces_when_required_capabilities_are_available(tmp_path: Path) -> None:
+    executable = tmp_path / "bwrap"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=lambda _path: SandboxCapabilities(
+            seccomp_supported=True,
+            cgroup_v2_writable=True,
+        ),
+    )
+
+    result = runner.describe(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+        )
+    )
+
+    assert result.enforced is True
+    assert result.fallback_reason is None
+    assert result.runtime_label is SandboxRuntimeLabel.FILESYSTEM_ISOLATION
+
+
 async def test_bubblewrap_allows_explicit_passthrough_without_probe(tmp_path: Path) -> None:
     runner = BubblewrapSandboxRunner(enabled=True, executable=tmp_path / "missing-bwrap")
 
@@ -316,7 +371,11 @@ async def test_bubblewrap_run_path_keeps_local_process_controls(
         encoding="utf-8",
     )
     executable.chmod(0o755)
-    runner = BubblewrapSandboxRunner(enabled=True, executable=executable)
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=_available_capabilities,
+    )
     code = (
         "import os; "
         "print(os.environ.get('LINUXAGENT_BWRAP_ENV_TEST', 'missing')); "
@@ -356,7 +415,11 @@ async def test_bubblewrap_run_probes_only_once(
         encoding="utf-8",
     )
     executable.chmod(0o755)
-    runner = _CountingBubblewrapRunner(enabled=True, executable=executable)
+    runner = _CountingBubblewrapRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=_available_capabilities,
+    )
     code = "import os; print(os.environ.get('LINUXAGENT_BWRAP_SINGLE_PROBE', 'missing'))"
 
     result = await runner.run(
@@ -410,8 +473,12 @@ def test_profile_mapping_can_record_explicit_none_default() -> None:
 
 
 class _CountingBubblewrapRunner(BubblewrapSandboxRunner):
-    def __init__(self, *, enabled: bool, executable: Path) -> None:
-        super().__init__(enabled=enabled, executable=executable)
+    def __init__(self, *, enabled: bool, executable: Path, capability_probe) -> None:
+        super().__init__(
+            enabled=enabled,
+            executable=executable,
+            capability_probe=capability_probe,
+        )
         self.probe_count = 0
 
     def _probe(self) -> Path | None:
@@ -441,6 +508,10 @@ def _request(
         resource_limits=limits or {},
         allowed_roots=roots,
     )
+
+
+def _available_capabilities(_path: Path) -> SandboxCapabilities:
+    return SandboxCapabilities(seccomp_supported=True, cgroup_v2_writable=True)
 
 
 async def _sleep(seconds: float) -> None:

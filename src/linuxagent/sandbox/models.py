@@ -65,6 +65,21 @@ class SandboxRequest:
 
 
 @dataclass(frozen=True)
+class SandboxCapabilities:
+    seccomp_supported: bool
+    cgroup_v2_writable: bool
+
+    @property
+    def missing(self) -> tuple[str, ...]:
+        missing: list[str] = []
+        if not self.seccomp_supported:
+            missing.append("seccomp")
+        if not self.cgroup_v2_writable:
+            missing.append("cgroup")
+        return tuple(missing)
+
+
+@dataclass(frozen=True)
 class SandboxResult:
     requested_profile: SandboxProfile
     runner: SandboxRunnerKind

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from .local import LocalProcessSandboxRunner, validate_cwd_allowed
 from .models import (
+    SandboxCapabilities,
     SandboxNetworkPolicy,
     SandboxOutputCallback,
     SandboxProfile,
@@ -22,9 +26,16 @@ from .models import (
 class BubblewrapSandboxRunner:
     """Use ``bwrap`` when available; fail closed for unenforceable profiles."""
 
-    def __init__(self, *, enabled: bool = False, executable: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        enabled: bool = False,
+        executable: Path | None = None,
+        capability_probe: Callable[[Path], SandboxCapabilities] | None = None,
+    ) -> None:
         self._enabled = enabled
         self._executable = executable
+        self._capability_probe = capability_probe or probe_bubblewrap_capabilities
         self._compat_local = LocalProcessSandboxRunner(enabled=False)
         self._controlled_local = LocalProcessSandboxRunner(enabled=True)
 
@@ -42,6 +53,9 @@ class BubblewrapSandboxRunner:
             raise SandboxUnavailableError("bubblewrap executable not found")
         self._validate_network(request)
         validate_cwd_allowed(request.cwd, request.allowed_roots)
+        capabilities = self._capability_probe(executable)
+        if capabilities.missing:
+            return self._capability_fallback_result(request, capabilities.missing)
         return self._enforced_result(request)
 
     async def run(
@@ -77,6 +91,9 @@ class BubblewrapSandboxRunner:
             raise SandboxUnavailableError("bubblewrap executable not found")
         self._validate_network(request)
         validate_cwd_allowed(request.cwd, request.allowed_roots)
+        capabilities = self._capability_probe(executable)
+        if capabilities.missing:
+            return self._capability_fallback_result(request, capabilities.missing), executable
         return self._enforced_result(request), executable
 
     async def _run_local(
@@ -131,6 +148,21 @@ class BubblewrapSandboxRunner:
             resource_limits=request.resource_limits,
             fallback_reason=reason,
             runtime_label=SandboxRuntimeLabel.PRIVILEGED_PASSTHROUGH,
+        )
+
+    def _capability_fallback_result(
+        self, request: SandboxRequest, missing: tuple[str, ...]
+    ) -> SandboxResult:
+        return SandboxResult(
+            requested_profile=request.profile,
+            runner=self.name,
+            enabled=True,
+            enforced=False,
+            root=str(request.cwd),
+            network=request.network,
+            resource_limits=request.resource_limits,
+            fallback_reason=f"sandbox capability unavailable: {', '.join(missing)}",
+            runtime_label=SandboxRuntimeLabel.NO_ISOLATION,
         )
 
     def _enforced_result(self, request: SandboxRequest) -> SandboxResult:
@@ -204,3 +236,33 @@ def _cwd_bind_args(request: SandboxRequest) -> tuple[str, ...]:
     option = "--bind" if request.profile is SandboxProfile.WORKSPACE_WRITE else "--ro-bind"
     cwd = str(request.cwd)
     return (option, cwd, cwd)
+
+
+def probe_bubblewrap_capabilities(executable: Path) -> SandboxCapabilities:
+    return SandboxCapabilities(
+        seccomp_supported=_bwrap_supports_seccomp(executable),
+        cgroup_v2_writable=_cgroup_v2_writable(),
+    )
+
+
+def _bwrap_supports_seccomp(executable: Path) -> bool:
+    try:
+        # Controlled local probe for the configured bubblewrap binary.
+        completed = subprocess.run(  # noqa: S603
+            [str(executable), "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+    except (OSError, subprocess.SubprocessError, TimeoutError):
+        return False
+    return "--seccomp" in f"{completed.stdout}\n{completed.stderr}"
+
+
+def _cgroup_v2_writable() -> bool:
+    root = Path("/sys/fs/cgroup")
+    if not (root / "cgroup.controllers").is_file():
+        return False
+    candidates = (root / "cgroup.subtree_control", root)
+    return any(os.access(candidate, os.W_OK) for candidate in candidates)
