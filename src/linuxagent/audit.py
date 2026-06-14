@@ -193,6 +193,11 @@ class AuditLog:
                 handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
                 handle.flush()
                 os.fsync(handle.fileno())
+                # Persist the chain tip to a sidecar so verify can detect tail
+                # truncation or whole-file deletion (an intact prefix/empty file
+                # would otherwise still hash-verify as valid). Written under the
+                # same flock as the record it anchors.
+                _write_anchor_tip(self.path, str(payload["hash"]))
         if send_to_sink:
             self._send_to_sink(payload)
 
@@ -225,10 +230,16 @@ class AuditVerificationResult:
 
 
 def verify_audit_log(path: Path) -> AuditVerificationResult:
+    anchor_tip = _read_anchor_tip(path)
     if not path.exists():
+        if anchor_tip is not None:
+            return AuditVerificationResult(
+                False, 0, None, "audit log is missing but an integrity anchor exists (deleted)"
+            )
         return AuditVerificationResult(valid=True, checked_records=0)
     previous = GENESIS_HASH
     checked = 0
+    hashes: set[str] = set()
     for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
             continue
@@ -244,8 +255,43 @@ def verify_audit_log(path: Path) -> AuditVerificationResult:
         if record.get("hash") != expected:
             return AuditVerificationResult(False, checked, line_no, "hash mismatch")
         previous = str(record["hash"])
+        hashes.add(previous)
         checked += 1
+    if anchor_tip is not None and anchor_tip not in hashes:
+        # The chain is internally consistent but does not contain the anchored
+        # tip: records were truncated from the tail or the file was rewritten.
+        return AuditVerificationResult(
+            False, checked, None, "integrity anchor not in chain (truncated or rewritten)"
+        )
     return AuditVerificationResult(valid=True, checked_records=checked)
+
+
+def _anchor_path(path: Path) -> Path:
+    return path.with_name(path.name + ".anchor")
+
+
+def _read_anchor_tip(path: Path) -> str | None:
+    try:
+        raw = json.loads(_anchor_path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if isinstance(raw, dict):
+        tip = raw.get("tip_hash")
+        if isinstance(tip, str) and tip:
+            return tip
+    return None
+
+
+def _write_anchor_tip(path: Path, tip_hash: str) -> None:
+    anchor = _anchor_path(path)
+    tmp = anchor.with_name(anchor.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, json.dumps({"tip_hash": tip_hash}).encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp, anchor)
 
 
 def _last_hash(path: Path) -> str:

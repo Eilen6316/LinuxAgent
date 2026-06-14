@@ -166,7 +166,7 @@ boundaries, read [Operator Safety](docs/en/operator-safety.md),
 | Direct `!` command mode | Runs operator-authored commands without an AI-generated reply |
 | SSH cluster guard | Batch confirmation, remote shell metacharacter blocking, and remote profile audit |
 | Output protection | Command results are redacted and bounded before model-facing analysis |
-| Hash-chained audit | `linuxagent audit verify` detects local audit-log tampering |
+| Hash-chained audit | `linuxagent audit verify` detects in-place edits, tail truncation, and deletion of the local audit log (via a tip-hash anchor sidecar) |
 | Local advisory memory | Optional local memory can guide planning but never changes policy or HITL |
 | Read-only MCP prototype | `linuxagent mcp` exposes policy classify and audit verify tools only |
 

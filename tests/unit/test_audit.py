@@ -344,6 +344,52 @@ def test_verify_audit_log_reports_non_object_json_record(tmp_path) -> None:
     assert result.reason == "record is not an object"
 
 
+def test_verify_detects_tail_truncation(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+    audit.append({"event": "one"})
+    audit.append({"event": "two"})
+    audit.append({"event": "three"})
+    lines = path.read_text(encoding="utf-8").splitlines()
+    # Drop the last record: the surviving prefix still hash-verifies on its own.
+    path.write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+
+    result = verify_audit_log(path)
+
+    assert result.valid is False
+    assert "anchor" in (result.reason or "")
+
+
+def test_verify_detects_whole_file_deletion(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+    audit.append({"event": "one"})
+    path.unlink()  # the .anchor sidecar still records a committed tip
+
+    result = verify_audit_log(path)
+
+    assert result.valid is False
+    assert "deleted" in (result.reason or "")
+
+
+def test_verify_tolerates_anchor_lagging_one_record(tmp_path) -> None:
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+    audit.append({"event": "one"})
+    first = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    audit.append({"event": "two"})
+    # Simulate a crash between the record write and the anchor update: the anchor
+    # still points at the previous record. An extra valid record is not tampering.
+    (tmp_path / "audit.log.anchor").write_text(
+        json.dumps({"tip_hash": first["hash"]}), encoding="utf-8"
+    )
+
+    result = verify_audit_log(path)
+
+    assert result.valid is True
+    assert result.checked_records == 2
+
+
 def test_network_decision_audit_record_excludes_headers(tmp_path) -> None:
     path = tmp_path / "audit.log"
     audit = AuditLog(path)

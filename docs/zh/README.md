@@ -247,7 +247,8 @@ LinuxAgent 会按同一 thread 重新打开未完成的审批。
 ## 审计日志
 
 HITL 决策、执行、拒绝和相关元数据会以 hash-chained JSONL 追加到
-`~/.linuxagent/audit.log`，权限为 `0o600`。
+`~/.linuxagent/audit.log`，权限为 `0o600`。`linuxagent audit verify` 借助 tip-hash
+锚点 sidecar 检测就地篡改、尾部截断和整文件删除。
 
 常用只读命令：
 
