@@ -13,6 +13,7 @@ from .errors import (
     ProviderError,
     ProviderRateLimitError,
     ProviderTimeoutError,
+    ProviderUnsupportedError,
 )
 
 _OPENAI_ERROR_MAP: dict[str, type[ProviderError]] = {
@@ -32,6 +33,26 @@ def _api_key(config: APIConfig) -> SecretStr:
 
 
 def _build_chat_model(config: APIConfig) -> ChatOpenAI:
+    try:
+        return _construct_chat_model(config)
+    except ImportError as exc:
+        if not _is_socks_proxy_dependency_error(exc):
+            raise
+        # A SOCKS proxy is configured in the environment but ``httpx[socks]`` is
+        # missing, so the client cannot honor it. Fail loudly with guidance
+        # rather than silently bypassing the proxy the operator asked for.
+        raise ProviderUnsupportedError(
+            "A SOCKS proxy is configured (e.g. ALL_PROXY/HTTPS_PROXY) but the "
+            "optional 'httpx[socks]' dependency is not installed. Install it with "
+            "`pip install 'httpx[socks]'`, or unset the proxy environment variables."
+        ) from exc
+
+
+def _is_socks_proxy_dependency_error(exc: ImportError) -> bool:
+    return "socks" in str(exc).lower()
+
+
+def _construct_chat_model(config: APIConfig) -> ChatOpenAI:
     # ``max_retries=0`` hands retry control to BaseLLMProvider.
     disabled_params = None if config.prompt_cache else {"prompt_cache_key": None}
     if config.token_parameter == LEGACY_LIMIT_PARAMETER:

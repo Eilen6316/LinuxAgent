@@ -237,3 +237,27 @@ def test_local_openai_provider_uses_placeholder_key(monkeypatch: pytest.MonkeyPa
     api_key = captured["api_key"]
     assert isinstance(api_key, SecretStr)
     assert api_key.get_secret_value() == "local-not-required"
+
+
+def test_openai_provider_raises_clear_error_when_socks_dependency_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_socks(_config: APIConfig) -> object:
+        raise ImportError("Using SOCKS proxy, but the 'socksio' package is not installed.")
+
+    monkeypatch.setattr(openai_module, "_construct_chat_model", _raise_socks)
+
+    with pytest.raises(ProviderUnsupportedError, match=r"httpx\[socks\]"):
+        OpenAIProvider(_cfg(LLMProviderName.OPENAI))
+
+
+def test_openai_provider_propagates_unrelated_import_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_other(_config: APIConfig) -> object:
+        raise ImportError("totally unrelated module is missing")
+
+    monkeypatch.setattr(openai_module, "_construct_chat_model", _raise_other)
+
+    with pytest.raises(ImportError, match="unrelated"):
+        OpenAIProvider(_cfg(LLMProviderName.OPENAI))
