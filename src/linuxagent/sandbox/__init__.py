@@ -5,6 +5,7 @@ from __future__ import annotations
 from .bubblewrap import BubblewrapSandboxRunner
 from .local import LocalProcessSandboxRunner
 from .models import (
+    SandboxActualIsolation,
     SandboxCapabilities,
     SandboxNetworkPolicy,
     SandboxOutputCallback,
@@ -24,6 +25,7 @@ __all__ = [
     "BubblewrapSandboxRunner",
     "LocalProcessSandboxRunner",
     "NoopSandboxRunner",
+    "SandboxActualIsolation",
     "SandboxCapabilities",
     "SandboxNetworkPolicy",
     "SandboxOutputCallback",

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .local import LocalProcessSandboxRunner, validate_cwd_allowed
 from .models import (
+    SandboxActualIsolation,
     SandboxCapabilities,
     SandboxNetworkPolicy,
     SandboxOutputCallback,
@@ -140,6 +141,7 @@ class BubblewrapSandboxRunner:
             resource_limits=request.resource_limits,
             fallback_reason="sandbox disabled",
             runtime_label=SandboxRuntimeLabel.NO_ISOLATION,
+            actual=SandboxActualIsolation(network=_network_actual(request.network)),
         )
 
     def _passthrough_result(self, request: SandboxRequest, reason: str) -> SandboxResult:
@@ -153,6 +155,7 @@ class BubblewrapSandboxRunner:
             resource_limits=request.resource_limits,
             fallback_reason=reason,
             runtime_label=SandboxRuntimeLabel.PRIVILEGED_PASSTHROUGH,
+            actual=SandboxActualIsolation(network=_network_actual(request.network)),
         )
 
     def _capability_fallback_result(
@@ -168,6 +171,7 @@ class BubblewrapSandboxRunner:
             resource_limits=request.resource_limits,
             fallback_reason=f"sandbox capability unavailable: {', '.join(missing)}",
             runtime_label=SandboxRuntimeLabel.NO_ISOLATION,
+            actual=SandboxActualIsolation(network=_network_actual(request.network)),
         )
 
     def _enforced_result(self, request: SandboxRequest) -> SandboxResult:
@@ -180,6 +184,12 @@ class BubblewrapSandboxRunner:
             network=request.network,
             resource_limits=request.resource_limits,
             runtime_label=SandboxRuntimeLabel.FILESYSTEM_ISOLATION,
+            actual=SandboxActualIsolation(
+                filesystem=True,
+                seccomp=True,
+                cgroup=True,
+                network=_network_actual(request.network),
+            ),
         )
 
 
@@ -259,6 +269,10 @@ def _network_args(policy: SandboxNetworkPolicy) -> tuple[str, ...]:
     if policy is SandboxNetworkPolicy.DISABLED:
         return ("--unshare-net",)
     return ()
+
+
+def _network_actual(policy: SandboxNetworkPolicy) -> bool:
+    return policy is SandboxNetworkPolicy.DISABLED
 
 
 def _cwd_bind_args(request: SandboxRequest) -> tuple[str, ...]:

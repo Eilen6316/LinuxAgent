@@ -52,6 +52,12 @@ def test_noop_runner_records_metadata_without_enforcement() -> None:
     assert result.fallback_reason == "sandbox disabled"
     assert result.to_record()["requested_profile"] == "system_inspect"
     assert result.to_record()["runtime_label"] == "no_isolation"
+    assert result.to_record()["actual"] == {
+        "filesystem": False,
+        "seccomp": False,
+        "cgroup": False,
+        "network": False,
+    }
 
 
 async def test_noop_runner_executes_without_claiming_enforcement() -> None:
@@ -357,6 +363,12 @@ def test_bubblewrap_marks_missing_capabilities_as_unenforced(tmp_path: Path) -> 
     assert result.fallback_reason is not None
     assert "seccomp" in result.fallback_reason
     assert "cgroup" in result.fallback_reason
+    assert result.to_record()["actual"] == {
+        "filesystem": False,
+        "seccomp": False,
+        "cgroup": False,
+        "network": False,
+    }
 
 
 def test_bubblewrap_enforces_when_required_capabilities_are_available(tmp_path: Path) -> None:
@@ -383,6 +395,12 @@ def test_bubblewrap_enforces_when_required_capabilities_are_available(tmp_path: 
     assert result.enforced is True
     assert result.fallback_reason is None
     assert result.runtime_label is SandboxRuntimeLabel.FILESYSTEM_ISOLATION
+    assert result.to_record()["actual"] == {
+        "filesystem": True,
+        "seccomp": True,
+        "cgroup": True,
+        "network": False,
+    }
 
 
 def test_default_seccomp_denylist_covers_dangerous_syscalls() -> None:

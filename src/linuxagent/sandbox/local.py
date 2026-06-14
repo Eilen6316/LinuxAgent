@@ -14,6 +14,7 @@ from typing import Any
 
 from .cgroup import CgroupUnavailableError, CgroupV2Manager, CgroupV2Scope
 from .models import (
+    SandboxActualIsolation,
     SandboxNetworkPolicy,
     SandboxOutputCallback,
     SandboxProfile,
@@ -137,6 +138,7 @@ class LocalProcessSandboxRunner:
             resource_limits=request.resource_limits,
             fallback_reason=_fallback_reason(self._enabled, request, cgroup_enforced),
             runtime_label=_runtime_label(self._enabled, request, cgroup_enforced),
+            actual=SandboxActualIsolation(cgroup=cgroup_enforced),
         )
 
 

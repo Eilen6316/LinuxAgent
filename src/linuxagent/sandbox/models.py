@@ -83,6 +83,22 @@ class SandboxCapabilities:
 
 
 @dataclass(frozen=True)
+class SandboxActualIsolation:
+    filesystem: bool = False
+    seccomp: bool = False
+    cgroup: bool = False
+    network: bool = False
+
+    def to_record(self) -> dict[str, bool]:
+        return {
+            "filesystem": self.filesystem,
+            "seccomp": self.seccomp,
+            "cgroup": self.cgroup,
+            "network": self.network,
+        }
+
+
+@dataclass(frozen=True)
 class SandboxResult:
     requested_profile: SandboxProfile
     runner: SandboxRunnerKind
@@ -93,6 +109,7 @@ class SandboxResult:
     resource_limits: ResourceLimits
     fallback_reason: str | None = None
     runtime_label: SandboxRuntimeLabel = SandboxRuntimeLabel.NO_ISOLATION
+    actual: SandboxActualIsolation = SandboxActualIsolation()
 
     def to_record(self) -> dict[str, object]:
         return {
@@ -105,6 +122,7 @@ class SandboxResult:
             "resource_limits": self.resource_limits,
             "fallback_reason": self.fallback_reason,
             "runtime_label": self.runtime_label.value,
+            "actual": self.actual.to_record(),
         }
 
 
