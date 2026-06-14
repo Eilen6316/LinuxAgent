@@ -9,6 +9,12 @@ _CONTROL_OPERATORS: frozenset[str] = frozenset({"|", "||", "&", "&&", ";"})
 _WRITE_REDIRECT_OPERATORS: frozenset[str] = frozenset({">", ">>", ">|", "<>", "&>", "&>>"})
 _READ_REDIRECT_OPERATORS: frozenset[str] = frozenset({"<", "<<", "<<<"})
 _SHELL_INTERPRETERS: frozenset[str] = frozenset({"sh", "bash", "zsh"})
+# Command runners that execute an arbitrary inner command supplied as a ``-c``
+# string (``su``/``runuser``/``flock``) or as the trailing operand (``watch``).
+# Their inner command must be re-evaluated at its true severity rather than
+# treated as inert wrapper arguments.
+_COMMAND_STRING_RUNNERS: frozenset[str] = frozenset({"su", "runuser", "flock"})
+_WATCH_VALUE_FLAGS: frozenset[str] = frozenset({"-n", "--interval"})
 
 
 @dataclass(frozen=True)
@@ -66,7 +72,10 @@ def analyze_shell_structure(command: str) -> ShellStructure:
         redirects=_redirects(tokens),
         command_substitutions=scan.command_substitutions,
         subshells=scan.subshells,
-        nested_commands=_interpreter_command_strings(tokens),
+        nested_commands=(
+            *_interpreter_command_strings(tokens),
+            *_runner_command_strings(tokens),
+        ),
         parse_error=parse_error,
     )
 
@@ -266,3 +275,53 @@ def _interpreter_command_strings(tokens: tuple[str, ...]) -> tuple[str, ...]:
         if index + 1 < len(tokens) and (arg == "-c" or (arg.startswith("-") and "c" in arg[1:])):
             commands.append(tokens[index + 1])
     return tuple(command for command in commands if command)
+
+
+def _runner_command_strings(tokens: tuple[str, ...]) -> tuple[str, ...]:
+    """Extract the inner shell command from command-runner wrappers.
+
+    ``su``/``runuser``/``flock`` run a command supplied via ``-c``/``--command``;
+    ``watch`` runs its trailing operand through a shell. Surfacing that payload as
+    a child command lets the engine re-evaluate it at its real severity (e.g.
+    ``watch 'rm -rf /etc'`` is judged as ``rm -rf /etc``) instead of treating the
+    destructive command as inert wrapper arguments.
+    """
+    if not tokens:
+        return ()
+    if tokens[0] == "watch":
+        command = _watch_inner_command(tokens)
+        return (command,) if command else ()
+    if tokens[0] in _COMMAND_STRING_RUNNERS:
+        return _dash_c_command_strings(tokens)
+    return ()
+
+
+def _dash_c_command_strings(tokens: tuple[str, ...]) -> tuple[str, ...]:
+    commands: list[str] = []
+    for index, arg in enumerate(tokens[1:], start=1):
+        if arg in {"-c", "--command"} and index + 1 < len(tokens):
+            commands.append(tokens[index + 1])
+        elif arg.startswith("--command="):
+            commands.append(arg[len("--command=") :])
+    return tuple(command for command in commands if command.strip())
+
+
+def _watch_inner_command(tokens: tuple[str, ...]) -> str | None:
+    index = 1
+    while index < len(tokens):
+        arg = tokens[index]
+        if arg == "--":
+            index += 1
+            break
+        if arg in _WATCH_VALUE_FLAGS and index + 1 < len(tokens):
+            index += 2
+            continue
+        if arg.startswith("--interval=") or (arg.startswith("-n") and len(arg) > 2):
+            index += 1
+            continue
+        if arg.startswith("-"):
+            index += 1
+            continue
+        break
+    operand = tokens[index:]
+    return " ".join(operand) if operand else None

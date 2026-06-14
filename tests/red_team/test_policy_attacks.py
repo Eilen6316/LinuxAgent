@@ -286,6 +286,19 @@ DESTRUCTIVE_EQUIVALENCE_CASES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "/usr/bin/systemctl stop nginx",
             "/bin/systemctl stop nginx",
             "systemctl --no-block stop nginx",
+            "watch 'systemctl stop nginx'",
+            "su -c 'systemctl stop nginx'",
+        ),
+    ),
+    (
+        "rm -rf /etc",
+        (
+            "watch 'rm -rf /etc'",
+            "watch rm -rf /etc",
+            "su -c 'rm -rf /etc'",
+            "su root -c 'rm -rf /etc'",
+            "runuser -u root -c 'rm -rf /etc'",
+            "flock /tmp/lock -c 'rm -rf /etc'",
         ),
     ),
     (

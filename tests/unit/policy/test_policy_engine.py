@@ -615,6 +615,43 @@ def test_wrapper_self_risk_is_merged_with_effective_command_risk() -> None:
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        "watch 'rm -rf /etc'",
+        "watch rm -rf /etc",
+        "su -c 'rm -rf /etc'",
+        "su root -c 'rm -rf /etc'",
+        "runuser -u root -c 'rm -rf /etc'",
+        "flock /tmp/lock -c 'rm -rf /etc'",
+    ],
+)
+def test_command_runner_inner_command_is_evaluated_as_block(command: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert decision.level is SafetyLevel.BLOCK
+    assert "PROTECTED_TREE_DELETE" in decision.matched_rules
+    assert decision.can_whitelist is False
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "watch df -h",
+        "su -c 'ls -la'",
+        "chroot /jail ls",
+        "unshare --net id",
+        "flock /tmp/lock true",
+    ],
+)
+def test_privileged_runner_is_confirm_and_never_whitelistable(command: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert decision.level is SafetyLevel.CONFIRM
+    assert "PRIVILEGED_RUNNER" in decision.matched_rules
+    assert decision.can_whitelist is False
+
+
+@pytest.mark.parametrize(
     ("command", "capability"),
     [
         ("sudo systemctl stop nginx", "service.mutate"),

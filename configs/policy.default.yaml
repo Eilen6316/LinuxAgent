@@ -427,6 +427,16 @@ rules:
     match:
       command: [sudo]
 
+  - id: process.privileged_runner
+    legacy_rule: PRIVILEGED_RUNNER
+    level: CONFIRM
+    risk_score: 70
+    capabilities: [process.privileged_runner]
+    reason: command runner can execute an arbitrary inner command
+    never_whitelist: true
+    match:
+      command: [watch, su, runuser, flock, chroot, unshare, setpriv, nsenter]
+
   - id: interactive.command
     legacy_rule: INTERACTIVE
     level: CONFIRM
