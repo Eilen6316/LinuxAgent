@@ -648,6 +648,16 @@ def test_loader_reports_yaml_line_for_invalid_schema(tmp_path: Path) -> None:
         load_config(cli_path=path, env={})
 
 
+def test_loader_redacts_secret_in_validation_error(tmp_path: Path) -> None:
+    path = _write_secure(tmp_path, "api:\n  api_key:\n    - sk-REAL-SECRET-VALUE\n")
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(cli_path=path, env={})
+
+    message = str(excinfo.value)
+    assert "sk-REAL-SECRET-VALUE" not in message
+    assert "***redacted***" in message
+
+
 def test_loader_rejects_bad_yaml(tmp_path: Path) -> None:
     path = _write_secure(tmp_path, "api: [::broken")
     with pytest.raises(ConfigError, match="invalid YAML"):

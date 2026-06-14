@@ -187,13 +187,26 @@ def _deep_merge(base: dict[str, Any], overlay: Mapping[str, Any]) -> None:
             base[key] = value
 
 
+# Config locations whose rejected value is a secret. When a SecretStr field is
+# given the wrong YAML type, Pydantic never constructs the SecretStr (so masking
+# never engages) and the raw value rides along in ``err["input"]``; redact it so
+# it cannot reach stderr/logs (R-SEC-04).
+_SECRET_CONFIG_KEYS = frozenset({"api_key", "sink_header_value"})
+
+
 def _format_validation_error(exc: ValidationError, line_map: Mapping[PathKey, int]) -> str:
     lines = ["config validation failed:"]
     for err in exc.errors():
         loc = ".".join(str(part) for part in err["loc"])
         line_suffix = _line_suffix(err["loc"], line_map)
-        lines.append(f"  - {loc}: {err['msg']}{line_suffix} (input={err.get('input')!r})")
+        lines.append(f"  - {loc}: {err['msg']}{line_suffix} (input={_render_error_input(err)})")
     return "\n".join(lines)
+
+
+def _render_error_input(err: Mapping[str, Any]) -> str:
+    if any(str(part) in _SECRET_CONFIG_KEYS for part in err["loc"]):
+        return "'***redacted***'"
+    return repr(err.get("input"))
 
 
 def _extract_line_map(text: str) -> dict[PathKey, int]:
