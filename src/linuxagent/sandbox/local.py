@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .cgroup import CgroupUnavailableError, CgroupV2Manager, CgroupV2Scope
 from .models import (
     SandboxNetworkPolicy,
     SandboxOutputCallback,
@@ -37,9 +38,20 @@ OUTPUT_LIMIT_MESSAGE = "\n[truncated: sandbox output limit exceeded]\n"
 class LocalProcessSandboxRunner:
     """Run argv directly while enforcing process lifecycle boundaries."""
 
-    def __init__(self, *, enabled: bool = False, compatibility_mode: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        enabled: bool = False,
+        compatibility_mode: bool = False,
+        cgroup_root: Path | None = None,
+        cgroup_name_factory: Callable[[], str] | None = None,
+    ) -> None:
         self._enabled = enabled
         self._compatibility_mode = compatibility_mode
+        self._cgroup = CgroupV2Manager(
+            root=cgroup_root or Path("/sys/fs/cgroup"),
+            name_factory=cgroup_name_factory,
+        )
 
     @property
     def name(self) -> SandboxRunnerKind:
@@ -51,17 +63,7 @@ class LocalProcessSandboxRunner:
 
     def describe(self, request: SandboxRequest) -> SandboxResult:
         self._validate_request(request)
-        return SandboxResult(
-            requested_profile=request.profile,
-            runner=self.name,
-            enabled=self._enabled,
-            enforced=False,
-            root=str(request.cwd),
-            network=request.network,
-            resource_limits=request.resource_limits,
-            fallback_reason=_fallback_reason(self._enabled, request),
-            runtime_label=_runtime_label(self._enabled, request),
-        )
+        return self._result(request, cgroup_enforced=False)
 
     async def run(
         self,
@@ -71,27 +73,35 @@ class LocalProcessSandboxRunner:
         on_stderr: SandboxOutputCallback | None = None,
         interactive: bool = False,
     ) -> SandboxRunResult:
-        sandbox = self.describe(request)
-        process = await _spawn_process(
-            request,
-            interactive=interactive,
-            compatibility_mode=self.compatibility_mode,
-        )
-        if interactive:
-            exit_code = await _wait_interactive(
-                process,
-                request.timeout,
+        self._validate_request(request)
+        cgroup_scope = self._create_cgroup_scope(request)
+        sandbox = self._result(request, cgroup_enforced=cgroup_scope is not None)
+        try:
+            process = await _spawn_process(
+                request,
+                interactive=interactive,
                 compatibility_mode=self.compatibility_mode,
             )
-            return SandboxRunResult(exit_code, "", "", sandbox)
-        stdout, stderr, exit_code = await _collect_output(
-            process,
-            request,
-            compatibility_mode=self.compatibility_mode,
-            on_stdout=on_stdout,
-            on_stderr=on_stderr,
-        )
-        return SandboxRunResult(exit_code, stdout, stderr, sandbox)
+            if cgroup_scope is not None:
+                cgroup_scope.add_process(process.pid)
+            if interactive:
+                exit_code = await _wait_interactive(
+                    process,
+                    request.timeout,
+                    compatibility_mode=self.compatibility_mode,
+                )
+                return SandboxRunResult(exit_code, "", "", sandbox)
+            stdout, stderr, exit_code = await _collect_output(
+                process,
+                request,
+                compatibility_mode=self.compatibility_mode,
+                on_stdout=on_stdout,
+                on_stderr=on_stderr,
+            )
+            return SandboxRunResult(exit_code, stdout, stderr, sandbox)
+        finally:
+            if cgroup_scope is not None:
+                cgroup_scope.close()
 
     def _validate_request(self, request: SandboxRequest) -> None:
         if not self._enabled:
@@ -108,6 +118,27 @@ class LocalProcessSandboxRunner:
             )
         validate_cwd_allowed(request.cwd, request.allowed_roots)
 
+    def _create_cgroup_scope(self, request: SandboxRequest) -> CgroupV2Scope | None:
+        if self.compatibility_mode:
+            return None
+        try:
+            return self._cgroup.create(request.resource_limits)
+        except CgroupUnavailableError:
+            return None
+
+    def _result(self, request: SandboxRequest, *, cgroup_enforced: bool) -> SandboxResult:
+        return SandboxResult(
+            requested_profile=request.profile,
+            runner=self.name,
+            enabled=self._enabled,
+            enforced=cgroup_enforced,
+            root=str(request.cwd),
+            network=request.network,
+            resource_limits=request.resource_limits,
+            fallback_reason=_fallback_reason(self._enabled, request, cgroup_enforced),
+            runtime_label=_runtime_label(self._enabled, request, cgroup_enforced),
+        )
+
 
 _PASSTHROUGH_PROFILES = {
     SandboxProfile.NONE,
@@ -115,17 +146,23 @@ _PASSTHROUGH_PROFILES = {
 }
 
 
-def _fallback_reason(enabled: bool, request: SandboxRequest) -> str | None:
+def _fallback_reason(enabled: bool, request: SandboxRequest, cgroup_enforced: bool) -> str | None:
     if not enabled:
         return "sandbox disabled"
+    if cgroup_enforced:
+        return None
     if request.profile in _PASSTHROUGH_PROFILES:
-        return "local runner provides process limits only; no filesystem isolation"
+        return "cgroup unavailable; using rlimit process controls only"
     return None
 
 
-def _runtime_label(enabled: bool, request: SandboxRequest) -> SandboxRuntimeLabel:
+def _runtime_label(
+    enabled: bool, request: SandboxRequest, cgroup_enforced: bool
+) -> SandboxRuntimeLabel:
     if not enabled:
         return SandboxRuntimeLabel.NO_ISOLATION
+    if cgroup_enforced:
+        return SandboxRuntimeLabel.PROCESS_LIMITS_ONLY
     if request.profile is SandboxProfile.PRIVILEGED_PASSTHROUGH:
         return SandboxRuntimeLabel.PRIVILEGED_PASSTHROUGH
     return SandboxRuntimeLabel.PROCESS_LIMITS_ONLY

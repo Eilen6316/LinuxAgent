@@ -98,6 +98,42 @@ async def test_local_runner_allows_explicit_passthrough_profile(tmp_path: Path) 
     assert result.sandbox.enabled is True
     assert result.sandbox.enforced is False
     assert result.sandbox.runtime_label is SandboxRuntimeLabel.PRIVILEGED_PASSTHROUGH
+    assert result.sandbox.fallback_reason is not None
+    assert "cgroup" in result.sandbox.fallback_reason
+
+
+async def test_local_runner_applies_cgroup_limits_when_delegate_is_writable(
+    tmp_path: Path,
+) -> None:
+    cgroup_root = tmp_path / "cgroup"
+    cgroup_root.mkdir()
+    (cgroup_root / "cgroup.controllers").write_text("cpu memory pids\n", encoding="utf-8")
+    (cgroup_root / "cgroup.subtree_control").write_text("", encoding="utf-8")
+    (cgroup_root / "cgroup.procs").write_text("", encoding="utf-8")
+    runner = LocalProcessSandboxRunner(
+        enabled=True,
+        cgroup_root=cgroup_root,
+        cgroup_name_factory=lambda: "linuxagent-test",
+    )
+
+    result = await runner.run(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.PRIVILEGED_PASSTHROUGH,
+            limits={"memory_mb": 64, "process_count": 8, "cpu_seconds": 2},
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+        )
+    )
+
+    assert result.exit_code == 0
+    assert result.sandbox.enforced is True
+    assert result.sandbox.runtime_label is SandboxRuntimeLabel.PROCESS_LIMITS_ONLY
+    sandbox_root = cgroup_root / "linuxagent-test"
+    assert (sandbox_root / "memory.max").read_text(encoding="utf-8") == "67108864"
+    assert (sandbox_root / "pids.max").read_text(encoding="utf-8") == "8"
+    assert (sandbox_root / "cpu.max").read_text(encoding="utf-8") == "200000 100000"
+    assert (sandbox_root / "cgroup.procs").read_text(encoding="utf-8").strip()
 
 
 async def test_local_runner_rejects_unsupported_network_policy(tmp_path: Path) -> None:
