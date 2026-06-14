@@ -2,10 +2,26 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from ..interfaces import SafetyLevel
 from .shell_structure import ShellStructure, shell_tokens
+
+# ``awk`` invokes a command through the ``system()`` builtin. The builtin name
+# may be followed by optional whitespace before the opening parenthesis
+# (``system ("id")`` is valid awk), so a plain ``"system(" in arg`` substring
+# check is bypassable.
+_AWK_SYSTEM_RE = re.compile(r"system\s*\(")
+# ``sed`` executes shell commands either through the ``e`` modifier on a
+# substitution (``s/foo/bar/e``) or the standalone ``e`` command (optionally
+# addressed, e.g. ``1e cmd``). Detecting these structurally avoids the false
+# positives a blanket ``arg.endswith("e")`` produced on ordinary filenames such
+# as ``configure`` or ``file.exe``.
+_SED_EXEC_RE = re.compile(r"(?:^|[;{\n])\s*[0-9]*\s*e(?:\s|;|$)|s(.).*?\1.*?\1[a-zA-Z0-9]*e")
+# Redirection operators (optionally fd-prefixed, e.g. ``2>``) consumed by the
+# shell, not by ``xargs``. They must be skipped when locating the invoked head.
+_REDIRECT_OPERATOR_CHARS = frozenset("<>")
 
 _NETWORK_FETCHERS: frozenset[str] = frozenset({"curl", "wget"})
 _SHELL_INTERPRETERS: frozenset[str] = frozenset({"sh", "bash", "zsh"})
@@ -155,11 +171,33 @@ def _xargs_invoked_head(tokens: tuple[str, ...]) -> str | None:
         arg = tokens[index]
         if arg == "--":
             return tokens[index + 1] if index + 1 < len(tokens) else None
+        redirect_width = _redirect_width(arg, has_target=index + 1 < len(tokens))
+        if redirect_width is not None:
+            index += redirect_width
+            continue
         if arg.startswith("-"):
             index += _xargs_option_width(arg, tokens[index + 1 :])
             continue
         return arg
     return None
+
+
+def _redirect_width(arg: str, *, has_target: bool) -> int | None:
+    """Tokens a leading shell redirection consumes, or ``None`` if ``arg`` is not one.
+
+    ``shlex`` keeps redirection operators in the token stream, so a command
+    placed after a redirect (``xargs < input rm``) would otherwise make the
+    operator itself look like the invoked head and hide the real command.
+    """
+    body = arg.lstrip("0123456789")  # optional fd prefix, e.g. 2> or 1>>
+    if body.startswith("&>"):
+        body = body[1:]
+    if not body or body[0] not in _REDIRECT_OPERATOR_CHARS:
+        return None
+    glued_target = body.lstrip("<>")
+    if glued_target:
+        return 1  # operator and target are a single token, e.g. ">out"
+    return 2 if has_target else 1
 
 
 def _xargs_option_width(arg: str, remaining: tuple[str, ...]) -> int:
@@ -171,7 +209,7 @@ def _xargs_option_width(arg: str, remaining: tuple[str, ...]) -> int:
 def _text_processing_findings(tokens: tuple[str, ...]) -> tuple[LolbinFinding, ...]:
     if not tokens:
         return ()
-    if tokens[0] == "awk" and any("system(" in arg for arg in tokens[1:]):
+    if tokens[0] == "awk" and any(_AWK_SYSTEM_RE.search(arg) for arg in tokens[1:]):
         return (_text_finding("LOLBIN_AWK_SYSTEM", "awk system() can execute commands"),)
     if tokens[0] == "sed" and any(_sed_exec_arg(arg) for arg in tokens[1:]):
         return (_text_finding("LOLBIN_SED_EXEC", "sed e command can execute shell commands"),)
@@ -179,7 +217,7 @@ def _text_processing_findings(tokens: tuple[str, ...]) -> tuple[LolbinFinding, .
 
 
 def _sed_exec_arg(arg: str) -> bool:
-    return arg.endswith("e") or " e " in f" {arg} " or "\ne" in arg
+    return bool(_SED_EXEC_RE.search(arg))
 
 
 def _text_finding(matched_rule: str, reason: str) -> LolbinFinding:

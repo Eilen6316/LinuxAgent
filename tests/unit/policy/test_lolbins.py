@@ -40,8 +40,12 @@ from linuxagent.policy import DEFAULT_POLICY_ENGINE
         ("find /tmp -execdir rm -f {} \\;", SafetyLevel.CONFIRM, "LOLBIN_FIND_EXEC"),
         ("xargs rm < /tmp/files-to-delete", SafetyLevel.CONFIRM, "LOLBIN_XARGS_EXEC"),
         ("xargs -- bash < /tmp/scripts", SafetyLevel.CONFIRM, "LOLBIN_XARGS_EXEC"),
+        ("xargs < /tmp/scripts sh", SafetyLevel.CONFIRM, "LOLBIN_XARGS_EXEC"),
+        ("xargs 2>/tmp/err bash", SafetyLevel.CONFIRM, "LOLBIN_XARGS_EXEC"),
         ("awk 'BEGIN{system(\"id\")}'", SafetyLevel.CONFIRM, "LOLBIN_AWK_SYSTEM"),
+        ("awk 'BEGIN{system (\"id\")}'", SafetyLevel.CONFIRM, "LOLBIN_AWK_SYSTEM"),
         ("sed 's/a/b/e' file.txt", SafetyLevel.CONFIRM, "LOLBIN_SED_EXEC"),
+        ("sed '1e cat /etc/hosts' input", SafetyLevel.CONFIRM, "LOLBIN_SED_EXEC"),
         ("vim /etc/passwd", SafetyLevel.CONFIRM, "LOLBIN_INTERACTIVE_ESCAPE"),
         ("less /var/log/syslog", SafetyLevel.CONFIRM, "LOLBIN_INTERACTIVE_ESCAPE"),
         ("man bash", SafetyLevel.CONFIRM, "LOLBIN_INTERACTIVE_ESCAPE"),
@@ -57,6 +61,20 @@ def test_lolbin_cases_are_not_safe(
     assert _rank(decision.level) >= _rank(minimum_level)
     assert matched_rule in decision.matched_rules
     assert decision.can_whitelist is False
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "sed 's/old/new/' configure",
+        "sed -i 's/a/b/g' Makefile",
+        "sed -n '1,5p' /var/log/file.exe",
+    ],
+)
+def test_sed_without_exec_modifier_is_not_flagged(command: str) -> None:
+    decision = DEFAULT_POLICY_ENGINE.evaluate(command)
+
+    assert "LOLBIN_SED_EXEC" not in decision.matched_rules
 
 
 def test_lolbin_does_not_downgrade_existing_block() -> None:
