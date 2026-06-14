@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -21,6 +20,7 @@ from .models import (
     SandboxRuntimeLabel,
     SandboxUnavailableError,
 )
+from .profiles import DEFAULT_READ_HIDE_FILE_PATHS
 from .seccomp import SeccompProgram, build_default_seccomp_program, libseccomp_available
 
 
@@ -195,12 +195,47 @@ def _wrap_request(
     *,
     seccomp_program: SeccompProgram,
 ) -> SandboxRequest:
-    argv = (
+    return SandboxRequest(
+        command=request.command,
+        argv=_bubblewrap_argv(request, executable, seccomp_program),
+        cwd=Path("/"),
+        timeout=request.timeout,
+        profile=SandboxProfile.PRIVILEGED_PASSTHROUGH,
+        network=SandboxNetworkPolicy.INHERIT,
+        network_allowlist=request.network_allowlist,
+        resource_limits=request.resource_limits,
+        allowed_roots=(Path("/"),),
+        read_allow_paths=(),
+        read_hide_paths=(),
+        temp_dir=request.temp_dir,
+        pass_fds=(seccomp_program.fd,),
+    )
+
+
+def _bubblewrap_argv(
+    request: SandboxRequest,
+    executable: Path,
+    seccomp_program: SeccompProgram,
+) -> tuple[str, ...]:
+    return (
         str(executable),
         "--die-with-parent",
         "--new-session",
         "--seccomp",
         str(seccomp_program.fd),
+        *_base_bind_args(),
+        *_cwd_bind_args(request),
+        *_read_scope_args(request),
+        *_network_args(request.network),
+        "--chdir",
+        str(request.cwd),
+        "--",
+        *request.argv,
+    )
+
+
+def _base_bind_args() -> tuple[str, ...]:
+    return (
         "--ro-bind",
         "/usr",
         "/usr",
@@ -217,25 +252,6 @@ def _wrap_request(
         "/proc",
         "--dev",
         "/dev",
-        *_cwd_bind_args(request),
-        *_network_args(request.network),
-        "--chdir",
-        str(request.cwd),
-        "--",
-        *request.argv,
-    )
-    return SandboxRequest(
-        command=request.command,
-        argv=argv,
-        cwd=Path("/"),
-        timeout=request.timeout,
-        profile=SandboxProfile.PRIVILEGED_PASSTHROUGH,
-        network=SandboxNetworkPolicy.INHERIT,
-        network_allowlist=request.network_allowlist,
-        resource_limits=request.resource_limits,
-        allowed_roots=(Path("/"),),
-        temp_dir=request.temp_dir,
-        pass_fds=(seccomp_program.fd,),
     )
 
 
@@ -251,6 +267,27 @@ def _cwd_bind_args(request: SandboxRequest) -> tuple[str, ...]:
     return (option, cwd, cwd)
 
 
+def _read_scope_args(request: SandboxRequest) -> tuple[str, ...]:
+    if request.profile not in {SandboxProfile.READ_ONLY, SandboxProfile.SYSTEM_INSPECT}:
+        return ()
+    args: list[str] = []
+    for path in request.read_allow_paths:
+        expanded = str(path.expanduser())
+        args.extend(("--ro-bind", expanded, expanded))
+    for path in request.read_hide_paths:
+        expanded_path = path.expanduser()
+        expanded = str(expanded_path)
+        if _looks_like_file_path(expanded_path):
+            args.extend(("--ro-bind", "/dev/null", expanded))
+        else:
+            args.extend(("--tmpfs", expanded))
+    return tuple(args)
+
+
+def _looks_like_file_path(path: Path) -> bool:
+    return path in DEFAULT_READ_HIDE_FILE_PATHS or path.suffix != ""
+
+
 def probe_bubblewrap_capabilities(executable: Path) -> SandboxCapabilities:
     return SandboxCapabilities(
         seccomp_supported=_bwrap_supports_seccomp(executable) and libseccomp_available(),
@@ -260,17 +297,10 @@ def probe_bubblewrap_capabilities(executable: Path) -> SandboxCapabilities:
 
 def _bwrap_supports_seccomp(executable: Path) -> bool:
     try:
-        # Controlled local probe for the configured bubblewrap binary.
-        completed = subprocess.run(  # noqa: S603
-            [str(executable), "--help"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=2.0,
-        )
-    except (OSError, subprocess.SubprocessError, TimeoutError):
+        binary = executable.read_bytes()
+    except OSError:
         return False
-    return "--seccomp" in f"{completed.stdout}\n{completed.stderr}"
+    return b"--seccomp" in binary
 
 
 def _cgroup_v2_writable() -> bool:

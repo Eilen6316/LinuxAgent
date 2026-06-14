@@ -29,6 +29,7 @@ from ..mcp_tools import (
 )
 from ..network_policy import NetworkPolicyAction, normalize_domain_rule
 from ..sandbox.models import SandboxNetworkPolicy, SandboxProfile, SandboxRunnerKind
+from ..sandbox.profiles import DEFAULT_READ_ALLOW_PATHS, DEFAULT_READ_HIDE_PATHS
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 DEFAULT_OUTPUT_LIMIT_PARAMETER: Literal["max_completion_tokens"] = "max_completion_tokens"
@@ -303,6 +304,8 @@ class SandboxConfig(BaseModel):
         Path("."),
         Path("/tmp"),  # noqa: S108  # nosec B108
     )
+    read_allow_paths: UserPathTuple = DEFAULT_READ_ALLOW_PATHS
+    read_hide_paths: UserPathTuple = DEFAULT_READ_HIDE_PATHS
     temp_dir: UserPath = Path("/tmp/linuxagent-sandbox")  # noqa: S108  # nosec B108
     network: SandboxNetworkPolicy = SandboxNetworkPolicy.INHERIT
     network_allowlist: tuple[str, ...] = ()

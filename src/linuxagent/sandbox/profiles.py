@@ -2,10 +2,26 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Protocol
 
 from .models import SandboxProfile
 
+DEFAULT_READ_ALLOW_PATHS: tuple[Path, ...] = (Path("/var/log"),)
+DEFAULT_READ_HIDE_FILE_PATHS: frozenset[Path] = frozenset(
+    {
+        Path("/etc/shadow"),
+        Path("/etc/gshadow"),
+    }
+)
+DEFAULT_READ_HIDE_PATHS: tuple[Path, ...] = (
+    Path("/etc/shadow"),
+    Path("/etc/gshadow"),
+    Path("~/.ssh"),
+    Path("~/.aws"),
+    Path("~/.kube"),
+    Path("~/.config/gcloud"),
+)
 DEFAULT_SECCOMP_DENY_SYSCALLS: frozenset[str] = frozenset(
     {
         "ptrace",

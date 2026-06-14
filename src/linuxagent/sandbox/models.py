@@ -61,6 +61,8 @@ class SandboxRequest:
     resource_limits: ResourceLimits
     network_allowlist: tuple[str, ...] = ()
     allowed_roots: tuple[Path, ...] = ()
+    read_allow_paths: tuple[Path, ...] = ()
+    read_hide_paths: tuple[Path, ...] = ()
     temp_dir: Path | None = None
     pass_fds: tuple[int, ...] = ()
 

@@ -24,7 +24,11 @@ from linuxagent.sandbox import (
     SandboxUnavailableError,
     profile_for_safety,
 )
-from linuxagent.sandbox.profiles import DEFAULT_SECCOMP_DENY_SYSCALLS
+from linuxagent.sandbox.profiles import (
+    DEFAULT_READ_ALLOW_PATHS,
+    DEFAULT_READ_HIDE_PATHS,
+    DEFAULT_SECCOMP_DENY_SYSCALLS,
+)
 
 
 def test_noop_runner_records_metadata_without_enforcement() -> None:
@@ -400,6 +404,19 @@ def test_default_seccomp_denylist_covers_dangerous_syscalls() -> None:
     assert expected.issubset(DEFAULT_SECCOMP_DENY_SYSCALLS)
 
 
+def test_default_read_hide_paths_cover_sensitive_locations() -> None:
+    expected = {
+        "/etc/shadow",
+        "/etc/gshadow",
+        "~/.ssh",
+        "~/.aws",
+        "~/.kube",
+        "~/.config/gcloud",
+    }
+
+    assert expected.issubset({str(path) for path in DEFAULT_READ_HIDE_PATHS})
+
+
 async def test_bubblewrap_allows_explicit_passthrough_without_probe(tmp_path: Path) -> None:
     runner = BubblewrapSandboxRunner(enabled=True, executable=tmp_path / "missing-bwrap")
 
@@ -452,6 +469,46 @@ async def test_bubblewrap_run_passes_seccomp_fd_to_enforced_profile(tmp_path: Pa
     payload = json.loads(report.read_text(encoding="utf-8"))
     assert "--seccomp" in payload["argv"]
     assert payload["seccomp_fd_size"] > 0
+
+
+async def test_bubblewrap_read_only_hides_sensitive_paths_and_keeps_logs(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "bwrap-report.json"
+    executable = tmp_path / "bwrap"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "import os\n"
+        "import sys\n"
+        f"report = {str(report)!r}\n"
+        "separator = sys.argv.index('--')\n"
+        "open(report, 'w', encoding='utf-8').write(json.dumps({'argv': sys.argv[1:separator]}))\n"
+        "os.execvp(sys.argv[separator + 1], sys.argv[separator + 1:])\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=_available_capabilities,
+    )
+
+    result = await runner.run(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+        )
+    )
+
+    assert result.exit_code == 0
+    argv = json.loads(report.read_text(encoding="utf-8"))["argv"]
+    assert _contains_triple(argv, "--ro-bind", "/dev/null", "/etc/shadow")
+    assert _contains_triple(argv, "--ro-bind", "/dev/null", "/etc/gshadow")
+    assert _contains_pair(argv, "--tmpfs", str(Path.home() / ".ssh"))
+    assert _contains_pair(argv, "--ro-bind", "/var/log")
 
 
 async def test_bubblewrap_run_path_keeps_local_process_controls(
@@ -604,11 +661,26 @@ def _request(
         network=network,
         resource_limits=limits or {},
         allowed_roots=roots,
+        read_allow_paths=DEFAULT_READ_ALLOW_PATHS,
+        read_hide_paths=DEFAULT_READ_HIDE_PATHS,
     )
 
 
 def _available_capabilities(_path: Path) -> SandboxCapabilities:
     return SandboxCapabilities(seccomp_supported=True, cgroup_v2_writable=True)
+
+
+def _contains_pair(argv: list[str], option: str, value: str) -> bool:
+    return any(
+        left == option and right == value for left, right in zip(argv, argv[1:], strict=False)
+    )
+
+
+def _contains_triple(argv: list[str], first: str, second: str, third: str) -> bool:
+    return any(
+        left == first and middle == second and right == third
+        for left, middle, right in zip(argv, argv[1:], argv[2:], strict=False)
+    )
 
 
 async def _sleep(seconds: float) -> None:

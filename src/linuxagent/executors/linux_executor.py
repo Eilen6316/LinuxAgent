@@ -327,6 +327,8 @@ class LinuxCommandExecutor(CommandExecutor):
             network_allowlist=self._sandbox_config.network_allowlist,
             resource_limits=self._sandbox_config.limits.to_record(),
             allowed_roots=self._sandbox_config.allowed_roots,
+            read_allow_paths=self._sandbox_config.read_allow_paths,
+            read_hide_paths=self._sandbox_config.read_hide_paths,
             temp_dir=self._sandbox_config.temp_dir,
         )
 

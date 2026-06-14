@@ -52,6 +52,8 @@ CONFIG_REQUIRED_PATHS = (
     ("sandbox", "runner"),
     ("sandbox", "default_profile"),
     ("sandbox", "allowed_roots"),
+    ("sandbox", "read_allow_paths"),
+    ("sandbox", "read_hide_paths"),
     ("sandbox", "network"),
     ("sandbox", "limits", "output_bytes"),
     ("sandbox", "tools", "max_file_bytes"),

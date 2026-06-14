@@ -146,6 +146,17 @@ sandbox:
   allowed_roots:
     - .
     - /tmp
+  # Extra read-only paths exposed for system inspection profiles.
+  read_allow_paths:
+    - /var/log
+  # Sensitive paths hidden inside read-only/system-inspect bubblewrap profiles.
+  read_hide_paths:
+    - /etc/shadow
+    - /etc/gshadow
+    - ~/.ssh
+    - ~/.aws
+    - ~/.kube
+    - ~/.config/gcloud
   temp_dir: /tmp/linuxagent-sandbox
   network: inherit                # inherit | disabled | loopback_only | allowlist
   network_allowlist: []
