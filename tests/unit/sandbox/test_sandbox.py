@@ -623,6 +623,75 @@ async def test_bubblewrap_run_probes_only_once(
     assert result.stdout.strip() == "missing"
 
 
+async def test_bubblewrap_run_records_cgroup_gap_when_delegate_unwritable(
+    tmp_path: Path,
+) -> None:
+    executable = _exec_passthrough_bwrap(tmp_path)
+    cgroup_root = tmp_path / "cgroup-missing"
+    cgroup_root.mkdir()  # no cgroup.controllers -> delegate is not writable
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=_available_capabilities,
+        cgroup_root=cgroup_root,
+        cgroup_name_factory=lambda: "linuxagent-test",
+    )
+
+    result = await runner.run(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+            limits={"memory_mb": 64, "process_count": 8, "cpu_seconds": 2},
+        )
+    )
+
+    assert result.exit_code == 0
+    assert result.sandbox.enforced is True
+    record = result.sandbox.to_record()
+    assert record["actual"]["filesystem"] is True
+    assert record["actual"]["seccomp"] is True
+    assert record["actual"]["cgroup"] is False
+    assert record["actual_mismatch"] is True
+    assert result.sandbox.fallback_reason is not None
+    assert "cgroup" in result.sandbox.fallback_reason
+
+
+async def test_bubblewrap_run_records_cgroup_when_delegate_is_writable(
+    tmp_path: Path,
+) -> None:
+    executable = _exec_passthrough_bwrap(tmp_path)
+    cgroup_root = tmp_path / "cgroup"
+    cgroup_root.mkdir()
+    (cgroup_root / "cgroup.controllers").write_text("cpu memory pids\n", encoding="utf-8")
+    (cgroup_root / "cgroup.subtree_control").write_text("", encoding="utf-8")
+    (cgroup_root / "cgroup.procs").write_text("", encoding="utf-8")
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=_available_capabilities,
+        cgroup_root=cgroup_root,
+        cgroup_name_factory=lambda: "linuxagent-test",
+    )
+
+    result = await runner.run(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+            limits={"memory_mb": 64, "process_count": 8, "cpu_seconds": 2},
+        )
+    )
+
+    assert result.exit_code == 0
+    record = result.sandbox.to_record()
+    assert record["actual"]["cgroup"] is True
+    assert record["actual_mismatch"] is False
+    assert result.sandbox.fallback_reason is None
+
+
 def test_profile_mapping_prefers_destructive_capabilities() -> None:
     safety = SafetyResult(
         SafetyLevel.CONFIRM,
@@ -701,6 +770,20 @@ def _request(
 
 def _available_capabilities(_path: Path) -> SandboxCapabilities:
     return SandboxCapabilities(seccomp_supported=True, cgroup_v2_writable=True)
+
+
+def _exec_passthrough_bwrap(tmp_path: Path) -> Path:
+    executable = tmp_path / "bwrap"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "import sys\n"
+        "separator = sys.argv.index('--')\n"
+        "os.execvp(sys.argv[separator + 1], sys.argv[separator + 1:])\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    return executable
 
 
 def _contains_pair(argv: list[str], option: str, value: str) -> bool:

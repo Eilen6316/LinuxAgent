@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 from .local import LocalProcessSandboxRunner, validate_cwd_allowed
@@ -34,12 +35,18 @@ class BubblewrapSandboxRunner:
         enabled: bool = False,
         executable: Path | None = None,
         capability_probe: Callable[[Path], SandboxCapabilities] | None = None,
+        cgroup_root: Path | None = None,
+        cgroup_name_factory: Callable[[], str] | None = None,
     ) -> None:
         self._enabled = enabled
         self._executable = executable
         self._capability_probe = capability_probe or probe_bubblewrap_capabilities
         self._compat_local = LocalProcessSandboxRunner(enabled=False)
-        self._controlled_local = LocalProcessSandboxRunner(enabled=True)
+        self._controlled_local = LocalProcessSandboxRunner(
+            enabled=True,
+            cgroup_root=cgroup_root,
+            cgroup_name_factory=cgroup_name_factory,
+        )
 
     @property
     def name(self) -> SandboxRunnerKind:
@@ -80,7 +87,8 @@ class BubblewrapSandboxRunner:
                 on_stderr=on_stderr,
                 interactive=interactive,
             )
-            return SandboxRunResult(result.exit_code, result.stdout, result.stderr, sandbox)
+            reconciled = _reconcile_enforced_isolation(sandbox, result.sandbox)
+            return SandboxRunResult(result.exit_code, result.stdout, result.stderr, reconciled)
         finally:
             seccomp_program.close()
 
@@ -197,6 +205,25 @@ _PASSTHROUGH_PROFILES = {
     SandboxProfile.NONE,
     SandboxProfile.PRIVILEGED_PASSTHROUGH,
 }
+
+
+def _reconcile_enforced_isolation(declared: SandboxResult, inner: SandboxResult) -> SandboxResult:
+    """Backfill the cgroup truth from the inner controlled-local run.
+
+    ``declared`` carries the bubblewrap-level isolation projected before the
+    process starts (filesystem + seccomp, both enforced by ``bwrap`` itself).
+    cgroup limits, however, are applied by the inner local runner, which
+    silently degrades to rlimit-only controls when the cgroup v2 delegate is not
+    writable. Returning ``declared`` verbatim would keep the projected
+    ``cgroup=True`` even when no limits were applied, hiding the gap from
+    ``actual_mismatch``. Reconcile so the recorded isolation reflects what the
+    run actually enforced.
+    """
+    actual = replace(declared.actual, cgroup=inner.actual.cgroup)
+    if inner.actual.cgroup:
+        return replace(declared, actual=actual)
+    fallback = inner.fallback_reason or "cgroup unavailable; using rlimit process controls only"
+    return replace(declared, actual=actual, fallback_reason=fallback)
 
 
 def _wrap_request(
