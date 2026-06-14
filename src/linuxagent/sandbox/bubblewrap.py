@@ -293,6 +293,12 @@ def _bubblewrap_argv(
         str(executable),
         "--die-with-parent",
         "--new-session",
+        # Unshare the PID/IPC/UTS namespaces. Without --unshare-pid the freshly
+        # mounted /proc still belongs to the host PID namespace, exposing every
+        # host process (environ/cmdline/maps) and allowing signals to host PIDs.
+        "--unshare-pid",
+        "--unshare-ipc",
+        "--unshare-uts",
         "--seccomp",
         str(seccomp_program.fd),
         *_base_bind_args(),

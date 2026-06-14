@@ -46,6 +46,14 @@ The planned Landlock backend is design-only for now; its capability probe,
 fallback order, and compatibility matrix are documented in
 [Landlock Sandbox Design](../design/sandbox-landlock.md).
 
+When the optional bubblewrap runner is enabled, an enforced profile runs the
+command under filesystem isolation, a seccomp filter, and private PID, IPC and
+UTS namespaces, so the mounted `/proc` cannot read or signal host processes.
+Credential paths (`~/.ssh`, `~/.aws`, `~/.kube`, `~/.config/gcloud`,
+`/etc/shadow`, `/etc/gshadow`) are masked for the read-only, system-inspect and
+workspace-write profiles alike, including when the working directory is the home
+directory.
+
 Remote SSH commands are not protected by local OS sandboxing. Their boundary is
 host-key verification, target scoping, least-privilege accounts, remote working
 directory policy, sudo allowlists, batch confirmation, and audit.

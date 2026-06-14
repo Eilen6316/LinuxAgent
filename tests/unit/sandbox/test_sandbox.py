@@ -586,6 +586,44 @@ async def test_bubblewrap_workspace_write_still_masks_credential_paths(
     assert _contains_pair(argv, "--tmpfs", str(Path.home() / ".aws"))
 
 
+async def test_bubblewrap_enforced_run_unshares_pid_namespace(tmp_path: Path) -> None:
+    report = tmp_path / "bwrap-report.json"
+    executable = tmp_path / "bwrap"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "import os\n"
+        "import sys\n"
+        f"report = {str(report)!r}\n"
+        "separator = sys.argv.index('--')\n"
+        "open(report, 'w', encoding='utf-8').write(json.dumps({'argv': sys.argv[1:separator]}))\n"
+        "os.execvp(sys.argv[separator + 1], sys.argv[separator + 1:])\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=_available_capabilities,
+    )
+
+    result = await runner.run(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+        )
+    )
+
+    assert result.exit_code == 0
+    argv = json.loads(report.read_text(encoding="utf-8"))["argv"]
+    # The mounted /proc must reflect a private PID namespace, not the host's.
+    assert "--unshare-pid" in argv
+    assert "--unshare-ipc" in argv
+    assert "--unshare-uts" in argv
+
+
 async def test_bubblewrap_run_path_keeps_local_process_controls(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
