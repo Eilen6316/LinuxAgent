@@ -79,3 +79,6 @@ Thumbs.db
 
 # 本地缓存（embedding / 模型等，如果落在项目目录）
 .cache/
+
+# Local agent design artifacts (specs/plans) — keep out of GitHub like .work/
+docs/superpowers/
