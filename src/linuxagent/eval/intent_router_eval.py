@@ -8,8 +8,10 @@ call is replaced by a committed recording.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -48,6 +50,25 @@ def prompt_fingerprint() -> str:
     text = (find_prompts_dir() / ROUTER_PROMPT_FILENAME).read_text(encoding="utf-8")
     payload = f"{text}\n--- router_context ---\n{ROUTER_CONTEXT_FIXTURE}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+MANIFEST_FILENAME = "manifest.json"
+
+
+def load_recording(recordings_dir: Path, case_id: str) -> Recording | None:
+    path = recordings_dir / f"{case_id}.json"
+    if not path.is_file():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return Recording(id=str(payload["id"]), raw_response=str(payload["raw_response"]))
+
+
+def load_manifest(recordings_dir: Path) -> dict[str, Any] | None:
+    path = recordings_dir / MANIFEST_FILENAME
+    if not path.is_file():
+        return None
+    parsed = json.loads(path.read_text(encoding="utf-8"))
+    return parsed if isinstance(parsed, dict) else None
 
 
 def load_golden_cases(path: Path) -> list[GoldenCase]:

@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from linuxagent.eval.intent_router_eval import GoldenCase, load_golden_cases, prompt_fingerprint
+from linuxagent.eval.intent_router_eval import (
+    GoldenCase,
+    load_golden_cases,
+    load_manifest,
+    load_recording,
+    prompt_fingerprint,
+)
 
 
 def test_load_golden_cases_parses_fields(tmp_path: Path) -> None:
@@ -45,6 +52,41 @@ def test_load_golden_cases_defaults_optional_fields(tmp_path: Path) -> None:
     assert case.expected_answer_context is None
     assert case.lang is None
     assert case.note == ""
+
+
+def test_load_recording_reads_raw_response(tmp_path: Path) -> None:
+    rec_dir = tmp_path / "recordings"
+    rec_dir.mkdir()
+    (rec_dir / "cap.json").write_text(
+        json.dumps({"id": "cap", "raw_response": '{"mode":"DIRECT_ANSWER"}'}),
+        encoding="utf-8",
+    )
+
+    recording = load_recording(rec_dir, "cap")
+
+    assert recording is not None
+    assert recording.id == "cap"
+    assert recording.raw_response == '{"mode":"DIRECT_ANSWER"}'
+
+
+def test_load_recording_missing_returns_none(tmp_path: Path) -> None:
+    assert load_recording(tmp_path, "absent") is None
+
+
+def test_load_manifest_missing_returns_none(tmp_path: Path) -> None:
+    assert load_manifest(tmp_path) is None
+
+
+def test_load_manifest_reads_fingerprint(tmp_path: Path) -> None:
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"prompt_fingerprint": "abc", "provider": "deepseek", "model": "x"}),
+        encoding="utf-8",
+    )
+
+    manifest = load_manifest(tmp_path)
+
+    assert manifest is not None
+    assert manifest["prompt_fingerprint"] == "abc"
 
 
 def test_prompt_fingerprint_is_stable_hex_and_tracks_router_prompt() -> None:
