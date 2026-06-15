@@ -52,7 +52,8 @@ UTS namespaces, so the mounted `/proc` cannot read or signal host processes.
 Credential paths (`~/.ssh`, `~/.aws`, `~/.kube`, `~/.config/gcloud`,
 `/etc/shadow`, `/etc/gshadow`) are masked for the read-only, system-inspect and
 workspace-write profiles alike, including when the working directory is the home
-directory.
+directory. Scratch writes land in a `/tmp` backed by the configured sandbox
+`temp_dir`.
 
 Remote SSH commands are not protected by local OS sandboxing. Their boundary is
 host-key verification, target scoping, least-privilege accounts, remote working

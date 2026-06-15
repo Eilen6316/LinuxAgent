@@ -83,9 +83,8 @@ class LocalProcessSandboxRunner:
                 request,
                 interactive=interactive,
                 compatibility_mode=self.compatibility_mode,
+                cgroup_scope=cgroup_scope,
             )
-            if cgroup_scope is not None:
-                cgroup_scope.add_process(process.pid)
             if interactive:
                 exit_code = await _wait_interactive(
                     process,
@@ -183,10 +182,11 @@ async def _spawn_process(
     *,
     interactive: bool,
     compatibility_mode: bool,
+    cgroup_scope: CgroupV2Scope | None = None,
 ) -> Process:
     stdout = None if interactive else asyncio.subprocess.PIPE
     stderr = None if interactive else asyncio.subprocess.PIPE
-    kwargs = _spawn_kwargs(request, interactive, stdout, stderr, compatibility_mode)
+    kwargs = _spawn_kwargs(request, interactive, stdout, stderr, compatibility_mode, cgroup_scope)
     return await asyncio.create_subprocess_exec(*request.argv, **kwargs)
 
 
@@ -303,12 +303,19 @@ class _OutputBudget:
         return accepted
 
 
-def _preexec_fn(limits: dict[str, int | float | None]) -> Callable[[], None]:
+def _preexec_fn(
+    limits: dict[str, int | float | None], cgroup_scope: CgroupV2Scope | None
+) -> Callable[[], None]:
     def apply_limits() -> None:
         os.setsid()
         _set_cpu_limit(limits)
         _set_memory_limit(limits)
         _set_process_limit(limits)
+        if cgroup_scope is not None:
+            # Join the cgroup in the forked child before exec, so the command and
+            # all its descendants are constrained from the first instruction
+            # (no spawn->attach race that early forks could escape).
+            cgroup_scope.add_process(os.getpid())
 
     return apply_limits
 
@@ -319,6 +326,7 @@ def _spawn_kwargs(
     stdout: int | None,
     stderr: int | None,
     compatibility_mode: bool,
+    cgroup_scope: CgroupV2Scope | None,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"stdout": stdout, "stderr": stderr}
     if request.pass_fds:
@@ -329,7 +337,7 @@ def _spawn_kwargs(
         kwargs["cwd"] = request.cwd
         kwargs["env"] = _clean_env()
     if sys.platform == "linux" and not compatibility_mode:
-        kwargs["preexec_fn"] = _preexec_fn(request.resource_limits)
+        kwargs["preexec_fn"] = _preexec_fn(request.resource_limits, cgroup_scope)
     elif not compatibility_mode:
         kwargs["start_new_session"] = True
     return kwargs

@@ -683,6 +683,45 @@ async def test_bubblewrap_enforced_run_unshares_pid_namespace(tmp_path: Path) ->
     assert "--unshare-uts" in argv
 
 
+async def test_bubblewrap_binds_configured_temp_dir(tmp_path: Path) -> None:
+    report = tmp_path / "bwrap-report.json"
+    executable = tmp_path / "bwrap"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "import os\n"
+        "import sys\n"
+        f"report = {str(report)!r}\n"
+        "separator = sys.argv.index('--')\n"
+        "open(report, 'w', encoding='utf-8').write(json.dumps({'argv': sys.argv[1:separator]}))\n"
+        "os.execvp(sys.argv[separator + 1], sys.argv[separator + 1:])\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    temp_dir = tmp_path / "sandbox-tmp"
+    runner = BubblewrapSandboxRunner(
+        enabled=True,
+        executable=executable,
+        capability_probe=_available_capabilities,
+    )
+
+    result = await runner.run(
+        _request(
+            ("/bin/echo", "hello"),
+            profile=SandboxProfile.READ_ONLY,
+            cwd=tmp_path,
+            allowed_roots=(tmp_path,),
+            temp_dir=temp_dir,
+        )
+    )
+
+    assert result.exit_code == 0
+    assert temp_dir.is_dir()  # created before the run
+    argv = json.loads(report.read_text(encoding="utf-8"))["argv"]
+    assert _contains_triple(argv, "--bind", str(temp_dir), "/tmp")  # noqa: S108
+    assert _contains_triple(argv, "--setenv", "TMPDIR", "/tmp")  # noqa: S108
+
+
 async def test_bubblewrap_run_path_keeps_local_process_controls(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -933,6 +972,7 @@ def _request(
     allowed_roots: tuple[Path, ...] | None = None,
     timeout: float = 5.0,
     limits: dict[str, int | float | None] | None = None,
+    temp_dir: Path | None = None,
 ) -> SandboxRequest:
     working_dir = cwd or Path.cwd()
     roots = allowed_roots or (working_dir,)
@@ -947,6 +987,7 @@ def _request(
         allowed_roots=roots,
         read_allow_paths=DEFAULT_READ_ALLOW_PATHS,
         read_hide_paths=DEFAULT_READ_HIDE_PATHS,
+        temp_dir=temp_dir,
     )
 
 

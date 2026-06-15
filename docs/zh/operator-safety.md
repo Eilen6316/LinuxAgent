@@ -43,7 +43,8 @@ LinuxAgent 是 HITL-first 的 Linux 运维控制面，不是无人值守 shell c
 以及独立的 PID / IPC / UTS namespace 下执行命令，因此挂载的 `/proc` 无法读取或
 向宿主进程发送信号。凭据路径（`~/.ssh`、`~/.aws`、`~/.kube`、`~/.config/gcloud`、
 `/etc/shadow`、`/etc/gshadow`）在 read-only、system-inspect 和 workspace-write
-各 profile 下都会被屏蔽，即使工作目录是用户主目录也是如此。
+各 profile 下都会被屏蔽，即使工作目录是用户主目录也是如此。临时写入落在由
+配置的 sandbox `temp_dir` 支撑的 `/tmp` 中。
 
 SSH 远端命令不受本地 OS sandbox 保护。远端边界来自 host-key 校验、目标主机
 范围、低权限账号、远端工作目录、sudo allowlist、批量确认和审计。

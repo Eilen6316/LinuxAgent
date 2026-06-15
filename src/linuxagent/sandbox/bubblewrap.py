@@ -81,6 +81,8 @@ class BubblewrapSandboxRunner:
             return await self._run_local(request, sandbox, on_stdout, on_stderr, interactive)
         seccomp_program = build_default_seccomp_program()
         try:
+            if request.temp_dir is not None:
+                request.temp_dir.mkdir(parents=True, exist_ok=True)
             wrapped = _wrap_request(request, executable, seccomp_program=seccomp_program)
             result = await self._controlled_local.run(
                 wrapped,
@@ -304,12 +306,26 @@ def _bubblewrap_argv(
         *_base_bind_args(),
         *_cwd_bind_args(request),
         *_read_scope_args(request),
+        *_temp_dir_args(request),
         *_network_args(request.network),
         "--chdir",
         str(request.cwd),
         "--",
         *request.argv,
     )
+
+
+def _temp_dir_args(request: SandboxRequest) -> tuple[str, ...]:
+    # Honor the configured sandbox temp_dir: bind it to /tmp and point TMPDIR at
+    # it. Without this the enforced root has no /tmp at all, so ordinary commands
+    # that write scratch files fail, and the configured temp_dir is silently
+    # inert.
+    if request.temp_dir is None:
+        return ()
+    target = str(request.temp_dir)
+    # "/tmp" is the in-sandbox mount point for the configured host temp_dir, not a
+    # host temp path.
+    return ("--bind", target, "/tmp", "--setenv", "TMPDIR", "/tmp")  # noqa: S108  # nosec B108
 
 
 def _base_bind_args() -> tuple[str, ...]:
