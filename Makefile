@@ -3,7 +3,7 @@
 
 PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo python; fi)
 
-.PHONY: help install test sandbox integration optional-anthropic lint type security red-team benchmark harness build release-check release-preflight verify-build ts-install ts-lint ts-type ts-test ts-parity ts-security ts-check cutover-check clean
+.PHONY: help install test sandbox integration optional-anthropic lint type security red-team benchmark harness eval eval-record build release-check release-preflight verify-build ts-install ts-lint ts-type ts-test ts-parity ts-security ts-check cutover-check clean
 
 help:
 	@echo "Targets:"
@@ -18,6 +18,8 @@ help:
 	@echo "  red-team   adversarial policy regression tests"
 	@echo "  benchmark  policy/parser latency benchmark"
 	@echo "  harness    scenario-driven HITL harness"
+	@echo "  eval       recorded-replay prompt eval (deterministic)"
+	@echo "  eval-record refresh eval recordings via the configured provider (opt-in, networked)"
 	@echo "  build      build wheel + sdist"
 	@echo "  release-check version/docs consistency checks"
 	@echo "  release-preflight full local release gate"
@@ -97,6 +99,12 @@ benchmark:
 harness:
 	LINUXAGENT_HARNESS_SCENARIOS=tests/harness/scenarios $(PYTHON) -m pytest tests/harness/test_scenarios.py
 
+eval:
+	$(PYTHON) -m pytest tests/eval/
+
+eval-record:
+	$(PYTHON) scripts/eval_record.py
+
 build:
 	@$(PYTHON) -c "import hatchling.build" >/dev/null 2>&1 || { \
 		echo "error: hatchling.build is unavailable. Run 'make install' or activate the project .venv before make build." >&2; \
@@ -118,6 +126,7 @@ release-preflight:
 	$(MAKE) integration
 	$(MAKE) red-team
 	$(MAKE) harness
+	$(MAKE) eval
 	$(MAKE) verify-build
 
 verify-build: build

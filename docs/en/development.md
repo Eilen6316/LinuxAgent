@@ -65,8 +65,19 @@ make sandbox
 make integration
 make optional-anthropic
 make harness
+make eval
 make verify-build
 ```
+
+`make eval` runs the recorded-replay prompt eval suite under `tests/eval/`.
+Replays are deterministic and require no network access. `make eval` is part of
+the `release-preflight` target and must pass before a release is cut.
+
+`make eval-record` re-records the eval fixtures by calling the provider
+configured in `config.yaml`. It is opt-in, makes real network calls, and is
+**not** run in CI. Run it after editing `prompts/intent_router.md` or the eval's
+`ROUTER_CONTEXT_FIXTURE`; if you skip this step the staleness guard will cause
+`make eval` to fail.
 
 `make integration` is intentionally optional and runs only tests marked
 `integration` with the explicit `--integration` flag. Keep external-resource

@@ -23,6 +23,7 @@ make type
 make test
 make security
 make harness
+make eval
 make verify-build
 ```
 
@@ -32,6 +33,10 @@ make verify-build
 make integration
 make optional-anthropic
 ```
+
+`make eval` 运行 `tests/eval/` 下的录制回放 prompt eval 套件，确定性、无需网络，已纳入 `release-preflight`。
+
+`make eval-record` 通过 `config.yaml` 配置的 provider **重新录制** eval fixtures，会发起真实网络请求，不在 CI 中运行，属于可选操作。编辑 `prompts/intent_router.md` 或 eval 的 `ROUTER_CONTEXT_FIXTURE` 后，必须运行此命令刷新录制文件，否则 `make eval` 的过期检测将报错。
 
 ## 安全规则
 
