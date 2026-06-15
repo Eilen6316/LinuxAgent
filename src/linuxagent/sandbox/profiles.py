@@ -22,7 +22,13 @@ DEFAULT_READ_HIDE_PATHS: tuple[Path, ...] = (
     Path("~/.kube"),
     Path("~/.config/gcloud"),
 )
-DEFAULT_SECCOMP_DENY_SYSCALLS: frozenset[str] = frozenset(
+# Long-stable syscalls that any supported libseccomp must resolve. Failure to
+# resolve one is treated as fail-closed (see ``build_default_seccomp_program``)
+# rather than silently dropped. ``clone``/``clone3`` are intentionally absent:
+# they implement fork/thread creation and a blanket deny breaks every
+# subprocess inside the sandbox. Namespace creation is instead constrained by
+# bwrap's no-new-privs, the absence of CAP_SYS_ADMIN, and the ``unshare`` deny.
+SECCOMP_CRITICAL_DENY_SYSCALLS: frozenset[str] = frozenset(
     {
         "ptrace",
         "mount",
@@ -31,13 +37,29 @@ DEFAULT_SECCOMP_DENY_SYSCALLS: frozenset[str] = frozenset(
         "add_key",
         "request_key",
         "bpf",
-        "clone",
         "unshare",
         "pivot_root",
         "kexec_load",
         "init_module",
         "finit_module",
     }
+)
+# Newer syscalls that reach the same effect as the critical set (the new mount
+# API and namespace join). Denied as defense-in-depth, but skipped without
+# failing when an older libseccomp cannot resolve the name.
+SECCOMP_MODERN_DENY_SYSCALLS: frozenset[str] = frozenset(
+    {
+        "setns",
+        "fsopen",
+        "fsconfig",
+        "fsmount",
+        "move_mount",
+        "open_tree",
+        "mount_setattr",
+    }
+)
+DEFAULT_SECCOMP_DENY_SYSCALLS: frozenset[str] = (
+    SECCOMP_CRITICAL_DENY_SYSCALLS | SECCOMP_MODERN_DENY_SYSCALLS
 )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shlex
 import sys
 from pathlib import Path
@@ -25,11 +26,13 @@ from linuxagent.sandbox import (
     SandboxUnavailableError,
     profile_for_safety,
 )
+from linuxagent.sandbox import seccomp as seccomp_module
 from linuxagent.sandbox.profiles import (
     DEFAULT_READ_ALLOW_PATHS,
     DEFAULT_READ_HIDE_PATHS,
     DEFAULT_SECCOMP_DENY_SYSCALLS,
 )
+from linuxagent.sandbox.seccomp import SeccompUnavailableError, build_default_seccomp_program
 
 
 def test_noop_runner_records_metadata_without_enforcement() -> None:
@@ -432,9 +435,65 @@ def test_default_seccomp_denylist_covers_dangerous_syscalls() -> None:
         "kexec_load",
         "init_module",
         "finit_module",
+        # modern equivalents of the mount/namespace-join syscalls
+        "setns",
+        "fsopen",
+        "fsmount",
+        "move_mount",
+        "open_tree",
+        "mount_setattr",
     }
 
     assert expected.issubset(DEFAULT_SECCOMP_DENY_SYSCALLS)
+
+
+def test_default_seccomp_denylist_excludes_clone_so_fork_works() -> None:
+    # A blanket clone/clone3 deny EPERMs glibc fork()/posix_spawn, breaking every
+    # subprocess inside the sandbox; they must not be in the denylist.
+    assert "clone" not in DEFAULT_SECCOMP_DENY_SYSCALLS
+    assert "clone3" not in DEFAULT_SECCOMP_DENY_SYSCALLS
+
+
+class _FakeSeccompLib:
+    def __init__(self, unresolvable: frozenset[str]) -> None:
+        self._unresolvable = unresolvable
+
+    def seccomp_init(self, _action: int) -> int:
+        return 1
+
+    def seccomp_release(self, _ctx: int) -> None:
+        return None
+
+    def seccomp_syscall_resolve_name(self, name: bytes) -> int:
+        return -1 if name.decode("ascii") in self._unresolvable else 100
+
+    def seccomp_rule_add(self, *_args: int) -> int:
+        return 0
+
+    def seccomp_export_bpf(self, _ctx: int, fd: int) -> int:
+        os.write(fd, b"bpf")
+        return 0
+
+
+def test_seccomp_fails_closed_when_critical_syscall_unresolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        seccomp_module, "_load_libseccomp", lambda: _FakeSeccompLib(frozenset({"ptrace"}))
+    )
+
+    with pytest.raises(SeccompUnavailableError, match="ptrace"):
+        build_default_seccomp_program()
+
+
+def test_seccomp_tolerates_unresolved_modern_syscall(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An older libseccomp may not know a modern syscall name; skip it gracefully.
+    monkeypatch.setattr(
+        seccomp_module, "_load_libseccomp", lambda: _FakeSeccompLib(frozenset({"mount_setattr"}))
+    )
+
+    program = build_default_seccomp_program()
+    program.close()
 
 
 def test_default_read_hide_paths_cover_sensitive_locations() -> None:

@@ -7,7 +7,7 @@ import errno
 import tempfile
 from ctypes.util import find_library
 
-from .profiles import DEFAULT_SECCOMP_DENY_SYSCALLS
+from .profiles import DEFAULT_SECCOMP_DENY_SYSCALLS, SECCOMP_CRITICAL_DENY_SYSCALLS
 
 SCMP_ACT_ALLOW = 0x7FFF0000
 SCMP_ACT_ERRNO = 0x00050000
@@ -35,13 +35,24 @@ def build_default_seccomp_program() -> SeccompProgram:
     if ctx is None:
         raise SeccompUnavailableError("libseccomp failed to initialize filter")
     try:
+        unresolved: list[str] = []
         for syscall in sorted(DEFAULT_SECCOMP_DENY_SYSCALLS):
             syscall_number = lib.seccomp_syscall_resolve_name(syscall.encode("ascii"))
             if syscall_number < 0:
+                # Modern syscalls may be unknown to an older libseccomp; record
+                # the gap rather than silently dropping it. A critical syscall
+                # that cannot be resolved fails closed below so the run never
+                # claims seccomp it did not install.
+                unresolved.append(syscall)
                 continue
             rc = lib.seccomp_rule_add(ctx, _errno_action(errno.EPERM), syscall_number, 0)
             if rc < 0:
                 raise SeccompUnavailableError(f"libseccomp failed adding rule: {syscall}")
+        critical_unresolved = sorted(set(unresolved) & SECCOMP_CRITICAL_DENY_SYSCALLS)
+        if critical_unresolved:
+            raise SeccompUnavailableError(
+                f"libseccomp cannot resolve critical syscalls: {', '.join(critical_unresolved)}"
+            )
         program = tempfile.NamedTemporaryFile(  # noqa: SIM115 - caller owns returned fd
             prefix="linuxagent-seccomp-",
             suffix=".bpf",
