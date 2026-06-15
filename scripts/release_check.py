@@ -230,8 +230,8 @@ def _required_wheel_members(root: Path) -> set[str]:
         "linuxagent/i18n/locales/zh-CN.yaml",
         "linuxagent/i18n/locales/en-US.yaml",
         *{
-            f"linuxagent/_data/prompts/{path.name}"
-            for path in sorted((root / "prompts").glob("*.md"))
+            f"linuxagent/_data/prompts/{path.relative_to(root / 'prompts').as_posix()}"
+            for path in sorted((root / "prompts").rglob("*.md"))
         },
     }
 
@@ -247,7 +247,10 @@ def _required_sdist_members(root: Path, version: str) -> set[str]:
         f"{prefix}/src/linuxagent/i18n/locales/en-US.yaml",
         f"{prefix}/configs/default.yaml",
         f"{prefix}/configs/policy.default.yaml",
-        *{f"{prefix}/prompts/{path.name}" for path in sorted((root / "prompts").glob("*.md"))},
+        *{
+            f"{prefix}/prompts/{path.relative_to(root / 'prompts').as_posix()}"
+            for path in sorted((root / "prompts").rglob("*.md"))
+        },
     }
 
 
