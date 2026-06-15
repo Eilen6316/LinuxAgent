@@ -1,0 +1,53 @@
+"""Recorded-replay evaluation for the intent router prompt.
+
+The replay path feeds recorded *real* model output through the live parser and
+normalizer, so the routing logic is never mocked (R-TEST-02); only the network
+call is replaced by a committed recording.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
+
+ROUTER_CONTEXT_FIXTURE = (
+    "LinuxAgent operating context (router view).\n"
+    "LLM-visible tool names: read_file, list_directory, search_files, fetch_url."
+)
+
+
+@dataclass(frozen=True)
+class GoldenCase:
+    id: str
+    input: str
+    expected_mode: str
+    expected_answer_context: str | None = None
+    lang: str | None = None
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class Recording:
+    id: str
+    raw_response: str
+
+
+def load_golden_cases(path: Path) -> list[GoldenCase]:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+    return [
+        GoldenCase(
+            id=str(item["id"]),
+            input=str(item["input"]),
+            expected_mode=str(item["expected_mode"]),
+            expected_answer_context=(
+                str(item["expected_answer_context"])
+                if item.get("expected_answer_context") is not None
+                else None
+            ),
+            lang=str(item["lang"]) if item.get("lang") is not None else None,
+            note=str(item.get("note", "")),
+        )
+        for item in raw
+    ]
