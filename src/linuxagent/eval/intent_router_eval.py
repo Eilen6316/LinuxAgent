@@ -25,6 +25,10 @@ from ..prompts_loader import find_prompts_dir
 
 ROUTER_PROMPT_FILENAME = "intent_router.md"
 
+# A deliberately static stand-in for the runtime router_context (which is built
+# from live provider/model/tool data). Fixing it keeps recordings deterministic
+# and reproducible; it is folded into prompt_fingerprint() so editing it forces a
+# re-record.
 ROUTER_CONTEXT_FIXTURE = (
     "LinuxAgent operating context (router view).\n"
     "LLM-visible tool names: read_file, list_directory, search_files, fetch_url."
@@ -73,7 +77,12 @@ def load_manifest(recordings_dir: Path) -> dict[str, Any] | None:
     path = recordings_dir / MANIFEST_FILENAME
     if not path.is_file():
         return None
-    parsed = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        # A corrupt manifest is treated as missing so the staleness guard reports
+        # the actionable "run `make eval-record`" message instead of a traceback.
+        return None
     return parsed if isinstance(parsed, dict) else None
 
 
@@ -100,6 +109,10 @@ def replay(case: GoldenCase, recording: Recording) -> IntentDecision:
     """Feed a recorded raw response through the live parser + normalizer.
 
     This exercises the same routing logic the runtime uses; nothing is mocked.
+    Known delta: the runtime caps DIRECT_ANSWER ``parallel_tasks`` via
+    ``parallel_direct_answer_tasks``; replay leaves it uncapped. No current
+    golden case emits parallel_tasks, so add a ``max_parallel_tasks`` parameter
+    here once one does.
     """
     decision = _parse_intent_decision(recording.raw_response)
     return _normalize_incidental_artifact_clarification(case.input, decision)

@@ -158,6 +158,14 @@ def test_assert_recordings_fresh_fails_when_manifest_missing(tmp_path: Path) -> 
         assert_recordings_fresh(tmp_path)
 
 
+def test_assert_recordings_fresh_treats_corrupt_manifest_as_missing(tmp_path: Path) -> None:
+    # A truncated/corrupt manifest must surface the actionable guard message,
+    # not a raw JSONDecodeError.
+    (tmp_path / "manifest.json").write_text("{not valid json", encoding="utf-8")
+    with pytest.raises(AssertionError, match="no manifest"):
+        assert_recordings_fresh(tmp_path)
+
+
 def test_iter_replayed_matches_synthetic_recordings(tmp_path: Path) -> None:
     golden = tmp_path / "golden.yaml"
     golden.write_text(
