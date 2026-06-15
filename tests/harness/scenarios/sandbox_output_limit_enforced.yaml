@@ -1,0 +1,28 @@
+scenario: "local sandbox enforces the output byte limit"
+provider_responses:
+  - '{"goal":"emit oversized output","commands":[{"command":"python3 -c \"print(chr(120)*100000)\"","purpose":"exceed the output limit","read_only":true,"target_hosts":[]}],"risk_summary":"large output","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - raises: ProviderError
+    node: analyze
+    mode: analysis
+    message: "analysis unavailable"
+setup:
+  sandbox:
+    enabled: true
+    runner: local
+    default_profile: privileged_passthrough
+    limits:
+      output_bytes: 1024
+inputs:
+  - role: human
+    content: "print a hundred thousand characters under the sandbox"
+expected_interrupts:
+  - type: confirm_command
+resume:
+  decision: "yes"
+  latency_ms: 10
+expected:
+  command_executed: true
+  # analysis fails, so the deterministic fallback surfaces the real captured
+  # output: the truncation marker proves the byte limit was enforced end-to-end.
+  response_contains:
+    - "sandbox output limit exceeded"

@@ -1,0 +1,33 @@
+scenario: "local sandbox records tri-state isolation in the audit log"
+provider_responses:
+  - '{"goal":"echo under local sandbox","commands":[{"command":"/bin/echo isolated","purpose":"record sandbox isolation","read_only":true,"target_hosts":[]}],"risk_summary":"benign echo","preflight_checks":[],"verification_commands":[],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - "isolation analysis"
+setup:
+  sandbox:
+    enabled: true
+    runner: local
+    default_profile: privileged_passthrough
+inputs:
+  - role: human
+    content: "echo something under the local sandbox"
+expected_interrupts:
+  - type: confirm_command
+resume:
+  decision: "yes"
+  latency_ms: 10
+expected:
+  command_executed: true
+  exit_code: 0
+  response_contains:
+    - "isolation analysis"
+  audit_log_contains:
+    - event: command_executed
+      sandbox:
+        runner: local
+        enabled: true
+        actual:
+          # local runner never provides filesystem/seccomp isolation, so these
+          # stay tri-state "unavailable" regardless of cgroup availability; this
+          # guards that the tri-state isolation record reaches the audit log.
+          filesystem: unavailable
+          seccomp: unavailable
