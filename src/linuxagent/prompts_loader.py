@@ -23,13 +23,19 @@ def find_prompts_dir() -> Path:
         return wheel_dir
     for parent in here.parents:
         candidate = parent / "prompts"
+        # system.md is used only as a stable marker file to identify the prompts
+        # directory in a source checkout; its content is legacy (see system.md).
         if candidate.is_dir() and (candidate / "system.md").is_file():
             return candidate
     raise PromptNotFoundError("no 'prompts/' directory found in package data or repo checkout")
 
 
 def load_system_prompt() -> str:
-    """Return the raw system-prompt markdown."""
+    """Return the raw system-prompt markdown.
+
+    Legacy: not used by the v4 runtime (see system.md). The live contract is the
+    intent router prompt plus the operating manifest. Kept for compatibility.
+    """
     return load_prompt("system.md")
 
 
@@ -42,7 +48,11 @@ def load_prompt(name: str) -> str:
 
 
 def build_chat_prompt() -> ChatPromptTemplate:
-    """Build a :class:`ChatPromptTemplate` with placeholders for history + user input."""
+    """Build a :class:`ChatPromptTemplate` with placeholders for history + user input.
+
+    Legacy: the v4 graph routes through the intent router / planner / direct-answer
+    prompts, not this single chat prompt. Retained for compatibility and tests.
+    """
     return ChatPromptTemplate.from_messages(
         [
             ("system", load_system_prompt()),
