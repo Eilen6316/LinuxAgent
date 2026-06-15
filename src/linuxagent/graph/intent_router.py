@@ -147,9 +147,12 @@ def _parse_intent_decision(raw: str, *, max_parallel_tasks: int | None = None) -
     if mode is IntentMode.REQUEST_USER_INPUT and user_input_request is None:
         return IntentDecision(IntentMode.CLARIFY, answer, reason or "invalid user input request")
     if mode is IntentMode.CLARIFY and not answer:
-        return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
+        # The model chose to converse/clarify but produced no text. Ask the user
+        # rather than silently treating a chat turn as an operation to execute;
+        # the node fills a localized fallback question for the empty answer.
+        return IntentDecision(IntentMode.CLARIFY, "", reason or "empty clarify question")
     if mode is IntentMode.DIRECT_ANSWER and answer_context is AnswerContext.NONE and not answer:
-        return IntentDecision(IntentMode.COMMAND_PLAN, "", reason or "empty direct answer")
+        return IntentDecision(IntentMode.CLARIFY, "", reason or "empty direct answer")
     return IntentDecision(mode, answer, reason, answer_context, parallel_tasks, user_input_request)
 
 

@@ -213,6 +213,7 @@ graph:
   blocked: "Execution blocked: {reason}"
   refused: "Execution refused: {command}"
   done: "Operation completed."
+  intent_clarify_fallback: "I couldn't tell what you'd like me to do. Could you rephrase, or say whether you want me to inspect or run something?"
   response_guard_blocked: "Final response blocked: detected a command suggestion that violates the command safety policy ({reason})."
   response_guard_injection_removed: "[removed unsafe tool-output instruction]"
   no_execution_result: "No execution result to analyze."

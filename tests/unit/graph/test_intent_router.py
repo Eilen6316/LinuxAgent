@@ -26,13 +26,24 @@ def test_parse_intent_decision_invalid_json_falls_back_to_command_plan() -> None
     assert decision.reason == "invalid router JSON"
 
 
-def test_parse_intent_decision_empty_direct_answer_falls_back_to_command_plan() -> None:
+def test_parse_intent_decision_empty_direct_answer_falls_back_to_clarify() -> None:
     decision = _parse_intent_decision(
         json.dumps({"mode": "DIRECT_ANSWER", "answer": "", "reason": "missing answer"})
     )
 
-    assert decision.mode is IntentMode.COMMAND_PLAN
+    # A direct-answer turn with no text should ask the user, not silently run as
+    # a command.
+    assert decision.mode is IntentMode.CLARIFY
     assert decision.reason == "missing answer"
+
+
+def test_parse_intent_decision_empty_clarify_stays_clarify() -> None:
+    decision = _parse_intent_decision(
+        json.dumps({"mode": "CLARIFY", "answer": "", "reason": "needs detail"})
+    )
+
+    assert decision.mode is IntentMode.CLARIFY
+    assert decision.answer == ""
 
 
 def test_parse_intent_decision_allows_self_manual_without_answer() -> None:

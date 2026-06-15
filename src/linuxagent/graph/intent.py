@@ -167,7 +167,8 @@ async def _parse_intent_update(context: IntentNodeContext, state: AgentState) ->
         current_trace_id,
     )
     if intent.mode is IntentMode.CLARIFY:
-        return direct_response_update(current_trace_id, intent.answer)
+        answer = intent.answer or context.translator.t("graph.intent_clarify_fallback")
+        return direct_response_update(current_trace_id, answer)
     if intent.mode is IntentMode.DIRECT_ANSWER:
         return await _direct_answer_update(
             context,

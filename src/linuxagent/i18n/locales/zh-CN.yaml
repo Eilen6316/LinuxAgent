@@ -213,6 +213,7 @@ graph:
   blocked: "已阻止执行：{reason}"
   refused: "已拒绝执行：{command}"
   done: "操作已完成。"
+  intent_clarify_fallback: "我没太理解你的需求。能否换个说法，或说明你想让我查看或执行什么？"
   response_guard_blocked: "已阻止最终回复：检测到违反命令安全策略的命令建议（{reason}）。"
   response_guard_injection_removed: "[已移除不安全的工具输出指令]"
   no_execution_result: "没有执行结果可分析。"

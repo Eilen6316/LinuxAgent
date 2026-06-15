@@ -3186,6 +3186,26 @@ async def test_graph_clarifies_artifact_creation_without_destination(tmp_path) -
     assert snapshot.values["direct_response"] is True
 
 
+async def test_graph_empty_direct_answer_clarifies_instead_of_running_command(tmp_path) -> None:
+    from linuxagent.i18n import default_translator
+
+    # Router picks DIRECT_ANSWER but returns no text: the agent must ask the user
+    # rather than fall through to the command path and repair_plan.
+    graph, provider = _graph(tmp_path, [_router_response("DIRECT_ANSWER", answer="")])
+    config = {"configurable": {"thread_id": "empty-direct-answer-clarify"}}
+
+    result = await graph.ainvoke(
+        initial_state("你的作者是谁", source=CommandSource.USER),
+        config=config,
+    )
+
+    fallback = default_translator().t("graph.intent_clarify_fallback")
+    assert fallback in str(result["messages"][-1].content)
+    assert len(provider.complete_messages) == 1  # router only; no planner/execute
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["direct_response"] is True
+
+
 async def test_graph_returns_no_change_plan_as_direct_response(tmp_path) -> None:
     answer = "已有脚本已经包含 CPU 和 MEM 采集，无需修改。"
     graph, _provider = _graph(tmp_path, [_no_change_plan_json(answer)])
