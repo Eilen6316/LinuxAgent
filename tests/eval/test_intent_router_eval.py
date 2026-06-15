@@ -7,10 +7,12 @@ from pathlib import Path
 
 from linuxagent.eval.intent_router_eval import (
     GoldenCase,
+    Recording,
     load_golden_cases,
     load_manifest,
     load_recording,
     prompt_fingerprint,
+    replay,
 )
 
 
@@ -87,6 +89,36 @@ def test_load_manifest_reads_fingerprint(tmp_path: Path) -> None:
 
     assert manifest is not None
     assert manifest["prompt_fingerprint"] == "abc"
+
+
+def test_replay_returns_decision_from_recorded_json() -> None:
+    case = GoldenCase(id="cap", input="你都能干啥啊", expected_mode="DIRECT_ANSWER")
+    recording = Recording(
+        id="cap",
+        raw_response='{"mode":"DIRECT_ANSWER","answer_context":"self_manual","answer":"","reason":"x"}',
+    )
+
+    decision = replay(case, recording)
+
+    assert decision.mode.value == "DIRECT_ANSWER"
+    assert decision.answer_context.value == "self_manual"
+
+
+def test_replay_applies_incidental_artifact_normalization() -> None:
+    # router 录制返回的是"问增量路径"的 CLARIFY，归一化应转为 COMMAND_PLAN
+    case = GoldenCase(
+        id="incidental",
+        input="随便写一个脚本吧 测试一下你的能力",
+        expected_mode="COMMAND_PLAN",
+    )
+    recording = Recording(
+        id="incidental",
+        raw_response='{"mode":"CLARIFY","answer":"你想把脚本保存到哪个路径或文件名？","reason":"missing path"}',
+    )
+
+    decision = replay(case, recording)
+
+    assert decision.mode.value == "COMMAND_PLAN"
 
 
 def test_prompt_fingerprint_is_stable_hex_and_tracks_router_prompt() -> None:

@@ -15,6 +15,11 @@ from typing import Any
 
 import yaml
 
+from ..graph.intent_router import (
+    IntentDecision,
+    _normalize_incidental_artifact_clarification,
+    _parse_intent_decision,
+)
 from ..prompts_loader import find_prompts_dir
 
 ROUTER_PROMPT_FILENAME = "intent_router.md"
@@ -88,3 +93,12 @@ def load_golden_cases(path: Path) -> list[GoldenCase]:
         )
         for item in raw
     ]
+
+
+def replay(case: GoldenCase, recording: Recording) -> IntentDecision:
+    """Feed a recorded raw response through the live parser + normalizer.
+
+    This exercises the same routing logic the runtime uses; nothing is mocked.
+    """
+    decision = _parse_intent_decision(recording.raw_response)
+    return _normalize_incidental_artifact_clarification(case.input, decision)
