@@ -6,6 +6,7 @@ from .intent_router_eval import (
     GoldenCase,
     Recording,
     load_golden_cases,
+    prompt_fingerprint,
 )
 
-__all__ = ["GoldenCase", "Recording", "load_golden_cases"]
+__all__ = ["GoldenCase", "Recording", "load_golden_cases", "prompt_fingerprint"]

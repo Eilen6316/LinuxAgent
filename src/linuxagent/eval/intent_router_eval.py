@@ -7,10 +7,15 @@ call is replaced by a committed recording.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+from ..prompts_loader import find_prompts_dir
+
+ROUTER_PROMPT_FILENAME = "intent_router.md"
 
 ROUTER_CONTEXT_FIXTURE = (
     "LinuxAgent operating context (router view).\n"
@@ -32,6 +37,17 @@ class GoldenCase:
 class Recording:
     id: str
     raw_response: str
+
+
+def prompt_fingerprint() -> str:
+    """SHA-256 of the live router prompt plus the fixed router context.
+
+    The fixture is folded in so that changing ROUTER_CONTEXT_FIXTURE also
+    invalidates recordings and forces a re-record.
+    """
+    text = (find_prompts_dir() / ROUTER_PROMPT_FILENAME).read_text(encoding="utf-8")
+    payload = f"{text}\n--- router_context ---\n{ROUTER_CONTEXT_FIXTURE}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def load_golden_cases(path: Path) -> list[GoldenCase]:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from linuxagent.eval.intent_router_eval import GoldenCase, load_golden_cases
+from linuxagent.eval.intent_router_eval import GoldenCase, load_golden_cases, prompt_fingerprint
 
 
 def test_load_golden_cases_parses_fields(tmp_path: Path) -> None:
@@ -45,3 +45,15 @@ def test_load_golden_cases_defaults_optional_fields(tmp_path: Path) -> None:
     assert case.expected_answer_context is None
     assert case.lang is None
     assert case.note == ""
+
+
+def test_prompt_fingerprint_is_stable_hex_and_tracks_router_prompt() -> None:
+    from linuxagent.prompts_loader import find_prompts_dir
+
+    fp = prompt_fingerprint()
+
+    # 64 位十六进制 sha256，且对当前 intent_router.md 内容稳定
+    assert len(fp) == 64
+    assert all(c in "0123456789abcdef" for c in fp)
+    assert fp == prompt_fingerprint()
+    assert (find_prompts_dir() / "intent_router.md").is_file()
