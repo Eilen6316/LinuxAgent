@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shlex
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -24,6 +25,23 @@ JOB_OUTPUT_LIMIT = 16_000
 DEFAULT_JOB_TIMEOUT_SECONDS = 900.0
 DEFAULT_JOB_MAX_HISTORY = 200
 DEFAULT_JOB_RETENTION_DAYS = 30
+# Bound each watcher queue so a slow or disconnected consumer cannot grow it
+# without limit; on overflow the stale snapshot is dropped (latest-wins).
+_WATCH_QUEUE_MAXSIZE = 256
+
+
+def _offer_snapshot(
+    queue: asyncio.Queue[BackgroundJobSnapshot], snapshot: BackgroundJobSnapshot
+) -> None:
+    try:
+        queue.put_nowait(snapshot)
+    except asyncio.QueueFull:
+        with contextlib.suppress(asyncio.QueueEmpty):
+            queue.get_nowait()
+        with contextlib.suppress(asyncio.QueueFull):
+            queue.put_nowait(snapshot)
+
+
 JOBS_STORE_VERSION = 1
 RESTARTED_JOB_MESSAGE = "[stopped: LinuxAgent restarted before this job completed]\n"
 BackgroundJobEventObserver = Callable[[dict[str, Any]], Awaitable[None] | None]
@@ -88,7 +106,7 @@ class BackgroundJobController(Protocol):
     async def stop(self, job_id: str) -> BackgroundJobSnapshot | None:
         """Request cancellation for one background job."""
 
-    def watch(self, job_id: str) -> AsyncIterator[BackgroundJobSnapshot]:
+    def watch(self, job_id: str) -> AsyncGenerator[BackgroundJobSnapshot, None]:
         """Yield snapshots while one job changes."""
 
     async def status(self) -> BackgroundJobRuntimeStatus:
@@ -183,11 +201,11 @@ class BackgroundJobService:
             await asyncio.gather(job.task, return_exceptions=True)
         return _snapshot(job)
 
-    async def watch(self, job_id: str) -> AsyncIterator[BackgroundJobSnapshot]:
+    async def watch(self, job_id: str) -> AsyncGenerator[BackgroundJobSnapshot, None]:
         job = self._jobs.get(job_id)
         if job is None:
             return
-        queue: asyncio.Queue[BackgroundJobSnapshot] = asyncio.Queue()
+        queue: asyncio.Queue[BackgroundJobSnapshot] = asyncio.Queue(maxsize=_WATCH_QUEUE_MAXSIZE)
         self._watchers.setdefault(job_id, set()).add(queue)
         try:
             yield _snapshot(job)
@@ -258,8 +276,9 @@ class BackgroundJobService:
             await result
 
     def _notify_watchers(self, job: _BackgroundJob) -> None:
+        snapshot = _snapshot(job)
         for queue in self._watchers.get(job.job_id, set()):
-            queue.put_nowait(_snapshot(job))
+            _offer_snapshot(queue, snapshot)
 
     def _persist(self) -> None:
         if self._path is None:

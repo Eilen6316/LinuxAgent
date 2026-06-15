@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -70,7 +71,7 @@ class JobDaemonClient(BackgroundJobController):
             return None
         return _snapshot_response(response)
 
-    async def watch(self, job_id: str) -> AsyncIterator[BackgroundJobSnapshot]:
+    async def watch(self, job_id: str) -> AsyncGenerator[BackgroundJobSnapshot, None]:
         async for response in self._stream({"action": "watch", "job_id": job_id}):
             snapshot = _snapshot_response(response)
             yield snapshot
@@ -172,9 +173,13 @@ class JobDaemonServer:
 
     async def _watch(self, job_id: str, writer: asyncio.StreamWriter) -> None:
         found = False
-        async for snapshot in self._jobs.watch(job_id):
-            found = True
-            await _write_snapshot(writer, snapshot)
+        # aclosing guarantees the watch generator's finally (unregister the
+        # queue) runs immediately if the client disconnects mid-stream, instead
+        # of leaking the watcher until garbage collection.
+        async with contextlib.aclosing(self._jobs.watch(job_id)) as stream:
+            async for snapshot in stream:
+                found = True
+                await _write_snapshot(writer, snapshot)
         if not found:
             await _write_json(writer, {"ok": False, "error": "background job not found"})
 

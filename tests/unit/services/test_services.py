@@ -290,6 +290,19 @@ async def test_command_service_records_learner_state(tmp_path) -> None:
     assert json.loads(learner_path.read_text(encoding="utf-8"))
 
 
+def test_watch_queue_is_bounded_latest_wins_when_full() -> None:
+    from linuxagent.services.background_jobs import _offer_snapshot
+
+    queue: asyncio.Queue = asyncio.Queue(maxsize=2)
+    _offer_snapshot(queue, "a")
+    _offer_snapshot(queue, "b")
+    _offer_snapshot(queue, "c")  # full: drop the stale head, keep the newest
+
+    assert queue.qsize() == 2
+    assert queue.get_nowait() == "b"
+    assert queue.get_nowait() == "c"
+
+
 async def test_background_job_service_runs_and_captures_output() -> None:
     executor = _StreamingExecutor()
     service = BackgroundJobService(CommandService(executor))  # type: ignore[arg-type]

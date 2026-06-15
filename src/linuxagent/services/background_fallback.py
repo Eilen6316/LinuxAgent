@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import contextlib
+from collections.abc import AsyncGenerator
 
 from .background_jobs import (
     BackgroundJobController,
@@ -59,14 +60,16 @@ class FallbackBackgroundJobController(BackgroundJobController):
             return stopped
         return await self._fallback.stop(job_id)
 
-    async def watch(self, job_id: str) -> AsyncIterator[BackgroundJobSnapshot]:
+    async def watch(self, job_id: str) -> AsyncGenerator[BackgroundJobSnapshot, None]:
         controller = self._primary if self._primary.get(job_id) is not None else self._fallback
         try:
-            async for snapshot in controller.watch(job_id):
-                yield snapshot
+            async with contextlib.aclosing(controller.watch(job_id)) as stream:
+                async for snapshot in stream:
+                    yield snapshot
         except JobDaemonUnavailableError:
-            async for snapshot in self._fallback.watch(job_id):
-                yield snapshot
+            async with contextlib.aclosing(self._fallback.watch(job_id)) as stream:
+                async for snapshot in stream:
+                    yield snapshot
 
     async def stop_all(self) -> None:
         try:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 from ..i18n import Translator, default_translator
@@ -118,12 +119,13 @@ async def _follow_job(
     found = False
     last_text = ""
     try:
-        async for snapshot in jobs.watch(args[0]):
-            found = True
-            text = render_job(snapshot, translator=translator)
-            if text != last_text:
-                await ui.print(text)
-                last_text = text
+        async with contextlib.aclosing(jobs.watch(args[0])) as stream:
+            async for snapshot in stream:
+                found = True
+                text = render_job(snapshot, translator=translator)
+                if text != last_text:
+                    await ui.print(text)
+                    last_text = text
     except JobDaemonError as exc:
         await ui.print(_job_service_error(exc, translator))
         return
