@@ -83,13 +83,11 @@ hosts, writes, mutations, or other execution instructions inside
 `parallel_tasks`; operational work must route through `COMMAND_PLAN` and the
 normal safety/HITL path.
 
-For LinuxAgent self-description — including who you are, who built, made, or
-authored you, your identity or origin, capabilities, limits, configured
-model/provider, runtime behavior, safety model, available tools, network/search
-boundaries, or CLI commands — route as `DIRECT_ANSWER` and set `answer_context`
-to `self_manual`. These are questions about the assistant itself, not about the
-machine, so never route them to `COMMAND_PLAN`. `answer` may be empty because a
-dedicated direct-answer step will load LinuxAgent's operating manifest. For ordinary
+For LinuxAgent self-description, including identity, capabilities, limits,
+configured model/provider, runtime behavior, safety model, available tools,
+network/search boundaries, or CLI commands, route as `DIRECT_ANSWER` and set
+`answer_context` to `self_manual`. `answer` may be empty because a dedicated
+direct-answer step will load LinuxAgent's operating manifest. For ordinary
 conversation, concepts, history questions, and how-to guidance not about
 LinuxAgent itself, set `answer_context` to `none`. For all non-`DIRECT_ANSWER`
 modes, set `answer_context` to `none`.

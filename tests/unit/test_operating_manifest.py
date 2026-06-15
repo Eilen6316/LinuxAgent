@@ -30,6 +30,14 @@ def test_operating_manifest_context_can_select_sections() -> None:
     assert "# safety" not in context
 
 
+def test_operating_manifest_identity_section_states_repo_and_author() -> None:
+    context = operating_manifest_context(section_names=("identity",))
+
+    assert "# identity" in context
+    assert "github.com/Eilen6316/LinuxAgent" in context
+    assert "Eilen6316" in context
+
+
 def test_operating_manifest_cache_section_describes_boundaries() -> None:
     context = operating_manifest_context(section_names=("cache",))
 
