@@ -20,7 +20,13 @@ from ..interfaces import CommandExecutor, CommandSource
 from ..sandbox import SandboxProfile
 from ..security import guard_execution_result, redact_text
 from ..services import evaluate_alerts
-from .sandbox import ToolHITLMode, ToolSandboxSpec, attach_tool_sandbox
+from .sandbox import (
+    ToolHITLMode,
+    ToolSandboxSpec,
+    attach_tool_sandbox,
+    current_tool_deadline,
+    raise_if_tool_runtime_cancelled,
+)
 
 DEFAULT_LOG_ROOTS: tuple[Path, ...] = (Path("/var/log"),)
 MAX_LOG_FILE_BYTES = 1_048_576
@@ -208,8 +214,12 @@ def _search_log_matches(
     if path.stat().st_size > max_file_bytes:
         raise LogFileAccessError(f"log file exceeds max size ({max_file_bytes} bytes): {path}")
     matches: list[str] = []
+    deadline = current_tool_deadline()
     with path.open("r", encoding="utf-8", errors="replace") as handle:
         for line_number, line in enumerate(handle, start=1):
+            # Observe the per-tool deadline so a long scan does not run on in an
+            # orphaned worker thread after the call has timed out or been cancelled.
+            raise_if_tool_runtime_cancelled(deadline=deadline)
             text = line.rstrip("\n")
             if query in text.casefold():
                 redacted = redact_text(text)

@@ -222,3 +222,24 @@ def test_get_system_info_tool_declares_system_inspect() -> None:
 
     assert permissions["system_inspect"] is True
     assert permissions["read_files"] is False
+
+
+def test_search_log_matches_observes_deadline(tmp_path, monkeypatch) -> None:
+    import time
+
+    from linuxagent.tools import system_tools
+    from linuxagent.tools.sandbox import ToolDeadlineExceededError
+
+    log = tmp_path / "app.log"
+    log.write_text("alpha\nbeta\nneedle\n", encoding="utf-8")
+    monkeypatch.setattr(system_tools, "current_tool_deadline", lambda: time.monotonic() - 1.0)
+
+    with pytest.raises(ToolDeadlineExceededError):
+        system_tools._search_log_matches(
+            "needle",
+            log,
+            max_matches=10,
+            allowed_roots=(tmp_path,),
+            max_file_bytes=1_000_000,
+            limits=SandboxToolConfig(),
+        )
