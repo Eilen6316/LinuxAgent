@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 
 from linuxagent.config.loader import load_config
@@ -26,6 +27,7 @@ def main(argv: list[str] | None = None) -> int:
 
     config = load_config()
     provider = provider_factory(config.api)
+    recorded_at = args.recorded_at or datetime.now(UTC).isoformat()
     count = asyncio.run(
         record_intent_router(
             provider,
@@ -33,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
             _RECORDINGS,
             provider_name=config.api.provider.value,
             model=config.api.model,
-            recorded_at=args.recorded_at,
+            recorded_at=recorded_at,
         )
     )
     print(f"recorded {count} intent-router cases to {_RECORDINGS}")

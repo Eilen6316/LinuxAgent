@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import pytest
 from langchain_core.messages import BaseMessage
 
 from linuxagent.eval.intent_router_eval import load_manifest, load_recording, prompt_fingerprint
@@ -36,7 +35,6 @@ class _StubProvider(LLMProvider):
             yield ""
 
 
-@pytest.mark.asyncio
 async def test_record_intent_router_writes_recordings_and_manifest(tmp_path: Path) -> None:
     golden = tmp_path / "golden.yaml"
     golden.write_text(
@@ -46,7 +44,9 @@ async def test_record_intent_router_writes_recordings_and_manifest(tmp_path: Pat
     out_dir = tmp_path / "recordings"
     provider = _StubProvider('{"mode":"DIRECT_ANSWER","answer":"hi","reason":"x"}')
 
-    await record_intent_router(provider, golden, out_dir, provider_name="deepseek", model="m1")
+    count = await record_intent_router(
+        provider, golden, out_dir, provider_name="deepseek", model="m1"
+    )
 
     recording = load_recording(out_dir, "cap")
     assert recording is not None
@@ -57,3 +57,4 @@ async def test_record_intent_router_writes_recordings_and_manifest(tmp_path: Pat
     assert manifest["prompt_fingerprint"] == prompt_fingerprint()
     assert manifest["provider"] == "deepseek"
     assert manifest["model"] == "m1"
+    assert count == 1
