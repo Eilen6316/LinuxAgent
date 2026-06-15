@@ -94,6 +94,24 @@ def test_parse_intent_decision_accepts_user_input_request() -> None:
     ]
 
 
+def test_parse_intent_decision_uses_only_documented_request_key() -> None:
+    decision = _parse_intent_decision(
+        json.dumps(
+            {
+                "mode": "REQUEST_USER_INPUT",
+                "answer": "fallback text",
+                "reason": "uses the old alias key",
+                "user_input_request": {"questions": [{"id": "x", "title": "X?", "kind": "text"}]},
+            }
+        )
+    )
+
+    # Only the documented `request_user_input` key is honored; the old alias now
+    # degrades gracefully to CLARIFY with the top-level answer.
+    assert decision.mode is IntentMode.CLARIFY
+    assert decision.answer == "fallback text"
+
+
 def test_parse_intent_decision_invalid_user_input_request_falls_back_to_clarify() -> None:
     decision = _parse_intent_decision(
         json.dumps(

@@ -75,8 +75,8 @@ For `CLARIFY`, ask the one question in `answer`. For `COMMAND_PLAN` and
 
 `parallel_tasks` is allowed only for `DIRECT_ANSWER` with `answer_context:
 "none"` when the visible result naturally decomposes into independent conversational subtasks
-without reading/changing the machine. Each task needs
-`id`, `goal`, and `prompt`. Leave `parallel_tasks` empty for all operational,
+without reading/changing the machine. Each task needs `goal` and `prompt`; `id`
+is optional and is auto-assigned when omitted. Leave `parallel_tasks` empty for all operational,
 clarifying, wizard, and LinuxAgent self-manual routes. The runtime may trim
 tasks according to operator configuration. Never put commands, tool calls, file paths,
 hosts, writes, mutations, or other execution instructions inside
@@ -110,7 +110,7 @@ When using `REQUEST_USER_INPUT`, include this shape:
       "default_text": null
     }}
   ],
-  "fallback_answer": "optional user-visible fallback if the request cannot open",
+  "fallback_answer": "optional user-visible fallback if the request cannot open; defaults to the top-level answer when omitted",
   "context": {{}}
 }}
 ```

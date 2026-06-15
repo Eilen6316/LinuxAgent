@@ -38,6 +38,27 @@ def test_operating_manifest_identity_section_states_repo_and_author() -> None:
     assert "Eilen6316" in context
 
 
+def test_operating_manifest_full_context_includes_every_section() -> None:
+    # Loads the whole manifest so every prompts/manifest/*.md file is exercised
+    # and cannot drift (be renamed/deleted/lose its header) without CI failing.
+    context = operating_manifest_context()
+    for name in (
+        "identity",
+        "usage",
+        "planning",
+        "session_resume",
+        "memory",
+        "cache",
+        "tools",
+        "execution",
+        "safety",
+        "config",
+        "network",
+        "limits",
+    ):
+        assert f"# {name}" in context, name
+
+
 def test_operating_manifest_cache_section_describes_boundaries() -> None:
     context = operating_manifest_context(section_names=("cache",))
 

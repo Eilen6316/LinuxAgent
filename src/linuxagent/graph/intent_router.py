@@ -202,7 +202,7 @@ def _parse_user_input_request(
 ) -> UserInputRequest | None:
     if mode is not IntentMode.REQUEST_USER_INPUT:
         return None
-    raw_request = payload.get("request_user_input") or payload.get("user_input_request")
+    raw_request = payload.get("request_user_input")
     if not isinstance(raw_request, dict):
         return None
     try:
