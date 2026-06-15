@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -102,3 +103,24 @@ def replay(case: GoldenCase, recording: Recording) -> IntentDecision:
     """
     decision = _parse_intent_decision(recording.raw_response)
     return _normalize_incidental_artifact_clarification(case.input, decision)
+
+
+def assert_recordings_fresh(recordings_dir: Path) -> None:
+    manifest = load_manifest(recordings_dir)
+    assert manifest is not None, f"no manifest in {recordings_dir}; run `make eval-record`"
+    recorded = manifest.get("prompt_fingerprint")
+    current = prompt_fingerprint()
+    assert recorded == current, (
+        "recordings stale: intent_router.md changed since last recording; "
+        "run `make eval-record` to refresh "
+        f"(recorded={recorded!r}, current={current!r})"
+    )
+
+
+def iter_replayed(
+    golden_path: Path, recordings_dir: Path
+) -> Iterator[tuple[GoldenCase, IntentDecision | None, Recording | None]]:
+    for case in load_golden_cases(golden_path):
+        recording = load_recording(recordings_dir, case.id)
+        decision = replay(case, recording) if recording is not None else None
+        yield case, decision, recording
