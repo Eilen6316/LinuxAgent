@@ -215,7 +215,12 @@ def _handle_line(server: McpServer, line: str) -> JsonObject | None:
         return _error(None, -32700, f"parse error: {exc.msg}")
     if not isinstance(request, dict):
         return _error(None, -32600, "request must be a JSON object")
-    return server.handle(request)
+    try:
+        return server.handle(request)
+    except Exception as exc:  # noqa: BLE001 - isolate handler faults as JSON-RPC errors
+        # A single malformed/unreadable input (e.g. an unreadable audit path)
+        # must not crash the stdio serve loop and drop all clients.
+        return _error(request.get("id"), -32603, f"internal error: {exc}")
 
 
 def _initialize_result(params: Any) -> JsonObject:

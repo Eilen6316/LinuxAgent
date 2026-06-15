@@ -307,3 +307,18 @@ def test_mcp_stdio_round_trip(tmp_path: Path) -> None:
     response = json.loads(stdout.getvalue())
     assert response["id"] == 1
     assert response["result"]["tools"][0]["name"] == "linuxagent.policy.classify"
+
+
+def test_handle_line_isolates_handler_exceptions() -> None:
+    from linuxagent.mcp_server import _handle_line
+
+    class _BoomServer:
+        def handle(self, request: dict) -> dict:
+            raise RuntimeError("boom")
+
+    response = _handle_line(_BoomServer(), '{"id": 7, "method": "tools/call"}')
+
+    assert response is not None
+    assert response["id"] == 7
+    assert response["error"]["code"] == -32603
+    assert "boom" in response["error"]["message"]

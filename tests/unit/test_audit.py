@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from linuxagent import audit as audit_module
 from linuxagent.audit import AuditLog, verify_audit_log
 from linuxagent.audit_sink import AuditSinkError
 from linuxagent.sandbox import (
@@ -386,6 +387,30 @@ def test_verify_detects_whole_file_deletion(tmp_path) -> None:
 
     assert result.valid is False
     assert "deleted" in (result.reason or "")
+
+
+def test_audit_first_append_fsyncs_parent_directory(tmp_path, monkeypatch) -> None:
+    calls: list[Path] = []
+    monkeypatch.setattr(audit_module, "_fsync_dir", lambda p: calls.append(p))
+    path = tmp_path / "audit.log"
+    audit = AuditLog(path)
+
+    audit.append({"event": "one"})  # first append creates the file
+    assert calls == [path.parent]
+
+    calls.clear()
+    audit.append({"event": "two"})  # file already exists; no directory fsync
+    assert calls == []
+
+
+def test_verify_audit_log_reports_unreadable_path(tmp_path) -> None:
+    path = tmp_path / "audit-as-dir.log"
+    path.mkdir()  # a directory: read_text raises IsADirectoryError, must not crash
+
+    result = verify_audit_log(path)
+
+    assert result.valid is False
+    assert "cannot read" in (result.reason or "")
 
 
 def test_verify_tolerates_anchor_lagging_one_record(tmp_path) -> None:

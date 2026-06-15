@@ -181,6 +181,7 @@ class AuditLog:
     def _append(self, record: dict[str, Any], *, send_to_sink: bool) -> None:
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
+            created = not self.path.exists()
             fd = os.open(self.path, os.O_WRONLY | os.O_CREAT, 0o600)
             os.close(fd)
             os.chmod(self.path, 0o600)
@@ -198,6 +199,10 @@ class AuditLog:
                 # would otherwise still hash-verify as valid). Written under the
                 # same flock as the record it anchors.
                 _write_anchor_tip(self.path, str(payload["hash"]))
+            if created:
+                # Make the new file's directory entry durable so the very first
+                # record survives a crash, not just its (fsynced) data blocks.
+                _fsync_dir(self.path.parent)
         if send_to_sink:
             self._send_to_sink(payload)
 
@@ -242,10 +247,14 @@ def verify_audit_log(path: Path) -> AuditVerificationResult:
                 False, 0, None, "audit log is missing but an integrity anchor exists (deleted)"
             )
         return AuditVerificationResult(valid=True, checked_records=0)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return AuditVerificationResult(False, 0, None, f"cannot read audit log: {exc}")
     previous = GENESIS_HASH
     checked = 0
     hashes: set[str] = set()
-    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_no, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
         try:
@@ -269,6 +278,17 @@ def verify_audit_log(path: Path) -> AuditVerificationResult:
             False, checked, None, "integrity anchor not in chain (truncated or rewritten)"
         )
     return AuditVerificationResult(valid=True, checked_records=checked)
+
+
+def _fsync_dir(path: Path) -> None:
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _anchor_path(path: Path) -> Path:
