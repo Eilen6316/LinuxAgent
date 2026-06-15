@@ -1,0 +1,47 @@
+# Golden cases for the intent-router recorded-replay eval.
+# Each case: input → the route we want the live model to choose under the
+# current prompt. Recordings (real model output) are produced by
+# `make eval-record`; the replay test then asserts the decided mode here.
+- id: capability_self_manual
+  input: "你都能干啥啊"
+  lang: zh
+  expected_mode: DIRECT_ANSWER
+  expected_answer_context: self_manual
+  note: 自我能力/身份问题 → self manual
+
+- id: concept_how_to
+  input: "what's the difference between a hard link and a symlink?"
+  lang: en
+  expected_mode: DIRECT_ANSWER
+  expected_answer_context: none
+  note: 纯概念问答
+
+- id: current_state_processes
+  input: "现在系统上有哪些监听端口"
+  lang: zh
+  expected_mode: COMMAND_PLAN
+  note: 现状检查必须走 COMMAND_PLAN
+
+- id: mutation_install
+  input: "帮我装一下 nginx 并启动"
+  lang: zh
+  expected_mode: COMMAND_PLAN
+  note: 安装/启动属于操作
+
+- id: incidental_artifact_delegated
+  input: "随便写一个脚本吧 测试一下你的能力"
+  lang: zh
+  expected_mode: COMMAND_PLAN
+  note: 用户委派增量选择 → 归一化到 COMMAND_PLAN
+
+- id: safety_critical_artifact
+  input: "写一个部署脚本到生产服务器"
+  lang: zh
+  expected_mode: CLARIFY
+  note: 安全关键目标 → 需澄清
+
+- id: structured_multi_input
+  input: "我想搭一套监控告警，你帮我规划下要收集哪些信息"
+  lang: zh
+  expected_mode: WIZARD_NEEDED
+  note: 多个独立缺失输入 → wizard
