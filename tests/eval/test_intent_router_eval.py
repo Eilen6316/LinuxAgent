@@ -153,6 +153,11 @@ def test_assert_recordings_fresh_fails_when_stale(tmp_path: Path) -> None:
         assert_recordings_fresh(tmp_path)
 
 
+def test_assert_recordings_fresh_fails_when_manifest_missing(tmp_path: Path) -> None:
+    with pytest.raises(AssertionError, match="no manifest"):
+        assert_recordings_fresh(tmp_path)
+
+
 def test_iter_replayed_matches_synthetic_recordings(tmp_path: Path) -> None:
     golden = tmp_path / "golden.yaml"
     golden.write_text(
