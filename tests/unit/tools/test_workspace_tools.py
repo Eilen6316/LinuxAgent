@@ -49,6 +49,28 @@ def test_read_file_redacts_sensitive_values(tmp_path) -> None:
     assert "password=***redacted***" in output
 
 
+def test_read_file_redacts_multiline_private_key_body(tmp_path) -> None:
+    # Build the PEM marker at runtime so the literal does not trip the
+    # detect-private-key pre-commit hook on this test file.
+    marker = "PRIVATE KEY"
+    path = tmp_path / "id_ed25519"
+    path.write_text(
+        f"-----BEGIN OPENSSH {marker}-----\n"
+        "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAA\n"
+        "AAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"
+        f"-----END OPENSSH {marker}-----\n",
+        encoding="utf-8",
+    )
+    tool = make_read_file_tool(FilePatchConfig(allow_roots=(tmp_path,)))
+
+    output = tool.invoke({"path": str(path)})
+
+    # The base64 body and the END line must not leak — not just the BEGIN line.
+    assert "b3BlbnNzaC1rZXktdjEA" not in output
+    assert "AAAAAQAAAA" not in output
+    assert f"END OPENSSH {marker}" not in output
+
+
 def test_read_file_rejects_files_over_configured_size(tmp_path) -> None:
     path = tmp_path / "large.txt"
     path.write_text("x" * 2048, encoding="utf-8")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -40,6 +41,8 @@ _INCOMPLETE_PRIVATE_KEY_PATTERN = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*",
     re.DOTALL,
 )
+_PRIVATE_KEY_BEGIN_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+_PRIVATE_KEY_END_RE = re.compile(r"-----END [A-Z ]*PRIVATE KEY-----")
 
 # Structured key/value secrets, dispatched by pattern identity in ``_replacement``.
 _AUTH_HEADER_RE = re.compile(r"(?i)(authorization\s*:\s*)(bearer|basic)\s+[A-Za-z0-9._~+/=-]+")
@@ -96,6 +99,31 @@ def redact_text(text: str) -> RedactionResult:
         updated, n = pattern.subn(_replacement, updated)
         count += n
     return RedactionResult(text=updated, count=count)
+
+
+def redact_lines(lines: Iterable[str]) -> list[str]:
+    """Redact a sequence of *contiguous* lines, carrying private-key block state.
+
+    ``redact_text`` only collapses a PEM block when its BEGIN and END markers are
+    in the same string; applied to one line at a time it redacts just the BEGIN
+    line and leaks the base64 body and END line. Track the open block so every
+    line from BEGIN through END is redacted, while preserving line structure.
+
+    Only safe for contiguous content (e.g. a read window); do not use on
+    non-contiguous search matches, where the block state would mis-fire.
+    """
+    output: list[str] = []
+    in_private_key = False
+    for line in lines:
+        if in_private_key:
+            output.append(REDACTED)
+            if _PRIVATE_KEY_END_RE.search(line):
+                in_private_key = False
+            continue
+        output.append(redact_text(line).text)
+        if _PRIVATE_KEY_BEGIN_RE.search(line) and not _PRIVATE_KEY_END_RE.search(line):
+            in_private_key = True
+    return output
 
 
 def redact_record(record: dict[str, Any], *, redact_commands: bool = False) -> dict[str, Any]:

@@ -8,7 +8,7 @@ from langchain_core.tools import BaseTool, tool
 
 from ..config.models import FilePatchConfig, SandboxToolConfig
 from ..sandbox import SandboxProfile
-from ..security import redact_text
+from ..security import redact_lines, redact_text
 from .sandbox import (
     ToolSandboxSpec,
     attach_tool_sandbox,
@@ -175,34 +175,41 @@ def make_search_files_tool(
 
 
 def _read_text_window(path: Path, offset: int, limit: int, max_chars: int) -> str:
-    lines: list[str] = []
+    raw: list[str] = []
+    numbers: list[int] = []
     total_chars = 0
     with path.open("r", encoding="utf-8", errors="replace") as handle:
         for line_number, line in enumerate(handle):
             if line_number < offset:
                 continue
-            if len(lines) >= limit or total_chars >= min(MAX_READ_CHARS, max_chars):
+            if len(raw) >= limit or total_chars >= min(MAX_READ_CHARS, max_chars):
                 break
             text = line.rstrip("\n")
-            redacted = redact_text(text)
-            total_chars += len(redacted.text)
-            lines.append(f"{line_number + 1}:{redacted.text}")
-    return "\n".join(lines)
+            total_chars += len(text)
+            raw.append(text)
+            numbers.append(line_number + 1)
+    # Redact the contiguous window as a block so a multi-line PEM private key is
+    # fully masked, not just its BEGIN line.
+    redacted = redact_lines(raw)
+    return "\n".join(f"{number}:{text}" for number, text in zip(numbers, redacted, strict=True))
 
 
 def _read_text_lines(path: Path, limit: int, max_chars: int) -> tuple[list[str], bool]:
-    lines: list[str] = []
+    raw: list[str] = []
+    numbers: list[int] = []
     total_chars = 0
     truncated = False
     with path.open("r", encoding="utf-8", errors="replace") as handle:
         for line_number, line in enumerate(handle, start=1):
-            if len(lines) >= limit or total_chars >= min(MAX_READ_CHARS, max_chars):
+            if len(raw) >= limit or total_chars >= min(MAX_READ_CHARS, max_chars):
                 truncated = True
                 break
             text = line.rstrip("\n")
-            redacted = redact_text(text)
-            total_chars += len(redacted.text)
-            lines.append(f"{line_number}:{redacted.text}")
+            total_chars += len(text)
+            raw.append(text)
+            numbers.append(line_number)
+    redacted = redact_lines(raw)
+    lines = [f"{number}:{text}" for number, text in zip(numbers, redacted, strict=True)]
     return lines, truncated
 
 
