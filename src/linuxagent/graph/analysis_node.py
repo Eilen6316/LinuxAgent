@@ -8,6 +8,7 @@ from typing import Any
 from langchain_core.messages import AIMessage
 from langgraph.types import Command
 
+from ..budget import TokenBudgetExceeded
 from ..i18n import Translator, default_translator
 from ..interfaces import ExecutionResult, LLMProvider
 from ..prompts_loader import build_analysis_prompt
@@ -52,6 +53,10 @@ def make_analyze_result_node(
                 prompt_cache_key=state.get("prompt_cache_key") or prompt_cache_key,
                 runtime_observer=runtime_observer,
             )
+        except TokenBudgetExceeded:
+            # The budget circuit breaker must stop the turn, not be swallowed by
+            # the analysis-resilience fallback below.
+            raise
         except Exception:  # noqa: BLE001 - keep graph resilient when provider analysis fails
             analysis = result_context
         return {
