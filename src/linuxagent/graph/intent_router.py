@@ -312,5 +312,5 @@ def _asks_only_incidental_artifact_choices(answer: str) -> bool:
 def _drop_overwrite_avoidance_reason(text: str) -> str:
     # Drop the whole clause whose point is avoiding overwrite (e.g. "避免覆盖…",
     # "确保不会覆盖…"); the incidental-artifact path question is what matters.
-    text = re.sub(r"[^，,。.!?？]*覆盖[^?？。.!]*", "", text)
+    text = re.sub(r"[^\uff0c,\u3002.!?\uff1f]*\u8986\u76d6[^?\uff1f\u3002.!]*", "", text)
     return re.sub(r"[^,.!?]*to avoid overwrit(?:e|ing)[^?!.]*", "", text)
