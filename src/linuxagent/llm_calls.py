@@ -11,6 +11,7 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 from langchain_core.tools import BaseTool
 
+from .budget import current_budget_limits, enforce_budget
 from .interfaces import LLM_CALL_METADATA_KEY, LLMProvider
 from .runtime_control import current_cancellation_token
 from .runtime_events import llm_prompt_input_runtime_event, llm_usage_runtime_event
@@ -41,6 +42,8 @@ async def complete_llm(
     prompt_cache_key: str | None,
     runtime_observer: RuntimeEventObserver | None = None,
 ) -> str:
+    if telemetry is not None:
+        enforce_budget(telemetry, current_budget_limits())
     options = LLMCallOptions(
         telemetry,
         trace_id,
@@ -64,6 +67,8 @@ async def complete_llm_with_tools(
     tool_runtime_limits: Any,
     tool_observer: ToolObserver,
 ) -> str:
+    if options.telemetry is not None:
+        enforce_budget(options.telemetry, current_budget_limits())
     call_kwargs = {
         **tool_provider_kwargs(options),
         "tool_runtime_limits": tool_runtime_limits,

@@ -255,3 +255,31 @@ def test_tool_provider_kwargs_include_cancellation_token() -> None:
         kwargs = tool_provider_kwargs(options)
 
     assert kwargs["cancellation_token"] is token
+
+
+async def test_complete_llm_raises_budget_exceeded_before_provider_call(tmp_path) -> None:
+    import pytest
+
+    from linuxagent.budget import BudgetLimits, TokenBudgetExceeded, budget_scope
+
+    provider = _Provider()
+    telemetry = TelemetryRecorder(tmp_path / "telemetry.jsonl")
+    telemetry.begin_turn()
+    # Inject usage above the limit directly via internal event path.
+    telemetry._record_usage_event("llm.usage", {"llm.total_tokens": 200})
+
+    with (
+        budget_scope(BudgetLimits(max_turn_tokens=100)),
+        pytest.raises(TokenBudgetExceeded, match="turn"),
+    ):
+        await complete_llm(
+            provider,  # type: ignore[arg-type]
+            [],
+            telemetry=telemetry,
+            trace_id="trace-budget",
+            attributes={"node": "parse_intent"},
+            prompt_cache_key=None,
+        )
+
+    # Provider must NOT have been called.
+    assert not hasattr(provider, "kwargs")
