@@ -166,6 +166,12 @@ def test_config_yaml_samples_document_supported_providers(name: str) -> None:
     assert missing == []
 
 
+def test_command_plan_config_defaults_verify_before_complete_off() -> None:
+    from linuxagent.config.models import CommandPlanConfig
+
+    assert CommandPlanConfig().verify_before_complete is False
+
+
 def test_defaults_populate_every_section() -> None:
     cfg = AppConfig.model_validate({})
     assert cfg.language is LanguageCode.ZH_CN
