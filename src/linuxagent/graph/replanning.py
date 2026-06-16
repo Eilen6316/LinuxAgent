@@ -212,6 +212,19 @@ def _appended_failure_signature(state: AgentState) -> tuple[str, ...]:
     return (*existing, signature)
 
 
+def should_verify_command_plan(state: AgentState, *, verify_before_complete: bool = False) -> bool:
+    """Return True when the completed plan has verification_commands to run."""
+    if not verify_before_complete:
+        return False
+    plan = state.get("command_plan")
+    if plan is None or not plan.verification_commands:
+        return False
+    results = _current_plan_results(state)
+    if not results:
+        return False
+    return all(_plan_result_succeeded(plan, index, result) for index, result in enumerate(results))
+
+
 def should_repair_plan(
     state: AgentState,
     *,
