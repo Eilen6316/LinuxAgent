@@ -823,3 +823,23 @@ def test_budget_config_defaults_are_off() -> None:
     assert cfg.max_turn_tokens is None
     assert cfg.max_session_tokens is None
     assert AppConfig().budget == cfg
+
+
+def test_budget_config_usd_defaults_off() -> None:
+    from linuxagent.config.models import BudgetConfig
+
+    cfg = BudgetConfig()
+    assert cfg.max_turn_usd is None
+    assert cfg.max_session_usd is None
+    assert cfg.prices == {}
+
+
+def test_budget_config_accepts_model_prices() -> None:
+    from linuxagent.config.models import BudgetConfig
+
+    cfg = BudgetConfig(
+        max_turn_usd=0.5,
+        prices={"deepseek-chat": {"usd_per_1k_input": 0.0002, "usd_per_1k_output": 0.0008}},
+    )
+    assert cfg.max_turn_usd == 0.5
+    assert cfg.prices["deepseek-chat"].usd_per_1k_output == 0.0008

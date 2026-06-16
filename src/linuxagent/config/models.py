@@ -250,11 +250,21 @@ class CommandPlanConfig(BaseModel):
     stall_detection: bool = True
 
 
+class ModelPriceConfig(BaseModel):
+    model_config = _FROZEN
+
+    usd_per_1k_input: float = Field(ge=0)
+    usd_per_1k_output: float = Field(ge=0)
+
+
 class BudgetConfig(BaseModel):
     model_config = _FROZEN
 
     max_turn_tokens: int | None = Field(default=None, ge=1)
     max_session_tokens: int | None = Field(default=None, ge=1)
+    max_turn_usd: float | None = Field(default=None, gt=0)
+    max_session_usd: float | None = Field(default=None, gt=0)
+    prices: dict[str, ModelPriceConfig] = Field(default_factory=dict)
 
 
 class FilePatchConfig(BaseModel):
