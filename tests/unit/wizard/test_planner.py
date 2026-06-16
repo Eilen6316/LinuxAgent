@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
 from langchain_core.messages import BaseMessage
 
+from linuxagent.budget import BudgetLimits, TokenBudgetExceeded, budget_scope
 from linuxagent.telemetry import TelemetryRecorder
 from linuxagent.wizard.planner import WizardPlanner
 
@@ -148,3 +150,17 @@ async def test_generate_plan_provider_failure_is_typed() -> None:
 
     assert outcome.status == "provider_failed"
     assert "timeout" in outcome.reason
+
+
+async def test_generate_plan_propagates_budget_exceeded() -> None:
+    # The budget breaker must stop the turn, not be masked as a provider failure.
+    telemetry = TelemetryRecorder(path=None, enabled=False)
+    telemetry._record_usage_event("llm.usage", {"llm.total_tokens": 100})
+    provider = _Provider("{}")  # would succeed, but must not be reached
+
+    with budget_scope(BudgetLimits(max_turn_tokens=1)), pytest.raises(TokenBudgetExceeded):
+        await WizardPlanner(provider).generate_plan(
+            "query", telemetry=telemetry, trace_id="trace-1", prompt_cache_key=None
+        )
+
+    assert provider.kwargs == {}  # provider.complete never invoked

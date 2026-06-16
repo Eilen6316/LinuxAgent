@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from langchain_core.messages import BaseMessage
 
+from ..budget import TokenBudgetExceeded
 from ..interfaces import LLMProvider
 from ..llm_calls import complete_llm
 from ..prompt_history import prompt_chat_history
@@ -72,6 +73,10 @@ class WizardPlanner:
                 prompt_cache_key=prompt_cache_key,
                 runtime_observer=runtime_observer,
             )
+        except TokenBudgetExceeded:
+            # The budget circuit breaker stops the turn; don't mask it as a
+            # provider failure.
+            raise
         except Exception as exc:
             _record_outcome(telemetry, trace_id, "provider_failed")
             return WizardPlannerOutcome.provider_failed(str(exc))
