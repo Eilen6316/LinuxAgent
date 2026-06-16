@@ -82,17 +82,46 @@ class TelemetryRecorder:
     _llm_usage: _LLMUsageAccumulator = field(
         default_factory=_LLMUsageAccumulator, init=False, repr=False, compare=False
     )
-    _turn_baseline_tokens: int = field(default=0, init=False, repr=False, compare=False)
+    _turn_baseline: LLMUsageSummary = field(
+        default_factory=LLMUsageSummary, init=False, repr=False, compare=False
+    )
+
+    def _summary_locked(self) -> LLMUsageSummary:
+        """Build an LLMUsageSummary from the accumulator; caller must hold _usage_lock."""
+        usage = self._llm_usage
+        return LLMUsageSummary(
+            calls=usage.calls,
+            cache_hits=usage.cache_hits,
+            input_tokens=usage.input_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
+            output_tokens=usage.output_tokens,
+            reasoning_output_tokens=usage.reasoning_output_tokens,
+            total_tokens=usage.total_tokens,
+            prompt_cache_keys=len(usage.prompt_cache_keys),
+            prompt_cache_supported=usage.prompt_cache_supported,
+        )
 
     def begin_turn(self) -> None:
-        """Snapshot the current total_tokens so turn_total_tokens() returns a delta."""
+        """Snapshot the current usage summary so turn_* methods return deltas."""
         with self._usage_lock:
-            object.__setattr__(self, "_turn_baseline_tokens", self._llm_usage.total_tokens)
+            object.__setattr__(self, "_turn_baseline", self._summary_locked())
 
     def turn_total_tokens(self) -> int:
         """Return tokens accumulated since the last begin_turn() call."""
         with self._usage_lock:
-            return self._llm_usage.total_tokens - self._turn_baseline_tokens
+            return self._llm_usage.total_tokens - self._turn_baseline.total_tokens
+
+    def turn_usage(self) -> LLMUsageSummary:
+        """Return per-field token deltas since the last begin_turn() call."""
+        with self._usage_lock:
+            cur = self._summary_locked()
+        base = self._turn_baseline
+        return LLMUsageSummary(
+            input_tokens=cur.input_tokens - base.input_tokens,
+            output_tokens=cur.output_tokens - base.output_tokens,
+            reasoning_output_tokens=cur.reasoning_output_tokens - base.reasoning_output_tokens,
+            total_tokens=cur.total_tokens - base.total_tokens,
+        )
 
     @contextmanager
     def span(
@@ -129,18 +158,7 @@ class TelemetryRecorder:
 
     def llm_usage_summary(self) -> LLMUsageSummary:
         with self._usage_lock:
-            usage = self._llm_usage
-            return LLMUsageSummary(
-                calls=usage.calls,
-                cache_hits=usage.cache_hits,
-                input_tokens=usage.input_tokens,
-                cached_input_tokens=usage.cached_input_tokens,
-                output_tokens=usage.output_tokens,
-                reasoning_output_tokens=usage.reasoning_output_tokens,
-                total_tokens=usage.total_tokens,
-                prompt_cache_keys=len(usage.prompt_cache_keys),
-                prompt_cache_supported=usage.prompt_cache_supported,
-            )
+            return self._summary_locked()
 
     def _record_usage_event(self, name: str, attributes: dict[str, Any]) -> None:
         if name != LLM_USAGE_EVENT:

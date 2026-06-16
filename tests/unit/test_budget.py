@@ -76,3 +76,18 @@ def test_telemetry_turn_total_tracks_delta_since_begin_turn() -> None:
     assert rec.turn_total_tokens() == 30
     rec.begin_turn()
     assert rec.turn_total_tokens() == 0
+
+
+def test_telemetry_turn_usage_tracks_input_output_delta() -> None:
+    rec = TelemetryRecorder(path=None, enabled=False)
+    rec._record_usage_event(
+        "llm.usage", {"llm.input_tokens": 10, "llm.output_tokens": 4, "llm.total_tokens": 14}
+    )
+    rec.begin_turn()
+    rec._record_usage_event(
+        "llm.usage", {"llm.input_tokens": 7, "llm.output_tokens": 3, "llm.total_tokens": 10}
+    )
+    turn = rec.turn_usage()
+    assert turn.input_tokens == 7
+    assert turn.output_tokens == 3
+    assert turn.total_tokens == 10
