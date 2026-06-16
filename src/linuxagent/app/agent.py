@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.messages import HumanMessage
 
 from ..audit import AuditLog
+from ..budget import TokenBudgetExceeded
 from ..graph.runtime import GraphRunResult, GraphRuntime
 from ..i18n import Translator, default_translator
 from ..interfaces import UserInterface
@@ -104,42 +105,50 @@ class LinuxAgent:
         await print_user_input(self.ui, user_input)
         start_working(self.ui)
         try:
-            self.context_manager.replace(await self._history(thread_id))
-            permissions = await self.graph_runtime.command_permissions(thread_id=thread_id)
-            state = new_turn_state(
-                user_input,
-                history=self.context_manager.snapshot(),
-                command_permissions=permissions,
-                prompt_cache_thread_id=thread_id if self.prompt_cache_enabled else None,
-                ui_interactive=self.ui.is_interactive(),
-                previous_values=await self.graph_runtime.values(thread_id=thread_id),
-            )
-            pending_history = _pending_history(self.context_manager.snapshot(), user_input)
-            result = await self._run_with_cancel(state, thread_id)
-            while result is not None and result.interrupts:
-                self._persist_pending_history(thread_id, pending_history)
-                interrupt = result.interrupts[0]
-                response = await self.ui.handle_interrupt(interrupt.legacy_payload)
-                result = await resume_graph_turn(
-                    self.graph_runtime,
-                    response,
-                    thread_id=thread_id,
-                    ui=self.ui,
-                    translator=self.translator,
-                    interrupt=interrupt,
-                )
-            if result is None:
-                return {}
-            if result.state.get("messages"):
+            try:
                 self.context_manager.replace(await self._history(thread_id))
-                if not self.context_manager.snapshot():
-                    self.context_manager.add([HumanMessage(content=user_input)])
-                self._persist_active_history(thread_id)
-                await print_execution_results(self.ui, result.state)
-                await print_assistant_response(self.ui, str(result.state["messages"][-1].content))
-            elif not result.interrupts:
-                await print_assistant_response(self.ui, self.translator.t("app.empty_turn_result"))
-            return result.state
+                permissions = await self.graph_runtime.command_permissions(thread_id=thread_id)
+                state = new_turn_state(
+                    user_input,
+                    history=self.context_manager.snapshot(),
+                    command_permissions=permissions,
+                    prompt_cache_thread_id=thread_id if self.prompt_cache_enabled else None,
+                    ui_interactive=self.ui.is_interactive(),
+                    previous_values=await self.graph_runtime.values(thread_id=thread_id),
+                )
+                pending_history = _pending_history(self.context_manager.snapshot(), user_input)
+                result = await self._run_with_cancel(state, thread_id)
+                while result is not None and result.interrupts:
+                    self._persist_pending_history(thread_id, pending_history)
+                    interrupt = result.interrupts[0]
+                    response = await self.ui.handle_interrupt(interrupt.legacy_payload)
+                    result = await resume_graph_turn(
+                        self.graph_runtime,
+                        response,
+                        thread_id=thread_id,
+                        ui=self.ui,
+                        translator=self.translator,
+                        interrupt=interrupt,
+                    )
+                if result is None:
+                    return {}
+                if result.state.get("messages"):
+                    self.context_manager.replace(await self._history(thread_id))
+                    if not self.context_manager.snapshot():
+                        self.context_manager.add([HumanMessage(content=user_input)])
+                    self._persist_active_history(thread_id)
+                    await print_execution_results(self.ui, result.state)
+                    await print_assistant_response(
+                        self.ui, str(result.state["messages"][-1].content)
+                    )
+                elif not result.interrupts:
+                    await print_assistant_response(
+                        self.ui, self.translator.t("app.empty_turn_result")
+                    )
+                return result.state
+            except TokenBudgetExceeded:
+                await print_assistant_response(self.ui, self.translator.t("budget.turn_stopped"))
+                return {}
         finally:
             self.ui.clear_activity()
 

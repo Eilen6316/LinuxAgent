@@ -80,6 +80,8 @@ cli:
 app:
   cancelled: "Stopped the current AI work."
   empty_turn_result: "LinuxAgent did not produce a visible reply or pending approval. This turn has ended; retry once, and report the previous trace if it repeats."
+budget:
+  turn_stopped: "Turn stopped: token budget limit reached. Adjust budget in config.yaml."
 direct:
   usage: "Usage: !<command>, for example !git status"
   blocked: "Execution blocked: {reason}"

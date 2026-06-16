@@ -20,6 +20,7 @@ from .app.runtime_messages import command_event_key, runtime_event_message, tool
 from .app.runtime_telemetry import record_runtime_event
 from .audit import AuditLog
 from .audit_sink import HttpAuditSink
+from .budget import BudgetLimits
 from .cluster import SSHManager
 from .event_replay import RuntimeEventStore
 from .executors import LinuxCommandExecutor
@@ -266,7 +267,18 @@ class Container:
                 self.graph(),
                 self._runtime_event_observer(),
                 self._runtime_event_store.latest,
+                telemetry=self.telemetry(),
+                budget_limits=self._build_budget_limits(),
             ),
+        )
+
+    def _build_budget_limits(self) -> BudgetLimits | None:
+        cfg = self._config.budget
+        if cfg.max_turn_tokens is None and cfg.max_session_tokens is None:
+            return None
+        return BudgetLimits(
+            max_turn_tokens=cfg.max_turn_tokens,
+            max_session_tokens=cfg.max_session_tokens,
         )
 
     def checkpointer(self) -> PersistentMemorySaver:

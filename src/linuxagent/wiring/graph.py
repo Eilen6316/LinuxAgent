@@ -8,6 +8,7 @@ from typing import Any
 from langchain_core.tools import BaseTool
 
 from ..audit import AuditLog
+from ..budget import BudgetLimits
 from ..config.models import AppConfig
 from ..event_replay import TurnReplaySnapshot
 from ..graph import GraphDependencies, GraphRuntime, build_agent_graph
@@ -69,9 +70,14 @@ def build_graph_runtime(
     graph: AgentGraph,
     runtime_observer: Callable[[dict[str, Any]], Any] | None = None,
     replay_snapshot_provider: Callable[[str], TurnReplaySnapshot | None] | None = None,
+    *,
+    telemetry: TelemetryRecorder | None = None,
+    budget_limits: BudgetLimits | None = None,
 ) -> GraphRuntime:
     return GraphRuntime(
         graph,
         runtime_observer=runtime_observer,
         replay_snapshot_provider=replay_snapshot_provider,
+        telemetry=telemetry,
+        budget_limits=budget_limits,
     )

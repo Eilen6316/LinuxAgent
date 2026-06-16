@@ -12,6 +12,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
+from ..budget import BudgetLimits, budget_scope
 from ..event_replay import TurnReplaySnapshot
 from ..pending_request import (
     PendingRequest,
@@ -21,6 +22,7 @@ from ..pending_request import (
 )
 from ..runtime_control import CancellationToken, cancellation_scope, new_turn_id
 from ..runtime_events import RuntimeEventKind, RuntimeEventPhase, runtime_event
+from ..telemetry import TelemetryRecorder
 from ..turn_context import RuntimeTurnContext, turn_context_scope
 from .agent_graph import AgentGraph
 from .events import RuntimeEventObserver, notify_event
@@ -61,10 +63,14 @@ class GraphRuntime:
         *,
         runtime_observer: RuntimeEventObserver | None = None,
         replay_snapshot_provider: Callable[[str], TurnReplaySnapshot | None] | None = None,
+        telemetry: TelemetryRecorder | None = None,
+        budget_limits: BudgetLimits | None = None,
     ) -> None:
         self._graph = graph
         self._runtime_observer = runtime_observer
         self._replay_snapshot_provider = replay_snapshot_provider
+        self._telemetry = telemetry
+        self._budget_limits = budget_limits
 
     async def run(
         self,
@@ -185,9 +191,15 @@ class GraphRuntime:
     ) -> GraphRunResult:
         active_turn_id = _active_turn_id(turn_id, cancellation_token)
         await self._notify_turn(active_turn_id, thread_id, RuntimeEventPhase.STARTED)
+        if self._telemetry is not None:
+            self._telemetry.begin_turn()
         try:
             runtime_context = RuntimeTurnContext(thread_id=thread_id, turn_id=active_turn_id)
-            with cancellation_scope(cancellation_token), turn_context_scope(runtime_context):
+            with (
+                cancellation_scope(cancellation_token),
+                turn_context_scope(runtime_context),
+                budget_scope(self._budget_limits),
+            ):
                 result = await self._invoke_graph_with_interrupt_fallback(
                     graph_input,
                     thread_id=thread_id,

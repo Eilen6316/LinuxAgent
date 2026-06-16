@@ -1446,3 +1446,22 @@ async def test_run_turn_persists_compressed_checkpoint_history(tmp_path) -> None
     stored = chat_service.snapshot()
     assert len(stored) == 3
     assert str(stored[0].content).startswith("[summary]")
+
+
+async def test_run_turn_renders_budget_stopped_message_on_budget_exceeded(tmp_path) -> None:
+    from linuxagent.budget import TokenBudgetExceeded
+
+    class _BudgetExhaustedGraph(_FakeGraph):
+        async def ainvoke(self, state: Any, config: Any) -> Any:
+            raise TokenBudgetExceeded("per-turn token budget exhausted (200 >= 100)")
+
+    graph = _BudgetExhaustedGraph([])
+    ui = _FakeUI()
+    agent = _agent(tmp_path, graph=graph, ui=ui)
+
+    result = await agent.run_turn("hi", thread_id="t1")
+
+    assert result == {}
+    assert ui.cleared_activity >= 1
+    # Budget-stop message rendered instead of provider response
+    assert any("budget" in msg.lower() or "预算" in msg for msg in ui.markdown_printed)
