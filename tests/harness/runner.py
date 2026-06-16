@@ -26,6 +26,7 @@ from linuxagent.config.models import (
     ClusterConfig,
     ClusterHost,
     ClusterRemoteProfile,
+    CommandPlanConfig,
     FilePatchConfig,
     LanguageCode,
     SandboxConfig,
@@ -326,6 +327,7 @@ class HarnessRunner:
             _write_setup_files(scenario.setup.get("files", []))
             _create_setup_symlinks(scenario.setup.get("symlinks", []))
 
+            command_plan_config = _command_plan_config(scenario.setup.get("command_plan", {}))
             file_patch_config = _file_patch_config(scenario.setup.get("file_patch", {}))
             sandbox_config = _sandbox_config(scenario.setup.get("sandbox", {}))
             security_config = _security_config(scenario.setup.get("security", {}))
@@ -354,6 +356,7 @@ class HarnessRunner:
                     command_service=CommandService(executor),
                     audit=audit,
                     cluster_service=cluster_service,
+                    command_plan_config=command_plan_config,
                     file_patch_config=file_patch_config,
                     tools=tuple(build_workspace_tools(file_patch_config, sandbox_config.tools))
                     if scenario.setup.get("workspace_tools", False)
@@ -555,6 +558,10 @@ def _cluster_service(host_specs: list[dict[str, Any]]) -> ClusterService | None:
         )
     )
     return ClusterService(config, _FakeSSH())
+
+
+def _command_plan_config(raw: dict[str, Any]) -> CommandPlanConfig:
+    return CommandPlanConfig.model_validate(raw)
 
 
 def _file_patch_config(raw: dict[str, Any]) -> FilePatchConfig:
@@ -784,7 +791,7 @@ def _scenario_turns(doc: dict[str, Any]) -> list[ScenarioTurn]:
             expected=dict(_normalize_decisions(doc.get("expected", {}))),
             expected_interrupts=list(_normalize_decisions(doc.get("expected_interrupts", []))),
             resume=_normalize_decisions(doc.get("resume")),
-            resume_sequence=[],
+            resume_sequence=list(_normalize_decisions(doc.get("resume_sequence", []))),
         )
     ]
 

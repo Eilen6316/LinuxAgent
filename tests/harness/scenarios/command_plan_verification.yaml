@@ -1,0 +1,26 @@
+scenario: "command plan verification phase runs verification_commands after success"
+provider_responses:
+  - '{"plan_type":"command_plan","goal":"write marker file","commands":[{"command":"/bin/echo marker","purpose":"write marker","read_only":true,"target_hosts":[],"background":false,"acceptable_exit_codes":[0]}],"risk_summary":"read-only echo","preflight_checks":[],"verification_commands":["/bin/echo verified"],"rollback_commands":[],"requires_root":false,"expected_side_effects":[]}'
+  - "marker written and verified"
+setup:
+  command_plan:
+    verify_before_complete: true
+inputs:
+  - role: human
+    content: "write a marker and verify it"
+expected_interrupts:
+  - type: confirm_command
+    safety_level: CONFIRM
+    command_source: llm
+    matched_rule: LLM_FIRST_RUN
+resume:
+  decision: "yes"
+  latency_ms: 50
+resume_sequence:
+  - decision: "yes"
+    latency_ms: 50
+expected:
+  command_executed: true
+  exit_code: 0
+  response_contains:
+    - "marker written and verified"
