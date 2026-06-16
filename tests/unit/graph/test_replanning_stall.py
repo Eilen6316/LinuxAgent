@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from linuxagent.graph.replanning import (
+    _appended_failure_signature,
     _failure_signature,
     should_repair_plan,
 )
@@ -68,3 +69,19 @@ def test_should_repair_plan_new_failure_is_not_stalled() -> None:
     state = _state_with_failure(signatures=("some-other-signature",))
 
     assert should_repair_plan(state) is True
+
+
+def test_appended_failure_signature_records_new_signature() -> None:
+    state = _state_with_failure()
+    sig = _failure_signature(state)
+
+    assert _appended_failure_signature(state) == (sig,)
+
+
+def test_appended_failure_signature_is_idempotent() -> None:
+    base = _state_with_failure()
+    sig = _failure_signature(base)
+    state = _state_with_failure(signatures=(sig,))
+
+    # already recorded -> no duplicate appended
+    assert _appended_failure_signature(state) == (sig,)

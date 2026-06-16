@@ -92,6 +92,7 @@ def make_repair_plan_node(
             "plan_result_start_index": len(state.get("plan_results", ())),
             "command_repair_attempts": state.get("command_repair_attempts", 0) + 1,
             "command_max_repair_attempts": max_repair_attempts,
+            "repair_failure_signatures": _appended_failure_signature(state),
             "plan_error": None,
             "command_source": CommandSource.LLM,
             "selected_hosts": (),
@@ -197,6 +198,14 @@ def _failure_signature(state: AgentState) -> str | None:
     )
     payload = json.dumps(parts, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _appended_failure_signature(state: AgentState) -> tuple[str, ...]:
+    existing = state.get("repair_failure_signatures") or ()
+    signature = _failure_signature(state)
+    if signature is None or signature in existing:
+        return existing
+    return (*existing, signature)
 
 
 def should_repair_plan(

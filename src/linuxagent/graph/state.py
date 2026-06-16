@@ -45,6 +45,7 @@ class AgentState(TypedDict, total=False):
     file_patch_max_repair_attempts: int
     command_repair_attempts: int
     command_max_repair_attempts: int
+    repair_failure_signatures: tuple[str, ...]
     file_patch_selected_files: tuple[str, ...]
     plan_step_index: int
     plan_results: tuple[ExecutionResult, ...]
