@@ -16,6 +16,7 @@ SOURCE_ROOT = Path("src/linuxagent")
 
 GRAPH_MODULE_LINE_BUDGETS = {
     Path("src/linuxagent/graph/file_patch_repair.py"): 560,
+    Path("src/linuxagent/graph/replanning.py"): 490,
     Path("src/linuxagent/graph/wizard_nodes.py"): 450,
 }
 

@@ -47,6 +47,7 @@ STATE_SECTIONS: tuple[StateSection, ...] = (
             "file_patch_max_repair_attempts",
             "command_repair_attempts",
             "command_max_repair_attempts",
+            "repair_failure_signatures",
             "file_patch_selected_files",
             "plan_step_index",
             "plan_results",
