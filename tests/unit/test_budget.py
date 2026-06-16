@@ -6,6 +6,7 @@ import pytest
 
 from linuxagent.budget import (
     BudgetLimits,
+    ModelPrice,
     TokenBudgetExceeded,
     budget_scope,
     current_budget_limits,
@@ -76,6 +77,41 @@ def test_telemetry_turn_total_tracks_delta_since_begin_turn() -> None:
     assert rec.turn_total_tokens() == 30
     rec.begin_turn()
     assert rec.turn_total_tokens() == 0
+
+
+def _usage(turn_in: int, turn_out: int, sess_in: int, sess_out: int) -> object:
+    class _U:
+        def turn_total_tokens(self) -> int:
+            return turn_in + turn_out
+
+        def turn_usage(self) -> LLMUsageSummary:
+            return LLMUsageSummary(
+                input_tokens=turn_in, output_tokens=turn_out, total_tokens=turn_in + turn_out
+            )
+
+        def llm_usage_summary(self) -> LLMUsageSummary:
+            return LLMUsageSummary(
+                input_tokens=sess_in, output_tokens=sess_out, total_tokens=sess_in + sess_out
+            )
+
+    return _U()
+
+
+def test_enforce_budget_raises_when_turn_usd_over() -> None:
+    price = ModelPrice(usd_per_1k_input=1.0, usd_per_1k_output=2.0)
+    # turn cost = 1000/1000*1 + 1000/1000*2 = 3.0 USD
+    limits = BudgetLimits(max_turn_usd=2.5, price=price)
+    with pytest.raises(TokenBudgetExceeded, match="USD"):
+        enforce_budget(_usage(1000, 1000, 0, 0), limits)
+
+
+def test_enforce_budget_usd_noop_without_price() -> None:
+    enforce_budget(_usage(10**6, 10**6, 0, 0), BudgetLimits(max_turn_usd=0.01, price=None))
+
+
+def test_enforce_budget_usd_under_limit_passes() -> None:
+    price = ModelPrice(usd_per_1k_input=1.0, usd_per_1k_output=2.0)
+    enforce_budget(_usage(100, 100, 0, 0), BudgetLimits(max_session_usd=10.0, price=price))
 
 
 def test_telemetry_turn_usage_tracks_input_output_delta() -> None:
