@@ -179,6 +179,10 @@ def _failure_signature(state: AgentState) -> str | None:
 
     Used to detect a stalled repair loop (same failure recurring across
     attempts). Hashing means raw stderr is never stored or surfaced.
+
+    Note: stderr that varies per attempt (e.g. timestamps) yields distinct
+    signatures, making stall detection ineffective; exhausting
+    max_repair_attempts remains the fallback termination.
     """
     plan = state.get("command_plan")
     failures = [
@@ -230,8 +234,7 @@ def should_repair_plan(
         return False
     if stall_detection:
         signature = _failure_signature(state)
-        _raw_seen = state.get("repair_failure_signatures")
-        seen: tuple[str, ...] = _raw_seen if isinstance(_raw_seen, tuple) else ()
+        seen = state.get("repair_failure_signatures") or ()
         if signature is not None and signature in seen:
             # No-progress: this exact failure already drove a repair attempt.
             # Stop here and fall through to ANALYZE (same terminus as exhausting

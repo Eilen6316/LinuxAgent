@@ -56,6 +56,33 @@ async def test_route_after_execute_repairs_exhausted_failed_plan() -> None:
     assert route == "REPAIR_PLAN"
 
 
+async def test_route_after_execute_stalls_to_analyze_on_repeated_failure() -> None:
+    from linuxagent.graph.replanning import _failure_signature
+
+    plan = parse_command_plan(command_plan_json("/bin/false"))
+    result = ExecutionResult(
+        command="/bin/false",
+        exit_code=1,
+        stdout="",
+        stderr="failed",
+        duration=0,
+    )
+    base = {
+        "command_plan": plan,
+        "plan_step_index": 0,
+        "plan_results": (result,),
+        "plan_result_start_index": 0,
+        "command_repair_attempts": 0,
+    }
+    seen = _failure_signature(base)
+
+    # Same failure already drove a repair attempt -> stall -> ANALYZE (not REPAIR_PLAN),
+    # the same terminus as exhausting max_repair_attempts (behavior-neutral).
+    route = await route_after_execute({**base, "repair_failure_signatures": (seen,)})
+
+    assert route == "ANALYZE"
+
+
 async def test_route_after_execute_analyzes_when_command_repair_limit_reached() -> None:
     plan = parse_command_plan(command_plan_json("/bin/false"))
     result = ExecutionResult(

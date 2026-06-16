@@ -237,6 +237,7 @@ def _base_planning_reset(source: CommandSource) -> AgentState:
         "file_patch_request_intent": "unknown",
         "file_patch_repair_attempts": 0,
         "command_repair_attempts": 0,
+        "repair_failure_signatures": (),
         "file_patch_selected_files": (),
         "plan_step_index": 0,
         "plan_results": (),
