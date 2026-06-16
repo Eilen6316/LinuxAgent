@@ -42,3 +42,27 @@ def test_should_verify_false_when_a_command_failed() -> None:
     state = _succeeded_plan_with_verification()
     state["plan_results"] = (ExecutionResult("/bin/false", 1, "", "boom", 0.0),)
     assert should_verify_command_plan(state, verify_before_complete=True) is False
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3: command_verification_update node
+# ---------------------------------------------------------------------------
+
+from linuxagent.graph.command_verification import command_verification_update  # noqa: E402
+
+
+def test_command_verification_update_builds_verification_plan() -> None:
+    state = _succeeded_plan_with_verification()
+    update = command_verification_update(state)
+
+    new_plan = update["command_plan"]
+    assert tuple(c.command for c in new_plan.commands) == ("/bin/true --check",)
+    # the verification plan must NOT itself carry verification_commands (no re-loop)
+    assert new_plan.verification_commands == ()
+    assert update["pending_command"] == "/bin/true --check"
+    assert update["plan_results"] == ()
+    assert update["plan_step_index"] == 0
+
+
+def test_command_verification_update_noop_without_plan() -> None:
+    assert command_verification_update({}) == {}
