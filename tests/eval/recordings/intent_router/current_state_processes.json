@@ -1,0 +1,4 @@
+{
+  "id": "current_state_processes",
+  "raw_response": "```json\n{\n  \"mode\": \"COMMAND_PLAN\",\n  \"answer\": \"\",\n  \"reason\": \"用户要求查看当前系统的监听端口，需要通过命令（如 ss -tlnp 或 netstat）实际检查系统状态，属于当前状态检查请求\",\n  \"answer_context\": \"none\",\n  \"parallel_tasks\": [],\n  \"request_user_input\": null\n}\n```"
+}

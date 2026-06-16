@@ -1,0 +1,4 @@
+{
+  "id": "structured_multi_input",
+  "raw_response": "```json\n{\n  \"mode\": \"WIZARD_NEEDED\",\n  \"answer\": \"\",\n  \"reason\": \"用户请求搭建监控告警系统，需要收集多个独立输入（如监控对象、指标、告警方式、基础设施等），适合用向导逐步发现，而非直接回答或单次澄清。\",\n  \"answer_context\": \"none\",\n  \"parallel_tasks\": [],\n  \"request_user_input\": null\n}\n```"
+}

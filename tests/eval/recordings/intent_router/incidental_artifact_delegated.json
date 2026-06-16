@@ -1,0 +1,4 @@
+{
+  "id": "incidental_artifact_delegated",
+  "raw_response": "{\n  \"mode\": \"CLARIFY\",\n  \"answer\": \"你希望脚本保存在哪个路径或文件名？例如 ~/test_script.sh 或 /tmp/demo.py？这样可以确保不会覆盖已有文件。\",\n  \"reason\": \"用户请求创建脚本但未指定路径/文件名，路径选择可能影响现有文件，需要澄清安全细节。\",\n  \"answer_context\": \"none\",\n  \"parallel_tasks\": [],\n  \"request_user_input\": null\n}"
+}

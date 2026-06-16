@@ -1,0 +1,4 @@
+{
+  "id": "capability_self_manual",
+  "raw_response": "{\"mode\": \"DIRECT_ANSWER\", \"answer\": \"\", \"reason\": \"用户询问 LinuxAgent 的能力和功能，属于自我描述类问题，需要加载操作手册来回答。\", \"answer_context\": \"self_manual\", \"parallel_tasks\": [], \"request_user_input\": null}"
+}

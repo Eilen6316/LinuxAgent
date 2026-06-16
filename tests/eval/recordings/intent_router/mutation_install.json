@@ -1,0 +1,4 @@
+{
+  "id": "mutation_install",
+  "raw_response": "{\n  \"mode\": \"COMMAND_PLAN\",\n  \"answer\": \"\",\n  \"reason\": \"User requests installation and startup of nginx, which requires inspecting current machine state and performing system changes.\",\n  \"answer_context\": \"none\",\n  \"parallel_tasks\": [],\n  \"request_user_input\": null\n}"
+}
