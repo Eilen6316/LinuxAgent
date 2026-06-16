@@ -808,3 +808,9 @@ def test_cluster_empty_hosts_field_is_treated_as_empty_tuple() -> None:
     cfg = ClusterConfig.model_validate({"hosts": None})
 
     assert cfg.hosts == ()
+
+
+def test_command_plan_config_defaults_stall_detection_on() -> None:
+    from linuxagent.config.models import CommandPlanConfig
+
+    assert CommandPlanConfig().stall_detection is True
