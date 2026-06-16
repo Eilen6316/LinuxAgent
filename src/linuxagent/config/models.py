@@ -250,6 +250,13 @@ class CommandPlanConfig(BaseModel):
     stall_detection: bool = True
 
 
+class BudgetConfig(BaseModel):
+    model_config = _FROZEN
+
+    max_turn_tokens: int | None = Field(default=None, ge=1)
+    max_session_tokens: int | None = Field(default=None, ge=1)
+
+
 class FilePatchConfig(BaseModel):
     model_config = _FROZEN
 
@@ -642,3 +649,4 @@ class AppConfig(BaseModel):
     analytics: AnalyticsConfig = Field(default_factory=AnalyticsConfig)
     log_analysis: LogAnalysisConfig = Field(default_factory=LogAnalysisConfig)
     intelligence: IntelligenceConfig = Field(default_factory=IntelligenceConfig)
+    budget: BudgetConfig = Field(default_factory=BudgetConfig)

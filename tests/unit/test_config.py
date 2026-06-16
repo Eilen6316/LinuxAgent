@@ -814,3 +814,12 @@ def test_command_plan_config_defaults_stall_detection_on() -> None:
     from linuxagent.config.models import CommandPlanConfig
 
     assert CommandPlanConfig().stall_detection is True
+
+
+def test_budget_config_defaults_are_off() -> None:
+    from linuxagent.config.models import AppConfig, BudgetConfig
+
+    cfg = BudgetConfig()
+    assert cfg.max_turn_tokens is None
+    assert cfg.max_session_tokens is None
+    assert AppConfig().budget == cfg
