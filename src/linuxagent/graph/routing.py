@@ -11,7 +11,7 @@ from ..interfaces import SafetyLevel
 from ..response_guard import guard_response_text
 from .file_patch_nodes import should_repair_file_patch
 from .plan_steps import has_next_plan_step
-from .replanning import should_repair_plan
+from .replanning import should_repair_plan, should_verify_command_plan
 from .state import AgentState
 
 
@@ -141,7 +141,10 @@ async def route_after_execute(state: AgentState) -> str:
 
 
 def make_route_after_execute(
-    max_repair_attempts: int, *, stall_detection: bool = True
+    max_repair_attempts: int,
+    *,
+    stall_detection: bool = True,
+    verify_before_complete: bool = False,
 ) -> Callable[[AgentState], Awaitable[str]]:
     async def route_after_execute_node(state: AgentState) -> str:
         if has_next_plan_step(state):
@@ -150,6 +153,8 @@ def make_route_after_execute(
             state, max_repair_attempts=max_repair_attempts, stall_detection=stall_detection
         ):
             return "REPAIR_PLAN"
+        if should_verify_command_plan(state, verify_before_complete=verify_before_complete):
+            return "VERIFY"
         return "ANALYZE"
 
     return route_after_execute_node

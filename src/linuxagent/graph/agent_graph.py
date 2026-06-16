@@ -7,6 +7,7 @@ from typing import Any, TypeAlias
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from .command_verification import command_verification_update
 from .file_patch_nodes import (
     file_patch_verification_update,
     make_apply_file_patch_node,
@@ -158,6 +159,10 @@ def _add_execution_nodes(graph: Any, deps: GraphDependencies) -> None:
         ),
     )
     graph.add_node(
+        "command_verification",
+        _langgraph_node(command_verification_update),
+    )
+    graph.add_node(
         "analyze",
         _langgraph_node(
             make_analyze_result_node(
@@ -191,15 +196,18 @@ def _add_graph_edges(graph: Any, deps: GraphDependencies) -> None:
         make_route_after_execute(
             deps.command_plan_config.max_repair_attempts,
             stall_detection=deps.command_plan_config.stall_detection,
+            verify_before_complete=deps.command_plan_config.verify_before_complete,
         ),
         {
             "CONTINUE_PLAN": "advance_plan",
             "REPAIR_PLAN": "repair_plan",
+            "VERIFY": "command_verification",
             "ANALYZE": "analyze",
         },
     )
     graph.add_edge("advance_plan", "safety_check")
     graph.add_edge("repair_plan", "safety_check")
+    graph.add_edge("command_verification", "safety_check")
     graph.add_conditional_edges(
         "apply_file_patch",
         route_after_file_patch_apply,

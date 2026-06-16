@@ -206,3 +206,41 @@ async def test_response_nodes_can_render_english_operator_messages() -> None:
     assert refused["messages"][0].content == "Execution refused: rm -rf /tmp/demo"
     assert completed["messages"][0].content == "Operation completed."
     assert terminal == {}
+
+
+async def test_route_after_execute_verifies_when_enabled_and_commands_present() -> None:
+    from linuxagent.graph.routing import make_route_after_execute
+
+    payload = json.loads(command_plan_json("/bin/true", read_only=True))
+    payload["verification_commands"] = ["/bin/true --check"]
+    plan = parse_command_plan(json.dumps(payload))
+    result = ExecutionResult("/bin/true", 0, "ok", "", 0.0)
+    route = make_route_after_execute(2, verify_before_complete=True)
+    decision = await route(
+        {
+            "command_plan": plan,
+            "plan_step_index": 0,
+            "plan_results": (result,),
+            "plan_result_start_index": 0,
+        }
+    )
+    assert decision == "VERIFY"
+
+
+async def test_route_after_execute_analyzes_when_verify_disabled() -> None:
+    from linuxagent.graph.routing import make_route_after_execute
+
+    payload = json.loads(command_plan_json("/bin/true", read_only=True))
+    payload["verification_commands"] = ["/bin/true --check"]
+    plan = parse_command_plan(json.dumps(payload))
+    result = ExecutionResult("/bin/true", 0, "ok", "", 0.0)
+    route = make_route_after_execute(2, verify_before_complete=False)
+    decision = await route(
+        {
+            "command_plan": plan,
+            "plan_step_index": 0,
+            "plan_results": (result,),
+            "plan_result_start_index": 0,
+        }
+    )
+    assert decision == "ANALYZE"
