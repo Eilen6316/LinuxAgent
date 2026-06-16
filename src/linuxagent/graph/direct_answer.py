@@ -13,7 +13,7 @@ from ..interfaces import CommandSource, LLMProvider
 from ..prompt_history import prompt_history_before_current
 from ..providers.errors import ProviderError
 from ..telemetry import TelemetryRecorder
-from .intent_router import IntentDecision
+from .intent_router import IntentDecision, _strip_json_fence
 from .llm_calls import complete_llm
 from .state import AgentState, reset_planning_for_response
 
@@ -112,7 +112,7 @@ async def _review_direct_answer(
 
 def _parse_direct_answer_review(raw: str) -> DirectAnswerReviewDecision:
     try:
-        payload = json.loads(raw)
+        payload = json.loads(_strip_json_fence(raw))
     except json.JSONDecodeError:
         return DirectAnswerReviewDecision(DirectAnswerReviewMode.KEEP_DIRECT_ANSWER)
     if not isinstance(payload, dict):

@@ -78,6 +78,17 @@ def test_parse_direct_answer_review_defaults_to_keep_on_invalid_json() -> None:
     assert decision.mode is DirectAnswerReviewMode.KEEP_DIRECT_ANSWER
 
 
+def test_parse_direct_answer_review_tolerates_json_code_fence() -> None:
+    # deepseek and similar models fence JSON; the review must not silently keep
+    # the direct answer when it actually asked to escalate to a wizard.
+    decision = _parse_direct_answer_review(
+        '```json\n{"mode": "WIZARD_NEEDED", "reason": "needs inputs"}\n```'
+    )
+
+    assert decision.mode is DirectAnswerReviewMode.WIZARD_NEEDED
+    assert decision.reason == "needs inputs"
+
+
 async def test_wizard_hard_gates_prioritize_submitted_over_attempted_and_non_tty() -> None:
     decision = await _apply_wizard_hard_gates(
         _context(),
