@@ -127,3 +127,19 @@ def test_telemetry_turn_usage_tracks_input_output_delta() -> None:
     assert turn.input_tokens == 7
     assert turn.output_tokens == 3
     assert turn.total_tokens == 10
+
+
+def test_resolve_model_price_returns_price_when_model_matches() -> None:
+    from linuxagent.budget import resolve_model_price
+
+    prices = {"deepseek-chat": ModelPrice(usd_per_1k_input=0.0002, usd_per_1k_output=0.0008)}
+    price = resolve_model_price(prices, "deepseek-chat")
+    assert price is not None
+    assert price.usd_per_1k_output == 0.0008
+
+
+def test_resolve_model_price_returns_none_when_model_absent() -> None:
+    from linuxagent.budget import resolve_model_price
+
+    price = resolve_model_price({}, "deepseek-chat")
+    assert price is None

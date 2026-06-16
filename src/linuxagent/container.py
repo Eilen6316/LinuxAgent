@@ -20,7 +20,7 @@ from .app.runtime_messages import command_event_key, runtime_event_message, tool
 from .app.runtime_telemetry import record_runtime_event
 from .audit import AuditLog
 from .audit_sink import HttpAuditSink
-from .budget import BudgetLimits
+from .budget import BudgetLimits, ModelPrice, resolve_model_price
 from .cluster import SSHManager
 from .event_replay import RuntimeEventStore
 from .executors import LinuxCommandExecutor
@@ -274,11 +274,20 @@ class Container:
 
     def _build_budget_limits(self) -> BudgetLimits | None:
         cfg = self._config.budget
-        if cfg.max_turn_tokens is None and cfg.max_session_tokens is None:
+        price = resolve_model_price(
+            {k: ModelPrice(v.usd_per_1k_input, v.usd_per_1k_output) for k, v in cfg.prices.items()},
+            self._config.api.model,
+        )
+        token_set = cfg.max_turn_tokens is not None or cfg.max_session_tokens is not None
+        usd_set = cfg.max_turn_usd is not None or cfg.max_session_usd is not None
+        if not token_set and not (usd_set and price is not None):
             return None
         return BudgetLimits(
             max_turn_tokens=cfg.max_turn_tokens,
             max_session_tokens=cfg.max_session_tokens,
+            max_turn_usd=cfg.max_turn_usd,
+            max_session_usd=cfg.max_session_usd,
+            price=price,
         )
 
     def checkpointer(self) -> PersistentMemorySaver:

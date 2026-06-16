@@ -80,6 +80,11 @@ def reset_budget_limits(token: Token[BudgetLimits | None]) -> None:
     _CURRENT_BUDGET.reset(token)
 
 
+def resolve_model_price(prices: dict[str, ModelPrice], model: str) -> ModelPrice | None:
+    """Return the ModelPrice for model if configured, else None."""
+    return prices.get(model)
+
+
 def _summary_usd(summary: object, price: ModelPrice) -> float:
     inp = getattr(summary, "input_tokens", 0)
     out = getattr(summary, "output_tokens", 0) + getattr(summary, "reasoning_output_tokens", 0)
