@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shlex
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -169,6 +171,32 @@ async def _complete_repair_plan(
             runtime_observer=runtime_observer,
         )
     ).strip()
+
+
+def _failure_signature(state: AgentState) -> str | None:
+    """Stable hash of the current failing commands + outcomes.
+
+    Used to detect a stalled repair loop (same failure recurring across
+    attempts). Hashing means raw stderr is never stored or surfaced.
+    """
+    plan = state.get("command_plan")
+    failures = [
+        result
+        for index, result in enumerate(_current_plan_results(state))
+        if not _plan_result_succeeded(plan, index, result)
+    ]
+    if not failures:
+        return None
+    parts = sorted(
+        (
+            _command_key(result.command),
+            str(getattr(result, "exit_code", None)),
+            (getattr(result, "stderr", "") or "")[:200],
+        )
+        for result in failures
+    )
+    payload = json.dumps(parts, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def should_repair_plan(
