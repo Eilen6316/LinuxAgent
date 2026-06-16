@@ -11,7 +11,7 @@ from linuxagent.budget import (
     current_budget_limits,
     enforce_budget,
 )
-from linuxagent.telemetry import LLMUsageSummary
+from linuxagent.telemetry import LLMUsageSummary, TelemetryRecorder
 
 
 class _Usage:
@@ -63,3 +63,16 @@ def test_token_budget_exceeded_is_not_provider_error() -> None:
     from linuxagent.providers.errors import ProviderError
 
     assert not issubclass(TokenBudgetExceeded, ProviderError)
+
+
+def test_telemetry_turn_total_tracks_delta_since_begin_turn() -> None:
+    rec = TelemetryRecorder(path=None, enabled=False)
+    rec.begin_turn()
+    assert rec.turn_total_tokens() == 0
+    rec._record_usage_event(
+        "llm.usage",
+        {"llm.total_tokens": 30},
+    )
+    assert rec.turn_total_tokens() == 30
+    rec.begin_turn()
+    assert rec.turn_total_tokens() == 0

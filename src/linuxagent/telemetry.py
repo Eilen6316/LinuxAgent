@@ -82,6 +82,17 @@ class TelemetryRecorder:
     _llm_usage: _LLMUsageAccumulator = field(
         default_factory=_LLMUsageAccumulator, init=False, repr=False, compare=False
     )
+    _turn_baseline_tokens: int = field(default=0, init=False, repr=False, compare=False)
+
+    def begin_turn(self) -> None:
+        """Snapshot the current total_tokens so turn_total_tokens() returns a delta."""
+        with self._usage_lock:
+            object.__setattr__(self, "_turn_baseline_tokens", self._llm_usage.total_tokens)
+
+    def turn_total_tokens(self) -> int:
+        """Return tokens accumulated since the last begin_turn() call."""
+        with self._usage_lock:
+            return self._llm_usage.total_tokens - self._turn_baseline_tokens
 
     @contextmanager
     def span(
