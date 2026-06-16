@@ -26,6 +26,24 @@ def test_parse_intent_decision_invalid_json_falls_back_to_command_plan() -> None
     assert decision.reason == "invalid router JSON"
 
 
+def test_parse_intent_decision_tolerates_json_code_fence() -> None:
+    # Real models routinely wrap the object in a ```json fence despite the
+    # prompt asking for bare JSON; the router must not fail-close to COMMAND_PLAN.
+    raw = '```json\n{"mode": "WIZARD_NEEDED", "answer": "", "reason": "multi input"}\n```'
+    decision = _parse_intent_decision(raw)
+
+    assert decision.mode is IntentMode.WIZARD_NEEDED
+    assert decision.reason == "multi input"
+
+
+def test_parse_intent_decision_tolerates_bare_fence_without_language() -> None:
+    raw = '```\n{"mode": "DIRECT_ANSWER", "answer": "hi", "reason": "x", "answer_context": "none"}\n```'
+    decision = _parse_intent_decision(raw)
+
+    assert decision.mode is IntentMode.DIRECT_ANSWER
+    assert decision.answer == "hi"
+
+
 def test_parse_intent_decision_empty_direct_answer_falls_back_to_clarify() -> None:
     decision = _parse_intent_decision(
         json.dumps({"mode": "DIRECT_ANSWER", "answer": "", "reason": "missing answer"})
@@ -149,6 +167,19 @@ def test_incidental_path_question_with_overwrite_avoidance_routes_to_command_pla
             IntentMode.CLARIFY,
             "你想让我把脚本保存到哪个路径或文件名？这样我可以直接创建在合适的位置，避免覆盖重要文件。",
             "missing destination",
+        ),
+    )
+
+    assert decision.mode is IntentMode.COMMAND_PLAN
+
+
+def test_incidental_path_question_with_ensure_no_overwrite_routes_to_command_plan() -> None:
+    decision = _normalize_incidental_artifact_clarification(
+        "随便写一个脚本吧 测试一下你的能力",
+        IntentDecision(
+            IntentMode.CLARIFY,
+            "你希望脚本保存在哪个路径或文件名？例如 ~/test_script.sh 或 /tmp/demo.py？这样可以确保不会覆盖已有文件。",
+            "missing path",
         ),
     )
 

@@ -123,9 +123,23 @@ async def _route_intent(
     return _normalize_incidental_artifact_clarification(user_text, decision)
 
 
+def _strip_json_fence(raw: str) -> str:
+    """Return the JSON body from a possibly markdown-fenced response.
+
+    Models frequently wrap the object in ```json ... ``` despite the prompt
+    asking for bare JSON. Mirror plans._extract_json_payload's tolerance so the
+    router does not fail-close a correct decision to COMMAND_PLAN.
+    """
+    stripped = raw.strip()
+    if stripped.startswith("{"):
+        return stripped
+    match = re.fullmatch(r"```(?:json)?\s*(\{.*\})\s*```", stripped, flags=re.DOTALL)
+    return match.group(1) if match else stripped
+
+
 def _parse_intent_decision(raw: str, *, max_parallel_tasks: int | None = None) -> IntentDecision:
     try:
-        payload = json.loads(raw)
+        payload = json.loads(_strip_json_fence(raw))
     except json.JSONDecodeError:
         return IntentDecision(IntentMode.COMMAND_PLAN, "", "invalid router JSON")
     if not isinstance(payload, dict):
@@ -296,5 +310,7 @@ def _asks_only_incidental_artifact_choices(answer: str) -> bool:
 
 
 def _drop_overwrite_avoidance_reason(text: str) -> str:
-    text = re.sub(r"\uff0c?\s*\u907f\u514d\u8986\u76d6[^?？。.!]*", "", text)
-    return re.sub(r",?\s*to avoid overwrit(?:e|ing)[^?!.]*", "", text)
+    # Drop the whole clause whose point is avoiding overwrite (e.g. "避免覆盖…",
+    # "确保不会覆盖…"); the incidental-artifact path question is what matters.
+    text = re.sub(r"[^，,。.!?？]*覆盖[^?？。.!]*", "", text)
+    return re.sub(r"[^,.!?]*to avoid overwrit(?:e|ing)[^?!.]*", "", text)
