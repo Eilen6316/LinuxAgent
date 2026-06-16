@@ -12,7 +12,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
-from ..budget import BudgetLimits, budget_scope
+from ..budget import BudgetLimits, reset_budget_limits, set_budget_limits
 from ..event_replay import TurnReplaySnapshot
 from ..pending_request import (
     PendingRequest,
@@ -192,32 +192,25 @@ class GraphRuntime:
         active_turn_id = _active_turn_id(turn_id, cancellation_token)
         await self._notify_turn(active_turn_id, thread_id, RuntimeEventPhase.STARTED)
         if self._telemetry is not None:
-            self._telemetry.begin_turn()
+            self._telemetry.begin_turn()  # noqa: E701
+        _budget_token = set_budget_limits(self._budget_limits)
         try:
             runtime_context = RuntimeTurnContext(thread_id=thread_id, turn_id=active_turn_id)
-            with (
-                cancellation_scope(cancellation_token),
-                turn_context_scope(runtime_context),
-                budget_scope(self._budget_limits),
-            ):
+            with cancellation_scope(cancellation_token), turn_context_scope(runtime_context):
                 result = await self._invoke_graph_with_interrupt_fallback(
                     graph_input,
                     thread_id=thread_id,
                     turn_id=active_turn_id,
                     cancellation_token=cancellation_token,
                 )
-            run_result = await self._run_result(
-                result,
-                thread_id=thread_id,
-                turn_id=active_turn_id,
-            )
+            run_result = await self._run_result(result, thread_id=thread_id, turn_id=active_turn_id)
             if _is_cancelled(cancellation_token) and cancellation_token is not None:
                 await self._notify_turn(
                     active_turn_id,
                     thread_id,
                     RuntimeEventPhase.CANCELLED,
                     reason=cancellation_token.reason,
-                )
+                )  # noqa: E501
             elif run_result.interrupts:
                 await self._notify_pending_requests(thread_id, run_result.interrupts)
             else:
@@ -228,10 +221,11 @@ class GraphRuntime:
                 RuntimeEventPhase.CANCELLED
                 if _is_cancelled(cancellation_token)
                 else RuntimeEventPhase.ABORTED
-            )
+            )  # noqa: E501
             await self._notify_turn(active_turn_id, thread_id, phase, reason=str(exc))
             raise
         finally:
+            reset_budget_limits(_budget_token)
             clear_pending_interrupt_payloads(thread_id=thread_id, turn_id=active_turn_id)
 
     async def _run_result(self, result: Any, *, thread_id: str, turn_id: str) -> GraphRunResult:

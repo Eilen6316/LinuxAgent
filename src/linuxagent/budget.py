@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -48,6 +48,16 @@ def budget_scope(limits: BudgetLimits | None) -> Iterator[None]:
         yield
     finally:
         _CURRENT_BUDGET.reset(token)
+
+
+def set_budget_limits(limits: BudgetLimits | None) -> Token[BudgetLimits | None]:
+    """Set the current budget limits context-var; return the reset token."""
+    return _CURRENT_BUDGET.set(limits)
+
+
+def reset_budget_limits(token: Token[BudgetLimits | None]) -> None:
+    """Reset the budget limits context-var to its previous value."""
+    _CURRENT_BUDGET.reset(token)
 
 
 def enforce_budget(usage: _UsageSource, limits: BudgetLimits | None) -> None:
