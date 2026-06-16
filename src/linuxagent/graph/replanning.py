@@ -203,6 +203,7 @@ def should_repair_plan(
     state: AgentState,
     *,
     max_repair_attempts: int = DEFAULT_COMMAND_PLAN_REPAIR_ATTEMPTS,
+    stall_detection: bool = True,
 ) -> bool:
     plan = state.get("command_plan")
     if plan is None:
@@ -212,10 +213,22 @@ def should_repair_plan(
     attempts = state.get("command_repair_attempts", 0)
     if attempts >= max_repair_attempts:
         return False
-    return any(
+    has_failure = any(
         not _plan_result_succeeded(plan, index, result)
         for index, result in enumerate(_current_plan_results(state))
     )
+    if not has_failure:
+        return False
+    if stall_detection:
+        signature = _failure_signature(state)
+        _raw_seen = state.get("repair_failure_signatures")
+        seen: tuple[str, ...] = _raw_seen if isinstance(_raw_seen, tuple) else ()
+        if signature is not None and signature in seen:
+            # No-progress: this exact failure already drove a repair attempt.
+            # Stop here and fall through to ANALYZE (same terminus as exhausting
+            # max_repair_attempts) instead of looping again.
+            return False
+    return True
 
 
 def _current_plan_results(state: AgentState) -> tuple[Any, ...]:

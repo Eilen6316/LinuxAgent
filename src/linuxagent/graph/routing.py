@@ -140,15 +140,19 @@ async def route_after_execute(state: AgentState) -> str:
     return "ANALYZE"
 
 
-def make_route_after_execute(max_repair_attempts: int) -> Callable[[AgentState], Awaitable[str]]:
-    async def route(state: AgentState) -> str:
+def make_route_after_execute(
+    max_repair_attempts: int, *, stall_detection: bool = True
+) -> Callable[[AgentState], Awaitable[str]]:
+    async def route_after_execute_node(state: AgentState) -> str:
         if has_next_plan_step(state):
             return "CONTINUE_PLAN"
-        if should_repair_plan(state, max_repair_attempts=max_repair_attempts):
+        if should_repair_plan(
+            state, max_repair_attempts=max_repair_attempts, stall_detection=stall_detection
+        ):
             return "REPAIR_PLAN"
         return "ANALYZE"
 
-    return route
+    return route_after_execute_node
 
 
 async def route_after_file_patch_apply(state: AgentState) -> str:

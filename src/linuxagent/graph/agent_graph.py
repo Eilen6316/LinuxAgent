@@ -188,7 +188,10 @@ def _add_graph_edges(graph: Any, deps: GraphDependencies) -> None:
     )
     graph.add_conditional_edges(
         "execute",
-        make_route_after_execute(deps.command_plan_config.max_repair_attempts),
+        make_route_after_execute(
+            deps.command_plan_config.max_repair_attempts,
+            stall_detection=deps.command_plan_config.stall_detection,
+        ),
         {
             "CONTINUE_PLAN": "advance_plan",
             "REPAIR_PLAN": "repair_plan",
