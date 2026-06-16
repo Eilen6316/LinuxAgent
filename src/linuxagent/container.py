@@ -8,6 +8,7 @@ avoided (R-ARCH-05). The container is instantiated once per process in
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -280,6 +281,12 @@ class Container:
         )
         token_set = cfg.max_turn_tokens is not None or cfg.max_session_tokens is not None
         usd_set = cfg.max_turn_usd is not None or cfg.max_session_usd is not None
+        if usd_set and price is None:
+            logging.getLogger(__name__).warning(
+                "USD budget is configured but model %r has no price entry; "
+                "USD enforcement is disabled. Add a budget.prices entry for it.",
+                self._config.api.model,
+            )
         if not token_set and not (usd_set and price is not None):
             return None
         return BudgetLimits(

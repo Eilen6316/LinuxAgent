@@ -86,6 +86,8 @@ def resolve_model_price(prices: dict[str, ModelPrice], model: str) -> ModelPrice
 
 
 def _summary_usd(summary: object, price: ModelPrice) -> float:
+    # input_tokens includes cached_input_tokens at full price: the guardrail
+    # over-counts cost intentionally so it never under-estimates the budget.
     inp = getattr(summary, "input_tokens", 0)
     out = getattr(summary, "output_tokens", 0) + getattr(summary, "reasoning_output_tokens", 0)
     return inp / 1000 * price.usd_per_1k_input + out / 1000 * price.usd_per_1k_output

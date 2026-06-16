@@ -115,7 +115,7 @@ class TelemetryRecorder:
         """Return per-field token deltas since the last begin_turn() call."""
         with self._usage_lock:
             cur = self._summary_locked()
-        base = self._turn_baseline
+            base = self._turn_baseline
         return LLMUsageSummary(
             input_tokens=cur.input_tokens - base.input_tokens,
             output_tokens=cur.output_tokens - base.output_tokens,

@@ -105,6 +105,14 @@ def test_enforce_budget_raises_when_turn_usd_over() -> None:
         enforce_budget(_usage(1000, 1000, 0, 0), limits)
 
 
+def test_enforce_budget_raises_when_session_usd_over() -> None:
+    price = ModelPrice(usd_per_1k_input=1.0, usd_per_1k_output=2.0)
+    # session cost = 1000/1000*1 + 1000/1000*2 = 3.0 USD
+    limits = BudgetLimits(max_session_usd=2.5, price=price)
+    with pytest.raises(TokenBudgetExceeded, match="USD"):
+        enforce_budget(_usage(0, 0, 1000, 1000), limits)
+
+
 def test_enforce_budget_usd_noop_without_price() -> None:
     enforce_budget(_usage(10**6, 10**6, 0, 0), BudgetLimits(max_turn_usd=0.01, price=None))
 
