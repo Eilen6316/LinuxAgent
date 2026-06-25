@@ -84,3 +84,11 @@ def test_budget_keeps_at_least_most_recent_message() -> None:
     msgs = _messages(5, size=4000)  # every message far exceeds the budget
     out = prompt_chat_history(msgs, budget_tokens=1)
     assert out[-1].content == msgs[-1].content
+
+
+def test_budget_param_takes_precedence_over_context_var() -> None:
+    msgs = _messages(20, size=40)
+    with context_budget_scope(1):  # very tight context-var budget
+        out = prompt_chat_history(msgs, budget_tokens=100000)  # loose param wins
+    assert not any("history omitted" in str(m.content) for m in out)
+    assert len(out) == len(msgs)

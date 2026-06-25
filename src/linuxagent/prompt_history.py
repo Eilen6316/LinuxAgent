@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 
 from langchain_core.messages import AIMessage, BaseMessage
 
@@ -25,15 +25,17 @@ def context_budget_scope(budget_tokens: int | None) -> Iterator[None]:
         _CONTEXT_BUDGET_TOKENS.reset(token)
 
 
-def set_context_budget(budget_tokens: int | None) -> object:
+def set_context_budget(budget_tokens: int | None) -> Token[int | None]:
     return _CONTEXT_BUDGET_TOKENS.set(budget_tokens)
 
 
-def reset_context_budget(token: object) -> None:
-    _CONTEXT_BUDGET_TOKENS.reset(token)  # type: ignore[arg-type]
+def reset_context_budget(token: Token[int | None]) -> None:
+    _CONTEXT_BUDGET_TOKENS.reset(token)
 
 
 def _estimated_tokens(message: BaseMessage) -> int:
+    # Empty-content messages estimate to 0 tokens (they pass budgets for free);
+    # harmless for trimming. Mirrors the (chars+3)//4 heuristic in llm_calls.
     return (len(str(message.content)) + 3) // 4
 
 
