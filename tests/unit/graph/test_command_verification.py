@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 
-from linuxagent.graph.replanning import should_verify_command_plan
+from linuxagent.graph.command_verification import command_verification_update
+from linuxagent.graph.replanning import should_repair_plan, should_verify_command_plan
 from linuxagent.interfaces import ExecutionResult
 from linuxagent.plans import parse_command_plan
 from linuxagent.plans.models import command_plan_json
@@ -48,8 +49,6 @@ def test_should_verify_false_when_a_command_failed() -> None:
 # Task 1.3: command_verification_update node
 # ---------------------------------------------------------------------------
 
-from linuxagent.graph.command_verification import command_verification_update  # noqa: E402
-
 
 def test_command_verification_update_builds_verification_plan() -> None:
     state = _succeeded_plan_with_verification()
@@ -66,3 +65,25 @@ def test_command_verification_update_builds_verification_plan() -> None:
 
 def test_command_verification_update_noop_without_plan() -> None:
     assert command_verification_update({}) == {}
+
+
+def test_command_verification_update_clears_prior_execution_result() -> None:
+    # The completed main plan's execution_result must not leak into the
+    # verification phase (it would pollute repair's successful-results scan).
+    state = _succeeded_plan_with_verification()
+    state["execution_result"] = ExecutionResult("/bin/true", 0, "main ok", "", 0.01)
+    update = command_verification_update(state)
+    assert update["execution_result"] is None
+
+
+def test_failed_verification_command_routes_to_repair() -> None:
+    # A failing verification command feeds the existing repair loop rather than
+    # silently completing the turn.
+    update = command_verification_update(_succeeded_plan_with_verification())
+    state = {
+        "command_plan": update["command_plan"],
+        "plan_results": (ExecutionResult("/bin/true --check", 1, "", "verify failed", 0.0),),
+        "plan_result_start_index": 0,
+        "command_repair_attempts": 0,
+    }
+    assert should_repair_plan(state) is True

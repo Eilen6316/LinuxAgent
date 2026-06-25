@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from ..interfaces import CommandSource
 from ..plans import CommandPlan, PlannedCommand
-from .state import AgentState
+from .state import AgentState, reset_execution_for_pending_work, reset_safety_for_replan
 
 
 def command_verification_update(state: AgentState) -> AgentState:
@@ -27,21 +27,10 @@ def command_verification_update(state: AgentState) -> AgentState:
         "plan_result_start_index": 0,
         "plan_step_index": 0,
         "plan_results": (),
-        "background_job_id": None,
-        "skip_command_repair": False,
-        "safety_level": None,
-        "matched_rule": None,
-        "matched_rules": (),
-        "safety_reason": None,
-        "safety_risk_score": 0,
-        "safety_capabilities": (),
-        "safety_can_whitelist": True,
-        "sandbox_preview": None,
-        "batch_hosts": (),
-        "remote_profiles": (),
-        "remote_preflight_commands": (),
-        "user_confirmed": False,
-        "audit_id": None,
+        # Clears safety + execution state (incl. the completed main plan's
+        # execution_result) so the verification commands start from a clean slate.
+        **reset_safety_for_replan(),
+        **reset_execution_for_pending_work(),
     }
 
 
