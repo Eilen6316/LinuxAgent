@@ -73,6 +73,7 @@ def build_graph_runtime(
     *,
     telemetry: TelemetryRecorder | None = None,
     budget_limits: BudgetLimits | None = None,
+    context_budget_tokens: int | None = None,
 ) -> GraphRuntime:
     return GraphRuntime(
         graph,
@@ -80,4 +81,5 @@ def build_graph_runtime(
         replay_snapshot_provider=replay_snapshot_provider,
         telemetry=telemetry,
         budget_limits=budget_limits,
+        context_budget_tokens=context_budget_tokens,
     )

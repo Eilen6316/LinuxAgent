@@ -270,6 +270,7 @@ class Container:
                 self._runtime_event_store.latest,
                 telemetry=self.telemetry(),
                 budget_limits=self._build_budget_limits(),
+                context_budget_tokens=self._config.context.budget_tokens,
             ),
         )
 

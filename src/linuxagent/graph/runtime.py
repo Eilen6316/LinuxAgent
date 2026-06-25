@@ -20,6 +20,7 @@ from ..pending_request import (
     request_resolved_event,
     request_started_event,
 )
+from ..prompt_history import reset_context_budget, set_context_budget
 from ..runtime_control import CancellationToken, cancellation_scope, new_turn_id
 from ..runtime_events import RuntimeEventKind, RuntimeEventPhase, runtime_event
 from ..telemetry import TelemetryRecorder
@@ -65,12 +66,14 @@ class GraphRuntime:
         replay_snapshot_provider: Callable[[str], TurnReplaySnapshot | None] | None = None,
         telemetry: TelemetryRecorder | None = None,
         budget_limits: BudgetLimits | None = None,
+        context_budget_tokens: int | None = None,
     ) -> None:
         self._graph = graph
         self._runtime_observer = runtime_observer
         self._replay_snapshot_provider = replay_snapshot_provider
         self._telemetry = telemetry
         self._budget_limits = budget_limits
+        self._context_budget_tokens = context_budget_tokens
 
     async def run(
         self,
@@ -194,6 +197,7 @@ class GraphRuntime:
         if self._telemetry is not None:
             self._telemetry.begin_turn()  # noqa: E701
         _budget_token = set_budget_limits(self._budget_limits)
+        _context_budget_token = set_context_budget(self._context_budget_tokens)
         try:
             runtime_context = RuntimeTurnContext(thread_id=thread_id, turn_id=active_turn_id)
             with cancellation_scope(cancellation_token), turn_context_scope(runtime_context):
@@ -226,6 +230,7 @@ class GraphRuntime:
             raise
         finally:
             reset_budget_limits(_budget_token)
+            reset_context_budget(_context_budget_token)
             clear_pending_interrupt_payloads(thread_id=thread_id, turn_id=active_turn_id)
 
     async def _run_result(self, result: Any, *, thread_id: str, turn_id: str) -> GraphRunResult:

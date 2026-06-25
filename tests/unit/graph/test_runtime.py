@@ -480,3 +480,23 @@ async def test_graph_invocation_future_completes_without_external_loop_wakeup() 
     invocation = start_graph_invocation(run)
 
     assert await asyncio.wait_for(invocation.future, timeout=0.5) == "ok"
+
+
+async def test_run_sets_context_budget_tokens_during_invoke() -> None:
+    from linuxagent.prompt_history import _CONTEXT_BUDGET_TOKENS
+
+    observed: list[int | None] = []
+
+    class _CaptureBudgetGraph(_FakeGraph):
+        async def ainvoke(self, state: Any, config: Any) -> Any:
+            observed.append(_CONTEXT_BUDGET_TOKENS.get())
+            return await super().ainvoke(state, config)
+
+    graph = _CaptureBudgetGraph()
+    runtime = GraphRuntime(graph, context_budget_tokens=512)
+
+    await runtime.run({"messages": []}, thread_id="thread")  # type: ignore[arg-type]
+
+    assert observed == [512]
+    # context-var must be reset after the turn
+    assert _CONTEXT_BUDGET_TOKENS.get() is None
