@@ -268,6 +268,12 @@ class BudgetConfig(BaseModel):
     prices: dict[str, ModelPriceConfig] = Field(default_factory=dict)
 
 
+class ContextConfig(BaseModel):
+    model_config = _FROZEN
+
+    budget_tokens: int | None = Field(default=None, ge=1)
+
+
 class FilePatchConfig(BaseModel):
     model_config = _FROZEN
 
@@ -661,3 +667,4 @@ class AppConfig(BaseModel):
     log_analysis: LogAnalysisConfig = Field(default_factory=LogAnalysisConfig)
     intelligence: IntelligenceConfig = Field(default_factory=IntelligenceConfig)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
+    context: ContextConfig = Field(default_factory=ContextConfig)

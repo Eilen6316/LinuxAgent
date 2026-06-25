@@ -849,3 +849,10 @@ def test_budget_config_accepts_model_prices() -> None:
     )
     assert cfg.max_turn_usd == 0.5
     assert cfg.prices["deepseek-chat"].usd_per_1k_output == 0.0008
+
+
+def test_context_config_budget_defaults_none() -> None:
+    from linuxagent.config.models import AppConfig, ContextConfig
+
+    assert ContextConfig().budget_tokens is None
+    assert AppConfig().context == ContextConfig()
