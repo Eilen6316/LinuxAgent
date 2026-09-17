@@ -40,6 +40,7 @@ htmlcov/
 .tox/
 .nox/
 coverage.xml
+coverage.json
 *.cover
 
 # Type checkers / linters

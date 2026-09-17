@@ -52,6 +52,10 @@ jobs:
           pip install -e ".[dev]"
       - name: Unit tests
         run: pytest tests/unit/ --cov=linuxagent --cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=80
+      - name: Per-module coverage floors
+        run: |
+          coverage json -o coverage.json
+          python scripts/check_coverage_floors.py coverage.json
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
@@ -151,6 +155,21 @@ jobs:
           pip install -e ".[dev]"
       - name: Harness
         run: make harness
+
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Intent-router recorded-replay eval
+        run: make eval
 
   ts-experimental:
     runs-on: ubuntu-latest

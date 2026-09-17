@@ -39,6 +39,8 @@ install:
 
 test:
 	$(PYTHON) -m pytest tests/unit/ --cov=linuxagent --cov-report=term-missing --cov-fail-under=80
+	$(PYTHON) -m coverage json -o coverage.json
+	$(PYTHON) scripts/check_coverage_floors.py coverage.json
 
 sandbox:
 	$(PYTHON) -m pytest \
