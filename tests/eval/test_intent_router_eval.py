@@ -203,8 +203,14 @@ _RECORDINGS = _REPO_ROOT / "tests/eval/recordings/intent_router"
 
 
 def test_live_golden_recordings_are_fresh() -> None:
+    # This is a regression gate, not an opt-in probe: if the committed
+    # recordings are missing the gate must fail loudly rather than silently
+    # pass, otherwise prompt-behavior regressions would never be caught.
     if load_manifest(_RECORDINGS) is None:
-        pytest.skip("no recordings yet; run `make eval-record`")
+        pytest.fail(
+            "intent-router eval recordings are missing; run `make eval-record` to "
+            "regenerate the committed recordings this gate replays"
+        )
     assert_recordings_fresh(_RECORDINGS)
 
 
@@ -219,7 +225,9 @@ def test_live_golden_case_routes_as_expected(case_id: str) -> None:
     case = next(c for c in load_golden_cases(_GOLDEN) if c.id == case_id)
     recording = load_recording(_RECORDINGS, case.id)
     if recording is None:
-        pytest.skip(f"no recording for {case.id!r}; run `make eval-record`")
+        pytest.fail(
+            f"no recording for golden case {case.id!r}; run `make eval-record` to record it"
+        )
     decision = replay(case, recording)
     assert (
         decision.mode.value == case.expected_mode

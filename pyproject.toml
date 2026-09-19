@@ -119,7 +119,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S603", "S607", "PLR2004"]
+"tests/**" = ["S101", "S603", "S607"]
 
 # ---- mypy ---------------------------------------------------------------
 [tool.mypy]
@@ -146,7 +146,6 @@ markers = [
 [tool.coverage.run]
 source = ["linuxagent"]
 branch = true
-omit = []
 
 [tool.coverage.report]
 exclude_lines = [

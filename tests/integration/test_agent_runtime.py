@@ -264,7 +264,11 @@ async def test_agent_runtime_stops_repairing_failed_command_plan_at_limit(
         tmp_path,
         provider=provider,
         ui=ui,
-        command_plan_config=CommandPlanConfig(max_repair_attempts=2),
+        # This case isolates the max_repair_attempts limit: every repair proposes
+        # the same failing command, so stall detection (on by default) would stop
+        # after the first repair. Disable it here so the limit itself terminates
+        # the loop; stall detection has its own dedicated unit coverage.
+        command_plan_config=CommandPlanConfig(max_repair_attempts=2, stall_detection=False),
     )
 
     await agent.run_turn("repair loop", thread_id="runtime-repair-limit")
